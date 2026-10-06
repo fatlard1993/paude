@@ -58,7 +58,7 @@ Logins need HTTPS: the login cookie is `Secure`, which browsers accept only over
 }
 ```
 
-Then, from any machine: `paude login https://203.0.113.7 --name vps` (the name is how the picker shows it; `paude name <url> <name>` renames a login you have). A session nobody is attached to exits after an hour (later if Claude is still working); opening it again resumes it.
+Then, from any machine: `paude login https://203.0.113.7 --name vps` (the name is how the picker shows it; `paude name <url> <name>` renames a login you have). A session nobody is attached to exits after an hour (later if Claude is still working); opening it again resumes it. With [dtach](https://github.com/crigler/dtach) installed (`paude doctor` checks), sessions keep running through a server restart or update, and the new server takes them back.
 
 ## Who can do what
 

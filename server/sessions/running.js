@@ -1,6 +1,7 @@
 import { getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 
 import { projectOf } from '../projects';
+import { heldSessions, isHeld } from './holder';
 import PtySession from './PtySession';
 
 const running = new Map();
@@ -19,7 +20,7 @@ export const stopSession = async id => {
 
 	if (!session) return;
 
-	session.process.kill();
+	session.end();
 	await session.process.exited;
 };
 
@@ -33,6 +34,13 @@ const launch = options => {
 
 export const startSession = (cwd, prompt) => launch({ id: crypto.randomUUID(), cwd, resume: false, prompt });
 
+// Sessions a previous server left running under dtach, taken back so they show as live and report their status
+export const adoptHeldSessions = async () => {
+	for (const { id, cwd } of await heldSessions()) {
+		if (!running.has(id) && projectOf(cwd)) launch({ id, cwd, adopt: true });
+	}
+};
+
 export const openSession = async id => {
 	if (running.has(id)) return running.get(id);
 
@@ -41,5 +49,5 @@ export const openSession = async id => {
 	if (!info?.cwd || !projectOf(info.cwd)) return null;
 
 	// A concurrent attach may have started it while this one awaited
-	return running.get(id) ?? launch({ id, cwd: info.cwd, resume: true });
+	return running.get(id) ?? launch({ id, cwd: info.cwd, resume: !isHeld(id), adopt: isHeld(id) });
 };

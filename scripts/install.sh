@@ -37,6 +37,8 @@ fi
 BUN="$(command -v bun)"
 # Claude's Bash tool loads the shell named here; systemd's own SHELL can predate a chsh, leaving sessions in bash
 # without the login shell's PATH and tools
+BREW_BIN=""
+if [ -d /home/linuxbrew/.linuxbrew/bin ]; then BREW_BIN="/home/linuxbrew/.linuxbrew/bin:"; fi
 LOGIN_SHELL="$(getent passwd "$(id -un)" | cut -d: -f7)"
 
 if ! command -v claude >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/claude" ]; then
@@ -71,7 +73,9 @@ WorkingDirectory=$APP
 ExecStart=$BUN server/index.js --projects $PROJECTS --host 127.0.0.1 --port $PORT
 Environment=NODE_ENV=production
 Environment=SHELL=$LOGIN_SHELL
-Environment=PATH=$HOME/.local/bin:$(dirname "$BUN"):/usr/local/bin:/usr/bin:/bin
+Environment=PATH=$HOME/.local/bin:$(dirname "$BUN"):$BREW_BIN/usr/local/bin:/usr/bin:/bin
+# A restart stops the server only: sessions held by dtach carry on, and the new server takes them back
+KillMode=process
 Restart=on-failure
 RestartSec=5
 
@@ -98,7 +102,11 @@ if ! systemctl --user is-active --quiet paude.service; then
 	say "Starting paude"
 	systemctl --user enable --now paude.service >/dev/null 2>&1
 elif [ "$changed" = yes ]; then
-	say "Restarting paude (running sessions restart; they resume when reopened)"
+	if command -v dtach >/dev/null 2>&1 || [ -x /home/linuxbrew/.linuxbrew/bin/dtach ]; then
+		say "Restarting paude (running sessions carry on)"
+	else
+		say "Restarting paude (running sessions restart and resume when reopened; install dtach and they carry on instead)"
+	fi
 	systemctl --user restart paude.service
 fi
 

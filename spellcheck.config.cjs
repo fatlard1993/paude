@@ -1,5 +1,7 @@
 module.exports = {
 	skipWords: [
+		'wx',
+		'mtime',
 		'wayland',
 		'dtach',
 		'memoized',

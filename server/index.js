@@ -12,7 +12,8 @@ import { initNames } from './names';
 import { initNotes } from './notes';
 import { initProjects, setProjectsRoot } from './projects';
 import { sweepCredentials } from './sessions/attachSocket';
-import { setClaudePath } from './sessions/running';
+import { setHolderFolder } from './sessions/holder';
+import { adoptHeldSessions, setClaudePath } from './sessions/running';
 import server, { spawnBuild } from './server';
 
 import './exit';
@@ -70,6 +71,8 @@ if (!passwordIsSet()) {
 	);
 }
 setClaudePath(options.claude);
+setHolderFolder(path.join(options.data, 'held'));
+await adoptHeldSessions();
 
 server.init({ host: options.host, port: options.port });
 setInterval(sweepCredentials, 30_000).unref();

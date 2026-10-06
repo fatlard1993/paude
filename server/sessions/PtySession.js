@@ -6,6 +6,7 @@ import { setStatus, statusOf } from '../activity';
 import { hookSettings } from '../hookSettings';
 import { pinnedName } from '../names';
 import parseTitle from './claudeTitle';
+import { endHeld, heldCommand } from './holder';
 
 const { Terminal } = xtermHeadless;
 const { SerializeAddon } = serializeAddon;
@@ -59,7 +60,7 @@ export default class PtySession {
 	modes = new Map();
 	ended = false;
 
-	constructor({ id, cwd, resume, prompt, claudePath, onExit }) {
+	constructor({ id, cwd, resume, prompt, claudePath, onExit, adopt = false }) {
 		this.id = id;
 		this.cwd = cwd;
 		this.onExit = onExit;
@@ -93,11 +94,15 @@ export default class PtySession {
 			...(resume ? ['--resume', id] : ['--session-id', id, ...(prompt ? ['--', prompt] : [])]),
 		];
 
-		setStatus(id, 'ready');
+		const env = { ...sessionEnvironment(), TERM: 'xterm-256color', COLORTERM: 'truecolor', PAUDE_SESSION: id };
+		const command = heldCommand({ id, cwd, env, command: [claudePath, ...args] }) ?? [claudePath, ...args];
 
-		this.process = Bun.spawn([claudePath, ...args], {
+		// Taken back after a restart, it's in whatever state it was left in
+		if (!adopt) setStatus(id, 'ready');
+
+		this.process = Bun.spawn(command, {
 			cwd,
-			env: { ...sessionEnvironment(), TERM: 'xterm-256color', COLORTERM: 'truecolor', PAUDE_SESSION: id },
+			env,
 			terminal: {
 				cols: this.cols,
 				rows: this.rows,
@@ -277,9 +282,14 @@ export default class PtySession {
 		clearTimeout(this.idleTimer);
 		this.idleTimer = setTimeout(() => {
 			if (this.busy || statusOf(this.id) === 'working') this.resetIdle(BUSY_RECHECK_MS);
-			else this.process.kill();
+			else this.end();
 		}, delay);
 		this.idleTimer.unref?.();
+	}
+
+	// Ends Claude, wherever it runs; the session closes for everyone once it's gone
+	end() {
+		if (!endHeld(this.id)) this.process.kill();
 	}
 
 	exited() {
