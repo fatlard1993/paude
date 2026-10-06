@@ -1,18 +1,20 @@
 import os from 'os';
 import path from 'path';
 
-import writeJsonFile from '../shared/writeJsonFile';
+import updateJsonFile from '../shared/updateJsonFile';
 
 // { default: url, tokens: { [url]: token }, names: { [url]: name } }, readable only by this user
 const file = path.join(process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.config'), 'paude', 'credentials.json');
 
+const EMPTY = { default: null, tokens: {} };
+
 const read = async () => {
 	const stored = Bun.file(file);
 
-	return (await stored.exists()) ? stored.json() : { default: null, tokens: {} };
+	return (await stored.exists()) ? stored.json() : structuredClone(EMPTY);
 };
 
-const write = credentials => writeJsonFile(file, () => credentials);
+const update = change => updateJsonFile(file, EMPTY, change);
 
 // A bare host means HTTPS, except this machine's own addresses: a paude reachable over plain http should only be on
 // localhost
@@ -24,23 +26,23 @@ export const normalizeUrl = url => {
 	return withScheme.replace(/\/+$/, '');
 };
 
-export const saveToken = async (url, token, name) => {
-	const credentials = await read();
+export const saveToken = (url, token, name) =>
+	update(credentials => {
+		credentials.tokens[url] = token;
+		if (name) (credentials.names ??= {})[url] = name;
+		credentials.default = url;
 
-	credentials.tokens[url] = token;
-	if (name) (credentials.names ??= {})[url] = name;
-	credentials.default = url;
-	await write(credentials);
-};
+		return credentials;
+	});
 
-export const forget = async url => {
-	const credentials = await read();
+export const forget = url =>
+	update(credentials => {
+		delete credentials.tokens[url];
+		delete credentials.names?.[url];
+		if (credentials.default === url) credentials.default = Object.keys(credentials.tokens)[0] ?? null;
 
-	delete credentials.tokens[url];
-	delete credentials.names?.[url];
-	if (credentials.default === url) credentials.default = Object.keys(credentials.tokens)[0] ?? null;
-	await write(credentials);
-};
+		return credentials;
+	});
 
 export const resolveServer = async url => {
 	const credentials = await read();
@@ -54,11 +56,14 @@ export const allTokens = async () => (await read()).tokens;
 export const serverNames = async () => (await read()).names ?? {};
 
 export const nameServer = async (url, name) => {
-	const credentials = await read();
+	let named = false;
 
-	if (!credentials.tokens[url]) return false;
-	(credentials.names ??= {})[url] = name;
-	await write(credentials);
+	await update(credentials => {
+		named = Boolean(credentials.tokens[url]);
+		if (named) (credentials.names ??= {})[url] = name;
 
-	return true;
+		return credentials;
+	});
+
+	return named;
 };

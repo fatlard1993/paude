@@ -52,6 +52,7 @@ module.exports = [
 			'cli/**/*.js',
 			'bin/**/*.js',
 			'shared/writeJsonFile.js',
+			'shared/updateJsonFile*.js',
 		],
 		languageOptions: {
 			globals: {

@@ -16,6 +16,7 @@ import {
 	redeemHandoff,
 	revokeInvite,
 	revokeToken,
+	setPassword,
 } from '../auth';
 import { ROLES, guestMayRequest } from '../permissions';
 import requestMatch from '../utils/requestMatch';
@@ -92,6 +93,15 @@ const authRoutes = async request => {
 		if (!login) return new Response('That link has expired', { status: 410 });
 
 		return new Response(null, { status: 204, headers: { 'Set-Cookie': loginCookie(login) } });
+	}
+
+	// set-password, while this server runs: from this machine's own token only
+	if (requestMatch('PUT', '/api/password', request)) {
+		if (!identityOf(credentialOf(request))?.local) return new Response('Only from this machine', { status: 403 });
+
+		await setPassword((await request.json()).password);
+
+		return new Response(null, { status: 204 });
 	}
 
 	if (requestMatch('POST', '/api/logout', request)) {

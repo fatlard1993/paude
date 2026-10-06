@@ -1,7 +1,7 @@
 import os from 'os';
 import path from 'path';
 
-import writeJsonFile from '../shared/writeJsonFile';
+import updateJsonFile from '../shared/updateJsonFile';
 
 const file = path.join(process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.config'), 'paude', 'prefs.json');
 
@@ -20,4 +20,4 @@ export const loadPrefs = async () => {
 	}
 };
 
-export const savePrefs = prefs => writeJsonFile(file, () => prefs);
+export const savePrefs = prefs => updateJsonFile(file, DEFAULT_PREFS, () => prefs);
