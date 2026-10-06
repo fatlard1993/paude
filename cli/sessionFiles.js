@@ -36,6 +36,20 @@ const sessionFiles = ({ url, token }, id) => {
 			return response?.ok ? openFile(path, text, line) : { path, error: text || 'Could not open it.' };
 		},
 
+		// What changed since the last commit; null outside git
+		changes: async () => {
+			const response = await get('changes');
+
+			return response?.ok ? response.json() : null;
+		},
+
+		diff: async path => {
+			const response = await get(`diff?path=${encodeURIComponent(path)}`);
+			const text = response ? await response.text() : 'Could not reach the server.';
+
+			return response?.ok ? { text } : { error: text || 'Could not show its changes.' };
+		},
+
 		search: async (query, options) => {
 			const response = await get(`search?${new URLSearchParams(searchParameters(query, options))}`);
 			const body = response ? await response.text() : 'Could not reach the server.';

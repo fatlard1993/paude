@@ -6,7 +6,8 @@ import sessionSocket from '../shared/sessionSocket';
 import notifier from './notify';
 import outputFilter, { filterText } from './outputFilter';
 import { composeFrame, createMirror } from './compositor';
-import { createBrowser } from './fileBrowser';
+import editCommand from './editCommand';
+import { createBrowser, openDiff } from './fileBrowser';
 import { place, removeImage, transmit } from './graphics';
 import { overlayKey, overlayBox } from './overlay';
 import { loadPrefs, savePrefs } from './prefs';
@@ -106,11 +107,11 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 
 		const openFiles = async () => {
 			try {
-				const paths = await files.list();
+				const [paths, changes] = await Promise.all([files.list(), files.changes()]);
 
 				state.files = state.browserState
-					? Object.assign(state.browserState, { paths })
-					: createBrowser(paths, await loadPrefs());
+					? Object.assign(state.browserState, { paths, changes })
+					: Object.assign(createBrowser(paths, await loadPrefs()), { changes });
 				state.browserState = state.files;
 			} catch (error) {
 				state.hint = error.message;
@@ -118,6 +119,33 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 
 			redraw();
 		};
+
+		const loadChanges = async () => {
+			const changes = await files.changes();
+
+			if (!state.files) return;
+			Object.assign(state.files, { changes, showChanges: changes !== null, filter: null, cursor: 0 });
+			redraw();
+		};
+
+		const readDiff = async path => {
+			const { text, error } = await files.diff(path);
+			const change = state.files?.changes?.find(found => found.path === path);
+
+			if (!state.files) return;
+			state.files.open = error ? { path, error } : openDiff(path, text, change?.status);
+			redraw();
+		};
+
+		// The person's own editor, in the side terminal; quitting it comes back here with the file as it now is
+		const editFile = ({ path }) =>
+			openShell({
+				command: editCommand(path),
+				afterwards: async () => {
+					state.files.changes = await files.changes();
+					await readFile(path, (state.files.open?.cursor ?? 0) + 1);
+				},
+			});
 
 		const readFile = async (path, line) => {
 			const opened = await files.read(path, line);
@@ -164,9 +192,11 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 		};
 
 		// The side terminal takes the screen from the box; the box's plain keys stay pushed while it's up
-		const openShell = () => {
+		// `command` runs instead of a shell; `afterwards`, when the shell ends of its own accord, returns to the box
+		const openShell = ({ command, afterwards } = {}) => {
 			const shell = openSideShell(server, id, {
 				size: size(),
+				command,
 				onOutput: text => {
 					if (overlay) redrawSoon();
 					else write(text);
@@ -185,6 +215,10 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 						state.hint = why;
 						write(`${MOUSE_OFF}${HIDE_CURSOR}`);
 						redraw();
+					} else if (afterwards) {
+						overlay = true;
+						write(`${MOUSE_OFF}${HIDE_CURSOR}`);
+						afterwards();
 					} else {
 						write(RESTORE_KEYS);
 						send({ type: 'refresh' });
@@ -240,7 +274,10 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			switch: () => finish('switch'),
 			close: closeOverlay,
 			ignore: () => {},
-			shell: openShell,
+			shell: () => openShell(),
+			loadChanges,
+			readDiff: ({ path }) => readDiff(path),
+			editFile,
 			backToShell,
 			endShell,
 			attachOutput: ({ text }) => {

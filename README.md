@@ -89,11 +89,11 @@ Everyone else comes in by invite: in a session's **People** tab, name the person
 
 A Drive invite can type into Claude, which runs commands as the server's user: give it to someone you'd give that shell, as with the password.
 
-| Role    | Can                                                          |
-| ------- | ------------------------------------------------------------ |
-| Drive   | type into Claude, open a side terminal, and everything below |
-| Comment | chat, comment, read the project's files                      |
-| View    | see the terminal                                             |
+| Role    | Can                                                                      |
+| ------- | ------------------------------------------------------------------------ |
+| Drive   | type into Claude, open a side terminal, edit files, and everything below |
+| Comment | chat, comment, read the project's files                                  |
+| View    | see the terminal                                                         |
 
 Revoking an invite, or changing the password with `bun run set-password` (a running server picks it up), signs those people out everywhere at once.
 
@@ -113,16 +113,20 @@ Inside a session everything goes to Claude except **Ctrl+]**, which floats the b
 | **s**, **d** | switch session, detach |
 | **Esc** | back to Claude |
 
-In **f**, the reader: arrows (or j/k) move and Enter opens; **/** finds a file by name and **?** searches contents. Alt+C, Alt+W and Alt+R toggle match case, whole word and regex, as in VS Code, and Tab moves to the files to include and exclude. Code is highlighted and markdown is rendered (**m** shows the source; the choice is remembered). In kitty, WezTerm or Ghostty, images show in place.
+In **f**, the reader: arrows (or j/k) move and Enter opens; **/** finds a file by name, **?** searches contents, and **c** lists what changed since the last commit (the tree marks changed files M, A, D, R or U, as VS Code does). Alt+C, Alt+W and Alt+R toggle match case, whole word and regex, as in VS Code, and Tab moves to the files to include and exclude. Code is highlighted and markdown is rendered (**m** shows the source; the choice is remembered). In kitty, WezTerm or Ghostty, images show in place.
 
 ![The reader: a highlighted file with lines marked](docs/terminal-files.png)
 
-| Key   | In a file                                                                                              |
-| ----- | ------------------------------------------------------------------------------------------------------ |
-| **v** | mark lines from the cursor                                                                             |
-| **a** | attach the marked lines, or the whole file, to Claude's prompt (nothing is sent until you press Enter) |
-| **y** | copy them to your clipboard                                                                            |
-| **z** | full screen                                                                                            |
+| Key   | In a file                                                                                                |
+| ----- | -------------------------------------------------------------------------------------------------------- |
+| **v** | mark lines from the cursor                                                                               |
+| **a** | attach the marked lines, or the whole file, to Claude's prompt (nothing is sent until you press Enter)   |
+| **y** | copy them to your clipboard                                                                              |
+| **z** | full screen                                                                                              |
+| **e** | edit it in your editor, in the side terminal; quitting the editor comes back here with the file reloaded |
+| **c** | its changes, if it has any                                                                               |
+
+In a file's changes, **v** marks lines, **a** attaches the marked lines (or all its changes) as a diff, **y** copies and **o** opens the file. **e** uses `$PAUDE_EDITOR`, `$VISUAL` or `$EDITOR` when it names an editor that runs in a terminal, and otherwise the first of nvim, vim, nano and vi that's installed.
 
 `PAUDE_NAME` sets the name others see (default: your username). `paude logout` revokes this machine's token on the server.
 
@@ -136,6 +140,8 @@ Open the server's address and log in, or follow an invite link.
 - **Scrolling.** The wheel scrolls Claude's transcript, for everyone, since there is one screen.
 - **Comments.** Drag over the terminal to select (on a phone, **Select** on the key bar, then tap the first and last line) and press **Comment**. Clicking a comment's quote finds it in the terminal. Reactions work on chat, comments and replies; click one to add or take back yours.
 - **Files.** The reader, from the folder button in the bar: search by name or contents with the same options as the terminal, and read highlighted code, rendered markdown, images, audio, video and PDFs. Click a line number and Shift+click another (on a phone, tap another) to attach those lines.
+- **Changes.** The reader's **Changes** lists what changed since the last commit, staged or not, and the tree marks those files. A file's changes show as a diff: attach a hunk, the lines you pick, or all of it.
+- **Editing.** **Edit** on a file you're reading; Ctrl+S saves. If the file changed since you opened it (Claude saved it, most likely), saving stops and asks whether to save yours anyway or load theirs.
 - **Side terminal.** The terminal button in the bar opens a shell in the session's folder, yours alone, which ends when you close it. Select some output (on a phone, **Select**, then the first and last line) and **Attach selection** quotes it in Claude's prompt.
 - **Start over from a point.** Each `done` line Claude prints after a turn is a link that starts a new session holding the conversation up to there.
 - **Names.** Click a session's title to pin a name (📌); **Use automatic name** goes back to Claude's.

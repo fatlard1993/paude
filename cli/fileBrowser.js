@@ -1,12 +1,13 @@
 import { pathFilter } from '../shared/globs';
-import { attachFileText, attachLinesText } from '../shared/attachText';
+import { attachDiffText, attachFileText, attachLinesText } from '../shared/attachText';
+import { diffLines, parseDiff } from '../shared/diff';
 import { extensionOf, kindOf, matchNames } from '../shared/projectFiles';
 import searchPattern from '../shared/searchPattern';
 import { fitCells } from './graphics';
 import { highlightLines } from './highlight';
 import { renderMarkdown } from './markdown';
 import { DEFAULT_PREFS } from './prefs';
-import { ACCENT, colored, dim, onBackground, orange, printable } from './screen';
+import { ACCENT, bold, colored, dim, onBackground, orange, printable } from './screen';
 
 const PAGE = 10;
 const CURSOR_BACKGROUND = 238;
@@ -39,6 +40,17 @@ const FILE_COLORS = {
 };
 // VS Code's Alt+C, Alt+W and Alt+R
 const OPTION_KEYS = { c: 'caseSensitive', w: 'wholeWord', r: 'regex' };
+// The letters VS Code marks changed files with, in its colors
+const STATUS_MARKS = {
+	modified: ['M', 179],
+	added: ['A', 114],
+	deleted: ['D', 167],
+	renamed: ['R', 75],
+	untracked: ['U', 114],
+};
+const ADDED_COLOR = 114;
+const REMOVED_COLOR = 167;
+const HUNK_COLOR = 75;
 const SEARCH_FIELDS = ['query', 'include', 'exclude'];
 
 const clamp = (value, low, high) => Math.min(Math.max(value, low), high);
@@ -54,7 +66,12 @@ export const createBrowser = (paths, prefs = structuredClone(DEFAULT_PREFS)) => 
 	search: null,
 	open: null,
 	zoom: false,
+	// What changed since the last commit, as the server lists it; null outside git
+	changes: null,
+	showChanges: false,
 });
+
+const changeOf = (browser, path) => browser.changes?.find(change => change.path === path) ?? null;
 
 // Opened at a line (a search hit), markdown shows its source, where that line is
 export const openFile = (path, text, line) => {
@@ -77,8 +94,34 @@ export const openFile = (path, text, line) => {
 	};
 };
 
+// One changed file's diff, its hunks laid out as rows to move through and mark like a file's lines
+export const openDiff = (path, text, status) => {
+	const { binary, hunks } = parseDiff(text);
+
+	return {
+		path,
+		diff: true,
+		status,
+		binary,
+		rows: hunks.flatMap(hunk => [
+			{ kind: 'hunk', text: `@@ -${hunk.oldStart} +${hunk.newStart} @@ ${hunk.heading}` },
+			...hunk.lines,
+		]),
+		cursor: 0,
+		anchor: null,
+	};
+};
+
 export const entriesOf = browser => {
 	const options = browser.prefs.search;
+
+	if (browser.showChanges) {
+		const changed = (browser.changes ?? []).map(({ path }) => path);
+		const shown = browser.filter ? (matchNames(changed, browser.filter, options) ?? []) : changed;
+
+		return shown.map(path => ({ kind: 'file', path, name: path, depth: 0 }));
+	}
+
 	const paths = browser.paths.filter(pathFilter(options));
 
 	if (browser.filter) {
@@ -186,9 +229,21 @@ const listKey = (browser, key, canType) => {
 		return { type: 'redraw' };
 	}
 
+	if (key === 'c' && browser.changes !== null) {
+		if (!browser.showChanges) return { type: 'loadChanges' };
+
+		Object.assign(browser, { showChanges: false, filter: null, cursor: 0 });
+
+		return { type: 'redraw' };
+	}
+
 	if (ESCAPE.includes(key)) {
-		if (browser.filter !== null) {
-			Object.assign(browser, { filter: null, cursor: 0 });
+		if (browser.filter !== null || browser.showChanges) {
+			Object.assign(browser, {
+				filter: null,
+				showChanges: browser.filter === null ? false : browser.showChanges,
+				cursor: 0,
+			});
 
 			return { type: 'redraw' };
 		}
@@ -199,6 +254,7 @@ const listKey = (browser, key, canType) => {
 	if (!entry) return { type: 'ignore' };
 
 	if (FORWARD.includes(key)) {
+		if (entry.kind === 'file' && browser.showChanges) return { type: 'readDiff', path: entry.path };
 		if (entry.kind === 'file') return { type: 'readFile', path: entry.path };
 		if (browser.expanded.has(entry.path) && key !== 'l' && !key.startsWith('\x1b')) browser.expanded.delete(entry.path);
 		else browser.expanded.add(entry.path);
@@ -274,6 +330,32 @@ const markedRange = file =>
 
 const showsRendered = (browser, file) => file.isMarkdown && (file.view ?? browser.prefs.markdownView) === 'rendered';
 
+const markedRows = diff =>
+	diff.anchor === null
+		? null
+		: diff.rows.slice(Math.min(diff.anchor, diff.cursor), Math.max(diff.anchor, diff.cursor) + 1);
+
+const diffKey = (browser, key, canType) => {
+	const diff = browser.open;
+	const last = Math.max(diff.rows.length - 1, 0);
+	const marked = markedRows(diff);
+	const lines = (marked ?? diff.rows).filter(row => row.kind !== 'hunk');
+
+	if (ESCAPE.includes(key) || BACK.includes(key)) browser.open = null;
+	else if (key in MOVES) diff.cursor = clamp(diff.cursor + MOVES[key], 0, last);
+	else if (key === 'g') diff.cursor = 0;
+	else if (key === 'G') diff.cursor = last;
+	else if (key === 'v') diff.anchor = diff.anchor === null ? diff.cursor : null;
+	else if (key === 'o' && diff.status !== 'deleted') return { type: 'readFile', path: diff.path };
+	else if (key === 'a' && canType && lines.length)
+		return { type: 'attach', text: attachDiffText(diff.path, diffLines(lines)) };
+	else if (key === 'y' && lines.length)
+		return { type: 'copy', text: diffLines(lines), what: marked ? 'the marked changes' : 'the changes' };
+	else return { type: 'ignore' };
+
+	return { type: 'redraw' };
+};
+
 const fileKey = (browser, key, canType) => {
 	const file = browser.open;
 
@@ -282,6 +364,11 @@ const fileKey = (browser, key, canType) => {
 
 		return { type: 'redraw' };
 	}
+
+	if (file.diff) return diffKey(browser, key, canType);
+	// Edited with the person's own editor, in the side terminal, on the machine the file is on
+	if (key === 'e' && canType && !file.error && !file.image) return { type: 'editFile', path: file.path };
+	if (key === 'c' && changeOf(browser, file.path)) return { type: 'readDiff', path: file.path };
 
 	// An image, or a file that couldn't be shown (binary, too big, gone), can still be left, or handed to Claude to
 	// read itself
@@ -379,6 +466,7 @@ const listView = (browser, width, room) => {
 		.filter(Boolean)
 		.join(' · ');
 	const header = [
+		...(browser.showChanges ? [bold(`Changes since the last commit (${browser.changes?.length ?? 0})`)] : []),
 		...(browser.filter !== null
 			? [`${orange('/')} ${printable(browser.filter)}${browser.typing ? '█' : ''}   ${optionChips(options)}`]
 			: []),
@@ -391,12 +479,22 @@ const listView = (browser, width, room) => {
 			entry.kind === 'folder'
 				? colored(`${browser.expanded.has(entry.path) ? '▾' : '▸'} ${printable(entry.name)}/`, FOLDER_COLOR)
 				: `  ${colored(printable(entry.name), FILE_COLORS[extensionOf(entry.path)] ?? 252)}`;
-		const text = `${indent}${label}`;
+		const change = entry.kind === 'file' && changeOf(browser, entry.path);
+		const changedInside =
+			entry.kind === 'folder' &&
+			!browser.expanded.has(entry.path) &&
+			browser.changes?.some(({ path }) => path.startsWith(`${entry.path}/`));
+		let mark = change ? ` ${colored(...STATUS_MARKS[change.status])}` : '';
+
+		if (changedInside) mark = ` ${colored('•', STATUS_MARKS.modified[1])}`;
+		const text = `${indent}${label}${mark}`;
 
 		return top + offset === browser.cursor ? highlight(text, width, CURSOR_BACKGROUND) : text;
 	});
 	const invalid = browser.filter && (options.wholeWord || options.regex) && !searchPattern(browser.filter, options);
 	let empty = browser.filter ? 'no file names match' : 'no files';
+
+	if (browser.showChanges && !browser.filter) empty = 'nothing has changed since the last commit';
 
 	if (invalid) empty = 'that regular expression is not valid';
 
@@ -438,8 +536,45 @@ const searchView = (browser, width, room) => {
 
 const fileHeader = (file, detail) => `${colored(printable(file.path), ACCENT)} ${dim(detail)}`;
 
+const diffView = (browser, width, room) => {
+	const diff = browser.open;
+	const change = changeOf(browser, diff.path);
+	const header = fileHeader(diff, `changes${change ? ` · ${change.status}` : ''}`);
+
+	if (diff.binary) return [header, '', dim('a binary file changed')];
+	if (!diff.rows.length) return [header, '', dim('no line changes')];
+
+	const marked = markedRows(diff);
+	const markedFrom = marked ? Math.min(diff.anchor, diff.cursor) : -1;
+	const markedTo = marked ? Math.max(diff.anchor, diff.cursor) : -1;
+	const [top, bottom] = windowAround(diff.cursor, diff.rows.length, room - 1);
+	const rows = diff.rows.slice(top, bottom).map((row, offset) => {
+		const index = top + offset;
+		let text;
+
+		if (row.kind === 'hunk') text = colored(printable(row.text), HUNK_COLOR);
+		else {
+			const numbers = dim(`${String(row.old ?? '').padStart(4)} ${String(row.new ?? '').padStart(4)}`);
+			const body = printable(row.text.replaceAll('\t', '    '));
+
+			if (row.kind === 'added') text = `${numbers} ${colored(`+ ${body}`, ADDED_COLOR)}`;
+			else if (row.kind === 'removed') text = `${numbers} ${colored(`- ${body}`, REMOVED_COLOR)}`;
+			else if (row.kind === 'note') text = `${numbers} ${dim(body)}`;
+			else text = `${numbers}   ${body}`;
+		}
+
+		if (index === diff.cursor) return highlight(text, width, CURSOR_BACKGROUND);
+
+		return index >= markedFrom && index <= markedTo ? highlight(text, width, MARKED_BACKGROUND) : text;
+	});
+
+	return [header, ...rows];
+};
+
 const fileView = (browser, width, room) => {
 	const file = browser.open;
+
+	if (file.diff) return diffView(browser, width, room);
 
 	if (file.error) return [orange(printable(file.path)), '', dim(printable(file.error))];
 
@@ -494,6 +629,20 @@ export const browserView = (browser, width, room) => {
 export const browserKeys = (browser, canType, keyCap) => {
 	const file = browser.open;
 
+	if (file?.diff) {
+		const marked = file.anchor !== null;
+
+		return [
+			`${keyCap('↑↓')} move`,
+			`${keyCap('v')} ${marked ? 'clear marks' : 'mark lines'}`,
+			canType && `${keyCap('a')} attach ${marked ? 'marked lines' : 'changes'}`,
+			`${keyCap('y')} copy`,
+			file.status !== 'deleted' && `${keyCap('o')} open file`,
+			`${keyCap('z')} full screen`,
+			`${keyCap('esc')} back`,
+		].filter(Boolean);
+	}
+
 	if (file?.error || file?.image)
 		return [canType && `${keyCap('a')} attach file`, `${keyCap('z')} full screen`, `${keyCap('esc')} back`].filter(
 			Boolean,
@@ -517,6 +666,8 @@ export const browserKeys = (browser, canType, keyCap) => {
 			`${keyCap('v')} ${marked ? 'clear marks' : 'mark lines'}`,
 			canType && `${keyCap('a')} attach ${marked ? 'marked lines' : 'file'}`,
 			`${keyCap('y')} copy ${marked ? 'marked lines' : 'file'}`,
+			canType && `${keyCap('e')} edit`,
+			changeOf(browser, file.path) && `${keyCap('c')} changes`,
 			file.isMarkdown && `${keyCap('m')} rendered`,
 			`${keyCap('z')} full screen`,
 			`${keyCap('esc')} back`,
@@ -542,7 +693,8 @@ export const browserKeys = (browser, canType, keyCap) => {
 		`${keyCap('enter')} open`,
 		`${keyCap('/')} find file`,
 		`${keyCap('?')} search contents`,
+		browser.changes !== null && `${keyCap('c')} ${browser.showChanges ? 'all files' : 'changes'}`,
 		canType && `${keyCap('a')} attach file`,
-		`${keyCap('esc')} back`,
+		`${keyCap('esc')} ${browser.showChanges ? 'all files' : 'back'}`,
 	].filter(Boolean);
 };

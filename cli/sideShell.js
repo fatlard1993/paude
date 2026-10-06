@@ -19,9 +19,9 @@ const endedBecause = ({ code, reason }, opened) => {
 	return opened ? 'The connection dropped, so the side terminal ended.' : 'Could not open a side terminal.';
 };
 
-// A shell in the session's folder for this terminal alone, living as long as its socket. The mirror keeps its
+// A shell in the session's folder for this terminal alone, living as long as its socket, or one command run by it. The mirror keeps its
 // screen, so the box can draw over it and the screen can be put back after.
-const openSideShell = ({ url, token }, id, { size, onOutput, onEnd }) => {
+const openSideShell = ({ url, token }, id, { size, command, onOutput, onEnd }) => {
 	const mirror = createMirror();
 	const serializer = new SerializeAddon();
 	const filter = outputFilter();
@@ -37,7 +37,7 @@ const openSideShell = ({ url, token }, id, { size, onOutput, onEnd }) => {
 	socket.binaryType = 'arraybuffer';
 	socket.addEventListener('open', () => {
 		opened = true;
-		send({ type: 'hello', ...size });
+		send({ type: 'hello', ...size, command });
 	});
 	socket.addEventListener('message', ({ data }) => {
 		if (typeof data === 'string') return;
