@@ -1,3 +1,4 @@
 #!/usr/bin/env sh
 
+bun --bun eslint --quiet || exit 1
 bun test || exit 1
