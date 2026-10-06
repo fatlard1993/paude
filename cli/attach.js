@@ -11,7 +11,9 @@ import {
 	ENTER_ALT_SCREEN,
 	LEAVE_ALT_SCREEN,
 	MOUSE_OFF,
+	PLAIN_KEYS,
 	RESET_MODES,
+	RESTORE_KEYS,
 	rawInput,
 	size,
 	write,
@@ -73,13 +75,13 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			state.draft = null;
 			state.thread = null;
 			state.hint = null;
-			write(`${ENTER_ALT_SCREEN}${MOUSE_OFF}`);
+			write(`${ENTER_ALT_SCREEN}${MOUSE_OFF}${PLAIN_KEYS}`);
 			redraw();
 		};
 
 		const closeOverlay = () => {
 			overlay = false;
-			write(LEAVE_ALT_SCREEN);
+			write(`${RESTORE_KEYS}${LEAVE_ALT_SCREEN}`);
 			send({ type: 'refresh' });
 		};
 
@@ -90,7 +92,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			clearTimeout(retry);
 			stopInput();
 			process.stdout.off('resize', onResize);
-			if (overlay) write(LEAVE_ALT_SCREEN);
+			if (overlay) write(`${RESTORE_KEYS}${LEAVE_ALT_SCREEN}`);
 			write(`${RESET_MODES}\r\n`);
 			socket?.close();
 			resolve(outcome);

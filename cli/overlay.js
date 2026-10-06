@@ -1,6 +1,6 @@
 import inputKind from '../shared/inputKind';
 import relativeTime from '../shared/relativeTime';
-import { CLEAR, bold, dim, fit, orange, printable, size, wrap } from './screen';
+import { CLEAR, bar, bold, dim, fit, heading, keyCap, orange, printable, size, wrap } from './screen';
 
 const KIND_LABELS = { terminal: 'terminal', web: 'browser' };
 const CHAT_LINES = 8;
@@ -8,6 +8,27 @@ const MAX_LISTED_COMMENTS = 9;
 const QUOTE_LINES = 8;
 const MAX_QUOTE = 2000;
 const CANCEL = ['\x1b', '\x03'];
+const NAMED_KEYS = { 8: '\b', 9: '\t', 13: '\r', 27: '\x1b', 127: '\x7f' };
+const ESC = '\x1b';
+const CSI_U_KEY = new RegExp(`^${ESC}\\[(\\d+)(?::\\d+)*(?:;(\\d+)(?::\\d+)?)?(?:;[\\d:]*)?u$`);
+const MODIFY_OTHER_KEY = new RegExp(`^${ESC}\\[27;(\\d+);(\\d+)~$`);
+
+// A key reported as an escape sequence (kitty keyboard protocol, xterm's modifyOtherKeys) as the bytes it would be
+// without one, for terminals that keep reporting that way while the overlay is up
+export const plainKey = key => {
+	const match = key.match(CSI_U_KEY);
+	const other = !match && key.match(MODIFY_OTHER_KEY);
+	const code = Number(match ? match[1] : other?.[2]);
+
+	if (!code) return key;
+
+	const ctrl = ((Number(match ? match[2] : other[1]) || 1) - 1) & 4;
+
+	if (NAMED_KEYS[code]) return NAMED_KEYS[code];
+	if (ctrl && /[a-z]/i.test(String.fromCodePoint(code))) return String.fromCharCode(code & 0x1f);
+
+	return String.fromCodePoint(code);
+};
 
 const firstLine = text =>
 	printable(
@@ -40,17 +61,17 @@ const listView = state => {
 	const comments = openComments(notes).map(({ author, quote, text, replies }, index) => {
 		const thread = replies.length ? dim(` (${replies.length} ${replies.length === 1 ? 'reply' : 'replies'})`) : '';
 
-		return `  ${bold(String(index + 1))} ${dim(`"${firstLine(quote)}"`)} ${bold(printable(author))}: ${printable(text)}${thread}`;
+		return `  ${keyCap(String(index + 1))} ${dim(`"${firstLine(quote)}"`)} ${bold(printable(author))}: ${printable(text)}${thread}`;
 	});
 
 	return [
-		'Here now:',
+		heading('Here now'),
 		...here,
 		'',
-		`Chat ${dim('(between people; Claude never sees it)')}`,
+		`${heading('Chat')} ${dim('(between people; Claude never sees it)')}`,
 		...(chat.length ? chat : [dim('  nothing yet')]),
 		'',
-		`Open comments: ${notes.comments.filter(({ resolved }) => !resolved).length}${comments.length ? dim('  (press a number to read one)') : ''}`,
+		`${heading('Open comments')} ${notes.comments.filter(({ resolved }) => !resolved).length}${comments.length ? dim('  (press a number to read one)') : ''}`,
 		...comments,
 	];
 };
@@ -80,26 +101,27 @@ const threadView = (state, width) => {
 const footerFor = (state, canNote) => {
 	const { draft } = state;
 
-	if (draft) return `${bold(DRAFT_PROMPTS[draft.kind](draft))} ${draft.text}█  ${dim('enter send · esc cancel')}`;
+	if (draft)
+		return `${bold(DRAFT_PROMPTS[draft.kind](draft))} ${draft.text}█  ${keyCap('enter')} send  ${keyCap('esc')} cancel`;
 
 	if (state.thread) {
 		const comment = threadComment(state);
 
 		return [
-			canNote && comment && `${bold('r')} reply`,
-			canNote && comment && `${bold('x')} ${comment.resolved ? 'reopen' : 'resolve'}`,
-			`${bold('esc')} back`,
+			canNote && comment && `${keyCap('r')} reply`,
+			canNote && comment && `${keyCap('x')} ${comment.resolved ? 'reopen' : 'resolve'}`,
+			`${keyCap('esc')} back`,
 		]
 			.filter(Boolean)
 			.join('   ');
 	}
 
 	return [
-		canNote && `${bold('c')} chat`,
-		canNote && `${bold('m')} comment on selection`,
-		`${bold('d')} detach`,
-		state.canSwitch !== false && `${bold('s')} switch`,
-		`${bold('esc')} back to Claude`,
+		canNote && `${keyCap('c')} chat`,
+		canNote && `${keyCap('m')} comment on selection`,
+		`${keyCap('d')} detach`,
+		state.canSwitch !== false && `${keyCap('s')} switch`,
+		`${keyCap('esc')} back to Claude`,
 	]
 		.filter(Boolean)
 		.join('   ');
@@ -109,8 +131,10 @@ export const renderOverlay = state => {
 	const { cols, rows } = size();
 	const width = cols - 1;
 	const lines = [
-		bold(`paude · ${printable(state.presence.title) || state.id}`),
-		dim(state.presence.busy ? 'Claude is working' : 'Claude is idle'),
+		bar(
+			`${heading(' paude')} ${bold(printable(state.presence.title) || state.id)}  ${state.presence.busy ? orange('● working') : dim('○ idle')}`,
+			width,
+		),
 		'',
 		...(state.thread ? threadView(state, width) : listView(state)),
 		'',
@@ -119,8 +143,10 @@ export const renderOverlay = state => {
 	// The list keeps its newest lines when it overflows; a thread keeps its top, where the quote and comment are
 	const room = rows - 2;
 	const shown = state.thread ? lines.slice(0, room) : lines.slice(Math.max(0, lines.length - room));
+	// The key bar stays on the bottom row however little there is to show
+	const padding = Array.from({ length: Math.max(room + 1 - shown.length, 0) }, () => '');
 
-	return `${CLEAR}${shown.map(line => fit(line, width)).join('\r\n')}\r\n${fit(footerFor(state, state.role !== 'watch'), width)}`;
+	return `${CLEAR}${[...shown, ...padding].map(line => fit(line, width)).join('\r\n')}\r\n${bar(fit(footerFor(state, state.role !== 'watch'), width), width)}`;
 };
 
 const send = draft => {
@@ -173,9 +199,11 @@ const threadKey = (state, key, canNote) => {
 
 // Handles a keypress while the overlay is up. Returns the action the attach loop should take; 'ignore' needs no
 // redraw. `readSelection` returns the text this person last selected in their terminal, or null.
-export const overlayKey = (state, key, { readSelection = () => null } = {}) => {
+export const overlayKey = (state, rawKey, { readSelection = () => null } = {}) => {
 	// Mouse and focus reports, and terminal replies, aren't keys
-	if (inputKind(key) !== 'typing') return { type: 'ignore' };
+	if (inputKind(rawKey) !== 'typing') return { type: 'ignore' };
+
+	const key = plainKey(rawKey);
 
 	state.hint = null;
 

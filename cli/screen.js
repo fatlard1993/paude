@@ -7,6 +7,10 @@ export const CLEAR = `${ESC}[H${ESC}[2J`;
 // arrive as keys. Snapshots carry Claude's modes, so returning to it restores reporting.
 export const MOUSE_OFF = `${ESC}[?1000l${ESC}[?1002l${ESC}[?1003l${ESC}[?1006l`;
 export const CLEAR_SCROLLBACK = `${ESC}[3J`;
+// Claude Code switches on the kitty keyboard protocol, under which Esc arrives as an escape sequence rather than a
+// bare ESC. The overlay pushes plain keys onto the terminal's keyboard-mode stack and pops back to Claude's on close.
+export const PLAIN_KEYS = `${ESC}[>0u`;
+export const RESTORE_KEYS = `${ESC}[<u`;
 
 // Modes Claude Code may switch on in this terminal through the stream; a detach turns them all back off
 export const RESET_MODES = [
@@ -37,6 +41,17 @@ export const dim = text => `${ESC}[2m${text}${ESC}[22m`;
 export const inverse = text => `${ESC}[7m${text}${ESC}[27m`;
 export const orange = text => `${ESC}[38;5;208m${text}${ESC}[39m`;
 export const green = text => `${ESC}[32m${text}${ESC}[39m`;
+export const heading = text => `${ESC}[1;38;5;208m${text}${ESC}[0m`;
+// A key to press, as a chip that reads apart from the text around it
+export const keyCap = key => `${ESC}[1;38;5;16;48;5;208m ${key} ${ESC}[0m`;
+export const bar = (text, width) => {
+	const visible = text.replace(new RegExp(`${ESC}\\[[0-9;?<>]*[A-Za-z]`, 'g'), '').length;
+
+	const background = `${ESC}[48;5;236m`;
+
+	// Chips and headings inside end in a full reset, which would end the bar with them
+	return `${background}${text.replaceAll(`${ESC}[0m`, `${ESC}[0m${background}`)}${background}${' '.repeat(Math.max(width - visible, 0))}${ESC}[0m`;
+};
 
 // Text from other people (chat, names, quotes) printed raw could carry escape sequences that drive this terminal.
 // Drops C0 and C1 control characters and DEL; newlines and tabs become spaces.

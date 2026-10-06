@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { overlayKey, renderOverlay } from './overlay';
+import { overlayKey, plainKey, renderOverlay } from './overlay';
 import { printable } from './screen';
 
 describe('printable', () => {
@@ -141,4 +141,14 @@ test('the overlay never prints escape sequences a collaborator sends', () => {
 
 	expect(screen).not.toContain('\x1b]0;owned');
 	expect(screen.split('\x1b[2J')).toHaveLength(2);
+});
+
+test('keys reported through the kitty protocol or modifyOtherKeys act like plain ones', () => {
+	expect(plainKey('\x1b[27u')).toBe('\x1b');
+	expect(plainKey('\x1b[13;1:1u')).toBe('\r');
+	expect(plainKey('\x1b[99;5u')).toBe('\x03');
+	expect(plainKey('\x1b[27;5;99~')).toBe('\x03');
+	expect(plainKey('\x1b[113u')).toBe('q');
+	expect(plainKey('q')).toBe('q');
+	expect(plainKey('\x1b[A')).toBe('\x1b[A');
 });
