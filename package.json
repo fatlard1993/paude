@@ -47,9 +47,6 @@
 	"devDependencies": {
 		"@eslint/compat": "^2.1.1",
 		"@eslint/js": "^10.0.1",
-		"@happy-dom/global-registrator": "^20.14.5",
-		"@testing-library/dom": "^10.4.2",
-		"@testing-library/jest-dom": "^7.0.1",
 		"bun-types": "^1.4.2",
 		"eslint": "^10.12.0",
 		"eslint-plugin-compat": "^7.0.2",

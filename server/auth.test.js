@@ -31,7 +31,6 @@ setDefaultTimeout(20_000);
 
 const PASSWORD = 'correct horse battery';
 
-// A stand-in rather than Request: the test preload installs browser globals, and a browser Request drops Cookie
 const request = ({ cookie, bearer, address = '203.0.113.1', url = 'http://paude.test/api/projects' } = {}) => {
 	const headers = {
 		'x-forwarded-for': address,

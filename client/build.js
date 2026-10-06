@@ -8,6 +8,8 @@ const build = async () => {
 		outdir: 'client/build',
 		minify: true,
 		define: {
+			// Only bun run dev builds the hot-reload socket in
+			'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
 			'process.env.AUTOPREFIXER_GRID': 'undefined',
 			'process.cwd': 'String',
 		},

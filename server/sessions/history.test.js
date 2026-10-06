@@ -17,7 +17,7 @@ test('each prompt is a turn ending at its last message, tool calls included', ()
 
 	expect(turns).toEqual([
 		{ prompt: 'first', endUuid: 'a1' },
-		{ prompt: 'second', endUuid: 'a3' },
+		{ prompt: 'second', endUuid: 'a3', last: true },
 	]);
 });
 
@@ -31,4 +31,21 @@ test('slash-command markup is not a prompt, and a turn without a reply is not co
 	]);
 
 	expect(turns).toEqual([{ prompt: 'first', endUuid: 'c2' }]);
+});
+
+test('a pasted prompt starting with < counts; an interrupted turn does not', () => {
+	const turns = turnsFrom([
+		user('u1', '<div>fix this markup</div>'),
+		assistant('a1'),
+		user('u2', 'do something long'),
+		assistant('a2'),
+		user('i1', [{ type: 'text', text: '[Request interrupted by user]' }]),
+		user('u3', 'next'),
+		assistant('a3'),
+	]);
+
+	expect(turns).toEqual([
+		{ prompt: '<div>fix this markup</div>', endUuid: 'a1' },
+		{ prompt: 'next', endUuid: 'a3', last: true },
+	]);
 });

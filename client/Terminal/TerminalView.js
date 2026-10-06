@@ -8,6 +8,7 @@ import { deleteSession, forkSession, getSession, getTurns, nameSession, setWatch
 import confirmDialog, { confirmDeleteSession, nameDialog } from '../confirmDialog';
 import { canNote, canType, identity } from '../identity';
 import { Header } from '../Layout';
+import DONE_MARKER from '../../shared/doneMarker';
 import withoutPointerReporting from '../../shared/pointerReporting';
 import { NOTE_TYPES } from '../../shared/protocol';
 import { showNotification } from '../notify';
@@ -354,8 +355,6 @@ const Presence = styled(
 );
 
 const ICONS = { web: 'globe', terminal: 'terminal' };
-// Claude's line at the end of each turn, e.g. "✻ Cooked for 2s · done 2:48 PM"
-const DONE_MARKER = /\S+ for (?:\d+[hms] ?)+ · done \d{1,2}:\d{2}\s?[AP]M/;
 const SOFTWARE_GL = /swiftshader|llvmpipe|softpipe|software/i;
 
 const hardwareWebgl = () => {
@@ -900,7 +899,7 @@ export default class TerminalView extends View {
 		if (!response?.ok) return new Notify({ type: 'error', content: "Could not read this session's history." });
 
 		// A turn still in progress has replies but no marker yet
-		const turns = body.busy ? body.turns.slice(0, -1) : body.turns;
+		const turns = body.busy && body.turns.at(-1)?.last ? body.turns.slice(0, -1) : body.turns;
 		const turn = turns[turns.length - 1 - markersBelow];
 
 		if (!turn) return new Notify({ type: 'warning', content: 'Could not match that line to a turn in the history.' });
