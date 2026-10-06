@@ -40,13 +40,11 @@ export const size = () => ({ cols: process.stdout.columns || 80, rows: process.s
 export const bold = text => `${ESC}[1m${text}${ESC}[22m`;
 export const dim = text => `${ESC}[2m${text}${ESC}[22m`;
 export const inverse = text => `${ESC}[7m${text}${ESC}[27m`;
-// A soft amber: enough to lead the eye without shouting over Claude
 export const ACCENT = 179;
 export const orange = text => `${ESC}[38;5;${ACCENT}m${text}${ESC}[39m`;
 export const green = text => `${ESC}[32m${text}${ESC}[39m`;
 export const colored = (text, color) => `${ESC}[38;5;${color}m${text}${ESC}[39m`;
 export const heading = text => `${ESC}[1;38;5;${ACCENT}m${text}${ESC}[0m`;
-// A key to press, as a chip that reads apart from the text around it
 export const keyCap = key => `${ESC}[1;38;5;${ACCENT};48;5;238m ${key} ${ESC}[0m`;
 const SEQUENCE = new RegExp(`${ESC}\\[[0-9;?<>]*[A-Za-z]`, 'g');
 
@@ -75,7 +73,6 @@ export const printable = text =>
 
 const ESCAPE_SEQUENCE = new RegExp(`(${ESC}\\[[0-9;?<>]*[A-Za-z])`);
 
-// Cuts to a visible width, ignoring escape sequences when counting
 export const fit = (text, width) => {
 	let visible = 0;
 	let out = '';
@@ -139,7 +136,6 @@ export const readHidden = label =>
 		process.stdin.on('data', onData);
 	});
 
-// Breaks plain text into lines of at most `width` characters, at spaces where it can
 export const wrap = (text, width) => {
 	const lines = [];
 

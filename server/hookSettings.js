@@ -9,7 +9,6 @@ export const setHookAddress = ({ host, port }) => {
 	hookUrl = `http://${reachable.includes(':') ? `[${reachable}]` : reachable}:${port}/api/hooks/${hookSecret}`;
 };
 
-// What each hook means for a session: a question waiting on someone, work resuming, or a turn finished
 export const HOOK_EVENTS = {
 	Notification: payload =>
 		['permission_prompt', 'elicitation_dialog'].includes(payload.notification_type) ? 'waiting' : null,

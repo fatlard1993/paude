@@ -19,8 +19,7 @@ const promptText = message => {
 	return text.trim() && !text.trimStart().startsWith('<') ? text.trim() : null;
 };
 
-// A session's completed turns, oldest first: each prompt with the last message of its turn, which is where a fork
-// taken "after this turn" ends. A turn with no reply yet (still running, or cut off) isn't complete.
+// Each completed prompt with the last message of its turn, where a fork taken after that turn ends
 export const turnsFrom = messages => {
 	const turns = [];
 	let current = null;

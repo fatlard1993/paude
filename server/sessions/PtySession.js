@@ -198,10 +198,9 @@ export default class PtySession {
 		this.broadcastPresence();
 	}
 
-	// Every attached terminal answers Claude's queries, and an answer counted as typing claimed the size for its
-	// client: two clients took turns forever, each resize prompting the redraw and queries that set off the next.
-	// Only the driver's answers reach Claude, and no answer or pointer report claims anything. A terminal's
-	// focus-in does: that person just switched to it.
+	// Every attached terminal answers Claude's queries; if answers claimed the size, two clients would take turns
+	// resizing forever. Only the driver's answers reach Claude, and no answer or pointer report claims the size.
+	// A terminal's focus-in does: that person just switched to it.
 	input(client, data) {
 		const kind = inputKind(data);
 		const driving = this.driver === client;

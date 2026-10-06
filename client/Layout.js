@@ -4,7 +4,6 @@ import relativeTime from '../shared/relativeTime';
 
 export { relativeTime };
 
-// Both bands share a readable column on wide screens
 const column = `
 	width: 100%;
 	max-width: 960px;

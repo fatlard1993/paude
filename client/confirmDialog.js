@@ -22,7 +22,6 @@ const confirmDialog = ({ header, body, cancelLabel = 'Cancel', confirmLabel }) =
 
 export default confirmDialog;
 
-// The session is gone once this resolves true
 export const confirmDeleteSession = async (session, deleteSession) => {
 	const confirmed = await confirmDialog({
 		header: `Delete "${session.title || 'this session'}"?`,

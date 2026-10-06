@@ -6,8 +6,7 @@ const ROLE_ACTIONS = {
 	drive: new Set(['note', 'type']),
 };
 
-// What an identity may do in a session: 'type' (terminal input and size) or 'note' (chat, comments, replies).
-// The owner may do everything, everywhere; a guest only in the session their invite names.
+// 'type' is terminal input and size; 'note' is chat, comments and replies
 export const may = (identity, action, sessionId) => {
 	if (!identity) return false;
 	if (identity.owner) return true;

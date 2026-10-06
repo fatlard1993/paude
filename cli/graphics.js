@@ -8,7 +8,6 @@ const CELL_WIDTH_PIXELS = 9;
 
 export const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'bmp', 'ico']);
 
-// Terminals that draw images through kitty's graphics protocol
 export const showsImages = () =>
 	process.env.TERM === 'xterm-kitty' ||
 	Boolean(process.env.KITTY_WINDOW_ID) ||
@@ -38,14 +37,12 @@ export const toPng = async bytes => {
 	return null;
 };
 
-// Width and height from the PNG header
 export const pngSize = bytes => {
 	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
 	return { width: view.getUint32(16), height: view.getUint32(20) };
 };
 
-// The cells an image fills inside a space, keeping its proportions and never blowing a small one up past its size
 export const fitCells = ({ width, height }, maxCols, maxRows) => {
 	let cols = Math.min(maxCols, Math.max(1, Math.ceil(width / CELL_WIDTH_PIXELS)));
 	let rows = Math.max(1, Math.round((cols * height) / width / CELL_ASPECT));
@@ -58,7 +55,6 @@ export const fitCells = ({ width, height }, maxCols, maxRows) => {
 	return { cols, rows };
 };
 
-// Sends the image to the terminal without showing it, in the chunks the protocol asks for
 export const transmit = png => {
 	const data = Buffer.from(png).toString('base64');
 	let out = '';

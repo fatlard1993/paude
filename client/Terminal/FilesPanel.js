@@ -16,7 +16,6 @@ const MARKDOWN_KEY = 'paude.markdownView';
 const LIST_WIDTH_KEY = 'paude.filesListWidth';
 const MIN_LIST_WIDTH = 140;
 const MIN_VIEWER_WIDTH = 200;
-// What holds text sits on something solid; the panel around it stays glass
 const LAYER = 'rgba(16, 16, 19, 0.5)';
 
 const Panel = styled(
@@ -439,7 +438,6 @@ const kindOf = path => {
 	return 'text';
 };
 
-// Each language in its own color, the way editors show them, so a folder reads at a glance
 const ICON_COLORS = {
 	js: '#f1e05a',
 	mjs: '#f1e05a',
@@ -624,7 +622,6 @@ const projectPathFrom = (file, reference) => {
 	return parts.join('/');
 };
 
-// Browsing, searching and reading a session's project, and attaching a file or some of its lines to Claude's prompt
 export default class FilesPanel extends Panel {
 	build() {
 		this.paths = [];
@@ -688,7 +685,6 @@ export default class FilesPanel extends Panel {
 		this.setMode('names');
 	}
 
-	// Dragging between the list and the preview sets the list's width, remembered like the panels' own
 	splitter() {
 		const handle = element('div', 'splitter');
 		const setWidth = width => {
@@ -863,7 +859,6 @@ export default class FilesPanel extends Panel {
 		);
 	}
 
-	// The matched text marked within a hit's line, found the way the server matched it
 	highlighted(text, query, options) {
 		const node = element('span', 'hit-text');
 		const pattern = searchPattern(query, options, 'g');

@@ -185,7 +185,6 @@ const credentialRecord = credential => {
 
 export const credentialValid = credential => credentialRecord(credential) !== null;
 
-// Who a credential belongs to: the owner, or the guest an invite names, with their role and session
 export const identityOf = credential => {
 	const record = credentialRecord(credential);
 
@@ -300,7 +299,6 @@ export const ensureLocalToken = async dataDir => {
 	await chmod(file, 0o600);
 };
 
-// One-time codes that open a logged-in browser tab from the terminal, good once and for a minute
 const HANDOFF_MS = 60_000;
 const handoffs = new Map();
 

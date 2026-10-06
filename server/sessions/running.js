@@ -14,7 +14,6 @@ export const runningSession = id => running.get(id);
 
 export const allRunning = () => running.values();
 
-// Ends a running session's Claude process and waits until it's gone; attached clients are told it ended
 export const stopSession = async id => {
 	const session = running.get(id);
 
@@ -34,7 +33,6 @@ const launch = options => {
 
 export const startSession = (cwd, prompt) => launch({ id: crypto.randomUUID(), cwd, resume: false, prompt });
 
-// Brings a stored session back up in its own folder, or returns the one already running
 export const openSession = async id => {
 	if (running.has(id)) return running.get(id);
 

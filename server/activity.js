@@ -36,7 +36,6 @@ const record = sessionId => {
 	return activity[sessionId];
 };
 
-// Hears about every change, to mark it seen for whoever is looking at that session right now
 export const onActivity = listener => listeners.add(listener);
 
 const announce = sessionId => listeners.forEach(listener => listener(sessionId));
@@ -97,7 +96,7 @@ export const watchedBy = identity =>
 		.filter(([, entry]) => entry.watching)
 		.map(([sessionId]) => sessionId);
 
-// How a session looks to one person. A session that isn't running is 'stopped'; reopening it resumes it.
+// A session that isn't running is 'stopped'; reopening it resumes it
 export const activitySummary = (identity, sessionId, { running, busy }) => {
 	const { seq, status, at } = record(sessionId);
 	const entry = entryFor(identity, sessionId);

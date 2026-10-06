@@ -62,7 +62,6 @@ const authRoutes = async request => {
 		return new Response(null, { status: 204, headers: { 'Set-Cookie': loginCookie(await createLogin()) } });
 	}
 
-	// An invite link's token, traded for a login bound to that invite
 	if (requestMatch('POST', '/api/join', request)) {
 		const invite = inviteFromToken((await request.json()).token);
 

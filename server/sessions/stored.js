@@ -5,7 +5,6 @@ import { pinnedName } from '../names';
 import { projectOf } from '../projects';
 import { runningSession } from './running';
 
-// How a session looks to one person: its watch state and unseen changes are theirs
 export const toSummary =
 	identity =>
 	({ sessionId, summary, customTitle, lastModified, gitBranch, cwd }) => {
@@ -28,6 +27,5 @@ export const toSummary =
 export const listProjectSessions = async (cwd, identity) =>
 	(await listSessions({ dir: cwd, limit: 50 })).map(toSummary(identity));
 
-// Sessions from every project, newest first; ones whose folder is outside the projects root are left out
 export const listAllSessions = async identity =>
 	(await listSessions({ limit: 1000 })).map(toSummary(identity)).filter(session => session.project);

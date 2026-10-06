@@ -17,7 +17,7 @@ import NotesPanel, { desktopNotificationsOn, recall, remember, savedName } from 
 
 const BACKGROUND = '#1b1b1b';
 const touch = window.matchMedia('(pointer: coarse)').matches;
-// Below this the notes panel opens over the terminal instead of beside it
+// Below this the side panels cover the whole terminal
 const NARROW = '(max-width: 800px)';
 
 const Body = styled.Component`
@@ -69,7 +69,6 @@ const Body = styled.Component`
 		transform: translateX(12px);
 	}
 
-	/* Reading code wants room; it opens from the other side */
 	.files {
 		left: 8px;
 		width: min(var(--files-width, 62%), calc(100% - 16px));
@@ -132,7 +131,6 @@ const Body = styled.Component`
 	}
 `;
 
-// A slim strip of glass, in keeping with the panels that float beneath it
 const TopBar = styled(
 	Header,
 	({ colors }) => `
@@ -247,7 +245,6 @@ const TopBar = styled(
 	`,
 );
 
-// A plain icon button for the top bar
 const ghostButton = (appendTo, { icon, label, title, onPress, className = '' }) => {
 	const button = document.createElement('button');
 
@@ -581,7 +578,6 @@ export default class TerminalView extends View {
 		this.connection?.send({ type: 'input', data });
 	}
 
-	// How many cells fit this screen at full font size
 	naturalSize() {
 		const { cols = 80, rows = 24 } = this.fitter?.proposeDimensions() ?? {};
 
@@ -672,8 +668,6 @@ export default class TerminalView extends View {
 		if (open) this.notes.showTab(this.notes.tab);
 	}
 
-	// Dragging the panel's left edge sets its width, kept between sessions
-	// Dragging the panel's inner edge sets its width, remembered per panel
 	addResizeHandle(panel, { variable, key, edge }) {
 		const handle = document.createElement('div');
 		const setWidth = width => {
@@ -752,7 +746,6 @@ export default class TerminalView extends View {
 		this.terminal.clearSelection();
 	}
 
-	// Touch screens can't drag-select in a terminal: tap the first line, then the last
 	// Touch screens can't drag-select in a terminal: tap the first line, then the last. Every touch is swallowed
 	// before xterm sees it, or xterm would move or clear the selection between the two taps.
 	startLineSelect() {
@@ -950,7 +943,6 @@ export default class TerminalView extends View {
 		this.selectHint.elem.style.display = text ? '' : 'none';
 	}
 
-	// Finds a comment's quote in the scrollback (the most recent match) and highlights it
 	jumpTo(quote) {
 		const quoteLines = quote.split('\n').map(line => line.trim());
 		const anchor = quoteLines.find(Boolean);

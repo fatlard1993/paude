@@ -3,7 +3,7 @@ import xtermHeadless from '@xterm/headless';
 const { Terminal } = xtermHeadless;
 
 const ESC = '\x1b';
-// Terminals that support it show the whole frame at once instead of drawing it row by row
+// Synchronized output: supporting terminals show the frame at once instead of row by row
 const BEGIN_FRAME = `${ESC}[?2026h`;
 const END_FRAME = `${ESC}[?2026l`;
 
@@ -73,8 +73,8 @@ const renderCells = (line, from, to, dim, cell, shade = false) => {
 	return `${out}${ESC}[0m`;
 };
 
-// The whole terminal, row by row: Claude's screen dimmed behind, the box's lines (each exactly box.width wide)
-// over it at box.x, box.y, and a shadow down its left side and along its bottom so it reads as lifted off the page
+// Claude's screen dimmed, the box's lines (each exactly box.width wide) at box.x, box.y, and a shadow down its
+// left side and along its bottom
 export const composeFrame = ({ mirror, cols, rows, box }) => {
 	const buffer = mirror.buffer.active;
 	const cell = buffer.getNullCell();

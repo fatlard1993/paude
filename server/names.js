@@ -16,7 +16,6 @@ export const initNames = async dataDir => {
 
 export const pinnedName = sessionId => names[sessionId];
 
-// An empty name unpins
 export const pinName = async (sessionId, name) => {
 	const trimmed = typeof name === 'string' ? name.trim().slice(0, MAX_NAME) : '';
 

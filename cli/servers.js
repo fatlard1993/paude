@@ -6,7 +6,7 @@ import { allTokens } from './credentials';
 
 const START_TIMEOUT_MS = 10_000;
 
-// This machine's paude: its address, and the data folder whose local-token file logs this user in without a password
+// local-token in the data folder logs this user in without a password
 export const LOCAL_URL = process.env.PAUDE_LOCAL_URL ?? 'http://127.0.0.1:8044';
 const DATA_DIR = process.env.PAUDE_DATA ?? path.join(os.homedir(), '.paude');
 const TOKEN_FILE = path.join(DATA_DIR, 'local-token');
@@ -41,7 +41,7 @@ const answers = async url => {
 	}
 };
 
-// This machine's paude, started in the background when it isn't running. Its log goes to the data folder.
+// Started in the background when it isn't running, logging to the data folder
 export const ensureLocalServer = async () => {
 	if (!(await answers(LOCAL_URL))) {
 		const { hostname, port } = new URL(LOCAL_URL);
@@ -70,7 +70,6 @@ export const ensureLocalServer = async () => {
 
 const hostLabel = url => new URL(url).host;
 
-// Every paude to show: this machine's (once it has been used) and each one logged into from here
 export const allServers = async () => {
 	const remote = Object.entries(await allTokens())
 		.filter(([url]) => url !== LOCAL_URL)

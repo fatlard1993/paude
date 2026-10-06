@@ -19,8 +19,7 @@ import {
 } from './screen';
 import { api } from './servers';
 
-// A full-screen list: arrows or j/k move, Enter picks, Esc or q goes back, and any key in `keys` resolves with that
-// key and the selected row. Section headings and notes aren't selectable.
+// Any key in `keys` resolves with that key and the selected row
 const choose = ({ title, subtitle, rows: entries, hint, keys = [] }) =>
 	new Promise(resolve => {
 		const selectable = entries
@@ -71,7 +70,7 @@ const choose = ({ title, subtitle, rows: entries, hint, keys = [] }) =>
 	});
 
 const STATUS = {
-	waiting: { marker: '\x1b[1;38;5;179m!\x1b[0m', label: 'needs you' },
+	waiting: { marker: '\x1b[1;38;5;179m!\x1b[22;39m', label: 'needs you' },
 	working: { marker: orange('◐'), label: 'working' },
 	ready: { marker: green('●'), label: 'ready' },
 	stopped: { marker: ' ', label: '' },
@@ -131,7 +130,6 @@ const pickProject = async (server, projects) => {
 	return picked ? pickInProject(server, picked) : null;
 };
 
-// What one server has for this person: an owner sees recent sessions and projects, a guest their one session
 const gather = async server => {
 	try {
 		const { identity } = await api(server, '/api/auth');
@@ -153,7 +151,6 @@ const gather = async server => {
 	}
 };
 
-// What needs a person most: a question first, then the most unseen, then the most recently active
 const byUrgency = (a, b) =>
 	(b.session.status === 'waiting') - (a.session.status === 'waiting') ||
 	b.session.unseen - a.session.unseen ||
@@ -194,7 +191,6 @@ const serverRows = ({ server, identity, sessions, projects, error }, watchedIds,
 	return rows;
 };
 
-// Resolves to { server, id, identity }, or null when the user backs out
 const pickSession = async servers => {
 	write(ENTER_ALT_SCREEN);
 

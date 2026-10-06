@@ -31,7 +31,6 @@ const AddFolder = styled(
 	`,
 );
 
-// What needs a person most: a question first, then the most unseen, then the most recently active
 const byUrgency = (a, b) =>
 	(b.status === 'waiting') - (a.status === 'waiting') || b.unseen - a.unseen || (b.activeAt ?? 0) - (a.activeAt ?? 0);
 
@@ -64,7 +63,7 @@ export default class Home extends View {
 		this.watchingTitle = new SectionTitle({ appendTo: scroll, textContent: 'Watching', style: { display: 'none' } });
 		this.watching = new List({ appendTo: scroll });
 
-		new SectionTitle({ appendTo: scroll, textContent: 'Continue' });
+		this.recentTitle = new SectionTitle({ appendTo: scroll, textContent: 'Continue' });
 		this.recent = new List({ appendTo: scroll });
 
 		new SectionTitle({ appendTo: scroll, textContent: 'Projects' });
@@ -74,7 +73,6 @@ export default class Home extends View {
 		this.load();
 	}
 
-	// Any folder on the server's machine, by its full path, as a project
 	addFolderForm(appendTo) {
 		const form = new AddFolder({ appendTo, tag: 'form' });
 		const input = document.createElement('input');
@@ -118,6 +116,8 @@ export default class Home extends View {
 		for (const session of watched) sessionCard(session, { appendTo: this.watching, remove: remove(session) });
 
 		this.recent.empty();
+		// Everything recent may already be listed under Watching
+		this.recentTitle.elem.style.display = recent.length || !watched.length ? '' : 'none';
 
 		if (!recent.length && !watched.length)
 			new Empty({ appendTo: this.recent, textContent: 'Nothing yet. Pick a project to start a session.' });

@@ -44,8 +44,7 @@ const whyRefused = async ({ url, token }, id) => {
 	return null;
 };
 
-// Puts this terminal on a shared session until the user detaches or switches, or the session or login ends.
-// Resolves to 'detach' | 'switch' | 'ended' | 'unauthorized'.
+// Resolves to 'detach' | 'switch' | 'ended' | 'unauthorized'
 const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 	new Promise(resolve => {
 		const state = {
@@ -85,8 +84,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			showImage(box);
 		};
 
-		// An open image sits in the box below the file's name: sent to the terminal once, and moved only when the
-		// box does, so redrawing the frame behind it costs nothing
+		// Sent to the terminal once and moved only when the box moves, so redrawing behind it costs nothing
 		let sentImage = null;
 		let placement = null;
 
@@ -113,7 +111,6 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			placement = key;
 		};
 
-		// Claude can stream many chunks a second; the frame behind the box catches up at most every few frames
 		const redrawSoon = () => {
 			if (overlay && !drawTimer) drawTimer = setTimeout(redraw, FRAME_MS);
 		};
@@ -121,7 +118,6 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 		const api = path =>
 			fetch(`${server.url}/api/sessions/${id}/${path}`, { headers: { authorization: `Bearer ${server.token}` } });
 
-		// The browser keeps its place between visits; only the list of files is fetched again
 		const openFiles = async () => {
 			try {
 				const response = await api('files');
@@ -233,7 +229,6 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 
 			let action;
 
-			// A fault in the overlay costs the overlay its keypress, not the person their terminal
 			try {
 				action = overlayKey(state, key, { readSelection });
 			} catch (error) {
@@ -287,7 +282,6 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			} else if (NOTE_TYPES.includes(message.type)) {
 				const arrived = applyNote(state.notes, message);
 
-				// Someone else's words, while this person is looking at Claude rather than the overlay
 				if (arrived && !overlay && arrived.author !== displayName()) notify(`paude · ${arrived.author}`, arrived.text);
 
 				redraw();

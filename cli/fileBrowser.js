@@ -10,7 +10,6 @@ const PAGE = 10;
 const CURSOR_BACKGROUND = 238;
 const MARKED_BACKGROUND = 236;
 const FOLDER_COLOR = 180;
-// Roughly the editor colors the web panel uses, in the 256-color palette
 const FILE_COLORS = {
 	js: 185,
 	mjs: 185,
@@ -58,7 +57,6 @@ export const createBrowser = (paths, prefs = structuredClone(DEFAULT_PREFS)) => 
 	zoom: false,
 });
 
-// A file's text, cleaned of anything that could drive the terminal, with its lines colored when the language is known
 // Opened at a line (a search hit), markdown shows its source, where that line is
 export const openFile = (path, text, line) => {
 	const lines = text
@@ -80,7 +78,6 @@ export const openFile = (path, text, line) => {
 	};
 };
 
-// Every query character in order, as the web panel's name search does
 const fuzzyMatch = (path, query, caseSensitive) => {
 	const haystack = caseSensitive ? path : path.toLowerCase();
 	let position = -1;
@@ -93,8 +90,6 @@ const fuzzyMatch = (path, query, caseSensitive) => {
 	return true;
 };
 
-// The rows the list shows: a filtered list of files, or the tree with its open folders unfolded. Files to include
-// and exclude narrow both, as on the web.
 export const entriesOf = browser => {
 	const options = browser.prefs.search;
 	const paths = browser.paths.filter(pathFilter(options));
@@ -140,7 +135,6 @@ export const entriesOf = browser => {
 	return entries;
 };
 
-// The window of rows to show so the cursor stays in view, kept near the middle
 const windowAround = (cursor, count, room) => {
 	const top = clamp(cursor - Math.floor(room / 2), 0, Math.max(count - room, 0));
 
@@ -243,7 +237,6 @@ const listKey = (browser, key, canType) => {
 	return { type: 'ignore' };
 };
 
-// Content search: a query plus the files to include and exclude, Tab moving between them, Enter searching
 const searchKey = (browser, key) => {
 	const { search } = browser;
 
@@ -377,7 +370,6 @@ export const browserKey = (browser, key, { canType }) => {
 
 const highlight = (text, width, color) => onBackground(text, width, color);
 
-// The three toggles, lit when on
 const optionChips = options =>
 	[
 		['Aa', 'caseSensitive'],
@@ -387,7 +379,6 @@ const optionChips = options =>
 		.map(([label, key]) => (options[key] ? `\x1b[1;38;5;16;48;5;${ACCENT}m ${label} \x1b[0m` : dim(` ${label} `)))
 		.join(' ');
 
-// Matches within a line of text, marked the way the server matched them
 const markMatches = (text, query, options) => {
 	const pattern = query && searchPattern(query, options, 'g');
 

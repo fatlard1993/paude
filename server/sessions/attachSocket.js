@@ -8,7 +8,6 @@ import { allRunning, runningSession } from './running';
 
 const REFRESH_EVERY_MS = 1000;
 
-// Says once per socket why an action did nothing, rather than letting it fail silently
 const refuse = socket => {
 	if (socket.data.refused) return;
 
@@ -106,7 +105,6 @@ const handlers = {
 		if (typeof data !== 'string' || !allowed(socket, 'type') || !socket.data.session) return;
 
 		socket.data.session.input(socket.data.client, data);
-		// Sending a prompt makes the session one of yours to watch
 		if (inputKind(data) === 'typing' && data.includes('\r')) watchIfNew(socket.data.identity, socket.data.session.id);
 	},
 	// A client that drew over the terminal (the CLI's overlay) asks for the screen back

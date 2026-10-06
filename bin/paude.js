@@ -98,7 +98,6 @@ const attachLoop = async (pick, first) => {
 	}
 };
 
-// One server, named with --url (or PAUDE_URL): the way to reach a session by its id
 const runOne = async options => {
 	const server = await resolveServer(options.url);
 
@@ -108,7 +107,6 @@ const runOne = async options => {
 
 	if (!identity) return console.log(OUTCOMES.unauthorized);
 
-	// A guest's invite names one session; there's nothing to pick
 	const id = identity.owner ? options.session : identity.sessionId;
 	const one = [{ ...server, label: new URL(server.url).host }];
 
@@ -157,7 +155,6 @@ const remove = async name => {
 	console.log(`"${name}" is no longer a project. Its sessions are still in Claude Code's history.`);
 };
 
-// Runs the server here, with any server options passed through (--projects, --port, ...)
 const serve = async args => {
 	const entry = path.join(import.meta.dir, '..', 'server', 'index.js');
 	const child = Bun.spawn(['bun', entry, ...args], {

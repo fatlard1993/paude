@@ -1,6 +1,5 @@
 import { CLOSED } from '../../shared/protocol';
 
-// A refused upgrade only shows up as an abnormal close; the server says why when asked directly
 const whyRefused = async sessionId => {
 	try {
 		const { status } = await fetch(`/api/sessions/${sessionId}`);

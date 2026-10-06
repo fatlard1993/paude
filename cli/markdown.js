@@ -138,7 +138,6 @@ const block = (token, width) => {
 	}
 };
 
-// A markdown file as lines of terminal text, wrapped to a width
 export const renderMarkdown = (text, width) => {
 	const lines = marked.lexer(text).flatMap(token => block(token, width));
 

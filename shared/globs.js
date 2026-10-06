@@ -28,8 +28,6 @@ const globToSource = glob => {
 	return source;
 };
 
-// VS Code's "files to include/exclude": comma-separated globs. One without a slash matches at any depth, and a
-// pattern naming a folder takes in everything under it.
 export const globMatcher = patterns => {
 	const globs = String(patterns ?? '')
 		.split(/,(?![^{]*\})/)
@@ -49,7 +47,6 @@ export const globMatcher = patterns => {
 	return path => pattern.test(path);
 };
 
-// Whether a path passes both filters; either may be empty
 export const pathFilter = ({ include, exclude } = {}) => {
 	const included = globMatcher(include);
 	const excluded = globMatcher(exclude);

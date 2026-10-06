@@ -67,7 +67,6 @@ const insideProject = async (cwd, path) => {
 const projectFile = async (cwd, path) =>
 	(await listFiles(cwd)).includes(path) && (await insideProject(cwd, path)) ? Bun.file(resolve(cwd, path)) : null;
 
-// The file itself, for what the browser shows natively: images, audio, video, PDFs
 export const rawProjectFile = async (cwd, path) => {
 	const file = await projectFile(cwd, path);
 
@@ -93,8 +92,7 @@ export const readProjectFile = async (cwd, path) => {
 
 export class SearchError extends Error {}
 
-// Searches the listed files the way VS Code's search box does: literal and case-insensitive unless asked otherwise,
-// with optional comma-separated globs of files to include and exclude
+// Literal and case-insensitive unless the options say otherwise
 export const searchProject = async (cwd, query, { caseSensitive, wholeWord, regex, include, exclude } = {}) => {
 	if (typeof query !== 'string' || query.length < 2) return [];
 

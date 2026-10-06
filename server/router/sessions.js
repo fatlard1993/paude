@@ -43,7 +43,6 @@ const sessionsRoutes = async (request, server) => {
 		);
 	}
 
-	// Any folder, from anywhere, as a project
 	if (requestMatch('POST', '/api/projects', request)) {
 		try {
 			return Response.json({ name: await registerFolder((await request.json()).path) });
@@ -59,7 +58,6 @@ const sessionsRoutes = async (request, server) => {
 	match = requestMatch('GET', '/api/sessions', request);
 	if (match) return Response.json((await listAllSessions(identity)).slice(0, Number(match.limit) || 8));
 
-	// The sessions this person watches, wherever they are, each with its status and what's new since they looked
 	if (requestMatch('GET', '/api/watching', request)) {
 		const watched = await Promise.all(
 			watchedBy(identity).map(async id => {
@@ -132,7 +130,6 @@ const sessionsRoutes = async (request, server) => {
 		return Response.json({ turns: await sessionTurns(match.id, cwd), busy: Boolean(runningSession(match.id)?.busy) });
 	}
 
-	// A new session holding this one's conversation up to and including the given message
 	match = requestMatch('POST', '/api/sessions/:id/fork', request);
 	if (match) {
 		const { upToMessageId } = await request.json();

@@ -375,7 +375,6 @@ export default class NotesPanel extends Panel {
 		return name;
 	}
 
-	// A guest is the name on their invite, which they can't change, so it reads as a label
 	guestName() {
 		const label = element('div', 'guest-name');
 
@@ -542,8 +541,6 @@ export default class NotesPanel extends Panel {
 		});
 	}
 
-	// Slack-style: each emoji with how many reacted (yours highlighted, click to add or take back yours), and a
-	// button that opens a palette, with a field for any other emoji
 	reactions(item, target) {
 		const row = element('div', 'reactions');
 		const react = emoji => this.options.send({ type: 'react', ...target, emoji });
@@ -593,7 +590,6 @@ export default class NotesPanel extends Panel {
 		if (this.tab === 'people') this.list.replaceChildren(...rendered);
 	}
 
-	// Opens the comment box for a quote taken from the terminal
 	startComment(quote) {
 		if (!canNote()) return;
 

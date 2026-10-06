@@ -98,8 +98,7 @@ const languageFor = path => {
 	return [extension, name].find(candidate => hljs.getLanguage(candidate)) ?? null;
 };
 
-// Each line of a file colored by its language, or null when the language isn't known or the file is too big to bother.
-// The text should already be free of control characters.
+// The text must already be free of control characters
 export const highlightLines = (text, path, language = languageFor(path)) => {
 	if (!language || text.length > MAX_HIGHLIGHT_BYTES || !hljs.getLanguage(language)) return null;
 

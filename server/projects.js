@@ -39,7 +39,6 @@ const inside = (path, folder) => {
 	return !within.startsWith('..') && !within.startsWith(sep);
 };
 
-// The root child a path is in, or null
 const rootChildOf = path => {
 	const fromRoot = relative(root, path);
 
@@ -70,7 +69,6 @@ export const projectOf = cwd => {
 
 export class FolderError extends Error {}
 
-// Makes a folder a project and returns its name; one that already is a project keeps its name
 export const registerFolder = async requested => {
 	if (typeof requested !== 'string' || !requested.startsWith('/'))
 		throw new FolderError('Give the folder as a full path.');

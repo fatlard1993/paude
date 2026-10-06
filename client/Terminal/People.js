@@ -49,7 +49,6 @@ const copyLink = async (link, button) => {
 	}
 };
 
-// The owner's invites for one session: who's invited, a form for a new one, and revoking
 const renderPeople = async sessionId => {
 	const nodes = [];
 	const form = element('div', 'invite-form');

@@ -31,10 +31,8 @@ export const plainKey = key => {
 	return String.fromCodePoint(code);
 };
 
-// The same palette as the web panel; in a thread, + then a number reacts
 const PALETTE = ['👍', '❤️', '😂', '🎉', '👀', '🙏', '✅', '🤔', '🔥'];
 
-// " 👍 2  🎉 1", or nothing; emoji come from the server, which only keeps real ones
 const reactionsOf = item =>
 	Object.entries(item.reactions ?? {})
 		.map(([emoji, authors]) => ` ${emoji} ${authors.length}`)
@@ -50,7 +48,6 @@ const firstLine = text =>
 
 const openComments = notes => notes.comments.filter(({ resolved }) => !resolved).slice(-MAX_LISTED_COMMENTS);
 
-// Attaching puts text in Claude's prompt, which only those who may type can do
 const canTypeIn = state => ['owner', 'drive'].includes(state.role ?? 'owner');
 
 const threadComment = state => state.notes.comments.find(({ id }) => id === state.thread);
@@ -147,7 +144,6 @@ const keysFor = (state, canNote) => {
 	].filter(Boolean);
 };
 
-// As many keys to a row as fit
 const packKeys = (keys, width) =>
 	keys.reduce((rows, key) => {
 		const last = rows.at(-1);
@@ -165,10 +161,8 @@ const mainView = (state, width, room) => {
 	return state.thread ? threadView(state, width) : listView(state);
 };
 
-// The overlay as a box floating over Claude's screen, near the top right where it covers the least of the prompt:
-// { x, y, width, lines }, every line exactly width wide. A narrow terminal gives it the whole width.
+// Near the top right, where it covers the least of the prompt; every line is exactly `width` wide
 export const overlayBox = (state, cols, rows) => {
-	// Reading a file wants most of the screen; Claude still shows around its edges
 	const widest = state.files ? cols - 4 : MAX_BOX_WIDTH;
 	const zoomed = Boolean(state.files?.zoom);
 	const width = cols < 50 || zoomed ? cols : Math.min(cols - 2, widest);
@@ -209,7 +203,6 @@ export const overlayBox = (state, cols, rows) => {
 		width,
 		lines: [
 			rule('╭', '╮', title),
-			// Full screen fills the terminal however little there is to show
 			...[...shown, ...Array.from({ length: zoomed ? room - shown.length : 0 }, () => '')].map(row),
 			rule('├', '┤'),
 			...keys.map(row),
@@ -280,8 +273,7 @@ const reactKey = (state, key) => {
 	return /^[1-9]$/.test(key) && emoji ? { type: 'react', commentId: state.thread, emoji } : { type: 'redraw' };
 };
 
-// Handles a keypress while the overlay is up. Returns the action the attach loop should take; 'ignore' needs no
-// redraw. `readSelection` returns the text this person last selected in their terminal, or null.
+// 'ignore' needs no redraw
 export const overlayKey = (state, rawKey, { readSelection = () => null } = {}) => {
 	// Mouse and focus reports, and terminal replies, aren't keys
 	if (inputKind(rawKey) !== 'typing') return { type: 'ignore' };
