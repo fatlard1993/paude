@@ -7,7 +7,7 @@ import Argi from 'argi';
 
 import { ensureLocalToken, initAuth, initServerId, passwordIsSet } from './auth';
 import { initActivity } from './activity';
-import { curlMissing, setHookAddress } from './hookSettings';
+import { curlMissing, loadHookSecret, setHookAddress } from './hookSettings';
 import { initNames } from './names';
 import { initNotes } from './notes';
 import { initProjects, setProjectsRoot } from './projects';
@@ -62,6 +62,7 @@ await initServerId(options.data);
 await Bun.write(path.join(options.data, 'server.pid'), `${process.pid}\n`);
 // Where set-password finds this server, to change the password through it rather than behind its back
 await Bun.write(path.join(options.data, 'server-url'), `http://${options.host}:${options.port}\n`);
+await loadHookSecret(options.data);
 setHookAddress({ host: options.host, port: options.port });
 if (curlMissing()) console.warn("curl isn't installed, so sessions can't report working, needs you or ready.");
 

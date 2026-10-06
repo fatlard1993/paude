@@ -1,7 +1,20 @@
+import { writeFile } from 'fs/promises';
+import { join } from 'path';
+
 // Claude Code tells paude what it's doing through hooks added to each session it starts. They post to this server
-// with a secret that lives only as long as the server does, so nothing else can feed it a status.
-export const hookSecret = Buffer.from(crypto.getRandomValues(new Uint8Array(24))).toString('base64url');
+// with a secret, so nothing else can feed it a status.
+export let hookSecret = Buffer.from(crypto.getRandomValues(new Uint8Array(24))).toString('base64url');
 let hookUrl = null;
+
+// A session held through a restart keeps the hooks it started with, so the secret outlives any one server: kept in
+// the data folder, readable only by this user
+export const loadHookSecret = async dataDir => {
+	const file = join(dataDir, 'hook-secret');
+	const stored = (await Bun.file(file).exists()) ? (await Bun.file(file).text()).trim() : '';
+
+	if (stored) hookSecret = stored;
+	else await writeFile(file, `${hookSecret}\n`, { mode: 0o600 });
+};
 
 export const setHookAddress = ({ host, port }) => {
 	const reachable = ['0.0.0.0', '::', ''].includes(host) ? '127.0.0.1' : host;
