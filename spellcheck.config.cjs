@@ -1,5 +1,8 @@
 module.exports = {
 	skipWords: [
+		'webgl',
+		'gpu',
+		'renderer',
 		'wl',
 		'xclip',
 		'darwin',

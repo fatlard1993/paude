@@ -33,6 +33,8 @@ export default {
 			fetch: router,
 			websocket: {
 				maxPayloadLength: 1024 * 1024,
+				// Claude's redraws are mostly repeated escape sequences; compressed, they cost a fraction on a slow link
+				perMessageDeflate: true,
 				open(socket) {
 					if (socket.data.clientId) reloadSockets[socket.data.clientId] = socket;
 				},

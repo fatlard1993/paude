@@ -103,14 +103,15 @@ export default class PtySession {
 		this.resetIdle();
 	}
 
+	// Clients first: the mirror and the mode tracking only matter to the next joiner, so they wait behind delivery
 	output(data) {
-		this.mirror.write(data);
-		this.trackModes(data);
-
 		for (const client of this.clients) {
 			if (client.pending) client.pending.push(data);
 			else client.socket.send(data);
 		}
+
+		this.mirror.write(data);
+		this.trackModes(data);
 	}
 
 	trackModes(data) {

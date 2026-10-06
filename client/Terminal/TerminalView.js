@@ -1,5 +1,6 @@
 import { Button, Elem, Notify, View, styled } from '@vanilla-bean/components';
 import { FitAddon } from '@xterm/addon-fit';
+import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 
@@ -254,6 +255,7 @@ export default class TerminalView extends View {
 		this.fitter = new FitAddon();
 		this.terminal.loadAddon(this.fitter);
 		this.terminal.open(this.screen.elem);
+		this.useGpuRenderer();
 		this.terminal.onData(data => this.sendInput(data));
 		this.terminal.onSelectionChange(() => {
 			this.commentButton.elem.style.display = canNote() && this.terminal.hasSelection() ? '' : 'none';
@@ -279,6 +281,20 @@ export default class TerminalView extends View {
 		this.resizeObserver.observe(this.screen.elem);
 
 		this.terminal.focus();
+	}
+
+	// The default renderer builds every cell as page elements, so a large session (scaled to fit, at that) costs a
+	// full layout and paint on each of Claude's redraws. WebGL draws the whole grid on the GPU; the DOM renderer stays
+	// as the fallback where WebGL is missing or its context is lost.
+	useGpuRenderer() {
+		try {
+			const gpu = new WebglAddon();
+
+			gpu.onContextLoss(() => gpu.dispose());
+			this.terminal.loadAddon(gpu);
+		} catch (error) {
+			console.warn('WebGL unavailable; using the DOM renderer', error);
+		}
 	}
 
 	sendInput(data) {
