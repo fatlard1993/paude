@@ -221,7 +221,7 @@ export const LinkCard = ({
 		new Elem({
 			appendTo: card,
 			addClass: ['dot', ...(state ? [state] : [])],
-			attributes: { title: { waiting: 'Claude is waiting on someone', busy: 'working' }[state] ?? 'ready' },
+			attributes: { title: { waiting: 'needs you', busy: 'working' }[state] ?? 'ready' },
 		});
 	}
 

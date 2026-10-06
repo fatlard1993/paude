@@ -181,7 +181,7 @@ export const overlayBox = (state, cols, rows) => {
 	const shown =
 		state.thread || state.files ? content.slice(0, room) : content.slice(Math.max(0, content.length - room));
 	const title = fit(
-		` ${heading('paude')} ${bold(printable(state.presence.title) || state.id)} ${state.presence.busy ? orange('● working') : dim('○ idle')} `,
+		` ${heading('paude')} ${bold(printable(state.presence.title) || state.id)} ${state.presence.busy ? orange('● working') : dim('○ ready')} `,
 		width - 4,
 	);
 	const row = text =>
@@ -320,7 +320,9 @@ export const overlayKey = (state, rawKey, { readSelection = () => null } = {}) =
 		const quote = readSelection()?.trim().slice(0, MAX_QUOTE);
 
 		if (quote) state.draft = { kind: 'comment', text: '', quote };
-		else state.hint = 'Nothing selected. Shift+drag over the text in Claude first, then Ctrl+] and m.';
+		else if (readSelection.unavailable)
+			state.hint = "paude can't read your selection here: install wl-clipboard (Wayland) or xclip (X11).";
+		else state.hint = "Nothing selected. Shift+drag over Claude's output first (on macOS, copy it), then Ctrl+] and m.";
 
 		return { type: 'redraw' };
 	}

@@ -20,4 +20,6 @@ const readSelection = () => {
 	return null;
 };
 
+readSelection.unavailable = READERS.length === 0;
+
 export default readSelection;

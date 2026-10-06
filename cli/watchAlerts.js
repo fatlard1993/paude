@@ -30,7 +30,7 @@ const startWatchAlerts = (servers, onScreen) => {
 			if (session.status === 'waiting' && before.status !== 'waiting')
 				notify(`paude · ${session.server.label}`, `${title} needs you`);
 			else if (session.unseen > before.unseen)
-				notify(`paude · ${session.server.label}`, `${title} has ${session.unseen} new`);
+				notify(`paude · ${session.server.label}`, `${title}: ${session.unseen} new since you looked`);
 		}
 
 		previous = new Map(all.map(session => [session.key, session]));

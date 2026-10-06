@@ -13,14 +13,14 @@ const alert = async (session, what) => {
 	const where = [session.project, session.remote?.name].filter(Boolean).join(' · ');
 	const url = session.remote ? '/#/' : `/#/sessions/${session.id}`;
 	const shown = await showNotification({
-		title: `${session.title || 'A session'} ${what}`,
+		title: `${session.title || 'A session'}${what}`,
 		body: where,
 		tag: `paude-watch-${keyOf(session)}`,
 		url,
 	});
 
 	if (!shown && !document.hidden)
-		new Notify({ type: 'info', content: `${session.title || 'A session'} ${what}`, timeout: 8000 });
+		new Notify({ type: 'info', content: `${session.title || 'A session'}${what}`, timeout: 8000 });
 };
 
 // Watched sessions, on this server and the others this one knows, checked in the background: a notification when
@@ -52,8 +52,8 @@ export const startWatchAlerts = ({ local }) => {
 			const onScreen = !session.remote && window.location.hash === `#/sessions/${session.id}` && !document.hidden;
 
 			if (!before || onScreen) continue;
-			if (session.status === 'waiting' && before.status !== 'waiting') await alert(session, 'needs you');
-			else if (session.unseen > before.unseen) await alert(session, `has ${session.unseen} new`);
+			if (session.status === 'waiting' && before.status !== 'waiting') await alert(session, ' needs you');
+			else if (session.unseen > before.unseen) await alert(session, `: ${session.unseen} new since you looked`);
 		}
 
 		previous = new Map(all.map(session => [keyOf(session), session]));

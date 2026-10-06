@@ -23,7 +23,7 @@ import {
 } from './screen';
 
 // Ctrl+] arrives as a plain byte, or as a CSI u sequence once Claude Code has switched on the kitty keyboard protocol
-const OVERLAY_KEYS = ['\x1d', '\x1b[93;5u'];
+const OVERLAY_KEYS = ['\x1d', '\x1b[93;5u', '\x1b[93;5:1u', '\x1b[27;5;93~'];
 
 const NOTE_ACTIONS = ['chat', 'comment', 'reply', 'resolve', 'react'];
 const FRAME_MS = 33;
@@ -45,7 +45,7 @@ const whyRefused = async ({ url, token }, id) => {
 };
 
 // Resolves to 'detach' | 'switch' | 'ended' | 'unauthorized'
-const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
+const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHint = false } = {}) =>
 	new Promise(resolve => {
 		const state = {
 			id,
@@ -63,10 +63,14 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 		let retry;
 		let retryDelay = 1000;
 		let filter = outputFilter();
+		let warnedOffline = false;
 		const notify = notifier();
 
 		const send = message => {
-			if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+			if (socket?.readyState !== WebSocket.OPEN) return false;
+			socket.send(JSON.stringify(message));
+
+			return true;
 		};
 
 		const mirror = createMirror();
@@ -222,9 +226,14 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 
 		const stopInput = rawInput(key => {
 			if (!overlay) {
-				if (OVERLAY_KEYS.some(sequence => key.includes(sequence))) return openOverlay();
+				// The key itself, not a paste that happens to contain its byte
+				if (OVERLAY_KEYS.includes(key)) return openOverlay();
+				if (!send({ type: 'input', data: key }) && !warnedOffline) {
+					warnedOffline = true;
+					notify('paude', 'Reconnecting: what you type is lost until it is back');
+				}
 
-				return send({ type: 'input', data: key });
+				return;
 			}
 
 			let action;
@@ -240,7 +249,11 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			if (action.type === 'detach' || action.type === 'switch') return finish(action.type);
 			if (action.type === 'close') return closeOverlay();
 			if (action.type === 'ignore') return;
-			if (NOTE_ACTIONS.includes(action.type)) send(action);
+			// A note that can't go out yet stays the draft it was
+			if (NOTE_ACTIONS.includes(action.type) && !send(action)) {
+				if (action.text) state.draft = { kind: action.type === 'chat' ? 'chat' : action.type, ...action };
+				state.hint = 'Not sent: reconnecting. Press Enter again once it is back.';
+			}
 			if (action.type === 'files') return openFiles();
 			if (action.type === 'readFile') return readFile(action.path, action.line);
 			if (action.type === 'search') return searchFiles();
@@ -248,7 +261,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			// OSC 52 puts text on this person's own clipboard, through their terminal
 			if (action.type === 'copy') {
 				write(`\x1b]52;c;${Buffer.from(action.text).toString('base64')}\x07`);
-				state.hint = `Copied ${action.what}`;
+				state.hint = `Sent ${action.what} to your clipboard, if your terminal allows it`;
 			}
 			// Pasted, so a multi-line attachment is one paste in Claude's prompt and nothing is sent until Enter
 			if (action.type === 'attach') {
@@ -301,6 +314,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 
 			socket.addEventListener('open', () => {
 				retryDelay = 1000;
+				warnedOffline = false;
 				send({ type: 'hello', kind: 'terminal', label: os.hostname(), name: displayName(), ...size() });
 			});
 
@@ -331,7 +345,11 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			});
 		};
 
-		connect();
+		// The one key that matters, shown for a moment before Claude's screen takes over
+		if (showKeyHint) {
+			write(`\r\n  \x1b[2mCtrl+] opens paude's box: chat, comments, files, switch or detach\x1b[0m\r\n`);
+			setTimeout(connect, 1500);
+		} else connect();
 	});
 
 export default attachSession;

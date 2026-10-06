@@ -114,20 +114,27 @@ const pickInProject = async (server, project) => {
 	return id;
 };
 
+// Esc in a project comes back here, not to the top
 const pickProject = async (server, projects) => {
-	const picked = await choose({
-		title: 'paude · projects',
-		subtitle: dim(server.label),
-		hint: '↑↓ move · enter open · esc back',
-		rows: projects.map(project => ({
-			label: printable(project.name),
-			detail: projectSummary(project),
-			marker: project.liveCount ? green('●') : ' ',
-			value: project.name,
-		})),
-	});
+	while (true) {
+		const picked = await choose({
+			title: 'paude · projects',
+			subtitle: dim(server.label),
+			hint: '↑↓ move · enter open · esc back',
+			rows: projects.map(project => ({
+				label: printable(project.name),
+				detail: projectSummary(project),
+				marker: project.liveCount ? green('●') : ' ',
+				value: project.name,
+			})),
+		});
 
-	return picked ? pickInProject(server, picked) : null;
+		if (!picked) return null;
+
+		const id = await pickInProject(server, picked);
+
+		if (id) return id;
+	}
 };
 
 const gather = async server => {
@@ -137,8 +144,14 @@ const gather = async server => {
 		server.id = serverId;
 
 		if (!identity) throw new Error('the saved login has ended');
+		// A guest's one session is always listed, watched or not
 		if (!identity.owner) {
-			return { server, identity, watching: await api(server, '/api/watching'), sessions: [], projects: [] };
+			const [watching, own] = await Promise.all([
+				api(server, '/api/watching'),
+				api(server, `/api/sessions/${identity.sessionId}`).catch(() => null),
+			]);
+
+			return { server, identity, watching, sessions: own ? [own] : [], projects: [] };
 		}
 
 		const [watching, sessions, projects] = await Promise.all([
@@ -185,8 +198,6 @@ const serverRows = ({ server, identity, sessions, projects, error }, watchedIds,
 		});
 	}
 
-	if (!identity.owner && !watched.some(({ server: other }) => other === server))
-		rows.push({ note: 'your invited session is not watched; press w on it once it shows, or open its link' });
 	if (identity.owner && !recent.length && !projects.length)
 		rows.push({ note: server.local ? 'no folders yet: run paude add in one' : 'nothing here yet' });
 

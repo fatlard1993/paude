@@ -12,7 +12,10 @@ import { forget, nameServer, normalizeUrl, resolveServer, saveToken } from '../c
 import { allServers, api, ensureLocalServer, stopLocalServer } from '../cli/servers';
 import pickSession from '../cli/picker';
 import startWatchAlerts from '../cli/watchAlerts';
+import { loadPrefs, savePrefs } from '../cli/prefs';
 import { readHidden } from '../cli/screen';
+
+const KEY_HINTS = 3;
 
 const USAGE = `paude                    pick a session from this machine and every server you're logged into
 paude add [folder]       make a folder (default: this one) a project on this machine's paude
@@ -99,7 +102,17 @@ const attachLoop = async (pick, first) => {
 
 		const { server, id, identity } = chosen;
 		const guest = !identity.owner;
-		const outcome = await attachSession(server, id, { canSwitch: !guest, role: guest ? identity.role : 'owner' });
+		const prefs = await loadPrefs();
+		// Guests always; the owner until they've seen it a few times
+		const showKeyHint = guest || (prefs.keyHints ?? 0) < KEY_HINTS;
+
+		if (!guest && showKeyHint) await savePrefs({ ...prefs, keyHints: (prefs.keyHints ?? 0) + 1 });
+
+		const outcome = await attachSession(server, id, {
+			canSwitch: !guest,
+			role: guest ? identity.role : 'owner',
+			showKeyHint,
+		});
 
 		if (outcome !== 'switch') return console.log(OUTCOMES[outcome]);
 

@@ -12,10 +12,10 @@ import DONE_MARKER from '../../shared/doneMarker';
 import withoutPointerReporting from '../../shared/pointerReporting';
 import { NOTE_TYPES } from '../../shared/protocol';
 import { showNotification } from '../notify';
+import { recall, remember, savedName } from '../storage';
 import attach from './attach';
 import KeyBar from './KeyBar';
 import FilesPanel from './FilesPanel';
-import { recall, remember, savedName } from '../storage';
 import NotesPanel from './NotesPanel';
 
 const BACKGROUND = '#1b1b1b';
@@ -654,9 +654,9 @@ export default class TerminalView extends View {
 		this.presence.empty();
 		this.stateDot.elem.className = `state${busy ? ' busy' : ''}${waiting ? ' waiting' : ''}${offline ? ' offline' : ''}`;
 		this.stateDot.elem.title = waiting
-			? 'Claude is waiting on someone: a permission or a question'
+			? 'Claude needs you: a permission or an answer'
 			: ({ reconnecting: 'Reconnecting', ended: 'Ended' }[this.connectionState] ??
-				(busy ? 'Claude is working' : 'Claude is idle'));
+				(busy ? 'Claude is working' : 'Claude is ready'));
 		if (offline) {
 			new Elem({
 				appendTo: this.presence,

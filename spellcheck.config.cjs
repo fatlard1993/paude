@@ -1,5 +1,6 @@
 module.exports = {
 	skipWords: [
+		'uri',
 		'passthrough',
 		'introducer',
 		'osc',
