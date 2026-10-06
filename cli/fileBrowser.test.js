@@ -44,3 +44,14 @@ test('attaching sends the file, or just the marked lines', () => {
 	press(browser, ['\x1b']);
 	expect(browser.open).toBeNull();
 });
+
+test('a file that could not be shown can be left or attached, and other keys do nothing', () => {
+	const browser = createBrowser(paths);
+
+	browser.open = { path: 'logo.png', error: 'Not a text file' };
+	expect(press(browser, ['j', 'v', 'G'])).toEqual({ type: 'ignore' });
+	expect(press(browser, ['a'])).toEqual({ type: 'attach', text: '@logo.png ' });
+
+	press(browser, ['\x1b']);
+	expect(browser.open).toBeNull();
+});

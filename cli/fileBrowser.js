@@ -177,6 +177,16 @@ const listKey = (browser, key, canType) => {
 
 const fileKey = (browser, key, canType) => {
 	const file = browser.open;
+
+	// A file that couldn't be shown (binary, too big, gone) can still be left, or handed to Claude to read itself
+	if (file.error) {
+		if (ESCAPE.includes(key) || BACK.includes(key)) browser.open = null;
+		else if (key === 'a' && canType) return { type: 'attach', text: `@${file.path} ` };
+		else return { type: 'ignore' };
+
+		return { type: 'redraw' };
+	}
+
 	const last = Math.max(file.lines.length - 1, 0);
 
 	if (key in MOVES) file.cursor = clamp(file.cursor + MOVES[key], 0, last);
@@ -252,6 +262,8 @@ export const browserView = (browser, width, room) =>
 
 export const browserKeys = (browser, canType, keyCap) => {
 	if (browser.typing) return [`${keyCap('enter')} keep filter`, `${keyCap('esc')} clear`];
+
+	if (browser.open?.error) return [canType && `${keyCap('a')} attach file`, `${keyCap('esc')} back`].filter(Boolean);
 
 	if (browser.open) {
 		const marked = browser.open.anchor !== null;

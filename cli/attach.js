@@ -159,7 +159,16 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 				return send({ type: 'input', data: key });
 			}
 
-			const action = overlayKey(state, key, { readSelection });
+			let action;
+
+			// A fault in the overlay costs the overlay its keypress, not the person their terminal
+			try {
+				action = overlayKey(state, key, { readSelection });
+			} catch (error) {
+				state.hint = `That key hit a paude bug: ${error.message}`;
+
+				return redraw();
+			}
 
 			if (action.type === 'detach' || action.type === 'switch') return finish(action.type);
 			if (action.type === 'close') return closeOverlay();
