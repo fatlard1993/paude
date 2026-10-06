@@ -1,4 +1,4 @@
-import { desktopNotificationsOn } from './Terminal/NotesPanel';
+import { desktopNotificationsOn } from './storage';
 
 let registration = null;
 

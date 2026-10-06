@@ -181,6 +181,7 @@ export const LinkCard = ({
 	watching,
 	remove,
 	removeLabel = 'Delete',
+	removeIcon = 'trash-can',
 	onOpen,
 	appendTo,
 }) => {
@@ -229,7 +230,7 @@ export const LinkCard = ({
 		const button = document.createElement('button');
 
 		button.className = 'remove';
-		button.textContent = '🗑';
+		button.append(Object.assign(document.createElement('i'), { className: `fa-solid fa-${removeIcon}` }));
 		button.title = removeLabel;
 		button.addEventListener('click', event => {
 			event.preventDefault();

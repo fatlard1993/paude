@@ -1,5 +1,8 @@
 module.exports = {
 	skipWords: [
+		'passthrough',
+		'introducer',
+		'osc',
 		'notificationclick',
 		'paudes',
 		'hsla',

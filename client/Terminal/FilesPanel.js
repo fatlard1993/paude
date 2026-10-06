@@ -6,7 +6,7 @@ import { pathFilter } from '../../shared/globs';
 import searchPattern from '../../shared/searchPattern';
 import { listFiles, rawFileUrl, readFile, searchFiles } from '../api';
 import { canType } from '../identity';
-import { recall, remember } from './NotesPanel';
+import { recall, remember } from '../storage';
 
 const MAX_MATCHES = 200;
 const TOUCH = window.matchMedia('(pointer: coarse)');

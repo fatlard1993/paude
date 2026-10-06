@@ -35,23 +35,39 @@ export default class Login extends View {
 
 		new Elem({ appendTo: card, addClass: 'title', textContent: 'paude' });
 
-		if (this.options.joinFailed) {
+		if (this.options.inviteEnded) {
 			new Elem({
 				appendTo: card,
 				addClass: 'message',
-				textContent: 'That invite link has expired or was revoked. Ask for a new one.',
+				textContent: 'Your invite has ended: it expired or was revoked. Ask whoever invited you for a new link.',
 			});
+
+			// The owner may still use this browser
+			const owner = new Button({
+				appendTo: card,
+				textContent: "I'm the owner",
+				onPointerPress: () => {
+					owner.elem.remove();
+					this.passwordForm(card);
+				},
+			});
+
+			return;
 		}
 
 		if (!this.options.passwordSet) {
 			const hint = new Elem({ appendTo: card, addClass: 'hint' });
 
 			hint.elem.innerHTML =
-				'No password is set yet. On the server, run <code>bun run set-password</code> in the paude folder.';
+				'No password is set. On this machine, <code>paude web</code> opens this page logged in. To log in from elsewhere, run <code>bun run set-password</code> in the paude folder.';
 
 			return;
 		}
 
+		this.passwordForm(card);
+	}
+
+	passwordForm(card) {
 		this.password = new Input({
 			appendTo: card,
 			type: 'password',

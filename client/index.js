@@ -3,6 +3,7 @@ import { Page, Router } from '@vanilla-bean/components';
 import Home from './Home';
 import { setIdentity } from './identity';
 import Login from './Login';
+import { recall, remember } from './storage';
 import { registerNotificationWorker } from './notify';
 import Project from './Project';
 import TerminalView from './Terminal/TerminalView';
@@ -28,6 +29,7 @@ window.fetch = async (input, init) => {
 // An invite link (#/join/<token>) logs its guest in and opens the session it was made for
 const joinToken = window.location.hash.match(/^#\/join\/(.+)$/)?.[1];
 let joinFailed = false;
+const GUEST_KEY = 'paude.guest';
 
 if (joinToken) {
 	const response = await fetch('/api/join', {
@@ -36,8 +38,10 @@ if (joinToken) {
 		body: JSON.stringify({ token: joinToken }),
 	});
 
-	if (response.ok) window.location.replace(`#/sessions/${(await response.json()).sessionId}`);
-	else joinFailed = true;
+	if (response.ok) {
+		remember(GUEST_KEY, 'yes');
+		window.location.replace(`#/sessions/${(await response.json()).sessionId}`);
+	} else joinFailed = true;
 }
 
 // A one-time link, optionally naming where to land: #/handoff/<code> or #/handoff/<code>/sessions/<id>
@@ -64,7 +68,9 @@ if (authenticated) {
 }
 
 const content = () => {
-	if (!authenticated) return new Login({ passwordSet, joinFailed });
+	// A browser that came in by invite and is now logged out had its invite end, not a password to type
+	if (!authenticated) return new Login({ passwordSet, inviteEnded: joinFailed || recall(GUEST_KEY) === 'yes' });
+	if (identity.owner) remember(GUEST_KEY, '');
 
 	// A guest has exactly one session and nowhere else to go
 	if (!identity.owner) return new TerminalView({ id: identity.sessionId });

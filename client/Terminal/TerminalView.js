@@ -15,7 +15,8 @@ import { showNotification } from '../notify';
 import attach from './attach';
 import KeyBar from './KeyBar';
 import FilesPanel from './FilesPanel';
-import NotesPanel, { recall, remember, savedName } from './NotesPanel';
+import { recall, remember, savedName } from '../storage';
+import NotesPanel from './NotesPanel';
 
 const BACKGROUND = '#1b1b1b';
 const touch = window.matchMedia('(pointer: coarse)').matches;
@@ -473,10 +474,10 @@ export default class TerminalView extends View {
 				this.commentOnSelection();
 			},
 		});
-		if (canType()) {
+		if (canNote()) {
 			new KeyBar({
 				appendTo: column,
-				sendKey: data => this.sendInput(data),
+				...(canType() && { sendKey: data => this.sendInput(data) }),
 				selectLines: () => this.startLineSelect(),
 			});
 		}
@@ -493,7 +494,7 @@ export default class TerminalView extends View {
 			appendTo: body,
 			addClass: 'notes',
 			sessionId: this.options.id,
-			send: message => this.connection?.send(message),
+			send: message => Boolean(this.connection?.send(message)),
 			jump: quote => this.jumpTo(quote),
 			reveal: () => this.toggleNotes(true),
 			announce: arrived => this.announce(arrived),
@@ -595,7 +596,7 @@ export default class TerminalView extends View {
 	}
 
 	sendInput(data) {
-		this.connection?.send({ type: 'input', data });
+		return Boolean(this.connection?.send({ type: 'input', data }));
 	}
 
 	naturalSize() {
@@ -732,7 +733,12 @@ export default class TerminalView extends View {
 	// Pasted rather than typed, so a multi-line attachment lands in Claude's prompt as one paste and nothing is sent
 	// until someone presses Enter
 	attachToPrompt(text) {
-		this.sendInput(`\x1b[200~${text}\x1b[201~`);
+		if (!this.sendInput(`\x1b[200~${text}\x1b[201~`)) {
+			new Notify({ type: 'warning', content: 'Not attached: reconnecting. Try again in a moment.' });
+
+			return;
+		}
+
 		this.terminal.focus();
 		// Out of the way of the prompt it just added to; reopening returns to the same file and lines
 		this.toggleFiles(false);

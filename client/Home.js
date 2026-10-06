@@ -11,7 +11,7 @@ import {
 	openRemote,
 	removeFolder,
 } from './api';
-import { confirmDeleteSession } from './confirmDialog';
+import confirmDialog, { confirmDeleteSession } from './confirmDialog';
 import { identity } from './identity';
 import { Empty, Header, LinkCard, Scroll, SectionTitle, sessionCard } from './Layout';
 
@@ -196,7 +196,15 @@ export default class Home extends View {
 				live: project.liveCount > 0,
 				...(project.registered && {
 					removeLabel: `Stop treating ${project.path} as a project (nothing is deleted)`,
+					removeIcon: 'folder-minus',
 					remove: async () => {
+						const confirmed = await confirmDialog({
+							header: `Stop treating ${project.name} as a project?`,
+							body: `Nothing in ${project.path} is deleted, but its sessions leave these lists and can't be reopened here until you add the folder again.`,
+							confirmLabel: 'Remove',
+						});
+
+						if (!confirmed) return;
 						await removeFolder(project.name);
 						this.load();
 					},

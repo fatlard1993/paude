@@ -58,6 +58,9 @@ export default class KeyBar extends Bar {
 		select.title = 'Comment on lines: tap the first, then the last';
 		this.elem.append(select);
 
+		// Someone who may comment but not type gets Select alone
+		if (!this.options.sendKey) return;
+
 		for (const [label, sequence] of KEYS) this.elem.append(keyButton(label, () => this.options.sendKey(sequence)));
 	}
 }

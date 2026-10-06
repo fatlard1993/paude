@@ -1,34 +1,11 @@
-import { Component, styled } from '@vanilla-bean/components';
+import { Component, Notify, styled } from '@vanilla-bean/components';
+
+import { DESKTOP_KEY, NAME_KEY, desktopNotificationsOn, remember, savedName } from '../storage';
 
 import { applyNote } from '../../shared/protocol';
 import { canNote, identity } from '../identity';
 import relativeTime from '../../shared/relativeTime';
 import renderPeople from './People';
-
-const NAME_KEY = 'paude.name';
-const DESKTOP_KEY = 'paude.desktopNotifications';
-
-// Per-browser preferences; private windows can refuse storage, and then they last until reload
-export const recall = key => {
-	try {
-		return localStorage.getItem(key) ?? '';
-	} catch {
-		return '';
-	}
-};
-
-export const remember = (key, value) => {
-	try {
-		localStorage.setItem(key, value);
-	} catch {
-		// Kept for this page only
-	}
-};
-
-export const savedName = () => recall(NAME_KEY);
-
-export const desktopNotificationsOn = () =>
-	'Notification' in window && Notification.permission === 'granted' && recall(DESKTOP_KEY) === 'yes';
 
 const Panel = styled(
 	Component,
@@ -303,7 +280,12 @@ const composer = ({ placeholder, label, onSend, drafts, draftKey }) => {
 
 		if (!text) return;
 
-		onSend(text);
+		// While reconnecting nothing can go out; the text stays for another try
+		if (onSend(text) === false) {
+			new Notify({ type: 'warning', content: 'Not sent: reconnecting. Try again in a moment.' });
+
+			return;
+		}
 		input.value = '';
 		drafts?.delete(draftKey);
 	};
@@ -606,8 +588,11 @@ export default class NotesPanel extends Panel {
 			placeholder: 'Comment on this selection',
 			label: 'Comment',
 			onSend: text => {
-				this.options.send({ type: 'comment', quote, text });
-				close();
+				const sent = this.options.send({ type: 'comment', quote, text });
+
+				if (sent) close();
+
+				return sent;
 			},
 		});
 

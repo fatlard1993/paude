@@ -1,4 +1,5 @@
 import { createInvite, getInvites, revokeInvite } from '../api';
+import confirmDialog from '../confirmDialog';
 
 const ROLES = [
 	['drive', 'Drive: type into Claude, and all of the above'],
@@ -104,6 +105,13 @@ const renderPeople = async sessionId => {
 			const revoke = element('button', '', 'Revoke');
 
 			revoke.addEventListener('click', async () => {
+				const confirmed = await confirmDialog({
+					header: `Revoke ${invite.name}'s invite?`,
+					body: 'They are signed out at once, in every browser and terminal they joined from.',
+					confirmLabel: 'Revoke',
+				});
+
+				if (!confirmed) return;
 				await revokeInvite(invite.id);
 				list.replaceChildren(...(await inviteRows()));
 			});
