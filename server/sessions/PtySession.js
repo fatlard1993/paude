@@ -1,6 +1,8 @@
 import xtermHeadless from '@xterm/headless';
 import serializeAddon from '@xterm/addon-serialize';
 
+import inputKind, { FOCUS_IN } from './inputKind';
+
 const { Terminal } = xtermHeadless;
 const { SerializeAddon } = serializeAddon;
 
@@ -27,11 +29,6 @@ const BUSY_TITLE = /^[◐◑]/;
 // (mouse encoding, focus reports, bracketed paste, cursor keys and visibility)
 const TRACKED_MODES = new Set(['1', '25', '1000', '1002', '1003', '1004', '1006', '2004']);
 const MODE_CHANGE = new RegExp(`${ESC}\\[\\?([\\d;]+)([hl])`, 'g');
-
-// Mouse and focus reports are produced by pointing and switching windows, not by typing, so they don't take over
-// the session's size. A terminal client's focus-in does: that person just switched to it.
-const PASSIVE_INPUT = new RegExp(`^(?:${ESC}\\[<\\d+;\\d+;\\d+[Mm]|${ESC}\\[M[\\s\\S]{3}|${ESC}\\[[IO])+$`);
-const FOCUS_IN = `${ESC}[I`;
 
 const sessionEnvironment = () =>
 	Object.fromEntries(Object.entries(process.env).filter(([name]) => !INHERITED_MARKER.test(name)));
@@ -191,10 +188,17 @@ export default class PtySession {
 		this.broadcastPresence();
 	}
 
+	// Every attached terminal answers Claude's queries, and an answer counted as typing claimed the size for its
+	// client: two clients took turns forever, each resize prompting the redraw and queries that set off the next.
+	// Only the driver's answers reach Claude, and no answer or pointer report claims anything. A terminal's
+	// focus-in does: that person just switched to it.
 	input(client, data) {
-		const passive = PASSIVE_INPUT.test(data);
+		const kind = inputKind(data);
+		const driving = this.driver === client;
 
-		if (this.driver !== client && (!passive || (client.kind === 'terminal' && data.includes(FOCUS_IN)))) {
+		if (kind === 'reply' && !driving) return;
+
+		if (!driving && (kind === 'typing' || (client.kind === 'terminal' && data.includes(FOCUS_IN)))) {
 			this.drive(client);
 		}
 
