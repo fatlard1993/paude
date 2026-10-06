@@ -7,6 +7,8 @@ const file = path.join(process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.
 
 export const DEFAULT_PREFS = {
 	markdownView: 'rendered',
+	// Side by side where the box is wide enough, unless set to 'unified'
+	diffLayout: 'split',
 	search: { caseSensitive: false, wholeWord: false, regex: false, include: '', exclude: '' },
 };
 

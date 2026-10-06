@@ -1,13 +1,14 @@
 import { pathFilter } from '../shared/globs';
 import { attachDiffText, attachFileText, attachLinesText } from '../shared/attachText';
-import { diffLines, parseDiff } from '../shared/diff';
+import { diffLines, parseDiff, sideBySide } from '../shared/diff';
+import relativeTime from '../shared/relativeTime';
 import { extensionOf, kindOf, matchNames } from '../shared/projectFiles';
 import searchPattern from '../shared/searchPattern';
 import { fitCells } from './graphics';
 import { highlightLines } from './highlight';
 import { renderMarkdown } from './markdown';
 import { DEFAULT_PREFS } from './prefs';
-import { ACCENT, bold, colored, dim, onBackground, orange, printable } from './screen';
+import { ACCENT, bold, colored, dim, fit, onBackground, orange, printable, visibleLength } from './screen';
 
 const PAGE = 10;
 const CURSOR_BACKGROUND = 238;
@@ -51,6 +52,9 @@ const STATUS_MARKS = {
 const ADDED_COLOR = 114;
 const REMOVED_COLOR = 167;
 const HUNK_COLOR = 75;
+const PROPOSAL_COLOR = 179;
+// Narrower than this, side by side leaves too little of each line
+const SPLIT_MIN_COLUMNS = 140;
 const SEARCH_FIELDS = ['query', 'include', 'exclude'];
 
 const clamp = (value, low, high) => Math.min(Math.max(value, low), high);
@@ -94,22 +98,63 @@ export const openFile = (path, text, line) => {
 	};
 };
 
-// One changed file's diff, its hunks laid out as rows to move through and mark like a file's lines
-export const openDiff = (path, text, status) => {
-	const { binary, hunks } = parseDiff(text);
+// Any set of diffs (a changed file, a turn, a proposal, two files compared), to move through and mark like a file
+export const openDiffSet = (set, source) => ({
+	diff: true,
+	set,
+	source,
+	path: set.files.length === 1 ? set.files[0].path : null,
+	rows: [],
+	layout: null,
+	cursor: 0,
+	anchor: null,
+});
 
-	return {
-		path,
-		diff: true,
-		status,
-		binary,
-		rows: hunks.flatMap(hunk => [
-			{ kind: 'hunk', text: `@@ -${hunk.oldStart} +${hunk.newStart} @@ ${hunk.heading}` },
-			...hunk.lines,
-		]),
-		cursor: 0,
-		anchor: null,
-	};
+// The set laid out as rows: file and hunk headings, then lines, each knowing its file and its place in it. Side by
+// side, a removed run sits beside the added run that replaced it, and a row is both its sides.
+const diffRows = (set, layout) =>
+	set.files.flatMap(file => {
+		const { binary, hunks } = parseDiff(file.diff ?? '');
+		let order = 0;
+
+		return [
+			...(set.files.length > 1 || set.title !== file.path ? [{ kind: 'file', file }] : []),
+			...(file.note || binary ? [{ kind: 'message', text: file.note ?? 'a binary file changed' }] : []),
+			...hunks.flatMap(hunk => {
+				const lines = hunk.lines.map(line => ({ ...line, order: order++ }));
+				const heading = { kind: 'hunk', text: `@@ -${hunk.oldStart} +${hunk.newStart} @@ ${hunk.heading}` };
+
+				if (layout !== 'split')
+					return [heading, ...lines.map(line => ({ kind: 'line', path: file.path, lines: [line] }))];
+
+				return [
+					heading,
+					...sideBySide(lines).map(({ left, right, note }) => ({
+						kind: note ? 'line' : 'pair',
+						path: file.path,
+						left: left?.line,
+						right: right?.line,
+						lines: note ? [note.line] : [...new Set([left?.line, right?.line].filter(Boolean))],
+					})),
+				];
+			}),
+		];
+	});
+
+// Marked rows (or all of them) as each file's lines, in the order the diff has them
+const linesByFile = rows => {
+	const groups = [];
+
+	for (const row of rows) {
+		if (!row.lines) continue;
+
+		const last = groups.at(-1);
+
+		if (last?.path === row.path) last.lines.push(...row.lines);
+		else groups.push({ path: row.path, lines: [...row.lines] });
+	}
+
+	return groups.map(({ path, lines }) => ({ path, lines: lines.sort((a, b) => a.order - b.order) }));
 };
 
 export const entriesOf = browser => {
@@ -118,8 +163,15 @@ export const entriesOf = browser => {
 	if (browser.showChanges) {
 		const changed = (browser.changes ?? []).map(({ path }) => path);
 		const shown = browser.filter ? (matchNames(changed, browser.filter, options) ?? []) : changed;
+		const turns = (browser.turns ?? []).filter(
+			({ prompt }) => !browser.filter || prompt.toLowerCase().includes(browser.filter.toLowerCase()),
+		);
 
-		return shown.map(path => ({ kind: 'file', path, name: path, depth: 0 }));
+		return [
+			...(browser.proposal && !browser.filter ? [{ kind: 'proposal', path: '', name: '', depth: 0 }] : []),
+			...shown.map(path => ({ kind: 'file', path, name: path, depth: 0 })),
+			...turns.map(turn => ({ kind: 'turn', path: '', name: turn.prompt, turn, depth: 0 })),
+		];
 	}
 
 	const paths = browser.paths.filter(pathFilter(options));
@@ -254,7 +306,10 @@ const listKey = (browser, key, canType) => {
 	if (!entry) return { type: 'ignore' };
 
 	if (FORWARD.includes(key)) {
-		if (entry.kind === 'file' && browser.showChanges) return { type: 'readDiff', path: entry.path };
+		if (entry.kind === 'proposal') return { type: 'readDiffSet', source: { source: 'proposal' } };
+		if (entry.kind === 'turn') return { type: 'readDiffSet', source: { source: 'turn', turn: entry.turn.id } };
+		if (entry.kind === 'file' && browser.showChanges)
+			return { type: 'readDiffSet', source: { source: 'changes', path: entry.path } };
 		if (entry.kind === 'file') return { type: 'readFile', path: entry.path };
 		if (browser.expanded.has(entry.path) && key !== 'l' && !key.startsWith('\x1b')) browser.expanded.delete(entry.path);
 		else browser.expanded.add(entry.path);
@@ -339,18 +394,28 @@ const diffKey = (browser, key, canType) => {
 	const diff = browser.open;
 	const last = Math.max(diff.rows.length - 1, 0);
 	const marked = markedRows(diff);
-	const lines = (marked ?? diff.rows).filter(row => row.kind !== 'hunk');
+	const groups = linesByFile(marked ?? diff.rows);
+	const here = diff.rows[diff.cursor]?.path ?? diff.rows[diff.cursor]?.file?.path ?? diff.path;
+	const opens = here && diff.set.files.find(file => file.path === here)?.status !== 'deleted';
 
 	if (ESCAPE.includes(key) || BACK.includes(key)) browser.open = null;
 	else if (key in MOVES) diff.cursor = clamp(diff.cursor + MOVES[key], 0, last);
 	else if (key === 'g') diff.cursor = 0;
 	else if (key === 'G') diff.cursor = last;
 	else if (key === 'v') diff.anchor = diff.anchor === null ? diff.cursor : null;
-	else if (key === 'o' && diff.status !== 'deleted') return { type: 'readFile', path: diff.path };
-	else if (key === 'a' && canType && lines.length)
-		return { type: 'attach', text: attachDiffText(diff.path, diffLines(lines)) };
-	else if (key === 'y' && lines.length)
-		return { type: 'copy', text: diffLines(lines), what: marked ? 'the marked changes' : 'the changes' };
+	else if (key === 's') {
+		browser.prefs.diffLayout = diff.layout === 'split' ? 'unified' : 'split';
+
+		return { type: 'savePrefs' };
+	} else if (key === 'o' && opens) return { type: 'readFile', path: here };
+	else if (key === 'a' && canType && groups.length)
+		return { type: 'attach', text: groups.map(({ path, lines }) => attachDiffText(path, diffLines(lines))).join('') };
+	else if (key === 'y' && groups.length)
+		return {
+			type: 'copy',
+			text: groups.map(({ lines }) => diffLines(lines)).join('\n'),
+			what: marked ? 'the marked changes' : 'the changes',
+		};
 	else return { type: 'ignore' };
 
 	return { type: 'redraw' };
@@ -368,7 +433,8 @@ const fileKey = (browser, key, canType) => {
 	if (file.diff) return diffKey(browser, key, canType);
 	// Edited with the person's own editor, in the side terminal, on the machine the file is on
 	if (key === 'e' && canType && !file.error && !file.image) return { type: 'editFile', path: file.path };
-	if (key === 'c' && changeOf(browser, file.path)) return { type: 'readDiff', path: file.path };
+	if (key === 'c' && changeOf(browser, file.path))
+		return { type: 'readDiffSet', source: { source: 'changes', path: file.path } };
 
 	// An image, or a file that couldn't be shown (binary, too big, gone), can still be left, or handed to Claude to
 	// read itself
@@ -466,7 +532,13 @@ const listView = (browser, width, room) => {
 		.filter(Boolean)
 		.join(' · ');
 	const header = [
-		...(browser.showChanges ? [bold(`Changes since the last commit (${browser.changes?.length ?? 0})`)] : []),
+		...(browser.showChanges
+			? [
+					bold(
+						`Changes${browser.changes ? `: ${browser.changes.length} since the last commit` : ''}${browser.turns?.length ? `, ${browser.turns.length} turn${browser.turns.length === 1 ? '' : 's'}` : ''}`,
+					),
+				]
+			: []),
 		...(browser.filter !== null
 			? [`${orange('/')} ${printable(browser.filter)}${browser.typing ? '█' : ''}   ${optionChips(options)}`]
 			: []),
@@ -475,6 +547,20 @@ const listView = (browser, width, room) => {
 	const [top, bottom] = windowAround(browser.cursor, entries.length, room - header.length);
 	const rows = entries.slice(top, bottom).map((entry, offset) => {
 		const indent = '  '.repeat(entry.depth);
+		if (entry.kind === 'proposal') {
+			const count = browser.proposal.files.length;
+			const text = colored(`  ✋ Claude proposes ${count === 1 ? 'a change' : `${count} changes`}`, PROPOSAL_COLOR);
+
+			return top + offset === browser.cursor ? highlight(text, width, CURSOR_BACKGROUND) : text;
+		}
+
+		if (entry.kind === 'turn') {
+			const detail = dim(`  ${entry.turn.files} · ${relativeTime(Date.parse(entry.turn.at))}`);
+			const text = `  ${dim('›')} ${fit(printable(entry.turn.prompt), Math.max(width - visibleLength(detail) - 6, 10))}${detail}`;
+
+			return top + offset === browser.cursor ? highlight(text, width, CURSOR_BACKGROUND) : text;
+		}
+
 		const label =
 			entry.kind === 'folder'
 				? colored(`${browser.expanded.has(entry.path) ? '▾' : '▸'} ${printable(entry.name)}/`, FOLDER_COLOR)
@@ -536,14 +622,43 @@ const searchView = (browser, width, room) => {
 
 const fileHeader = (file, detail) => `${colored(printable(file.path), ACCENT)} ${dim(detail)}`;
 
+const STATUS_LETTERS = { modified: 'M', added: 'A', deleted: 'D', renamed: 'R', untracked: 'U' };
+
+const diffLine = (line, numbers) => {
+	const body = printable(line.text.replaceAll('\t', '    '));
+
+	if (line.kind === 'added') return `${numbers} ${colored(`+ ${body}`, ADDED_COLOR)}`;
+	if (line.kind === 'removed') return `${numbers} ${colored(`- ${body}`, REMOVED_COLOR)}`;
+	if (line.kind === 'note') return `${numbers} ${dim(body)}`;
+
+	return `${numbers}   ${body}`;
+};
+
+// One side of a side-by-side row, cut or padded to its half
+const diffSide = (line, side, width) => {
+	if (!line) return dim('·'.repeat(Math.max(width, 0)));
+
+	const text = fit(diffLine(line, dim(String((side === 'left' ? line.old : line.new) ?? '').padStart(4))), width);
+
+	return `${text}${' '.repeat(Math.max(width - visibleLength(text), 0))}`;
+};
+
 const diffView = (browser, width, room) => {
 	const diff = browser.open;
-	const change = changeOf(browser, diff.path);
-	const header = fileHeader(diff, `changes${change ? ` · ${change.status}` : ''}`);
+	const layout = width >= SPLIT_MIN_COLUMNS && browser.prefs.diffLayout !== 'unified' ? 'split' : 'unified';
 
-	if (diff.binary) return [header, '', dim('a binary file changed')];
-	if (!diff.rows.length) return [header, '', dim('no line changes')];
+	if (diff.layout !== layout) {
+		diff.rows = diffRows(diff.set, layout);
+		diff.layout = layout;
+		diff.cursor = clamp(diff.cursor, 0, Math.max(diff.rows.length - 1, 0));
+		diff.anchor = null;
+	}
 
+	const header = `${colored(printable(diff.set.title), ACCENT)} ${dim(`${diff.set.files.length === 1 ? '1 file' : `${diff.set.files.length} files`} · ${layout === 'split' ? 'side by side' : 'unified'}`)}`;
+
+	if (!diff.rows.length) return [header, '', dim('nothing differs')];
+
+	const half = Math.floor((width - 3) / 2);
 	const marked = markedRows(diff);
 	const markedFrom = marked ? Math.min(diff.anchor, diff.cursor) : -1;
 	const markedTo = marked ? Math.max(diff.anchor, diff.cursor) : -1;
@@ -552,15 +667,18 @@ const diffView = (browser, width, room) => {
 		const index = top + offset;
 		let text;
 
-		if (row.kind === 'hunk') text = colored(printable(row.text), HUNK_COLOR);
+		if (row.kind === 'file')
+			text = bold(
+				`${colored(STATUS_LETTERS[row.file.status] ?? ' ', STATUS_MARKS[row.file.status]?.[1] ?? 252)} ${printable(row.file.from ? `${row.file.from} → ${row.file.path}` : row.file.path)}`,
+			);
+		else if (row.kind === 'message') text = dim(printable(row.text));
+		else if (row.kind === 'hunk') text = colored(printable(row.text), HUNK_COLOR);
+		else if (row.kind === 'pair')
+			text = `${diffSide(row.left, 'left', half)} ${dim('│')} ${diffSide(row.right, 'right', half)}`;
 		else {
-			const numbers = dim(`${String(row.old ?? '').padStart(4)} ${String(row.new ?? '').padStart(4)}`);
-			const body = printable(row.text.replaceAll('\t', '    '));
+			const [line] = row.lines;
 
-			if (row.kind === 'added') text = `${numbers} ${colored(`+ ${body}`, ADDED_COLOR)}`;
-			else if (row.kind === 'removed') text = `${numbers} ${colored(`- ${body}`, REMOVED_COLOR)}`;
-			else if (row.kind === 'note') text = `${numbers} ${dim(body)}`;
-			else text = `${numbers}   ${body}`;
+			text = diffLine(line, dim(`${String(line.old ?? '').padStart(4)} ${String(line.new ?? '').padStart(4)}`));
 		}
 
 		if (index === diff.cursor) return highlight(text, width, CURSOR_BACKGROUND);
@@ -635,9 +753,10 @@ export const browserKeys = (browser, canType, keyCap) => {
 		return [
 			`${keyCap('↑↓')} move`,
 			`${keyCap('v')} ${marked ? 'clear marks' : 'mark lines'}`,
-			canType && `${keyCap('a')} attach ${marked ? 'marked lines' : 'changes'}`,
+			canType && `${keyCap('a')} attach ${marked ? 'marked lines' : 'all'}`,
 			`${keyCap('y')} copy`,
-			file.status !== 'deleted' && `${keyCap('o')} open file`,
+			`${keyCap('o')} open file`,
+			`${keyCap('s')} switch layout`,
 			`${keyCap('z')} full screen`,
 			`${keyCap('esc')} back`,
 		].filter(Boolean);

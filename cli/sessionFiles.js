@@ -43,11 +43,20 @@ const sessionFiles = ({ url, token }, id) => {
 			return response?.ok ? response.json() : null;
 		},
 
-		diff: async path => {
-			const response = await get(`diff?path=${encodeURIComponent(path)}`);
-			const text = response ? await response.text() : 'Could not reach the server.';
+		// Any kind of diff: { source: 'changes', path }, { source: 'turn', turn }, { source: 'proposal' }, ...
+		diffSet: async source => {
+			const response = await get(`diffs?${new URLSearchParams(source)}`);
 
-			return response?.ok ? { text } : { error: text || 'Could not show its changes.' };
+			if (response?.ok) return { set: await response.json() };
+
+			return { error: (response && (await response.text())) || 'Could not show the changes.' };
+		},
+
+		// The turns that changed files, newest first
+		turns: async () => {
+			const response = await get('turn-changes');
+
+			return response?.ok ? response.json() : [];
 		},
 
 		search: async (query, options) => {

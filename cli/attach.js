@@ -7,7 +7,7 @@ import notifier from './notify';
 import outputFilter, { filterText } from './outputFilter';
 import { composeFrame, createMirror } from './compositor';
 import editCommand from './editCommand';
-import { createBrowser, openDiff } from './fileBrowser';
+import { createBrowser, openDiffSet } from './fileBrowser';
 import { place, removeImage, transmit } from './graphics';
 import { overlayKey, overlayBox } from './overlay';
 import { loadPrefs, savePrefs } from './prefs';
@@ -120,20 +120,31 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			redraw();
 		};
 
+		// What changed since the last commit, what Claude proposes, and what each turn changed
 		const loadChanges = async () => {
-			const changes = await files.changes();
+			const [changes, turns, proposal] = await Promise.all([
+				files.changes(),
+				files.turns(),
+				files.diffSet({ source: 'proposal' }),
+			]);
 
 			if (!state.files) return;
-			Object.assign(state.files, { changes, showChanges: changes !== null, filter: null, cursor: 0 });
+			Object.assign(state.files, {
+				changes,
+				turns,
+				proposal: proposal.set?.files.length ? proposal.set : null,
+				showChanges: true,
+				filter: null,
+				cursor: 0,
+			});
 			redraw();
 		};
 
-		const readDiff = async path => {
-			const { text, error } = await files.diff(path);
-			const change = state.files?.changes?.find(found => found.path === path);
+		const readDiffSet = async source => {
+			const { set, error } = await files.diffSet(source);
 
 			if (!state.files) return;
-			state.files.open = error ? { path, error } : openDiff(path, text, change?.status);
+			state.files.open = error ? { path: source.path ?? 'changes', error } : openDiffSet(set, source);
 			redraw();
 		};
 
@@ -276,7 +287,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			ignore: () => {},
 			shell: () => openShell(),
 			loadChanges,
-			readDiff: ({ path }) => readDiff(path),
+			readDiffSet: ({ source }) => readDiffSet(source),
 			editFile,
 			backToShell,
 			endShell,

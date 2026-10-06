@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { browserKey, browserView, createBrowser, entriesOf, openFile } from './fileBrowser';
+import { browserKey, browserView, createBrowser, entriesOf, openDiffSet, openFile } from './fileBrowser';
 
 const paths = ['README.md', 'src/app.js', 'src/lib/util.js', 'docs/guide.md'];
 const names = browser => entriesOf(browser).map(({ kind, name }) => `${kind === 'folder' ? '+' : ''}${name}`);
@@ -106,4 +106,50 @@ test('the reader strips control characters and copies marked lines or the whole 
 		text: 'const b = 2;\nconst c = 3;',
 		what: 'lines 2-3',
 	});
+});
+
+// What the reader shows, colors taken out
+const plain = line => line.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '');
+
+const SET = {
+	title: 'make it two',
+	files: [
+		{ path: 'a.js', status: 'modified', diff: '@@ -1,2 +1,2 @@\n keep\n-one\n+two\n' },
+		{ path: 'b.js', status: 'added', diff: '@@ -0,0 +1 @@\n+new\n' },
+	],
+};
+
+test('a set of diffs lays out side by side when wide, unified when not, with each file headed', () => {
+	const browser = createBrowser(paths);
+
+	browser.open = openDiffSet(SET, { source: 'turn', turn: 't1' });
+
+	const wide = browserView(browser, 150, 20).map(plain);
+
+	expect(wide[0]).toContain('make it two');
+	expect(wide[0]).toContain('side by side');
+	expect(wide.some(line => line.includes('- one') && line.includes('+ two'))).toBe(true);
+
+	const narrow = browserView(browser, 100, 20).map(plain);
+
+	expect(narrow[0]).toContain('unified');
+	expect(narrow.filter(line => /M a\.js|A b\.js/.test(line))).toHaveLength(2);
+	expect(narrow.some(line => line.includes('- one') && line.includes('+ two'))).toBe(false);
+});
+
+test('marking across a side-by-side pair attaches its lines in diff order, per file', () => {
+	const browser = createBrowser(paths);
+
+	browser.open = openDiffSet(SET, { source: 'turn', turn: 't1' });
+	browserView(browser, 150, 20);
+
+	// rows: a.js heading, hunk, keep, one|two, b.js heading, hunk, new
+	press(browser, ['j', 'j', 'j', 'v']);
+
+	expect(press(browser, ['j', 'j', 'j', 'a'])).toEqual({
+		type: 'attach',
+		text: 'a.js, changed:\n```diff\n-one\n+two\n```\nb.js, changed:\n```diff\n+new\n```\n',
+	});
+	expect(press(browser, ['s'])).toEqual({ type: 'savePrefs' });
+	expect(browser.prefs.diffLayout).toBe('unified');
 });
