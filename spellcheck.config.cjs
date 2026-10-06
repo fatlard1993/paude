@@ -1,5 +1,9 @@
 module.exports = {
 	skipWords: [
+		'swiftshader',
+		'llvmpipe',
+		'softpipe',
+		'resizing',
 		'touchpad',
 		'webgl',
 		'gpu',

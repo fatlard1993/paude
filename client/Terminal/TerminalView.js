@@ -7,6 +7,7 @@ import '@xterm/xterm/css/xterm.css';
 import { getSession } from '../api';
 import { canNote, canType, identity } from '../identity';
 import { Header } from '../Layout';
+import withoutPointerReporting from '../../shared/pointerReporting';
 import { NOTE_TYPES } from '../../shared/protocol';
 import attach from './attach';
 import KeyBar from './KeyBar';
@@ -37,13 +38,13 @@ const Body = styled.Component`
 		top: 8px;
 		right: 8px;
 		bottom: 8px;
-		width: min(360px, calc(100% - 16px));
+		width: min(var(--notes-width, 360px), calc(100% - 16px));
 		z-index: 2;
 		border-radius: 10px;
 		border: 1px solid rgba(255, 255, 255, 0.12);
-		background: rgba(24, 24, 27, 0.62);
-		backdrop-filter: blur(14px) saturate(140%);
-		-webkit-backdrop-filter: blur(14px) saturate(140%);
+		background: rgba(24, 24, 27, 0.35);
+		backdrop-filter: blur(10px) saturate(140%);
+		-webkit-backdrop-filter: blur(10px) saturate(140%);
 		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
 		overflow: hidden;
 		opacity: 0;
@@ -60,6 +61,25 @@ const Body = styled.Component`
 		pointer-events: auto;
 	}
 
+	.notes .resize {
+		position: absolute;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		width: 6px;
+		cursor: ew-resize;
+		z-index: 1;
+	}
+
+	.notes .resize:hover,
+	.notes.resizing .resize {
+		background: rgba(255, 255, 255, 0.15);
+	}
+
+	.notes.resizing {
+		transition: none;
+	}
+
 	@media ${NARROW} {
 		.notes {
 			inset: 0;
@@ -67,20 +87,12 @@ const Body = styled.Component`
 			border-radius: 0;
 			border: none;
 		}
-	}
-`;
 
-// Phones have the key bar's Select instead
-const SelectButton = styled(
-	Button,
-	() => `
-		flex-shrink: 0;
-
-		@media (pointer: coarse) {
+		.notes .resize {
 			display: none;
 		}
-	`,
-);
+	}
+`;
 
 const NotesToggle = styled(
 	Button,
@@ -105,6 +117,22 @@ const Screen = styled.Component`
 		outline-offset: -2px;
 	}
 `;
+
+const SelectHint = styled(
+	Elem,
+	({ colors }) => `
+		position: absolute;
+		left: 50%;
+		top: 12px;
+		transform: translateX(-50%);
+		z-index: 1;
+		padding: 6px 12px;
+		border-radius: 14px;
+		background: ${colors.alpha(colors.black, 0.75)};
+		color: ${colors.light(colors.orange)};
+		pointer-events: none;
+	`,
+);
 
 const CommentButton = styled(
 	Button,
@@ -147,7 +175,23 @@ const Presence = styled(
 );
 
 const ICONS = { web: '🌐', terminal: '⌨' };
+const SOFTWARE_GL = /swiftshader|llvmpipe|softpipe|software/i;
+
+const hardwareWebgl = () => {
+	const context = document.createElement('canvas').getContext('webgl2');
+
+	if (!context) return false;
+
+	const info = context.getExtension('WEBGL_debug_renderer_info');
+	const renderer = info ? context.getParameter(info.UNMASKED_RENDERER_WEBGL) : context.getParameter(context.RENDERER);
+
+	context.getExtension('WEBGL_lose_context')?.loseContext();
+
+	return !SOFTWARE_GL.test(String(renderer));
+};
 const NOTES_OPEN_KEY = 'paude.notesOpen';
+const NOTES_WIDTH_KEY = 'paude.notesWidth';
+const MIN_NOTES_WIDTH = 260;
 const ROLE_LABELS = { owner: 'owner', drive: 'can type', comment: 'can chat and comment', watch: 'watching' };
 
 const bufferLines = terminal => {
@@ -193,15 +237,6 @@ export default class TerminalView extends View {
 		}
 		this.titleLabel = new Elem({ appendTo: header, addClass: 'title' });
 		this.presence = new Presence({ appendTo: header });
-		// Claude Code takes mouse drags for itself, so plain dragging never selects: Shift+drag does, or this
-		if (canNote()) {
-			new SelectButton({
-				appendTo: header,
-				textContent: 'Select',
-				title: 'Comment on lines: click the first, then the last (or Shift+drag)',
-				onPointerPress: () => this.startLineSelect(),
-			});
-		}
 
 		const body = new Body({ appendTo: this });
 
@@ -213,6 +248,7 @@ export default class TerminalView extends View {
 		const column = new Elem({ appendTo: body, addClass: 'terminal-column' });
 
 		this.screen = new Screen({ appendTo: column });
+		this.selectHint = new SelectHint({ appendTo: column, style: { display: 'none' } });
 		this.commentButton = new CommentButton({
 			appendTo: column,
 			textContent: '💬 Comment',
@@ -243,6 +279,7 @@ export default class TerminalView extends View {
 			},
 		});
 
+		this.addResizeHandle();
 		if (recall(NOTES_OPEN_KEY)) this.toggleNotes(true);
 
 		this.loadInfo();
@@ -272,6 +309,7 @@ export default class TerminalView extends View {
 		});
 		this.fitter = new FitAddon();
 		this.terminal.loadAddon(this.fitter);
+		this.decoder = new TextDecoder();
 		this.terminal.open(this.screen.elem);
 		this.useGpuRenderer();
 		this.terminal.onData(data => this.sendInput(data));
@@ -286,7 +324,7 @@ export default class TerminalView extends View {
 				name: savedName(),
 				...this.naturalSize(),
 			}),
-			onOutput: data => this.terminal.write(data),
+			onOutput: data => this.terminal.write(withoutPointerReporting(this.decoder.decode(data, { stream: true }))),
 			onMessage: message => this.handleMessage(message),
 			onState: state => this.showConnection(state),
 		});
@@ -302,16 +340,18 @@ export default class TerminalView extends View {
 	}
 
 	// The default renderer builds every cell as page elements, so a large session (scaled to fit, at that) costs a
-	// full layout and paint on each of Claude's redraws. WebGL draws the whole grid on the GPU; the DOM renderer stays
-	// as the fallback where WebGL is missing or its context is lost.
+	// full layout and paint on each of Claude's redraws. WebGL draws the whole grid on the GPU, but only on a real
+	// one: software WebGL (llvmpipe and the like) is slower than the DOM renderer it would replace.
 	useGpuRenderer() {
+		if (!hardwareWebgl()) return;
+
 		try {
 			const gpu = new WebglAddon();
 
 			gpu.onContextLoss(() => gpu.dispose());
 			this.terminal.loadAddon(gpu);
 		} catch {
-			// No WebGL here; the DOM renderer it was created with stays in use
+			// No WebGL here after all; the DOM renderer it was created with stays in use
 		}
 	}
 
@@ -348,7 +388,8 @@ export default class TerminalView extends View {
 		if (message.type === 'snapshot') {
 			this.terminal.reset();
 			this.terminal.resize(message.cols, message.rows);
-			this.terminal.write(message.data);
+			this.decoder = new TextDecoder();
+			this.terminal.write(withoutPointerReporting(message.data));
 			this.fitScale();
 		} else if (message.type === 'size') {
 			this.terminal.resize(message.cols, message.rows);
@@ -398,6 +439,42 @@ export default class TerminalView extends View {
 		if (open) this.notes.showTab(this.notes.tab);
 	}
 
+	// Dragging the panel's left edge sets its width, kept between sessions
+	addResizeHandle() {
+		const panel = this.notes.elem;
+		const handle = document.createElement('div');
+		const setWidth = width => {
+			const clamped = Math.round(Math.min(Math.max(width, MIN_NOTES_WIDTH), window.innerWidth * 0.8));
+
+			panel.style.setProperty('--notes-width', `${clamped}px`);
+
+			return clamped;
+		};
+
+		handle.className = 'resize';
+		panel.append(handle);
+
+		if (Number(recall(NOTES_WIDTH_KEY))) setWidth(Number(recall(NOTES_WIDTH_KEY)));
+
+		handle.addEventListener('pointerdown', start => {
+			start.preventDefault();
+			handle.setPointerCapture(start.pointerId);
+			panel.classList.add('resizing');
+
+			const right = panel.getBoundingClientRect().right;
+			const move = event => setWidth(right - event.clientX);
+			const stop = event => {
+				remember(NOTES_WIDTH_KEY, String(setWidth(right - event.clientX)));
+				panel.classList.remove('resizing');
+				handle.removeEventListener('pointermove', move);
+				handle.removeEventListener('pointerup', stop);
+			};
+
+			handle.addEventListener('pointermove', move);
+			handle.addEventListener('pointerup', stop);
+		});
+	}
+
 	get notesOpen() {
 		return this.notes.elem.classList.contains('open');
 	}
@@ -426,38 +503,59 @@ export default class TerminalView extends View {
 	}
 
 	// Touch screens can't drag-select in a terminal: tap the first line, then the last
+	// Touch screens can't drag-select in a terminal: tap the first line, then the last. Every touch is swallowed
+	// before xterm sees it, or xterm would move or clear the selection between the two taps.
 	startLineSelect() {
 		const screen = this.screen.elem;
+
+		if (this.endLineSelect) return this.endLineSelect();
+
 		let first = null;
-
-		screen.classList.add('selecting');
-
+		const swallow = event => {
+			event.preventDefault();
+			event.stopPropagation();
+		};
 		const rowAt = event => {
 			const rect = this.terminal.element.querySelector('.xterm-screen').getBoundingClientRect();
 			const row = Math.floor(((event.clientY - rect.top) / rect.height) * this.terminal.rows);
 
 			return Math.min(Math.max(row, 0), this.terminal.rows - 1) + this.terminal.buffer.active.viewportY;
 		};
-
 		const onTap = event => {
-			event.preventDefault();
-			event.stopPropagation();
+			swallow(event);
 
 			const row = rowAt(event);
 
 			if (first === null) {
 				first = row;
 				this.terminal.selectLines(row, row);
+				this.lineSelectHint('Now tap the last line');
 
 				return;
 			}
 
 			this.terminal.selectLines(Math.min(first, row), Math.max(first, row));
-			screen.classList.remove('selecting');
-			screen.removeEventListener('pointerdown', onTap, true);
+			this.endLineSelect();
 		};
+		const SWALLOWED = ['pointerdown', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'click'];
 
-		screen.addEventListener('pointerdown', onTap, true);
+		screen.classList.add('selecting');
+		this.lineSelectHint('Tap the first line to comment on');
+		screen.addEventListener('pointerup', onTap, true);
+		for (const type of SWALLOWED) screen.addEventListener(type, swallow, { capture: true, passive: false });
+
+		this.endLineSelect = () => {
+			screen.classList.remove('selecting');
+			screen.removeEventListener('pointerup', onTap, true);
+			for (const type of SWALLOWED) screen.removeEventListener(type, swallow, { capture: true });
+			this.lineSelectHint(null);
+			this.endLineSelect = null;
+		};
+	}
+
+	lineSelectHint(text) {
+		this.selectHint.elem.textContent = text ?? '';
+		this.selectHint.elem.style.display = text ? '' : 'none';
 	}
 
 	// Finds a comment's quote in the scrollback (the most recent match) and highlights it

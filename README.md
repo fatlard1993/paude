@@ -67,4 +67,5 @@ Inside a session everything goes to Claude except `Ctrl+]`, which opens paude's 
 Open the server's address and log in. Set your name at the top of the chat panel.
 
 - **Size:** the session has one size, set by whoever typed last. Typing takes it over; everyone else sees it scaled to fit.
-- **Comments:** Shift+drag over the terminal to select (a plain drag goes to Claude), or press **Select** and pick the first and last line. Then press **Comment**. Clicking a comment's quote finds it in the terminal.
+- **Comments:** drag over the terminal to select text (on a phone, press **Select** on the key bar and tap the first and last line), then press **Comment**. Clicking a comment's quote finds it in the terminal.
+- **The side panel** (💬) floats over the terminal; drag its left edge to resize it.

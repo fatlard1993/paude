@@ -364,7 +364,7 @@ export default class NotesPanel extends Panel {
 				element(
 					'div',
 					'empty',
-					'No comments yet. Shift+drag over the terminal (or press Select and pick lines), then press Comment.',
+					'No comments yet. Drag over the terminal to select some text (on a phone: Select on the key bar), then press Comment.',
 				),
 			];
 		}
