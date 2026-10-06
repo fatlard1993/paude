@@ -25,7 +25,7 @@ paude                     # the picker: sessions and projects here and on every 
 
 ![The picker: watched sessions from two paudes first, then each one's projects](docs/terminal-picker.png)
 
-Locally there is no password: the server keeps an owner token in `~/.paude/local-token`, readable only by you, and the `paude` command uses it. `paude web` opens this machine's paude in a browser, already logged in. Folders under `~/Projects` are projects without being added; `paude remove <name>` forgets one that was. The first session in a folder Claude Code hasn't seen asks, in the session, whether you trust it.
+Locally there is no password: the server keeps an owner token in `~/.paude/local-token`, readable only by you, and the `paude` command uses it. `paude web` opens this machine's paude in a browser, already logged in. Folders under `~/Projects` are projects without being added; `paude remove <name>` forgets one that was. `paude stop` stops the background server (after pulling an update, say); the next `paude` starts it again. The first session in a folder Claude Code hasn't seen asks, in the session, whether you trust it.
 
 ## On a server
 
@@ -80,14 +80,14 @@ Inside a session everything goes to Claude except **Ctrl+]**, which floats the b
 
 ![The box over a session: who's here, the chat, an open comment](docs/terminal-box.png)
 
-| Key          |                                                                                           |
-| ------------ | ----------------------------------------------------------------------------------------- |
-| **c**        | chat                                                                                      |
-| **m**        | comment on your selection (Shift+drag over Claude's output first; on macOS, copy it)      |
-| **1**-**9**  | open a comment's thread; there, **r** replies, **x** resolves, **+** then a number reacts |
-| **f**        | the project's files                                                                       |
-| **s**, **d** | switch session, detach                                                                    |
-| **Esc**      | back to Claude                                                                            |
+| Key |  |
+| --- | --- |
+| **c** | chat |
+| **m** | comment on your selection (Shift+drag over Claude's output first; on macOS, copy it) |
+| **1**-**9** | open a comment's thread; there, **r** replies, **x** resolves (or reopens), **+** then a number reacts |
+| **f** | the project's files |
+| **s**, **d** | switch session, detach |
+| **Esc** | back to Claude |
 
 In **f**, the reader: arrows (or j/k) move and Enter opens; **/** finds a file by name and **?** searches contents. Alt+C, Alt+W and Alt+R toggle match case, whole word and regex, as in VS Code, and Tab moves to the files to include and exclude. Code is highlighted and markdown is rendered (**m** shows the source; the choice is remembered). In kitty, WezTerm or Ghostty, images show in place.
 
@@ -111,7 +111,7 @@ Open the server's address and log in, or follow an invite link.
 - **Size.** A session has one size, set by whoever typed last; everyone else sees it scaled to fit.
 - **Scrolling.** The wheel scrolls Claude's transcript, for everyone, since there is one screen.
 - **Comments.** Drag over the terminal to select (on a phone, **Select** on the key bar, then tap the first and last line) and press **Comment**. Clicking a comment's quote finds it in the terminal. Reactions work on chat, comments and replies; click one to add or take back yours.
-- **Files.** The reader, from the folder button in the bar: search by name or contents with the same options as the terminal, and read highlighted code, rendered markdown, images, audio, video and PDFs. Click a line number and Shift+click another to attach those lines.
+- **Files.** The reader, from the folder button in the bar: search by name or contents with the same options as the terminal, and read highlighted code, rendered markdown, images, audio, video and PDFs. Click a line number and Shift+click another (on a phone, tap another) to attach those lines.
 - **Start over from a point.** Each `done` line Claude prints after a turn is a link that starts a new session holding the conversation up to there.
 - **Names.** Click a session's title to pin a name (📌); **Use automatic name** goes back to Claude's.
 
@@ -123,4 +123,4 @@ Both side panels float over the terminal and resize from their inner edge.
 
 A watched session is listed first everywhere, with what it's doing (**working**; **needs you** when Claude is asking for a permission or an answer; **ready** for the next prompt) and how many turns, chat messages and comments landed since you last looked. Watching starts on its own the first time you join a session by invite, post in it, or prompt it; the eye in the session's bar, or **w** in the picker, turns it off and on.
 
-When a watched session starts waiting on you or has news, you get a notification: in the browser once the bell in the chat panel is on (the tab title also counts the sessions waiting on you), and in the terminal through kitty, iTerm2, WezTerm and others that show them. This machine's paude lists the sessions on every server your `paude` command is logged into, too, and opens them there already logged in.
+When a watched session starts waiting on you or has news, you get a notification: in the browser once the bell in the chat panel is on (the tab title also counts the sessions waiting on you), and in the terminal through kitty, iTerm2, WezTerm and others that show them. Opened from this machine (the `paude` command, or `paude web`), the home page also lists the sessions on every server your `paude` command is logged into, and opens them there already logged in.
