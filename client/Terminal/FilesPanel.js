@@ -3,13 +3,16 @@ import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 
 import { pathFilter } from '../../shared/globs';
-import { attachFileText, attachLinesText } from '../../shared/attachText';
+import { attachDiffText, attachFileText, attachLinesText } from '../../shared/attachText';
+import { diffLines } from '../../shared/diff';
 import { extensionOf, kindOf, matchNames } from '../../shared/projectFiles';
 import searchPattern from '../../shared/searchPattern';
-import { listFiles, rawFileUrl, readFile, searchFiles } from '../api';
+import { getChanges, getDiff, listFiles, rawFileUrl, readFile, saveFile, searchFiles } from '../api';
 import { canType } from '../identity';
 import { recall, remember } from '../storage';
+import confirmDialog from '../confirmDialog';
 import { button, dragHandle, element } from '../dom';
+import renderDiff from './DiffView';
 import Panel, { LINE_HEIGHT } from './FilesPanel.styles';
 
 const MAX_MATCHES = 200;
@@ -223,6 +226,23 @@ const buildTree = paths => {
 	return root;
 };
 
+// How the tree and the changes list mark a changed file, as VS Code does
+const STATUS_MARKS = {
+	modified: { letter: 'M', title: 'Modified' },
+	added: { letter: 'A', title: 'Added' },
+	deleted: { letter: 'D', title: 'Deleted' },
+	renamed: { letter: 'R', title: 'Renamed' },
+	untracked: { letter: 'U', title: 'Untracked' },
+};
+
+const statusMark = status => {
+	const mark = element('span', `status ${status}`, STATUS_MARKS[status].letter);
+
+	mark.title = STATUS_MARKS[status].title;
+
+	return mark;
+};
+
 const savedOptions = () => {
 	try {
 		return {
@@ -255,6 +275,7 @@ const projectPathFrom = (file, reference) => {
 export default class FilesPanel extends Panel {
 	build() {
 		this.paths = [];
+		this.changes = null;
 		this.expanded = new Set();
 		this.mode = 'names';
 		this.selection = null;
@@ -279,13 +300,17 @@ export default class FilesPanel extends Panel {
 		this.modeButtons = {
 			names: button('Names', () => this.setMode('names')),
 			contents: button('Contents', () => this.setMode('contents')),
+			changes: button('Changes', () => this.setMode('changes'), { title: 'What changed since the last commit' }),
 		};
+		this.changeCount = element('span', 'count');
+		this.modeButtons.changes.append(this.changeCount);
 		this.filtersButton = iconButton('filter', 'Files to include and exclude', () => this.toggleFilters());
 		this.fullscreenButton = iconButton('expand', 'Full screen', () => this.toggleFullscreen());
 		bar.append(
 			search,
 			this.modeButtons.names,
 			this.modeButtons.contents,
+			this.modeButtons.changes,
 			this.filtersButton,
 			this.fullscreenButton,
 			iconButton('xmark', 'Close', () => this.options.close()),
@@ -393,7 +418,7 @@ export default class FilesPanel extends Panel {
 	}
 
 	async refresh() {
-		const { body, response } = await listFiles(this.options.sessionId);
+		const [{ body, response }] = await Promise.all([listFiles(this.options.sessionId), this.refreshChanges()]);
 
 		if (!response?.ok) {
 			this.list.replaceChildren(
@@ -412,14 +437,28 @@ export default class FilesPanel extends Panel {
 		if (!this.current) this.viewer.replaceChildren(element('div', 'empty', 'Pick a file to read it.'));
 	}
 
+	// null outside git, which hides the Changes mode
+	async refreshChanges() {
+		const { body, response } = await getChanges(this.options.sessionId);
+
+		this.changes = response?.ok ? body : null;
+		this.changedPaths = new Map((this.changes ?? []).map(change => [change.path, change]));
+		this.modeButtons.changes.style.display = this.changes ? '' : 'none';
+		this.changeCount.textContent = this.changes?.length ? String(this.changes.length) : '';
+		if (!this.changes && this.mode === 'changes') this.mode = 'names';
+	}
+
 	setMode(mode) {
 		this.mode = mode;
-		this.query.placeholder = mode === 'names' ? 'Find a file' : 'Search file contents';
+		this.query.placeholder = { names: 'Find a file', contents: 'Search file contents', changes: 'Find a changed file' }[
+			mode
+		];
 
 		for (const [key, node] of Object.entries(this.modeButtons)) node.classList.toggle('active', key === mode);
 
 		this.renderToggles();
 		this.renderList();
+		if (mode === 'changes') this.refreshChanges().then(() => this.mode === 'changes' && this.renderList());
 	}
 
 	renderList() {
@@ -429,6 +468,7 @@ export default class FilesPanel extends Panel {
 
 		clearTimeout(this.searchTimer);
 
+		if (this.mode === 'changes') return this.renderChanges(query);
 		if (!query) return this.list.replaceChildren(...this.treeEntries(buildTree(paths), 0));
 
 		if (this.mode === 'contents') {
@@ -446,6 +486,26 @@ export default class FilesPanel extends Panel {
 			...(matches.length
 				? matches.slice(0, MAX_MATCHES).map(path => this.fileEntry(path, path))
 				: [element('div', 'empty', 'No file names match.')]),
+		);
+	}
+
+	renderChanges(query) {
+		const changes = this.changes ?? [];
+		const shown = query
+			? (matchNames(
+					changes.map(({ path }) => path),
+					query,
+					this.searchOptions,
+				) ?? [])
+			: changes.map(({ path }) => path);
+
+		if (!changes.length)
+			return this.list.replaceChildren(element('div', 'empty', 'Nothing has changed since the last commit.'));
+
+		this.list.replaceChildren(
+			...(shown.length
+				? shown.map(path => this.fileEntry(path, path, undefined, { diff: true }))
+				: [element('div', 'empty', 'No changed file names match.')]),
 		);
 	}
 
@@ -514,6 +574,12 @@ export default class FilesPanel extends Panel {
 				icon(`fa-solid fa-${open ? 'folder-open' : 'folder'}`, FOLDER_COLOR),
 				element('span', 'label', name),
 			);
+			if (!open && this.changedInside(child)) {
+				const dot = element('span', 'status modified', '•');
+
+				dot.title = 'Something in here changed';
+				entry.append(dot);
+			}
 			entry.addEventListener('click', () => {
 				if (open) this.expanded.delete(key);
 				else this.expanded.add(key);
@@ -527,26 +593,84 @@ export default class FilesPanel extends Panel {
 		return entries;
 	}
 
-	fileEntry(label, path, line) {
+	changedInside(node) {
+		return (
+			node.files.some(path => this.changedPaths?.has(path)) ||
+			[...node.folders.values()].some(child => this.changedInside(child))
+		);
+	}
+
+	fileEntry(label, path, line, { diff = false } = {}) {
 		const entry = element('div', `entry${path === this.current ? ' current' : ''}`);
+		const change = this.changedPaths?.get(path);
 
 		entry.append(fileIcon(path), element('span', 'label', label));
+		if (change) entry.append(statusMark(change.status));
 		entry.dataset.path = path;
-		entry.title = path;
-		entry.addEventListener('click', () => this.open(path, line));
+		entry.title = change?.from ? `${path} (from ${change.from})` : path;
+		entry.addEventListener('click', () => (diff ? this.openDiff(path) : this.open(path, line)));
 
 		return entry;
 	}
 
-	async open(path, line) {
+	// An edit not yet saved is lost by leaving it, so leaving asks first
+	async leaveEditing() {
+		if (!this.editing || this.editing.text === this.text) {
+			this.editing = null;
+
+			return true;
+		}
+
+		const leave = await confirmDialog({
+			header: 'Leave your edit unsaved?',
+			body: `Your changes to ${this.current} haven't been saved.`,
+			cancelLabel: 'Keep editing',
+			confirmLabel: 'Discard them',
+		});
+
+		if (leave) this.editing = null;
+
+		return leave;
+	}
+
+	async openDiff(path) {
+		if (!(await this.leaveEditing())) return;
+
 		this.current = path;
+		this.view = 'diff';
 		this.kind = kindOf(path);
-		this.selection = line ? { anchor: line, from: line, to: line } : null;
-		this.lines = null;
+		this.diffSelection = null;
+		this.diffText = null;
+		this.failure = null;
 		this.panes.classList.add('reading');
+		this.markCurrent(path);
+
+		const { body, response } = await getDiff(this.options.sessionId, path);
+
+		if (this.current !== path || this.view !== 'diff') return;
+
+		if (response?.ok) this.diffText = body;
+		else this.failure = typeof body === 'string' ? body : 'Could not show its changes.';
+		this.renderViewer();
+	}
+
+	markCurrent(path) {
 		this.list
 			.querySelectorAll('.entry')
 			.forEach(entry => entry.classList.toggle('current', entry.dataset.path === path));
+	}
+
+	async open(path, line) {
+		if (!(await this.leaveEditing())) return;
+
+		this.current = path;
+		this.view = 'file';
+		this.kind = kindOf(path);
+		this.selection = line ? { anchor: line, from: line, to: line } : null;
+		this.lines = null;
+		this.conflict = null;
+		this.panes.classList.add('reading');
+		this.markCurrent(path);
 
 		if (['image', 'video', 'audio', 'pdf'].includes(this.kind)) return this.renderViewer();
 
@@ -562,6 +686,7 @@ export default class FilesPanel extends Panel {
 		}
 
 		this.failure = null;
+		this.hash = response.headers.get('x-content-hash');
 		this.text = body;
 		this.lines = body.replace(/\n$/, '').split('\n');
 		this.renderViewer();
@@ -576,9 +701,17 @@ export default class FilesPanel extends Panel {
 	viewerHead() {
 		const head = element('div', 'head');
 		const back = button('←', () => this.panes.classList.remove('reading'));
+		const change = this.changedPaths?.get(this.current);
 
 		back.className = 'back';
-		head.append(back, fileIcon(this.current), element('div', 'path', this.current));
+		const path = element('div', 'path', this.current);
+
+		path.title = this.current;
+		head.append(back, fileIcon(this.current), path);
+		if (change) head.append(statusMark(change.status));
+
+		if (this.editing) return this.editingHead(head);
+		if (this.view === 'diff') return this.diffHead(head, change);
 
 		if (this.kind === 'markdown' && this.lines) {
 			head.append(
@@ -590,7 +723,10 @@ export default class FilesPanel extends Panel {
 			);
 		}
 
+		if (change) head.append(button('Changes', () => this.openDiff(this.current), { title: 'What changed in it' }));
+
 		if (canType()) {
+			if (this.lines && this.showingSource) head.append(button('Edit', () => this.startEditing(), { icon: 'pen' }));
 			head.append(button('Attach file', () => this.attachFile()));
 
 			if (this.selection && this.lines && this.showingSource) {
@@ -615,13 +751,50 @@ export default class FilesPanel extends Panel {
 		return head;
 	}
 
+	diffHead(head, change) {
+		if (change && change.status !== 'deleted') head.append(button('Open file', () => this.open(this.current)));
+
+		if (canType() && this.diffRows?.length) {
+			head.append(button('Attach changes', () => this.attachDiff(this.diffRows)));
+
+			if (this.diffSelection) {
+				const count = this.diffSelection.to - this.diffSelection.from + 1;
+
+				head.append(
+					button(`Attach ${count === 1 ? 'line' : `${count} lines`}`, () =>
+						this.attachDiff(this.diffRows.slice(this.diffSelection.from, this.diffSelection.to + 1)),
+					),
+				);
+			}
+		}
+
+		return head;
+	}
+
+	editingHead(head) {
+		const dirty = this.editing.text !== this.text;
+
+		head.append(
+			element('span', 'editing', dirty ? 'Editing, not saved' : 'Editing'),
+			button('Save', () => this.save(), { title: 'Save (Ctrl+S)', className: 'primary' }),
+			button('Cancel', () => this.cancelEditing()),
+		);
+
+		return head;
+	}
+
 	renderViewer() {
 		const scroll = this.body?.scrollTop ?? 0;
 
 		this.body = element('div', 'body');
+		this.diffRows = null;
 
 		if (this.failure && !['image', 'video', 'audio', 'pdf'].includes(this.kind)) {
 			this.body.append(element('div', 'empty', this.failure));
+		} else if (this.view === 'diff') {
+			this.body.append(this.diff());
+		} else if (this.editing) {
+			this.body.append(this.editor());
 		} else if (this.kind === 'image' || this.kind === 'video' || this.kind === 'audio' || this.kind === 'pdf') {
 			this.body.append(this.media());
 		} else if (this.kind === 'markdown' && this.markdownView === 'rendered') {
@@ -630,8 +803,143 @@ export default class FilesPanel extends Panel {
 			this.body.append(this.source());
 		}
 
-		this.viewer.replaceChildren(this.viewerHead(), this.body);
+		this.viewer.replaceChildren(this.viewerHead(), ...(this.conflict ? [this.conflictNotice()] : []), this.body);
 		this.body.scrollTop = scroll;
+	}
+
+	diff() {
+		if (this.diffText === null) return element('div', 'empty', 'Loading its changes...');
+
+		const { container, rows } = renderDiff({
+			text: this.diffText,
+			language: languageOf(this.current),
+			selection: this.diffSelection,
+			onPick: (index, event) => {
+				const extend =
+					event.shiftKey ||
+					(TOUCH.matches &&
+						this.diffSelection &&
+						this.diffSelection.from === this.diffSelection.to &&
+						this.diffSelection.anchor !== index);
+				const anchor = extend && this.diffSelection ? this.diffSelection.anchor : index;
+
+				this.diffSelection = { anchor, from: Math.min(anchor, index), to: Math.max(anchor, index) };
+				this.renderViewer();
+			},
+			onAttachHunk: canType() ? hunk => this.attachDiff(hunk.lines) : null,
+		});
+
+		this.diffRows = rows;
+
+		return container;
+	}
+
+	attachDiff(lines) {
+		this.options.attach(attachDiffText(this.current, diffLines(lines)));
+	}
+
+	// The syntax font colors the text being typed, the same as it does the source view
+	editor() {
+		const language = languageOf(this.current);
+		const area = element('textarea', `editor syntax-highlighting ${language ? `language-${language}` : 'plain'}`);
+
+		area.value = this.editing.text;
+		area.spellcheck = false;
+		area.addEventListener('input', () => {
+			const wasDirty = this.editing.text !== this.text;
+
+			this.editing.text = area.value;
+			if (wasDirty !== (this.editing.text !== this.text)) this.refreshHead();
+		});
+		area.addEventListener('keydown', event => {
+			if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+				event.preventDefault();
+				this.save();
+			} else if (event.key === 'Tab' && !event.shiftKey) {
+				event.preventDefault();
+				area.setRangeText('\t', area.selectionStart, area.selectionEnd, 'end');
+				area.dispatchEvent(new Event('input'));
+			} else if (event.key === 'Escape') {
+				// Esc would close the panel; while editing it does nothing, and the edit stays
+				event.stopPropagation();
+			}
+		});
+		requestAnimationFrame(() => area.focus());
+
+		return area;
+	}
+
+	refreshHead() {
+		this.viewer.querySelector('.head')?.replaceWith(this.viewerHead());
+	}
+
+	startEditing() {
+		this.editing = { text: this.text };
+		this.selection = null;
+		this.renderViewer();
+	}
+
+	async cancelEditing() {
+		if (await this.leaveEditing()) {
+			this.conflict = null;
+			this.renderViewer();
+		}
+	}
+
+	async save(hash = this.hash) {
+		const { text } = this.editing;
+		const { body, response } = await saveFile(this.options.sessionId, this.current, text, hash);
+
+		if (response?.status === 409) {
+			this.conflict = { text: body.text, hash: body.hash };
+			this.renderViewer();
+
+			return;
+		}
+
+		if (!response?.ok) {
+			new Notify({ type: 'error', content: typeof body === 'string' ? body : 'Could not save it.' });
+
+			return;
+		}
+
+		this.hash = body.hash;
+		this.text = text;
+		this.lines = text.replace(/\n$/, '').split('\n');
+		this.editing = null;
+		this.conflict = null;
+		new Notify({ type: 'success', content: 'Saved', timeout: 1500 });
+		await this.refreshChanges();
+		this.renderList();
+		this.renderViewer();
+	}
+
+	// Someone (Claude, most likely) saved the file after the edit began; neither version is dropped without a choice
+	conflictNotice() {
+		const notice = element('div', 'conflict', 'This file changed since you opened it.');
+
+		notice.append(
+			button('Save mine anyway', () => this.save(this.conflict.hash)),
+			button('Load theirs', async () => {
+				const discard = await confirmDialog({
+					header: 'Drop your edit and load theirs?',
+					body: `Your changes to ${this.current} will be lost.`,
+					cancelLabel: 'Keep mine',
+					confirmLabel: 'Load theirs',
+				});
+
+				if (!discard) return;
+
+				this.text = this.conflict.text;
+				this.hash = this.conflict.hash;
+				this.lines = this.text.replace(/\n$/, '').split('\n');
+				this.editing = null;
+				this.conflict = null;
+				this.renderViewer();
+			}),
+		);
+
+		return notice;
 	}
 
 	media() {

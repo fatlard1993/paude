@@ -165,8 +165,9 @@ const Panel = styled(
 			border-bottom: 1px solid ${colors.alpha(colors.white, 0.08)};
 		}
 
+		/* Room for the path before the buttons beside it; past that, they wrap below */
 		.viewer .path {
-			flex: 1;
+			flex: 1 1 10em;
 			min-width: 0;
 			overflow: hidden;
 			text-overflow: ellipsis;
@@ -218,6 +219,158 @@ const Panel = styled(
 		.source code.plain {
 			font-family: ui-monospace, monospace;
 			color: ${colors.white};
+		}
+
+		.status {
+			margin-left: auto;
+			padding: 0 4px;
+			font-weight: bold;
+			font-size: 0.85em;
+		}
+
+		.head .status {
+			margin-left: 0;
+		}
+
+		.status.modified, .status.renamed {
+			color: ${colors.light(colors.yellow)};
+		}
+
+		.status.added, .status.untracked {
+			color: ${colors.light(colors.green)};
+		}
+
+		.status.deleted {
+			color: ${colors.light(colors.red)};
+		}
+
+		.status.renamed {
+			color: ${colors.lighter(colors.blue)};
+		}
+
+		.bar button .count:not(:empty) {
+			margin-left: 6px;
+			padding: 0 6px;
+			border-radius: 8px;
+			font-size: 0.8em;
+			background: ${colors.alpha(colors.white, 0.15)};
+		}
+
+		.diff {
+			min-width: fit-content;
+			font-size: 13px;
+			line-height: ${LINE_HEIGHT}px;
+			padding-bottom: 8px;
+		}
+
+		.hunk-head {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			padding: 4px 8px;
+			margin-top: 6px;
+			background: ${colors.alpha(colors.blue, 0.12)};
+			color: ${colors.light(colors.gray)};
+			font-family: ui-monospace, monospace;
+			position: sticky;
+			left: 0;
+		}
+
+		.hunk-head .where {
+			white-space: pre;
+		}
+
+		.diff .line {
+			display: flex;
+			white-space: pre;
+		}
+
+		.diff .line.added {
+			background: ${colors.alpha(colors.green, 0.16)};
+		}
+
+		.diff .line.removed {
+			background: ${colors.alpha(colors.red, 0.16)};
+		}
+
+		.diff .line.picked {
+			box-shadow: inset 3px 0 ${colors.light(colors.yellow)};
+			background-image: linear-gradient(${colors.alpha(colors.yellow, 0.16)}, ${colors.alpha(colors.yellow, 0.16)});
+		}
+
+		.diff .numbers {
+			display: flex;
+			flex-shrink: 0;
+			color: ${colors.gray};
+			font-family: ui-monospace, monospace;
+			cursor: pointer;
+			user-select: none;
+		}
+
+		.diff .numbers span {
+			width: 4ch;
+			padding-right: 6px;
+			text-align: right;
+		}
+
+		.diff .numbers:hover {
+			color: ${colors.white};
+		}
+
+		.diff .mark {
+			width: 2ch;
+			flex-shrink: 0;
+			text-align: center;
+			font-family: ui-monospace, monospace;
+			color: ${colors.light(colors.gray)};
+		}
+
+		.diff code {
+			margin: 0;
+			padding: 0 8px 0 0;
+			background: transparent;
+			white-space: pre;
+			tab-size: 4;
+		}
+
+		.diff code.plain {
+			font-family: ui-monospace, monospace;
+			color: ${colors.white};
+		}
+
+		textarea.editor {
+			box-sizing: border-box;
+			width: 100%;
+			height: 100%;
+			margin: 0;
+			padding: 4px 8px;
+			border: none;
+			border-radius: 0;
+			resize: none;
+			outline: none;
+			background: ${colors.alpha(colors.black, 0.35)};
+			font-size: 13px;
+			line-height: ${LINE_HEIGHT}px;
+			white-space: pre;
+			tab-size: 4;
+		}
+
+		textarea.editor.plain {
+			font-family: ui-monospace, monospace;
+			color: ${colors.white};
+		}
+
+		.head .editing {
+			color: ${colors.light(colors.yellow)};
+		}
+
+		.conflict {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 8px;
+			padding: 6px 8px;
+			background: ${colors.alpha(colors.orange, 0.2)};
 		}
 
 		.band {

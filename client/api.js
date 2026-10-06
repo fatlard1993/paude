@@ -39,6 +39,21 @@ export const revokeInvite = async id => await DELETE('/api/invites/:id', { urlPa
 export const listFiles = async sessionId =>
 	await GET('/api/sessions/:id/files', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 
+export const getChanges = async sessionId =>
+	await GET('/api/sessions/:id/changes', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
+
+export const getDiff = async (sessionId, path) =>
+	await GET('/api/sessions/:id/diff', {
+		urlParameters: { id: sessionId },
+		searchParameters: { path },
+		responseType: 'text',
+		invalidateAfter: 0,
+	});
+
+// `hash` is the one the file was read with; a 409 answers with the newer text and its hash
+export const saveFile = async (sessionId, path, text, hash) =>
+	await PUT('/api/sessions/:id/file', { urlParameters: { id: sessionId }, body: { path, text, hash } });
+
 export const readFile = async (sessionId, path) =>
 	await GET('/api/sessions/:id/file', {
 		urlParameters: { id: sessionId },
