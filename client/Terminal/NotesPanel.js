@@ -48,11 +48,11 @@ const Panel = styled(
 		.tabs, .who {
 			margin: 8px 8px 0;
 			border-radius: 6px;
-			background: rgba(18, 18, 21, 0.82);
+			background: rgba(18, 18, 21, 0.5);
 		}
 
 		.message, .comment, .draft, .composer {
-			background: rgba(18, 18, 21, 0.85);
+			background: rgba(18, 18, 21, 0.5);
 		}
 
 		.message {

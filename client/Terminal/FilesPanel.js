@@ -13,7 +13,7 @@ const LINE_HEIGHT = 20;
 const OPTIONS_KEY = 'paude.searchOptions';
 const MARKDOWN_KEY = 'paude.markdownView';
 // What holds text sits on something solid; the panel around it stays glass
-const LAYER = 'rgba(16, 16, 19, 0.86)';
+const LAYER = 'rgba(16, 16, 19, 0.5)';
 
 const Panel = styled(
 	Component,
@@ -123,15 +123,10 @@ const Panel = styled(
 			text-overflow: ellipsis;
 		}
 
-		.list .entry i {
+		.list .entry i, .head i {
 			width: 1.1em;
 			flex-shrink: 0;
 			text-align: center;
-			color: ${colors.light(colors.gray)};
-		}
-
-		.list .entry.folder i {
-			color: ${colors.light(colors.blue)};
 		}
 
 		.list .entry:hover, .list .entry.current {
@@ -420,17 +415,83 @@ const kindOf = path => {
 	return 'text';
 };
 
+// Each language in its own color, the way editors show them, so a folder reads at a glance
+const ICON_COLORS = {
+	js: '#f1e05a',
+	mjs: '#f1e05a',
+	cjs: '#f1e05a',
+	jsx: '#61dafb',
+	tsx: '#61dafb',
+	ts: '#3178c6',
+	py: '#4b8bbe',
+	md: '#7fb2e8',
+	mdx: '#7fb2e8',
+	css: '#5a9bd5',
+	scss: '#cd6799',
+	html: '#e44d26',
+	htm: '#e44d26',
+	rs: '#dea584',
+	go: '#00add8',
+	java: '#e76f00',
+	php: '#8892bf',
+	vue: '#41b883',
+	rb: '#cc342d',
+	kt: '#a97bff',
+	swift: '#f05138',
+	c: '#a8b9cc',
+	h: '#a8b9cc',
+	cpp: '#f34b7d',
+	json: '#cbcb41',
+	xml: '#e37933',
+	sh: '#89e051',
+	zsh: '#89e051',
+	bash: '#89e051',
+	sql: '#e38c00',
+	db: '#e38c00',
+	sqlite: '#e38c00',
+	csv: '#89e051',
+	pdf: '#f40f02',
+	zip: '#d4a72c',
+	gz: '#d4a72c',
+	tar: '#d4a72c',
+	tgz: '#d4a72c',
+	dockerfile: '#2496ed',
+	gitignore: '#f05033',
+	gitattributes: '#f05033',
+	yml: '#cb171e',
+	yaml: '#cb171e',
+	toml: '#9c4221',
+	doc: '#2b579a',
+	docx: '#2b579a',
+	xls: '#217346',
+	xlsx: '#217346',
+	ppt: '#d24726',
+	pptx: '#d24726',
+};
+const KIND_COLORS = { image: '#a074c4', video: '#e06c75', audio: '#56b6c2' };
+const FOLDER_COLOR = '#dcb67a';
+const PLAIN_COLOR = '#9da5b4';
+
+const icon = (className, color) => {
+	const node = element('i', className);
+
+	node.style.color = color;
+
+	return node;
+};
+
 const fileIcon = path => {
 	const extension = extensionOf(path);
 	const kind = kindOf(path);
+	const color = ICON_COLORS[extension] ?? KIND_COLORS[kind] ?? PLAIN_COLOR;
 
-	if (path.split('/').at(-1) === 'package.json') return element('i', 'fa-brands fa-npm');
-	if (BRAND_ICONS[extension]) return element('i', `fa-brands fa-${BRAND_ICONS[extension]}`);
-	if (kind === 'image') return element('i', 'fa-solid fa-file-image');
-	if (kind === 'video') return element('i', 'fa-solid fa-file-video');
-	if (kind === 'audio') return element('i', 'fa-solid fa-file-audio');
+	if (path.split('/').at(-1) === 'package.json') return icon('fa-brands fa-npm', '#cb3837');
+	if (BRAND_ICONS[extension]) return icon(`fa-brands fa-${BRAND_ICONS[extension]}`, color);
+	if (kind === 'image') return icon('fa-solid fa-file-image', color);
+	if (kind === 'video') return icon('fa-solid fa-file-video', color);
+	if (kind === 'audio') return icon('fa-solid fa-file-audio', color);
 
-	return element('i', `fa-solid fa-${SOLID_ICONS[extension] ?? 'file'}`);
+	return icon(`fa-solid fa-${SOLID_ICONS[extension] ?? 'file'}`, color);
 };
 
 // The syntax font's palettes cover JavaScript-like code, JSON, HTML and CSS; anything else reads better plain
@@ -778,7 +839,10 @@ export default class FilesPanel extends Panel {
 			const open = this.expanded.has(key);
 			const entry = indent(element('div', 'entry folder'));
 
-			entry.append(element('i', `fa-solid fa-${open ? 'folder-open' : 'folder'}`), element('span', 'label', name));
+			entry.append(
+				icon(`fa-solid fa-${open ? 'folder-open' : 'folder'}`, FOLDER_COLOR),
+				element('span', 'label', name),
+			);
 			entry.addEventListener('click', () => {
 				if (open) this.expanded.delete(key);
 				else this.expanded.add(key);

@@ -44,9 +44,9 @@ const Body = styled.Component`
 		box-sizing: border-box;
 		border-radius: 10px;
 		border: 1px solid rgba(255, 255, 255, 0.12);
-		background: rgba(24, 24, 27, 0.12);
-		backdrop-filter: blur(14px) saturate(150%);
-		-webkit-backdrop-filter: blur(14px) saturate(150%);
+		background: rgba(24, 24, 27, 0.04);
+		backdrop-filter: blur(18px) saturate(160%);
+		-webkit-backdrop-filter: blur(18px) saturate(160%);
 		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
 		overflow: hidden;
 		opacity: 0;
