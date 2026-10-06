@@ -8,7 +8,7 @@ const MARKUP = /^<(command-|local-command-|bash-|system-reminder|task-notificati
 const INTERRUPTED = /^\[Request interrupted/;
 
 // What a person typed, as opposed to tool results (also user messages) and Claude Code's own markup
-const promptText = message => {
+export const promptText = message => {
 	if (message.type !== 'user') return null;
 
 	const { content } = message.message ?? {};

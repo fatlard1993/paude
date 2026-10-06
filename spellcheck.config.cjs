@@ -2,6 +2,9 @@ module.exports = {
 	skipWords: [
 		'umask',
 		'worktree',
+		'mkdtemp',
+		'tmpdir',
+		'jsonl',
 		'emacs',
 		'esac',
 		'hx',

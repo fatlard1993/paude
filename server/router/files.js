@@ -1,5 +1,6 @@
 import { credentialOf, identityOf } from '../auth';
-import { diffOf, listChanges } from '../changes';
+import { listChanges } from '../changes';
+import { DiffError, diffSet, turnsWithChanges } from '../diffs';
 import { SearchError, listFiles, rawProjectFile, readProjectFile, searchProject, writeProjectFile } from '../files';
 import { searchOptionsFrom } from '../../shared/searchQuery';
 import { may } from '../permissions';
@@ -74,7 +75,8 @@ const filesRoutes = async request => {
 
 	const match =
 		requestMatch('GET', '/api/sessions/:id/changes', request) ||
-		requestMatch('GET', '/api/sessions/:id/diff', request) ||
+		requestMatch('GET', '/api/sessions/:id/diffs', request) ||
+		requestMatch('GET', '/api/sessions/:id/turn-changes', request) ||
 		requestMatch('GET', '/api/sessions/:id/files', request) ||
 		requestMatch('GET', '/api/sessions/:id/file', request) ||
 		requestMatch('GET', '/api/sessions/:id/search', request) ||
@@ -92,12 +94,14 @@ const filesRoutes = async request => {
 
 	if (pathname.endsWith('/files')) return Response.json(await listFiles(cwd));
 	if (pathname.endsWith('/changes')) return Response.json(await listChanges(cwd));
-	if (pathname.endsWith('/diff')) {
-		const diff = await diffOf(cwd, match.path);
-
-		return diff === null
-			? new Response('That file has no changes', { status: 404 })
-			: new Response(diff, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+	if (pathname.endsWith('/turn-changes')) return Response.json(await turnsWithChanges(match.id, cwd));
+	if (pathname.endsWith('/diffs')) {
+		try {
+			return Response.json(await diffSet(match.id, cwd, match));
+		} catch (error) {
+			if (error instanceof DiffError) return new Response(error.message, { status: 404 });
+			throw error;
+		}
 	}
 	if (pathname.endsWith('/search')) return search(cwd, match);
 	if (pathname.endsWith('/raw')) return raw(cwd, match.path, request.headers.get('user-agent'));

@@ -27,6 +27,37 @@ export const parseDiff = text => {
 	return { binary, hunks };
 };
 
+// A hunk's lines as side-by-side rows: context on both sides, a run of removed lines beside the added run that
+// replaces it, a note across both. Each side keeps its line's index in the hunk, so picking lines means the same
+// thing in either layout: [{ left: { line, index } | null, right: { line, index } | null, note }]
+export const sideBySide = lines => {
+	const rows = [];
+	let removed = [];
+	let added = [];
+
+	const flush = () => {
+		for (let index = 0; index < Math.max(removed.length, added.length); index++)
+			rows.push({ left: removed[index] ?? null, right: added[index] ?? null });
+		removed = [];
+		added = [];
+	};
+
+	lines.forEach((line, index) => {
+		if (line.kind === 'removed') {
+			if (added.length) flush();
+			removed.push({ line, index });
+		} else if (line.kind === 'added') added.push({ line, index });
+		else {
+			flush();
+			if (line.kind === 'note') rows.push({ left: null, right: null, note: { line, index } });
+			else rows.push({ left: { line, index }, right: { line, index } });
+		}
+	});
+	flush();
+
+	return rows;
+};
+
 const MARK = { added: '+', removed: '-', context: ' ' };
 
 // Lines of a diff back as diff text, the way an attachment quotes them

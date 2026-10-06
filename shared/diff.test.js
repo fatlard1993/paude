@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import { attachDiffText } from './attachText';
-import { diffLines, parseDiff } from './diff';
+import { diffLines, parseDiff, sideBySide } from './diff';
 
 const DIFF = `diff --git a/src/math.js b/src/math.js
 index 1111111..2222222 100644
@@ -47,4 +47,16 @@ test('binary files have no hunks, and attached lines come back as a diff', () =>
 	expect(attachDiffText('src/math.js', diffLines(parseDiff(DIFF).hunks[1].lines))).toBe(
 		'src/math.js, changed:\n```diff\n-old\n+new\n```\n',
 	);
+});
+
+test('side by side, a removed run sits beside the added run that replaced it', () => {
+	const shape = rows =>
+		rows.map(({ left, right, note }) =>
+			note
+				? `note:${note.index}`
+				: `${left ? `${left.line.kind[0]}${left.index}` : '-'} ${right ? `${right.line.kind[0]}${right.index}` : '-'}`,
+		);
+
+	expect(shape(sideBySide(parseDiff(DIFF).hunks[0].lines))).toEqual(['c0 c0', 'r1 a2', '- a3', 'c4 c4', 'r5 -']);
+	expect(shape(sideBySide(parseDiff(DIFF).hunks[1].lines))).toEqual(['r0 a1', 'note:2']);
 });

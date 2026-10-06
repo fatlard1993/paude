@@ -3,6 +3,7 @@ import { getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import { projectOf } from '../projects';
 import { heldSessions, isHeld } from './holder';
 import PtySession from './PtySession';
+import { forgetProposals } from './proposals';
 
 const running = new Map();
 let claudePath = 'claude';
@@ -25,7 +26,14 @@ export const stopSession = async id => {
 };
 
 const launch = options => {
-	const session = new PtySession({ ...options, claudePath, onExit: ({ id }) => running.delete(id) });
+	const session = new PtySession({
+		...options,
+		claudePath,
+		onExit: ({ id }) => {
+			running.delete(id);
+			forgetProposals(id);
+		},
+	});
 
 	running.set(session.id, session);
 

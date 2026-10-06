@@ -1,6 +1,8 @@
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
 
+import { PROPOSING_TOOLS } from './sessions/proposals';
+
 // Claude Code tells paude what it's doing through hooks added to each session it starts. They post to this server
 // with a secret, so nothing else can feed it a status.
 export let hookSecret = Buffer.from(crypto.getRandomValues(new Uint8Array(24))).toString('base64url');
@@ -43,5 +45,11 @@ export const hookSettings = () => {
 	const command = `curl -fsS --max-time 2 -X POST -H 'content-type: application/json' --data-binary @- "${hookUrl}/$PAUDE_SESSION" >/dev/null 2>&1 || true`;
 	const hook = [{ hooks: [{ type: 'command', command }] }];
 
-	return JSON.stringify({ hooks: Object.fromEntries(Object.keys(HOOK_EVENTS).map(event => [event, hook])) });
+	return JSON.stringify({
+		hooks: {
+			...Object.fromEntries(Object.keys(HOOK_EVENTS).map(event => [event, hook])),
+			// Only the edits, before any permission prompt, so the page can show what Claude proposes
+			PreToolUse: [{ matcher: PROPOSING_TOOLS.join('|'), hooks: hook[0].hooks }],
+		},
+	});
 };

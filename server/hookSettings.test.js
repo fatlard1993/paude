@@ -26,7 +26,9 @@ test('the settings post every event to a per-session address, and never fail the
 
 	const { hooks } = JSON.parse(hookSettings());
 
-	expect(Object.keys(hooks).sort()).toEqual(Object.keys(HOOK_EVENTS).sort());
+	expect(Object.keys(hooks).sort()).toEqual([...Object.keys(HOOK_EVENTS), 'PreToolUse'].sort());
+	// Before a tool runs, only the edits report, so the page can show what Claude proposes
+	expect(hooks.PreToolUse[0].matcher).toBe('Edit|MultiEdit|Write');
 
 	const { command } = hooks.Stop[0].hooks[0];
 
