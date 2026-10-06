@@ -7,6 +7,9 @@ export const setIdentity = identity => {
 
 export const identity = () => current;
 
+// The same key the server keeps reactions and authorship under
+export const identityKey = () => (current?.owner ? 'owner' : current?.inviteId && `invite:${current.inviteId}`);
+
 export const canType = () => Boolean(current?.owner || current?.role === 'drive');
 
 export const canBrowse = () => canNote();

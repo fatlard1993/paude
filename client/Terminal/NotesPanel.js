@@ -3,7 +3,7 @@ import { Component, Notify, styled } from '@vanilla-bean/components';
 import { DESKTOP_KEY, NAME_KEY, desktopNotificationsOn, remember, savedName } from '../storage';
 
 import { applyNote } from '../../shared/protocol';
-import { canNote, identity } from '../identity';
+import { canNote, identity, identityKey } from '../identity';
 import relativeTime from '../../shared/relativeTime';
 import renderPeople from './People';
 
@@ -530,11 +530,11 @@ export default class NotesPanel extends Panel {
 		for (const [emoji, authors] of Object.entries(item.reactions ?? {})) {
 			const chip = element(
 				'button',
-				`chip${authors.includes(this.myName) ? ' mine' : ''}`,
+				`chip${authors.some(entry => (typeof entry === 'string' ? entry === this.myName : entry.id === identityKey())) ? ' mine' : ''}`,
 				`${emoji} ${authors.length}`,
 			);
 
-			chip.title = authors.join(', ');
+			chip.title = authors.map(entry => entry.name ?? entry).join(', ');
 			chip.disabled = !canNote();
 			chip.addEventListener('click', () => react(emoji));
 			row.append(chip);

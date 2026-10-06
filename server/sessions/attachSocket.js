@@ -94,7 +94,12 @@ const handlers = {
 
 		if (!session || !allowed(socket, 'note')) return;
 
-		const update = await react(session.id, client.name, { chatId, commentId, replyId, emoji });
+		const update = await react(
+			session.id,
+			client.name,
+			{ chatId, commentId, replyId, emoji },
+			identityKey(socket.data.identity),
+		);
 
 		if (update) session.broadcast(update);
 	},

@@ -94,25 +94,25 @@ test('reactions toggle per person, on comments, replies and chat, and only take 
 	const { comment } = await addComment('reacting', 'ann', { quote: 'q', text: 'look' });
 	const { comment: replied } = await addReply('reacting', 'bob', { commentId: comment.id, text: 'ok' });
 	const replyId = replied.replies[0].id;
+	const bob = { id: 'invite:b', name: 'bob' };
+	const ann = { id: 'owner', name: 'ann' };
+	const as = (who, target) => react('reacting', who.name, target, who.id);
 
-	expect((await react('reacting', 'bob', { chatId: message.id, emoji: '👍' })).message.reactions).toEqual({
-		'👍': ['bob'],
-	});
-	expect((await react('reacting', 'ann', { chatId: message.id, emoji: '👍' })).message.reactions).toEqual({
-		'👍': ['bob', 'ann'],
-	});
-	expect((await react('reacting', 'bob', { chatId: message.id, emoji: '👍' })).message.reactions).toEqual({
-		'👍': ['ann'],
-	});
+	expect((await as(bob, { chatId: message.id, emoji: '👍' })).message.reactions).toEqual({ '👍': [bob] });
+	expect((await as(ann, { chatId: message.id, emoji: '👍' })).message.reactions).toEqual({ '👍': [bob, ann] });
+	expect((await as(bob, { chatId: message.id, emoji: '👍' })).message.reactions).toEqual({ '👍': [ann] });
 
-	expect((await react('reacting', 'bob', { commentId: comment.id, emoji: '🎉' })).comment.reactions).toEqual({
-		'🎉': ['bob'],
+	// Someone else under the same name is someone else
+	const otherBob = { id: 'invite:c', name: 'bob' };
+
+	expect((await as(otherBob, { chatId: message.id, emoji: '👍' })).message.reactions['👍']).toEqual([ann, otherBob]);
+
+	expect((await as(bob, { commentId: comment.id, emoji: '🎉' })).comment.reactions).toEqual({ '🎉': [bob] });
+	expect((await as(ann, { commentId: comment.id, replyId, emoji: '❤️' })).comment.replies[0].reactions).toEqual({
+		'❤️': [ann],
 	});
-	expect(
-		(await react('reacting', 'ann', { commentId: comment.id, replyId, emoji: '❤️' })).comment.replies[0].reactions,
-	).toEqual({ '❤️': ['ann'] });
 
 	for (const emoji of ['👍🏽', '🧑‍💻', '❤️']) expect(validEmoji(emoji)).toBe(true);
 	for (const emoji of ['a', '<b>', '👍x', '', '👍'.repeat(9)]) expect(validEmoji(emoji)).toBe(false);
-	expect(await react('reacting', 'bob', { chatId: message.id, emoji: 'nope' })).toBeNull();
+	expect(await as(bob, { chatId: message.id, emoji: 'nope' })).toBeNull();
 });

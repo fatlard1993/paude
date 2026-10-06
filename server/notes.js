@@ -109,13 +109,17 @@ const EMOJI = /^\p{Extended_Pictographic}(?:\uFE0F|\p{Emoji_Modifier}|\u200D\p{E
 const MAX_EMOJI_LENGTH = 16;
 const MAX_REACTIONS = 20;
 
-const toggleReaction = (item, author, emoji) => {
+// Each reaction is { id, name }: who reacted, and how to show them. Reactions saved as bare names still count.
+const sameReactor = (entry, reactor) => (typeof entry === 'string' ? entry === reactor.name : entry.id === reactor.id);
+
+const toggleReaction = (item, reactor, emoji) => {
 	const reactions = (item.reactions ??= {});
 	const authors = reactions[emoji] ?? [];
+	const already = authors.some(entry => sameReactor(entry, reactor));
 
-	if (!authors.includes(author) && !reactions[emoji] && Object.keys(reactions).length >= MAX_REACTIONS) return false;
+	if (!already && !reactions[emoji] && Object.keys(reactions).length >= MAX_REACTIONS) return false;
 
-	reactions[emoji] = authors.includes(author) ? authors.filter(name => name !== author) : [...authors, author];
+	reactions[emoji] = already ? authors.filter(entry => !sameReactor(entry, reactor)) : [...authors, reactor];
 	if (!reactions[emoji].length) delete reactions[emoji];
 
 	return true;
@@ -123,15 +127,16 @@ const toggleReaction = (item, author, emoji) => {
 
 export const validEmoji = emoji => typeof emoji === 'string' && emoji.length <= MAX_EMOJI_LENGTH && EMOJI.test(emoji);
 
-export const react = async (sessionId, author, { chatId, commentId, replyId, emoji }) => {
+export const react = async (sessionId, author, { chatId, commentId, replyId, emoji }, reactorId = null) => {
 	const name = clean(author, MAX_AUTHOR) || 'someone';
+	const reactor = { id: reactorId ?? `name:${name}`, name };
 
 	if (!validEmoji(emoji)) return null;
 
 	if (chatId) {
 		const message = (await getNotes(sessionId)).chat.find(({ id }) => id === chatId);
 
-		if (!message || !toggleReaction(message, name, emoji)) return null;
+		if (!message || !toggleReaction(message, reactor, emoji)) return null;
 		await save(sessionId);
 
 		return { type: 'chatUpdate', message };
@@ -140,7 +145,7 @@ export const react = async (sessionId, author, { chatId, commentId, replyId, emo
 	return updateComment(sessionId, commentId, comment => {
 		const target = replyId ? comment.replies.find(({ id }) => id === replyId) : comment;
 
-		return Boolean(target) && toggleReaction(target, name, emoji);
+		return Boolean(target) && toggleReaction(target, reactor, emoji);
 	});
 };
 
