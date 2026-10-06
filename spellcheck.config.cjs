@@ -1,5 +1,8 @@
 module.exports = {
 	skipWords: [
+		'hljs',
+		'subst',
+		'prefs',
 		'magick',
 		'ghostty',
 		'fg',

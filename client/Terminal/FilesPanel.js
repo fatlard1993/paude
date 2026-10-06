@@ -3,6 +3,7 @@ import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 
 import { pathFilter } from '../../shared/globs';
+import searchPattern from '../../shared/searchPattern';
 import { listFiles, rawFileUrl, readFile, searchFiles } from '../api';
 import { canType } from '../identity';
 import { recall, remember } from './NotesPanel';
@@ -556,17 +557,6 @@ const languageOf = path => {
 	const extension = extensionOf(path);
 
 	return LANGUAGES[extension] ?? (CODE_LIKE.has(extension) ? 'javascript' : null);
-};
-
-// The query as the search options read it, the way the server searches; null when it isn't a valid expression
-const searchPattern = (query, { caseSensitive, wholeWord, regex }, flags = '') => {
-	const source = regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-	try {
-		return new RegExp(wholeWord ? `\\b(?:${source})\\b` : source, `${flags}${caseSensitive ? '' : 'i'}`);
-	} catch {
-		return null;
-	}
 };
 
 // Every query character in order, closer together and nearer the file name scoring better

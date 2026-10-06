@@ -34,3 +34,13 @@ test('a path passes when included (or nothing is) and not excluded', () => {
 	expect(passes('bun.lock')).toBe(false);
 	expect(pathFilter()('anything')).toBe(true);
 });
+
+test('search options shape the pattern the way the server reads them', async () => {
+	const { default: searchPattern } = await import('./searchPattern');
+
+	expect(searchPattern('a.b').test('axb')).toBe(false);
+	expect(searchPattern('a.b', { regex: true }).test('axb')).toBe(true);
+	expect(searchPattern('Add', { caseSensitive: true }).test('add')).toBe(false);
+	expect(searchPattern('add', { wholeWord: true }).test('adds')).toBe(false);
+	expect(searchPattern('(', { regex: true })).toBeNull();
+});

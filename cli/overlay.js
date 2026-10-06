@@ -153,14 +153,15 @@ const mainView = (state, width, room) => {
 export const overlayBox = (state, cols, rows) => {
 	// Reading a file wants most of the screen; Claude still shows around its edges
 	const widest = state.files ? cols - 4 : MAX_BOX_WIDTH;
-	const width = cols < 50 ? cols : Math.min(cols - 2, widest);
+	const zoomed = Boolean(state.files?.zoom);
+	const width = cols < 50 || zoomed ? cols : Math.min(cols - 2, widest);
 	const inner = width - 4;
 	const draft = state.draft
 		? wrap(`${DRAFT_PROMPTS[state.draft.kind](state.draft)} ${printable(state.draft.text)}█`, inner)
 		: [];
 	const keys = [...draft, ...packKeys(keysFor(state, state.role !== 'watch'), inner)];
 	// Borders and the rule above the keys take three rows; one row of Claude stays visible above and below
-	const room = Math.max(rows - 2 - 3 - keys.length, 1);
+	const room = Math.max(rows - (zoomed ? 0 : 2) - 3 - keys.length, 1);
 	const content = [
 		...mainView(state, inner, room),
 		...(state.hint ? ['', ...wrap(state.hint, inner).map(orange)] : []),
@@ -187,9 +188,16 @@ export const overlayBox = (state, cols, rows) => {
 
 	return {
 		x: cols - width,
-		y: rows > 12 ? 1 : 0,
+		y: rows > 12 && !zoomed ? 1 : 0,
 		width,
-		lines: [rule('╭', '╮', title), ...shown.map(row), rule('├', '┤'), ...keys.map(row), rule('╰', '╯')],
+		lines: [
+			rule('╭', '╮', title),
+			// Full screen fills the terminal however little there is to show
+			...[...shown, ...Array.from({ length: zoomed ? room - shown.length : 0 }, () => '')].map(row),
+			rule('├', '┤'),
+			...keys.map(row),
+			rule('╰', '╯'),
+		],
 	};
 };
 

@@ -4,9 +4,10 @@ import { CLOSED, NOTE_TYPES, applyNote } from '../shared/protocol';
 import notifier from './notify';
 import outputFilter from './outputFilter';
 import { composeFrame, createMirror } from './compositor';
-import { createBrowser } from './fileBrowser';
+import { createBrowser, openFile } from './fileBrowser';
 import { IMAGE_EXTENSIONS, place, pngSize, removeImage, showsImages, toPng, transmit } from './graphics';
 import { overlayKey, overlayBox } from './overlay';
+import { loadPrefs, savePrefs } from './prefs';
 import readSelection from './selection';
 import {
 	CLEAR,
@@ -130,7 +131,9 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 
 				const paths = await response.json();
 
-				state.files = state.lastFiles ? Object.assign(state.lastFiles, { paths }) : createBrowser(paths);
+				state.files = state.lastFiles
+					? Object.assign(state.lastFiles, { paths })
+					: createBrowser(paths, await loadPrefs());
 				state.lastFiles = state.files;
 			} catch (error) {
 				state.hint = error.message;
@@ -150,16 +153,38 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			redraw();
 		};
 
-		const readFile = async path => {
+		const searchFiles = async () => {
+			const { search, prefs } = state.files;
+			const query = search.query.trim();
+			const parameters = new URLSearchParams({
+				q: query,
+				case: prefs.search.caseSensitive ? '1' : '',
+				word: prefs.search.wholeWord ? '1' : '',
+				regex: prefs.search.regex ? '1' : '',
+				include: prefs.search.include,
+				exclude: prefs.search.exclude,
+			});
+
+			Object.assign(search, { running: true, error: null });
+			redraw();
+
+			const response = await api(`search?${parameters}`).catch(() => null);
+			const body = response ? await response.text() : 'Could not reach the server.';
+
+			Object.assign(search, { running: false, typing: false, cursor: 0, lastQuery: query });
+			if (response?.ok) search.results = JSON.parse(body);
+			else Object.assign(search, { results: null, typing: true, error: body || 'Search failed.' });
+			redraw();
+		};
+
+		const readFile = async (path, line) => {
 			if (showsImages() && IMAGE_EXTENSIONS.has(path.split('.').at(-1).toLowerCase())) return readImage(path);
 
 			const response = await api(`file?path=${encodeURIComponent(path)}`).catch(() => null);
 			const text = response ? await response.text() : 'Could not reach the server.';
 
 			if (!state.files) return;
-			state.files.open = response?.ok
-				? { path, lines: text.replace(/\n$/, '').split('\n'), cursor: 0, anchor: null }
-				: { path, error: text || 'Could not open it.' };
+			state.files.open = response?.ok ? openFile(path, text, line) : { path, error: text || 'Could not open it.' };
 			redraw();
 		};
 
@@ -221,7 +246,14 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			if (action.type === 'ignore') return;
 			if (NOTE_ACTIONS.includes(action.type)) send(action);
 			if (action.type === 'files') return openFiles();
-			if (action.type === 'readFile') return readFile(action.path);
+			if (action.type === 'readFile') return readFile(action.path, action.line);
+			if (action.type === 'search') return searchFiles();
+			if (action.type === 'savePrefs') savePrefs(state.files.prefs);
+			// OSC 52 puts text on this person's own clipboard, through their terminal
+			if (action.type === 'copy') {
+				write(`\x1b]52;c;${Buffer.from(action.text).toString('base64')}\x07`);
+				state.hint = `Copied ${action.what}`;
+			}
 			// Pasted, so a multi-line attachment is one paste in Claude's prompt and nothing is sent until Enter
 			if (action.type === 'attach') {
 				send({ type: 'input', data: `\x1b[200~${action.text}\x1b[201~` });
