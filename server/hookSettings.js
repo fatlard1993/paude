@@ -1,0 +1,29 @@
+// Claude Code tells paude what it's doing through hooks added to each session it starts. They post to this server
+// with a secret that lives only as long as the server does, so nothing else can feed it a status.
+export const hookSecret = Buffer.from(crypto.getRandomValues(new Uint8Array(24))).toString('base64url');
+let hookUrl = null;
+
+export const setHookAddress = ({ host, port }) => {
+	const reachable = ['0.0.0.0', '::', ''].includes(host) ? '127.0.0.1' : host;
+
+	hookUrl = `http://${reachable.includes(':') ? `[${reachable}]` : reachable}:${port}/api/hooks/${hookSecret}`;
+};
+
+// What each hook means for a session: a question waiting on someone, work resuming, or a turn finished
+export const HOOK_EVENTS = {
+	Notification: payload =>
+		['permission_prompt', 'elicitation_dialog'].includes(payload.notification_type) ? 'waiting' : null,
+	UserPromptSubmit: () => 'working',
+	PostToolUse: () => 'working',
+	Stop: () => 'ready',
+};
+
+// The --settings JSON that adds paude's hooks alongside the person's own (Claude Code runs both)
+export const hookSettings = () => {
+	if (!hookUrl) return null;
+
+	const command = `curl -fsS --max-time 2 -X POST -H 'content-type: application/json' --data-binary @- '${hookUrl}' >/dev/null 2>&1 || true`;
+	const hook = [{ hooks: [{ type: 'command', command }] }];
+
+	return JSON.stringify({ hooks: Object.fromEntries(Object.keys(HOOK_EVENTS).map(event => [event, hook])) });
+};

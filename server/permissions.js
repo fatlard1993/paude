@@ -29,6 +29,8 @@ export const guestMayRequest = (identity, method, pathname) => {
 	return (
 		(method === 'GET' &&
 			(pathname === '/api/auth' || pathname === own || OWN_SESSION_ROUTES.some(route => pathname === own + route))) ||
+		(method === 'GET' && pathname === '/api/watching') ||
+		(method === 'PUT' && pathname === `${own}/watch`) ||
 		(method === 'POST' && pathname === '/api/logout') ||
 		(method === 'DELETE' && pathname === '/api/tokens/current')
 	);

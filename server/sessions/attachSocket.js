@@ -1,3 +1,5 @@
+import inputKind from '../../shared/inputKind';
+import { markSeen, onActivity, recordChange, watchIfNew } from '../activity';
 import { credentialValid, identityOf } from '../auth';
 import { addChat, addComment, addReply, getNotes, setResolved } from '../notes';
 import { may, mayResolve } from '../permissions';
@@ -37,8 +39,23 @@ const shareChange = async (socket, change) => {
 
 	const update = await change(session.id, client.name);
 
-	if (update) session.broadcast(update);
+	if (!update) return;
+
+	session.broadcast(update);
+	await watchIfNew(socket.data.identity, session.id);
+	await recordChange(session.id);
 };
+
+// Whoever is attached sees each change as it happens, so it never counts as unseen for them; a status change
+// (Claude asking something, or done) goes out to them as presence
+onActivity(sessionId => {
+	const session = runningSession(sessionId);
+
+	if (!session) return;
+
+	for (const { socket } of session.clients) markSeen(socket.data.identity, sessionId);
+	session.broadcastPresence();
+});
 
 // The first message on a socket must be hello; anything sent before it is dropped
 const handlers = {
@@ -62,6 +79,7 @@ const handlers = {
 			rows,
 		});
 		socket.send(JSON.stringify({ type: 'notes', ...(await getNotes(session.id)) }));
+		await markSeen(identity, session.id);
 	},
 	rename(socket, { name }) {
 		if (socket.data.identity.owner) socket.data.session?.rename(socket.data.client, name);
@@ -75,7 +93,11 @@ const handlers = {
 			setResolved(id, { commentId, resolved, allowed: comment => mayResolve(socket.data.identity, comment) }),
 		),
 	input(socket, { data }) {
-		if (typeof data === 'string' && allowed(socket, 'type')) socket.data.session?.input(socket.data.client, data);
+		if (typeof data !== 'string' || !allowed(socket, 'type') || !socket.data.session) return;
+
+		socket.data.session.input(socket.data.client, data);
+		// Sending a prompt makes the session one of yours to watch
+		if (inputKind(data) === 'typing' && data.includes('\r')) watchIfNew(socket.data.identity, socket.data.session.id);
 	},
 	// A client that drew over the terminal (the CLI's overlay) asks for the screen back
 	refresh(socket) {
@@ -117,7 +139,10 @@ export default {
 		}
 	},
 	close(socket) {
-		socket.data.session?.detach(socket.data.client);
+		const { session, identity } = socket.data;
+
+		session?.detach(socket.data.client);
+		if (session) markSeen(identity, session.id);
 	},
 };
 

@@ -2,6 +2,8 @@ import xtermHeadless from '@xterm/headless';
 import serializeAddon from '@xterm/addon-serialize';
 
 import inputKind, { FOCUS_IN } from '../../shared/inputKind';
+import { setStatus, statusOf } from '../activity';
+import { hookSettings } from '../hookSettings';
 import { pinnedName } from '../names';
 
 const { Terminal } = xtermHeadless;
@@ -87,8 +89,14 @@ export default class PtySession {
 			this.broadcastPresence();
 		});
 
+		const settings = hookSettings();
 		// `--` keeps a prompt that starts with a dash from being read as an option
-		const args = resume ? ['--resume', id] : ['--session-id', id, ...(prompt ? ['--', prompt] : [])];
+		const args = [
+			...(settings ? ['--settings', settings] : []),
+			...(resume ? ['--resume', id] : ['--session-id', id, ...(prompt ? ['--', prompt] : [])]),
+		];
+
+		setStatus(id, 'ready');
 
 		this.process = Bun.spawn([claudePath, ...args], {
 			cwd,
@@ -255,6 +263,7 @@ export default class PtySession {
 			send(client.socket, {
 				type: 'presence',
 				busy: this.busy,
+				waiting: statusOf(this.id) === 'waiting',
 				title: pinnedName(this.id) || this.title,
 				clients,
 				you: index,

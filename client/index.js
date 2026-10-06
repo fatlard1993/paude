@@ -46,6 +46,20 @@ window.addEventListener('hashchange', ({ oldURL, newURL }) => {
 	if (sessionIn(oldURL) && sessionIn(newURL) && sessionIn(oldURL) !== sessionIn(newURL)) window.location.reload();
 });
 
+// A one-time link from the terminal (paude web) logs the owner in
+const handoffCode = window.location.hash.match(/^#\/handoff\/(.+)$/)?.[1];
+
+if (handoffCode) {
+	// An expired code just leaves the login page showing
+	await fetch('/api/handoff/redeem', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ code: handoffCode }),
+	});
+
+	window.location.replace('#/');
+}
+
 const { authenticated, passwordSet, identity } = await (await fetch('/api/auth')).json();
 
 setIdentity(identity);

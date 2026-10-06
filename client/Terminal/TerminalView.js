@@ -4,7 +4,7 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 
-import { deleteSession, forkSession, getSession, getTurns, nameSession } from '../api';
+import { deleteSession, forkSession, getSession, getTurns, nameSession, setWatching } from '../api';
 import confirmDialog, { confirmDeleteSession, nameDialog } from '../confirmDialog';
 import { canNote, canType, identity } from '../identity';
 import { Header } from '../Layout';
@@ -179,6 +179,12 @@ const TopBar = styled(
 		.state.busy {
 			background: ${colors.light(colors.orange)};
 			animation: paude-pulse 1.2s ease-in-out infinite;
+		}
+
+		.state.waiting {
+			background: hsl(38, 70%, 60%);
+			box-shadow: 0 0 0 3px hsla(38, 70%, 60%, 0.3);
+			animation: none;
 		}
 
 		.state.offline {
@@ -422,6 +428,11 @@ export default class TerminalView extends View {
 				onPress: () => this.toggleFiles(),
 			});
 		}
+		this.watchButton = ghostButton(header, {
+			icon: 'eye',
+			title: 'Watch: count what changes here while you are away',
+			onPress: () => this.toggleWatching(),
+		});
 		this.notesToggle = ghostButton(header, {
 			icon: 'comments',
 			title: 'Chat and comments',
@@ -494,6 +505,7 @@ export default class TerminalView extends View {
 		if (!response?.ok) return;
 
 		this.project = body.project;
+		this.showWatching(body.watching);
 		this.crumb.elem.textContent = `${body.project} /`;
 		this.crumb.elem.style.display = identity()?.owner ? '' : 'none';
 		if (!this.titleLabel.elem.textContent) this.titleLabel.elem.textContent = body.title || body.project;
@@ -615,7 +627,7 @@ export default class TerminalView extends View {
 	}
 
 	renderPresence(presence) {
-		const { busy, title, clients, you } = presence;
+		const { busy, waiting, title, clients, you } = presence;
 		const offline = this.connectionState === 'reconnecting' || this.connectionState === 'ended';
 
 		this.lastPresence = presence;
@@ -623,10 +635,11 @@ export default class TerminalView extends View {
 		if (title && this.connectionState !== 'ended') this.titleLabel.elem.textContent = title;
 
 		this.presence.empty();
-		this.stateDot.elem.className = `state${busy ? ' busy' : ''}${offline ? ' offline' : ''}`;
-		this.stateDot.elem.title =
-			{ reconnecting: 'Reconnecting', ended: 'Ended' }[this.connectionState] ??
-			(busy ? 'Claude is working' : 'Claude is idle');
+		this.stateDot.elem.className = `state${busy ? ' busy' : ''}${waiting ? ' waiting' : ''}${offline ? ' offline' : ''}`;
+		this.stateDot.elem.title = waiting
+			? 'Claude is waiting on someone: a permission or a question'
+			: ({ reconnecting: 'Reconnecting', ended: 'Ended' }[this.connectionState] ??
+				(busy ? 'Claude is working' : 'Claude is idle'));
 		if (offline) {
 			new Elem({
 				appendTo: this.presence,
@@ -891,6 +904,21 @@ export default class TerminalView extends View {
 		if (!forked.response?.ok) return new Notify({ type: 'error', content: 'Could not start the new session.' });
 
 		window.location.hash = `#/sessions/${forked.body.id}`;
+	}
+
+	showWatching(watching) {
+		this.watching = Boolean(watching);
+		this.watchButton.classList.toggle('active', this.watching);
+		this.watchButton.firstChild.className = `fa-solid fa-${this.watching ? 'eye' : 'eye-slash'}`;
+		this.watchButton.title = this.watching
+			? 'Watching: what changes here is counted while you are away. Click to stop.'
+			: 'Not watching. Click to count what changes here while you are away.';
+	}
+
+	async toggleWatching() {
+		const { response } = await setWatching(this.options.id, !this.watching);
+
+		if (response?.ok) this.showWatching(!this.watching);
 	}
 
 	async rename() {

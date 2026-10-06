@@ -135,17 +135,64 @@ const Card = styled(
 			animation: pulse 1.2s ease-in-out infinite;
 		}
 
+		.dot.waiting {
+			background: hsl(38, 70%, 60%);
+			box-shadow: 0 0 0 3px hsla(38, 70%, 60%, 0.25);
+		}
+
+		.flag {
+			flex-shrink: 0;
+			padding: 1px 8px;
+			border-radius: 9px;
+			font-size: 0.75em;
+			white-space: nowrap;
+		}
+
+		.flag.waiting {
+			background: hsla(38, 70%, 60%, 0.2);
+			color: hsl(38, 80%, 70%);
+		}
+
+		.flag.unseen {
+			background: ${colors.alpha(colors.blue, 0.25)};
+			color: ${colors.lighter(colors.blue)};
+		}
+
+		.watching {
+			margin-left: 6px;
+			opacity: 0.5;
+			font-size: 0.8em;
+		}
+
 		@keyframes pulse {
 			50% { opacity: 0.3; }
 		}
 	`,
 );
 
-export const LinkCard = ({ href, title, meta = [], project, live, busy, remove, appendTo }) => {
+export const LinkCard = ({
+	href,
+	title,
+	meta = [],
+	project,
+	live,
+	busy,
+	waiting,
+	unseen,
+	watching,
+	remove,
+	removeLabel = 'Delete',
+	appendTo,
+}) => {
 	const card = new Card({ tag: 'a', attributes: { href }, appendTo });
 	const body = new Elem({ appendTo: card, addClass: 'body' });
 
-	new Elem({ appendTo: body, addClass: 'title', textContent: title });
+	const heading = new Elem({ appendTo: body, addClass: 'title', textContent: title });
+
+	if (watching)
+		heading.elem.append(
+			Object.assign(document.createElement('i'), { className: 'fa-solid fa-eye watching', title: 'Watching' }),
+		);
 
 	const metaLine = new Elem({ appendTo: body, addClass: 'meta' });
 
@@ -156,12 +203,18 @@ export const LinkCard = ({ href, title, meta = [], project, live, busy, remove, 
 
 	metaLine.elem.append(meta.filter(Boolean).join(' · '));
 
-	if (live || busy)
+	if (unseen) new Elem({ appendTo: card, addClass: ['flag', 'unseen'], textContent: `${unseen} new` });
+	if (waiting) new Elem({ appendTo: card, addClass: ['flag', 'waiting'], textContent: 'needs you' });
+
+	if (live || busy || waiting) {
+		const state = (waiting && 'waiting') || (busy && 'busy');
+
 		new Elem({
 			appendTo: card,
-			addClass: ['dot', ...(busy ? ['busy'] : [])],
-			attributes: { title: busy ? 'working' : 'live' },
+			addClass: ['dot', ...(state ? [state] : [])],
+			attributes: { title: { waiting: 'Claude is waiting on someone', busy: 'working' }[state] ?? 'ready' },
 		});
+	}
 
 	// Inside the link, so it has to stop the click from also opening the card
 	if (remove) {
@@ -169,7 +222,7 @@ export const LinkCard = ({ href, title, meta = [], project, live, busy, remove, 
 
 		button.className = 'remove';
 		button.textContent = '🗑';
-		button.title = 'Delete';
+		button.title = removeLabel;
 		button.addEventListener('click', event => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -189,6 +242,9 @@ export const sessionCard = (session, { showProject = true, appendTo, remove }) =
 		project: showProject ? session.project : null,
 		meta: [relativeTime(session.lastModified), session.gitBranch !== 'HEAD' && session.gitBranch],
 		live: session.live,
-		busy: session.busy,
+		busy: session.status === 'working' || session.busy,
+		waiting: session.status === 'waiting',
+		unseen: session.unseen,
+		watching: session.watching,
 		remove,
 	});

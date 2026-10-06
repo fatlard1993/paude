@@ -5,10 +5,12 @@ import path from 'path';
 
 import Argi from 'argi';
 
-import { initAuth, passwordIsSet } from './auth';
+import { ensureLocalToken, initAuth, passwordIsSet } from './auth';
+import { initActivity } from './activity';
+import { setHookAddress } from './hookSettings';
 import { initNames } from './names';
 import { initNotes } from './notes';
-import { setProjectsRoot } from './projects';
+import { initProjects, setProjectsRoot } from './projects';
 import { sweepCredentials } from './sessions/attachSocket';
 import { setClaudePath } from './sessions/running';
 import server, { spawnBuild } from './server';
@@ -52,8 +54,16 @@ setProjectsRoot(options.projects);
 await initAuth(options.data, { watchForChanges: true });
 await initNotes(options.data);
 await initNames(options.data);
+await initActivity(options.data);
+await initProjects(options.data);
+await ensureLocalToken(options.data);
+setHookAddress({ host: options.host, port: options.port });
 
-if (!passwordIsSet()) console.warn('No password set, so nobody can log in. Run: bun run set-password');
+if (!passwordIsSet()) {
+	console.warn(
+		'No password set: only this machine logs in (the paude command, and paude web for a browser). For logins from elsewhere, run: bun run set-password',
+	);
+}
 setClaudePath(options.claude);
 
 server.init({ host: options.host, port: options.port });

@@ -1,19 +1,32 @@
 import { deleteSession, forkSession, getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 
-import { credentialOf, revokeInvitesFor } from '../auth';
+import { activitySummary, forgetActivity, setWatching, watchedBy } from '../activity';
+import { credentialOf, identityOf, revokeInvitesFor } from '../auth';
 import { pinName, pinnedName } from '../names';
 import { deleteNotes } from '../notes';
 import { sessionTurns } from '../sessions/history';
-import { listProjects, projectOf, projectPath } from '../projects';
-import { listAllSessions, listProjectSessions } from '../sessions/stored';
+import {
+	FolderError,
+	listProjects,
+	projectOf,
+	projectPath,
+	registerFolder,
+	registeredFolders,
+	unregisterFolder,
+} from '../projects';
+import { listAllSessions, listProjectSessions, toSummary } from '../sessions/stored';
 import { openSession, runningSession, startSession, stopSession } from '../sessions/running';
 import requestMatch from '../utils/requestMatch';
 
+const sessionCwd = async id => runningSession(id)?.cwd ?? (await getSessionInfo(id))?.cwd;
+
 const sessionsRoutes = async (request, server) => {
 	let match;
+	const identity = identityOf(credentialOf(request));
 
 	if (requestMatch('GET', '/api/projects', request)) {
-		const [projects, sessions] = await Promise.all([listProjects(), listAllSessions()]);
+		const [projects, sessions] = await Promise.all([listProjects(), listAllSessions(identity)]);
+		const registered = new Map(registeredFolders().map(folder => [folder.name, folder.path]));
 
 		return Response.json(
 			projects.map(name => {
@@ -24,13 +37,57 @@ const sessionsRoutes = async (request, server) => {
 					lastActivity: own[0]?.lastModified ?? null,
 					sessionCount: own.length,
 					liveCount: own.filter(session => session.live).length,
+					...(registered.has(name) && { registered: true, path: registered.get(name) }),
 				};
 			}),
 		);
 	}
 
+	// Any folder, from anywhere, as a project
+	if (requestMatch('POST', '/api/projects', request)) {
+		try {
+			return Response.json({ name: await registerFolder((await request.json()).path) });
+		} catch (error) {
+			if (error instanceof FolderError) return new Response(error.message, { status: 400 });
+			throw error;
+		}
+	}
+
+	match = requestMatch('DELETE', '/api/projects/:project', request);
+	if (match) return new Response(null, { status: (await unregisterFolder(match.project)) ? 204 : 404 });
+
 	match = requestMatch('GET', '/api/sessions', request);
-	if (match) return Response.json((await listAllSessions()).slice(0, Number(match.limit) || 8));
+	if (match) return Response.json((await listAllSessions(identity)).slice(0, Number(match.limit) || 8));
+
+	// The sessions this person watches, wherever they are, each with its status and what's new since they looked
+	if (requestMatch('GET', '/api/watching', request)) {
+		const watched = await Promise.all(
+			watchedBy(identity).map(async id => {
+				const running = runningSession(id);
+				const stored = await getSessionInfo(id);
+
+				if (!projectOf(running?.cwd ?? stored?.cwd)) return null;
+
+				return {
+					...toSummary(identity)({ sessionId: id, cwd: running?.cwd, ...stored }),
+					title: pinnedName(id) || running?.title || stored?.customTitle || stored?.summary || '',
+				};
+			}),
+		);
+
+		return Response.json(watched.filter(Boolean));
+	}
+
+	match = requestMatch('PUT', '/api/sessions/:id/watch', request);
+	if (match) {
+		if (!identity.owner && identity.sessionId !== match.id)
+			return new Response('Not part of your invite', { status: 403 });
+		if (!projectOf(await sessionCwd(match.id))) return new Response('Session not found', { status: 404 });
+
+		await setWatching(identity, match.id, Boolean((await request.json()).watching));
+
+		return new Response(null, { status: 204 });
+	}
 
 	match = requestMatch('GET', '/api/projects/:project/sessions', request);
 	if (match) {
@@ -38,7 +95,7 @@ const sessionsRoutes = async (request, server) => {
 
 		if (!cwd) return new Response('Unknown project', { status: 404 });
 
-		return Response.json(await listProjectSessions(cwd));
+		return Response.json(await listProjectSessions(cwd, identity));
 	}
 
 	match = requestMatch('POST', '/api/projects/:project/sessions', request);
@@ -100,6 +157,7 @@ const sessionsRoutes = async (request, server) => {
 		await deleteNotes(match.id);
 		await revokeInvitesFor(match.id);
 		await pinName(match.id, '');
+		await forgetActivity(match.id);
 
 		return new Response(null, { status: 204 });
 	}
@@ -132,6 +190,7 @@ const sessionsRoutes = async (request, server) => {
 			live: Boolean(running),
 			title: pinnedName(match.id) || running?.title || stored?.customTitle || stored?.summary || '',
 			pinned: Boolean(pinnedName(match.id)),
+			...activitySummary(identity, match.id, { running: Boolean(running), busy: running?.busy }),
 		});
 	}
 

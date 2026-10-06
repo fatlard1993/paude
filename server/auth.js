@@ -1,5 +1,5 @@
 import { watch } from 'fs';
-import { mkdir } from 'fs/promises';
+import { chmod, mkdir } from 'fs/promises';
 import path from 'path';
 
 import writeJsonFile from '../shared/writeJsonFile';
@@ -284,4 +284,38 @@ export const revokeInvitesFor = async sessionId => {
 	state.logins = state.logins.filter(login => !ids.has(login.invite));
 	state.tokens = state.tokens.filter(token => !ids.has(token.invite));
 	await save();
+};
+
+// The owner token this machine's own terminal uses, kept in the data folder where only this user can read it: same
+// user, same trust as running Claude directly, so no password is needed locally
+export const ensureLocalToken = async dataDir => {
+	const file = path.join(dataDir, 'local-token');
+	const stored = (await Bun.file(file).exists()) ? (await Bun.file(file).text()).trim() : null;
+
+	if (stored && credentialValid(`token:${digest(stored)}`)) return;
+
+	const token = await createToken('this machine (local)');
+
+	await Bun.write(file, `${token}\n`);
+	await chmod(file, 0o600);
+};
+
+// One-time codes that open a logged-in browser tab from the terminal, good once and for a minute
+const HANDOFF_MS = 60_000;
+const handoffs = new Map();
+
+export const createHandoff = () => {
+	const code = randomToken();
+
+	handoffs.set(code, Date.now() + HANDOFF_MS);
+
+	return code;
+};
+
+export const redeemHandoff = code => {
+	const expires = handoffs.get(code);
+
+	handoffs.delete(code);
+
+	return Boolean(expires && expires > Date.now());
 };

@@ -14,8 +14,15 @@ const read = async () => {
 
 const write = credentials => writeJsonFile(file, () => credentials);
 
-// A bare host means HTTPS: a paude reachable over plain http should only be on localhost
-export const normalizeUrl = url => (/^https?:\/\//.test(url) ? url : `https://${url}`).replace(/\/+$/, '');
+// A bare host means HTTPS, except this machine's own addresses: a paude reachable over plain http should only be on
+// localhost
+const LOCAL_HOST = /^(localhost|127(?:\.\d+){3}|\[::1\])(:\d+)?(\/|$)/;
+
+export const normalizeUrl = url => {
+	const withScheme = /^https?:\/\//.test(url) ? url : `${LOCAL_HOST.test(url) ? 'http' : 'https'}://${url}`;
+
+	return withScheme.replace(/\/+$/, '');
+};
 
 export const saveToken = async (url, token) => {
 	const credentials = await read();
@@ -39,3 +46,5 @@ export const resolveServer = async url => {
 
 	return { url: chosen, token: chosen ? credentials.tokens[chosen] : null };
 };
+
+export const allTokens = async () => (await read()).tokens;

@@ -1,5 +1,7 @@
+import { watchIfNew } from '../activity';
 import {
 	checkPassword,
+	createHandoff,
 	createInvite,
 	createLogin,
 	createToken,
@@ -10,13 +12,14 @@ import {
 	listInvites,
 	loginCookie,
 	passwordIsSet,
+	redeemHandoff,
 	revokeInvite,
 	revokeToken,
 } from '../auth';
 import { ROLES, guestMayRequest } from '../permissions';
 import requestMatch from '../utils/requestMatch';
 
-const OPEN_ROUTES = new Set(['/api/auth', '/api/login', '/api/tokens', '/api/join']);
+const OPEN_ROUTES = new Set(['/api/auth', '/api/login', '/api/tokens', '/api/join', '/api/handoff/redeem']);
 const INVITE_HOURS = [1, 24, 24 * 7];
 
 const refused = outcome =>
@@ -65,10 +68,25 @@ const authRoutes = async request => {
 
 		if (!invite) return deadInvite();
 
+		await watchIfNew({ owner: false, inviteId: invite.id }, invite.sessionId);
+
 		return Response.json(
 			{ sessionId: invite.sessionId },
 			{ headers: { 'Set-Cookie': loginCookie(await createLogin({ invite })) } },
 		);
+	}
+
+	// The terminal opens the web UI already logged in: it asks for a code, and the browser trades it for a login
+	if (requestMatch('POST', '/api/handoff', request)) {
+		if (!identityOf(credentialOf(request))?.owner) return new Response('Only the owner can do that', { status: 403 });
+
+		return Response.json({ code: createHandoff() });
+	}
+
+	if (requestMatch('POST', '/api/handoff/redeem', request)) {
+		if (!redeemHandoff((await request.json()).code)) return new Response('That link has expired', { status: 410 });
+
+		return new Response(null, { status: 204, headers: { 'Set-Cookie': loginCookie(await createLogin()) } });
 	}
 
 	if (requestMatch('POST', '/api/logout', request)) {
@@ -85,7 +103,11 @@ const authRoutes = async request => {
 		if (inviteToken !== undefined) {
 			const invite = inviteFromToken(inviteToken);
 
-			return invite ? Response.json({ token: await createToken(device, { invite }) }) : deadInvite();
+			if (!invite) return deadInvite();
+
+			await watchIfNew({ owner: false, inviteId: invite.id }, invite.sessionId);
+
+			return Response.json({ token: await createToken(device, { invite }) });
 		}
 
 		const outcome = await checkPassword(request, password);

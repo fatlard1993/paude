@@ -1,5 +1,13 @@
 module.exports = {
 	skipWords: [
+		'hsla',
+		'xdg',
+		'br',
+		'codespan',
+		'unregister',
+
+		'handoff',
+		'handoffs',
 		'hljs',
 		'subst',
 		'prefs',

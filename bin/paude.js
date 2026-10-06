@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import os from 'os';
+import path from 'path';
 
 import Argi from 'argi';
 
@@ -8,14 +9,19 @@ import packageJSON from '../package.json';
 
 import attachSession from '../cli/attach';
 import { forget, normalizeUrl, resolveServer, saveToken } from '../cli/credentials';
+import { allServers, api, ensureLocalServer } from '../cli/servers';
 import pickSession from '../cli/picker';
 import { readHidden } from '../cli/screen';
 
-const USAGE = `paude login <url>     log in to a paude server (e.g. https://paude.example.com) and make it the default
-paude login <invite>  join with an invite link someone sent you
-paude logout [url]     sign this machine out of the server and forget the login
-paude [--url <url>]    pick a session and attach to it
-paude -s <id>          attach straight to a session`;
+const USAGE = `paude                  pick a session from this machine and every server you're logged into
+paude add [folder]     make a folder (default: this one) a project on this machine's paude
+paude remove <name>    stop treating a folder added with paude add as a project
+paude serve [options]  run this machine's paude in the foreground (it otherwise starts on its own when needed)
+paude web [url]        open a paude in the browser, already logged in (default: this machine's)
+paude login <url>      log in to a paude server (e.g. https://paude.example.com)
+paude login <invite>   join with an invite link someone sent you
+paude logout [url]     sign this machine out of a server and forget the login
+paude --url <url>      pick from one server only; -s <id> attaches straight to a session`;
 
 // An invite link (https://host/#/join/<token>) logs its guest in without a password
 const parseTarget = target => {
@@ -74,6 +80,41 @@ const OUTCOMES = {
 	unauthorized: 'Your login ended (signed out, or the password changed). Run: paude login <url>',
 };
 
+const attachLoop = async (pick, first) => {
+	let chosen = first;
+
+	while (true) {
+		chosen ??= await pick();
+
+		if (!chosen) return;
+
+		const { server, id, identity } = chosen;
+		const guest = !identity.owner;
+		const outcome = await attachSession(server, id, { canSwitch: !guest, role: guest ? identity.role : 'owner' });
+
+		if (outcome !== 'switch') return console.log(OUTCOMES[outcome]);
+
+		chosen = null;
+	}
+};
+
+// One server, named with --url (or PAUDE_URL): the way to reach a session by its id
+const runOne = async options => {
+	const server = await resolveServer(options.url);
+
+	if (!server.url || !server.token) return console.log(`Not logged in to ${options.url}. Run: paude login <url>`);
+
+	const { identity } = await api(server, '/api/auth');
+
+	if (!identity) return console.log(OUTCOMES.unauthorized);
+
+	// A guest's invite names one session; there's nothing to pick
+	const id = identity.owner ? options.session : identity.sessionId;
+	const one = [{ ...server, label: new URL(server.url).host }];
+
+	return attachLoop(() => pickSession(one), id ? { server, id, identity } : null);
+};
+
 const run = async () => {
 	const { options } = new Argi({
 		// Otherwise argi looks for one in the current directory, and paude runs from anywhere
@@ -83,30 +124,66 @@ const run = async () => {
 			session: { type: 'string', alias: 's', description: 'Attach straight to this session id' },
 		},
 	});
-	const server = await resolveServer(options.url);
 
-	if (!server.url || !server.token) return console.log(`Not logged in. Run: paude login <url>\n\n${USAGE}`);
+	if (options.url || options.session) return runOne(options);
 
-	const { identity } = await (
-		await fetch(`${server.url}/api/auth`, { headers: { authorization: `Bearer ${server.token}` } })
-	).json();
+	const servers = await allServers();
 
-	if (!identity) return console.log(OUTCOMES.unauthorized);
+	if (!servers.length) {
+		return console.log(
+			`Nothing to show yet. Run paude add in a folder to work on it here, or paude login <url> for a hosted paude.\n\n${USAGE}`,
+		);
+	}
 
-	// A guest's invite names one session; there's nothing to pick
-	const guest = !identity.owner;
-	let id = guest ? identity.sessionId : options.session;
+	return attachLoop(() => pickSession(servers));
+};
 
-	while (true) {
-		id ??= await pickSession(server);
+const add = async folder => {
+	const server = await ensureLocalServer();
+	const requested = path.resolve(folder ?? process.cwd());
+	const { name } = await api(server, '/api/projects', { method: 'POST', body: JSON.stringify({ path: requested }) });
 
-		if (!id) return;
+	console.log(`${requested} is the project "${name}" on this machine's paude. Run paude to open a session in it.`);
+};
 
-		const outcome = await attachSession(server, id, { canSwitch: !guest, role: guest ? identity.role : 'owner' });
+const remove = async name => {
+	if (!name) return console.log('Which project? paude remove <name>');
 
-		if (outcome !== 'switch') return console.log(OUTCOMES[outcome]);
+	const server = await ensureLocalServer();
 
-		id = null;
+	await api(server, `/api/projects/${encodeURIComponent(name)}`, { method: 'DELETE' }).catch(() => {
+		throw new Error(`"${name}" isn't a folder added with paude add.`);
+	});
+	console.log(`"${name}" is no longer a project. Its sessions are still in Claude Code's history.`);
+};
+
+// Runs the server here, with any server options passed through (--projects, --port, ...)
+const serve = async args => {
+	const entry = path.join(import.meta.dir, '..', 'server', 'index.js');
+	const child = Bun.spawn(['bun', entry, ...args], {
+		cwd: path.join(import.meta.dir, '..'),
+		env: { NODE_ENV: 'production', ...process.env },
+		stdio: ['inherit', 'inherit', 'inherit'],
+	});
+
+	process.exitCode = await child.exited;
+};
+
+const OPENERS = { darwin: 'open', win32: 'explorer' };
+
+const web = async target => {
+	const server = target ? await resolveServer(target) : await ensureLocalServer();
+
+	if (!server.url || !server.token) return console.log(`Not logged in to ${target}. Run: paude login ${target}`);
+
+	const { code } = await api(server, '/api/handoff', { method: 'POST' });
+	const link = `${server.url}/#/handoff/${code}`;
+
+	try {
+		Bun.spawn([OPENERS[process.platform] ?? 'xdg-open', link], { stdio: ['ignore', 'ignore', 'ignore'] });
+		console.log(`Opened ${server.url} in your browser. The link works once, for a minute.`);
+	} catch {
+		console.log(`Open this within a minute (it works once): ${link}`);
 	}
 };
 
@@ -114,6 +191,10 @@ const [command, target] = process.argv.slice(2);
 
 try {
 	if (command === 'login') await login(target);
+	else if (command === 'add') await add(target);
+	else if (command === 'remove') await remove(target);
+	else if (command === 'serve') await serve(process.argv.slice(3));
+	else if (command === 'web') await web(target);
 	else if (command === 'logout') await logout(target);
 	else if (command === 'help' || command === '--help') console.log(USAGE);
 	else await run();

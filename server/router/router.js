@@ -4,6 +4,7 @@ import requestMatch from '../utils/requestMatch';
 
 import authRoutes, { guard } from './auth';
 import filesRoutes from './files';
+import hooksRoutes from './hooks';
 import sessionsRoutes from './sessions';
 import staticRoutes from './static';
 
@@ -34,6 +35,10 @@ const router = async (request, server) => {
 
 			return success ? undefined : new Response('WebSocket upgrade error', { status: 400 });
 		}
+
+		// Claude's hooks carry their own secret instead of a login
+		response = await hooksRoutes(request);
+		if (response) return response;
 
 		response = guard(request);
 		if (response) return response;

@@ -1,7 +1,7 @@
-import { Button, Elem, View, styled } from '@vanilla-bean/components';
+import { Button, Elem, Notify, View, styled } from '@vanilla-bean/components';
 
 import { byRecentActivity, projectSummary } from '../shared/projects';
-import { deleteSession, getProjects, getRecentSessions } from './api';
+import { addFolder, deleteSession, getProjects, getRecentSessions, getWatching, removeFolder } from './api';
 import { confirmDeleteSession } from './confirmDialog';
 import { Empty, Header, LinkCard, Scroll, SectionTitle, sessionCard } from './Layout';
 
@@ -10,6 +10,30 @@ const Grid = styled.Component`
 	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
 	gap: 8px;
 `;
+
+const AddFolder = styled(
+	Elem,
+	({ colors }) => `
+		display: flex;
+		gap: 6px;
+		margin-top: 8px;
+
+		input {
+			flex: 1;
+			font-family: ui-monospace, monospace;
+		}
+
+		.hint {
+			color: ${colors.gray};
+			font-size: 0.85em;
+			align-self: center;
+		}
+	`,
+);
+
+// What needs a person most: a question first, then the most unseen, then the most recently active
+const byUrgency = (a, b) =>
+	(b.status === 'waiting') - (a.status === 'waiting') || b.unseen - a.unseen || (b.activeAt ?? 0) - (a.activeAt ?? 0);
 
 const List = styled.Component`
 	display: flex;
@@ -37,13 +61,40 @@ export default class Home extends View {
 
 		const scroll = new Scroll({ appendTo: this });
 
+		this.watchingTitle = new SectionTitle({ appendTo: scroll, textContent: 'Watching', style: { display: 'none' } });
+		this.watching = new List({ appendTo: scroll });
+
 		new SectionTitle({ appendTo: scroll, textContent: 'Continue' });
 		this.recent = new List({ appendTo: scroll });
 
 		new SectionTitle({ appendTo: scroll, textContent: 'Projects' });
 		this.projects = new Grid({ appendTo: scroll });
+		this.addFolderForm(scroll);
 
 		this.load();
+	}
+
+	// Any folder on the server's machine, by its full path, as a project
+	addFolderForm(appendTo) {
+		const form = new AddFolder({ appendTo, tag: 'form' });
+		const input = document.createElement('input');
+		const button = document.createElement('button');
+
+		input.placeholder = 'Add a folder as a project: /full/path/to/it';
+		button.textContent = 'Add';
+		form.elem.append(input, button);
+		form.elem.addEventListener('submit', async event => {
+			event.preventDefault();
+			if (!input.value.trim()) return;
+
+			const { body, response } = await addFolder(input.value.trim());
+
+			if (!response?.ok) return new Notify({ type: 'error', content: body || 'Could not add that folder.' });
+
+			input.value = '';
+			new Notify({ type: 'success', content: `Added "${JSON.parse(body).name}"`, timeout: 2000 });
+			this.load();
+		});
 	}
 
 	async logout() {
@@ -52,17 +103,29 @@ export default class Home extends View {
 	}
 
 	async load() {
-		const [{ body: sessions }, { body: projects }] = await Promise.all([getRecentSessions(), getProjects()]);
+		const [{ body: sessions }, { body: projects }, { body: watching }] = await Promise.all([
+			getRecentSessions(),
+			getProjects(),
+			getWatching(),
+		]);
+		const watched = [...(watching ?? [])].sort(byUrgency);
+		const watchedIds = new Set(watched.map(({ id }) => id));
+		const recent = (sessions ?? []).filter(({ id }) => !watchedIds.has(id));
+		const remove = session => async () => (await confirmDeleteSession(session, deleteSession)) && this.load();
+
+		this.watching.empty();
+		this.watchingTitle.elem.style.display = watched.length ? '' : 'none';
+		for (const session of watched) sessionCard(session, { appendTo: this.watching, remove: remove(session) });
 
 		this.recent.empty();
 
-		if (!sessions?.length)
+		if (!recent.length && !watched.length)
 			new Empty({ appendTo: this.recent, textContent: 'Nothing yet. Pick a project to start a session.' });
 
-		for (const session of sessions ?? []) {
+		for (const session of recent) {
 			sessionCard(session, {
 				appendTo: this.recent,
-				remove: async () => (await confirmDeleteSession(session, deleteSession)) && this.load(),
+				remove: remove(session),
 			});
 		}
 
@@ -77,6 +140,13 @@ export default class Home extends View {
 				title: project.name,
 				meta: [projectSummary(project)],
 				live: project.liveCount > 0,
+				...(project.registered && {
+					removeLabel: `Stop treating ${project.path} as a project (nothing is deleted)`,
+					remove: async () => {
+						await removeFolder(project.name);
+						this.load();
+					},
+				}),
 			});
 		}
 	}

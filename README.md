@@ -45,6 +45,22 @@ Run `bun run set-password` again at any time to change the password; a running s
 
 A session nobody is attached to exits after an hour (later, if Claude is still working). Opening it again resumes it.
 
+## On this machine
+
+paude also runs locally, for working on folders here with the same sharing, browsing and watching:
+
+```sh
+paude add            # this folder becomes a project; this machine's paude starts in the background if needed
+paude                # pick from this machine and every server you're logged into
+paude web            # this machine's paude in the browser, already logged in
+```
+
+No password is needed locally: the server keeps an owner token in `~/.paude/local-token`, readable only by you, and the `paude` command uses it. `paude serve` runs the server in the foreground instead; `paude remove <name>` forgets a folder added with `paude add`. A folder Claude Code hasn't seen before asks once, in the session, whether you trust it.
+
+## Watching
+
+Sessions you watch are listed first, everywhere, with what they're doing (**working**, **needs you** when Claude is asking for a permission or an answer, **ready** for the next prompt) and how many changes (finished turns, chat, comments) happened since you last looked. Watching starts on its own the first time you join a session by invite, post in it, or prompt it; the eye in a session's bar (or **w** in the terminal picker) turns it on or off.
+
 ## Terminal
 
 ```sh

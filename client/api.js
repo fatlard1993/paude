@@ -70,3 +70,12 @@ export const nameSession = async (sessionId, name) =>
 
 export const rawFileUrl = (sessionId, path) =>
 	`/api/sessions/${encodeURIComponent(sessionId)}/raw?path=${encodeURIComponent(path)}`;
+
+export const getWatching = async () => await GET('/api/watching', { invalidateAfter: 0 });
+
+export const setWatching = async (sessionId, watching) =>
+	await PUT('/api/sessions/:id/watch', { urlParameters: { id: sessionId }, body: { watching } });
+
+export const addFolder = async path => await POST('/api/projects', { body: { path }, responseType: 'text' });
+
+export const removeFolder = async name => await DELETE('/api/projects/:name', { urlParameters: { name } });
