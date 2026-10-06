@@ -1,7 +1,6 @@
-import { allTokens, serverNames } from '../cli/credentials';
+import { allTokens, serverNames } from '../shared/credentials';
+import { serverApi, visitServer } from '../shared/serverClient';
 import { getServerId } from './auth';
-
-const TIMEOUT_MS = 5000;
 
 // The tokens in the paude command's credentials file stay on this server; the browser only gets what they fetch
 const remoteServers = async () => {
@@ -14,39 +13,15 @@ const remoteServers = async () => {
 	}));
 };
 
-const fetchJson = async ({ url, token }, path, init = {}) => {
-	const response = await fetch(`${url}${path}`, {
-		...init,
-		signal: AbortSignal.timeout(TIMEOUT_MS),
-		headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-	});
-
-	if (!response.ok)
-		throw new Error(response.status === 401 ? 'the saved login has ended' : `answered ${response.status}`);
-
-	return response.json();
-};
-
+// One reached by another address that turns out to be this server is left out
 export const listRemotes = async () => {
 	const remotes = await Promise.all(
 		(await remoteServers()).map(async server => {
-			const summary = { url: server.url, name: server.name };
+			const { serverId, watching, sessions, error } = await visitServer(server);
 
-			try {
-				const { identity, serverId } = await fetchJson(server, '/api/auth');
+			if (serverId && serverId === getServerId()) return null;
 
-				if (serverId === getServerId()) return null;
-				if (!identity) throw new Error('the saved login has ended');
-
-				const [watching, sessions] = await Promise.all([
-					fetchJson(server, '/api/watching'),
-					identity.owner ? fetchJson(server, '/api/sessions?limit=8') : [],
-				]);
-
-				return { ...summary, watching, sessions };
-			} catch (error) {
-				return { ...summary, error: error.name === 'TimeoutError' ? 'not answering' : error.message };
-			}
+			return { url: server.url, name: server.name, ...(error ? { error } : { watching, sessions }) };
 		}),
 	);
 
@@ -58,7 +33,7 @@ export const remoteLink = async (url, sessionId) => {
 
 	if (!server || typeof sessionId !== 'string' || !/^[\w-]+$/.test(sessionId)) return null;
 
-	const { code } = await fetchJson(server, '/api/handoff', { method: 'POST' });
+	const { code } = await serverApi(server, '/api/handoff', { method: 'POST' });
 
 	return `${server.url}/#/handoff/${code}/sessions/${sessionId}`;
 };

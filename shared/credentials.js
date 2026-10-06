@@ -1,8 +1,8 @@
 import os from 'os';
 import path from 'path';
 
-import updateJsonFile from '../shared/updateJsonFile';
-import readJsonFile from '../shared/readJsonFile';
+import updateJsonFile from './updateJsonFile';
+import readJsonFile from './readJsonFile';
 
 // { default: url, tokens: { [url]: token }, names: { [url]: name } }, readable only by this user
 const file = path.join(process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.config'), 'paude', 'credentials.json');

@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, openSync } from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { allTokens, serverNames } from './credentials';
+import { allTokens, serverNames } from '../shared/credentials';
+import { serverApi } from '../shared/serverClient';
 
 const START_TIMEOUT_MS = 10_000;
 
@@ -43,18 +44,7 @@ export const stopLocalServer = async () => {
 	return true;
 };
 
-export const api = async ({ url, token }, route, init = {}) => {
-	const response = await fetch(`${url}${route}`, {
-		...init,
-		signal: init.signal ?? AbortSignal.timeout(8000),
-		headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...init.headers },
-	});
-
-	if (response.status === 401) throw new Error(`${url} refused the saved login; run: paude login ${url}`);
-	if (!response.ok) throw new Error((await response.text()) || `${url}${route} answered ${response.status}`);
-
-	return response.status === 204 ? null : response.json();
-};
+export const api = serverApi;
 
 // The id something on the address reports, or null when nothing answers there
 const answeringId = async url => {

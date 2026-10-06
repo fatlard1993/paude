@@ -8,7 +8,7 @@ import Argi from 'argi';
 import packageJSON from '../package.json';
 
 import attachSession from '../cli/attach';
-import { forget, nameServer, normalizeUrl, resolveServer, saveToken } from '../cli/credentials';
+import { forget, nameServer, normalizeUrl, resolveServer, saveToken } from '../shared/credentials';
 import { allServers, api, ensureLocalServer, stopLocalServer } from '../cli/servers';
 import doctor from '../cli/doctor';
 import pickSession from '../cli/picker';

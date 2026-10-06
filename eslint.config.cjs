@@ -54,6 +54,8 @@ module.exports = [
 			'shared/writeJsonFile.js',
 			'shared/updateJsonFile*.js',
 			'shared/readJsonFile.js',
+			'shared/credentials.js',
+			'shared/serverClient.js',
 		],
 		languageOptions: {
 			globals: {

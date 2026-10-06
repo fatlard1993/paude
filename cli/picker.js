@@ -1,6 +1,7 @@
-import { byRecentActivity, projectSummary } from '../shared/projects';
+import { projectSummary } from '../shared/projects';
 import sessionUrgency from '../shared/urgency';
 import relativeTime from '../shared/relativeTime';
+import { visitServer } from '../shared/serverClient';
 import {
 	CLEAR,
 	ENTER_ALT_SCREEN,
@@ -138,32 +139,11 @@ const pickProject = async (server, projects) => {
 };
 
 const gather = async server => {
-	try {
-		const { identity, serverId } = await api(server, '/api/auth');
+	const visit = await visitServer(server);
 
-		server.id = serverId;
+	server.id = visit.serverId;
 
-		if (!identity) throw new Error('the saved login has ended');
-		// A guest's one session is always listed, watched or not
-		if (!identity.owner) {
-			const [watching, own] = await Promise.all([
-				api(server, '/api/watching'),
-				api(server, `/api/sessions/${identity.sessionId}`).catch(() => null),
-			]);
-
-			return { server, identity, watching, sessions: own ? [own] : [], projects: [] };
-		}
-
-		const [watching, sessions, projects] = await Promise.all([
-			api(server, '/api/watching'),
-			api(server, '/api/sessions?limit=8'),
-			api(server, '/api/projects'),
-		]);
-
-		return { server, identity, watching, sessions, projects: projects.sort(byRecentActivity) };
-	} catch (error) {
-		return { server, error: error.name === 'TimeoutError' ? 'not answering' : error.message };
-	}
+	return { server, ...visit };
 };
 
 const byUrgency = (a, b) => sessionUrgency(a.session, b.session);

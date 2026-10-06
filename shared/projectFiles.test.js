@@ -18,9 +18,18 @@ test('names match loosely by default, exactly for whole word and regex, inside t
 	expect(matchNames(paths, 'mth')).toEqual(['src/math.js', 'src/math.test.js']);
 	expect(matchNames(paths, 'MTH', { caseSensitive: true })).toEqual([]);
 	expect(matchNames(paths, 'math', { wholeWord: true })).toEqual(['src/math.js', 'src/math.test.js']);
-	expect(matchNames(paths, '^src/.*\\.js$', { regex: true })).toEqual(['src/math.js', 'src/upper.js', 'src/math.test.js']);
+	expect(matchNames(paths, '^src/.*\\.js$', { regex: true })).toEqual([
+		'src/math.js',
+		'src/upper.js',
+		'src/math.test.js',
+	]);
 	expect(matchNames(paths, '(', { regex: true })).toBeNull();
-	expect(matchNames(paths, '', { exclude: '*.test.js, docs' })).toEqual(['src/math.js', 'src/upper.js', 'README.md', 'Dockerfile']);
+	expect(matchNames(paths, '', { exclude: '*.test.js, docs' })).toEqual([
+		'src/math.js',
+		'src/upper.js',
+		'README.md',
+		'Dockerfile',
+	]);
 });
 
 test('attached lines say where they came from', () => {
