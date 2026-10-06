@@ -3,7 +3,7 @@ import path from 'path';
 
 import writeJsonFile from '../shared/writeJsonFile';
 
-// { default: url, tokens: { [url]: token } }, readable only by this user
+// { default: url, tokens: { [url]: token }, names: { [url]: name } }, readable only by this user
 const file = path.join(process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.config'), 'paude', 'credentials.json');
 
 const read = async () => {
@@ -24,10 +24,11 @@ export const normalizeUrl = url => {
 	return withScheme.replace(/\/+$/, '');
 };
 
-export const saveToken = async (url, token) => {
+export const saveToken = async (url, token, name) => {
 	const credentials = await read();
 
 	credentials.tokens[url] = token;
+	if (name) (credentials.names ??= {})[url] = name;
 	credentials.default = url;
 	await write(credentials);
 };
@@ -36,6 +37,7 @@ export const forget = async url => {
 	const credentials = await read();
 
 	delete credentials.tokens[url];
+	delete credentials.names?.[url];
 	if (credentials.default === url) credentials.default = Object.keys(credentials.tokens)[0] ?? null;
 	await write(credentials);
 };
@@ -48,3 +50,15 @@ export const resolveServer = async url => {
 };
 
 export const allTokens = async () => (await read()).tokens;
+
+export const serverNames = async () => (await read()).names ?? {};
+
+export const nameServer = async (url, name) => {
+	const credentials = await read();
+
+	if (!credentials.tokens[url]) return false;
+	(credentials.names ??= {})[url] = name;
+	await write(credentials);
+
+	return true;
+};

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, openSync } from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { allTokens } from './credentials';
+import { allTokens, serverNames } from './credentials';
 
 const START_TIMEOUT_MS = 10_000;
 
@@ -71,9 +71,10 @@ export const ensureLocalServer = async () => {
 const hostLabel = url => new URL(url).host;
 
 export const allServers = async () => {
+	const names = await serverNames();
 	const remote = Object.entries(await allTokens())
 		.filter(([url]) => url !== LOCAL_URL)
-		.map(([url, token]) => ({ url, token, label: hostLabel(url) }));
+		.map(([url, token]) => ({ url, token, label: names[url] ?? hostLabel(url) }));
 
 	return [...(localKnown() ? [await ensureLocalServer()] : []), ...remote];
 };

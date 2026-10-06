@@ -1,7 +1,16 @@
 import { Button, Elem, Notify, View, styled } from '@vanilla-bean/components';
 
 import { byRecentActivity, projectSummary } from '../shared/projects';
-import { addFolder, deleteSession, getProjects, getRecentSessions, getWatching, removeFolder } from './api';
+import {
+	addFolder,
+	deleteSession,
+	getProjects,
+	getRecentSessions,
+	getRemotes,
+	getWatching,
+	openRemote,
+	removeFolder,
+} from './api';
 import { confirmDeleteSession } from './confirmDialog';
 import { Empty, Header, LinkCard, Scroll, SectionTitle, sessionCard } from './Layout';
 
@@ -66,6 +75,8 @@ export default class Home extends View {
 		this.recentTitle = new SectionTitle({ appendTo: scroll, textContent: 'Continue' });
 		this.recent = new List({ appendTo: scroll });
 
+		this.remotes = new Elem({ appendTo: scroll });
+
 		new SectionTitle({ appendTo: scroll, textContent: 'Projects' });
 		this.projects = new Grid({ appendTo: scroll });
 		this.addFolderForm(scroll);
@@ -95,25 +106,67 @@ export default class Home extends View {
 		});
 	}
 
+	// A session on another paude: labeled with that server, opened there already logged in
+	remoteCard(session) {
+		return {
+			server: session.remote.name,
+			onOpen: async () => {
+				const { body, response } = await openRemote(session.remote.url, session.id);
+
+				if (response?.ok) window.location.href = body.link;
+				else new Notify({ type: 'error', content: `Could not reach ${session.remote.name}.` });
+			},
+		};
+	}
+
+	renderRemotes(remotes, watchedIds) {
+		this.remotes.empty();
+
+		for (const remote of remotes) {
+			const recent = remote.error ? [] : remote.sessions.filter(({ id }) => !watchedIds.has(id));
+
+			// A server whose sessions are all under Watching has nothing more to show
+			if (!remote.error && !recent.length) continue;
+
+			new SectionTitle({ appendTo: this.remotes, textContent: `On ${remote.name}` });
+
+			const list = new List({ appendTo: this.remotes });
+
+			if (remote.error) new Empty({ appendTo: list, textContent: `Couldn't load: ${remote.error}` });
+			for (const session of recent)
+				sessionCard(session, { appendTo: list, ...this.remoteCard({ ...session, remote }) });
+		}
+	}
+
 	async logout() {
 		await fetch('/api/logout', { method: 'POST' });
 		window.location.reload();
 	}
 
 	async load() {
-		const [{ body: sessions }, { body: projects }, { body: watching }] = await Promise.all([
+		const [{ body: sessions }, { body: projects }, { body: watching }, { body: remotes }] = await Promise.all([
 			getRecentSessions(),
 			getProjects(),
 			getWatching(),
+			getRemotes(),
 		]);
-		const watched = [...(watching ?? [])].sort(byUrgency);
+		const reachable = (remotes ?? []).filter(remote => !remote.error);
+		const remoteWatched = reachable.flatMap(remote => remote.watching.map(session => ({ ...session, remote })));
+		const watched = [...(watching ?? []), ...remoteWatched].sort(byUrgency);
 		const watchedIds = new Set(watched.map(({ id }) => id));
 		const recent = (sessions ?? []).filter(({ id }) => !watchedIds.has(id));
 		const remove = session => async () => (await confirmDeleteSession(session, deleteSession)) && this.load();
 
 		this.watching.empty();
 		this.watchingTitle.elem.style.display = watched.length ? '' : 'none';
-		for (const session of watched) sessionCard(session, { appendTo: this.watching, remove: remove(session) });
+		for (const session of watched) {
+			sessionCard(session, {
+				appendTo: this.watching,
+				...(session.remote ? this.remoteCard(session) : { remove: remove(session) }),
+			});
+		}
+
+		this.renderRemotes(remotes ?? [], new Set(remoteWatched.map(({ id }) => id)));
 
 		this.recent.empty();
 		// Everything recent may already be listed under Watching

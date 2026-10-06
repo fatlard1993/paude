@@ -302,18 +302,39 @@ export const ensureLocalToken = async dataDir => {
 const HANDOFF_MS = 60_000;
 const handoffs = new Map();
 
-export const createHandoff = () => {
+// A guest's code logs in as that guest, on their invite
+export const createHandoff = identity => {
 	const code = randomToken();
 
-	handoffs.set(code, Date.now() + HANDOFF_MS);
+	handoffs.set(code, { expires: Date.now() + HANDOFF_MS, inviteId: identity.owner ? null : identity.inviteId });
 
 	return code;
 };
 
-export const redeemHandoff = code => {
-	const expires = handoffs.get(code);
+// The login a code is good for, or null when it's spent, expired, or its invite is gone
+export const redeemHandoff = async code => {
+	const handoff = handoffs.get(code);
 
 	handoffs.delete(code);
+	if (!handoff || handoff.expires < Date.now()) return null;
+	if (!handoff.inviteId) return createLogin();
 
-	return Boolean(expires && expires > Date.now());
+	const invite = liveInvite(handoff.inviteId);
+
+	return invite ? createLogin({ invite }) : null;
 };
+
+// Stable per data folder, so a client that reaches one server two ways (localhost and its public address) can tell
+let serverId = null;
+
+export const initServerId = async dataDir => {
+	const file = path.join(dataDir, 'server-id');
+
+	serverId = (await Bun.file(file).exists()) ? (await Bun.file(file).text()).trim() : null;
+	if (!serverId) {
+		serverId = randomToken().slice(0, 16);
+		await Bun.write(file, `${serverId}\n`);
+	}
+};
+
+export const getServerId = () => serverId;

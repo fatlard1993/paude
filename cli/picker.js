@@ -132,7 +132,9 @@ const pickProject = async (server, projects) => {
 
 const gather = async server => {
 	try {
-		const { identity } = await api(server, '/api/auth');
+		const { identity, serverId } = await api(server, '/api/auth');
+
+		server.id = serverId;
 
 		if (!identity) throw new Error('the saved login has ended');
 		if (!identity.owner) {
@@ -196,8 +198,16 @@ const pickSession = async servers => {
 
 	try {
 		while (true) {
-			const gathered = await Promise.all(servers.map(gather));
-			const several = servers.length > 1;
+			const seen = new Set();
+			// One server reached two ways (this machine's paude and its public address) is shown once, the first way
+			const gathered = (await Promise.all(servers.map(gather))).filter(({ server }) => {
+				if (!server.id) return true;
+				if (seen.has(server.id)) return false;
+				seen.add(server.id);
+
+				return true;
+			});
+			const several = gathered.length > 1;
 			const watched = gathered
 				.flatMap(({ server, watching }) => (watching ?? []).map(session => ({ server, session })))
 				.sort(byUrgency);

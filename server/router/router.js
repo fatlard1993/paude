@@ -30,6 +30,12 @@ const router = async (request, server) => {
 
 		if (requestMatch('GET', '/', request)) return indexResponse();
 
+		// At the root so it may show notifications for every page
+		if (requestMatch('GET', '/sw.js', request))
+			return new Response(Bun.file('client/sw.js'), {
+				headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' },
+			});
+
 		if (process.env.NODE_ENV === 'development' && requestMatch('GET', '/ws', request)) {
 			const success = server.upgrade(request, { data: { clientId: nanoid() } });
 

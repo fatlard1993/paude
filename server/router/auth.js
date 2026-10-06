@@ -2,6 +2,7 @@ import { watchIfNew } from '../activity';
 import {
 	checkPassword,
 	createHandoff,
+	getServerId,
 	createInvite,
 	createLogin,
 	createToken,
@@ -50,7 +51,12 @@ const authRoutes = async request => {
 	if (requestMatch('GET', '/api/auth', request)) {
 		const identity = identityOf(credentialOf(request));
 
-		return Response.json({ authenticated: Boolean(identity), passwordSet: passwordIsSet(), identity });
+		return Response.json({
+			authenticated: Boolean(identity),
+			passwordSet: passwordIsSet(),
+			identity,
+			serverId: getServerId(),
+		});
 	}
 
 	if (requestMatch('POST', '/api/login', request)) {
@@ -77,15 +83,15 @@ const authRoutes = async request => {
 
 	// The terminal opens the web UI already logged in: it asks for a code, and the browser trades it for a login
 	if (requestMatch('POST', '/api/handoff', request)) {
-		if (!identityOf(credentialOf(request))?.owner) return new Response('Only the owner can do that', { status: 403 });
-
-		return Response.json({ code: createHandoff() });
+		return Response.json({ code: createHandoff(identityOf(credentialOf(request))) });
 	}
 
 	if (requestMatch('POST', '/api/handoff/redeem', request)) {
-		if (!redeemHandoff((await request.json()).code)) return new Response('That link has expired', { status: 410 });
+		const login = await redeemHandoff((await request.json()).code);
 
-		return new Response(null, { status: 204, headers: { 'Set-Cookie': loginCookie(await createLogin()) } });
+		if (!login) return new Response('That link has expired', { status: 410 });
+
+		return new Response(null, { status: 204, headers: { 'Set-Cookie': loginCookie(login) } });
 	}
 
 	if (requestMatch('POST', '/api/logout', request)) {

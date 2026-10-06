@@ -3,6 +3,7 @@ import { deleteSession, forkSession, getSessionInfo } from '@anthropic-ai/claude
 import { activitySummary, forgetActivity, setWatching, watchedBy } from '../activity';
 import { credentialOf, identityOf, revokeInvitesFor } from '../auth';
 import { pinName, pinnedName } from '../names';
+import { listRemotes, remoteLink } from '../remotes';
 import { deleteNotes } from '../notes';
 import { sessionTurns } from '../sessions/history';
 import {
@@ -54,6 +55,16 @@ const sessionsRoutes = async (request, server) => {
 
 	match = requestMatch('DELETE', '/api/projects/:project', request);
 	if (match) return new Response(null, { status: (await unregisterFolder(match.project)) ? 204 : 404 });
+
+	// Sessions on the other paudes this user is logged into from here
+	if (requestMatch('GET', '/api/remotes', request)) return Response.json(await listRemotes());
+
+	if (requestMatch('POST', '/api/remotes/open', request)) {
+		const { url, sessionId } = await request.json();
+		const link = await remoteLink(url, sessionId);
+
+		return link ? Response.json({ link }) : new Response('Not one of your servers', { status: 404 });
+	}
 
 	match = requestMatch('GET', '/api/sessions', request);
 	if (match) return Response.json((await listAllSessions(identity)).slice(0, Number(match.limit) || 8));

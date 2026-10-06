@@ -58,7 +58,7 @@ Logins need HTTPS: the login cookie is `Secure`, which browsers accept only over
 }
 ```
 
-Then, from any machine: `paude login https://203.0.113.7`. A session nobody is attached to exits after an hour (later if Claude is still working); opening it again resumes it.
+Then, from any machine: `paude login https://203.0.113.7 --name vps` (the name is how the picker shows it; `paude name <url> <name>` renames a login you have). A session nobody is attached to exits after an hour (later if Claude is still working); opening it again resumes it.
 
 ## Who can do what
 
@@ -122,3 +122,5 @@ Both side panels float over the terminal and resize from their inner edge.
 ![Home: watched sessions first, with what changed](docs/web-home.png)
 
 A watched session is listed first everywhere, with what it's doing (**working**; **needs you** when Claude is asking for a permission or an answer; **ready** for the next prompt) and how many turns, chat messages and comments landed since you last looked. Watching starts on its own the first time you join a session by invite, post in it, or prompt it; the eye in the session's bar, or **w** in the picker, turns it off and on.
+
+When a watched session starts waiting on you or has news, you get a notification: in the browser once the bell in the chat panel is on (the tab title also counts the sessions waiting on you), and in the terminal through kitty, iTerm2, WezTerm and others that show them. This machine's paude lists the sessions on every server your `paude` command is logged into, too, and opens them there already logged in.

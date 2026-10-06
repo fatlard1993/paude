@@ -181,9 +181,18 @@ export const LinkCard = ({
 	watching,
 	remove,
 	removeLabel = 'Delete',
+	onOpen,
 	appendTo,
 }) => {
 	const card = new Card({ tag: 'a', attributes: { href }, appendTo });
+
+	// Somewhere this page can't link to directly: another paude, through a one-time login
+	if (onOpen) {
+		card.elem.addEventListener('click', event => {
+			event.preventDefault();
+			onOpen();
+		});
+	}
 	const body = new Elem({ appendTo: card, addClass: 'body' });
 
 	const heading = new Elem({ appendTo: body, addClass: 'title', textContent: title });
@@ -233,17 +242,22 @@ export const LinkCard = ({
 	return card;
 };
 
-export const sessionCard = (session, { showProject = true, appendTo, remove }) =>
+export const sessionCard = (session, { showProject = true, appendTo, remove, server, onOpen }) =>
 	LinkCard({
 		appendTo,
 		href: `#/sessions/${session.id}`,
 		title: session.pinned ? `📌 ${session.title}` : session.title,
 		project: showProject ? session.project : null,
-		meta: [relativeTime(session.lastModified), session.gitBranch !== 'HEAD' && session.gitBranch],
+		meta: [
+			server,
+			relativeTime(session.lastModified ?? session.activeAt),
+			session.gitBranch !== 'HEAD' && session.gitBranch,
+		],
 		live: session.live,
 		busy: session.status === 'working' || session.busy,
 		waiting: session.status === 'waiting',
 		unseen: session.unseen,
 		watching: session.watching,
 		remove,
+		onOpen,
 	});

@@ -79,3 +79,7 @@ export const setWatching = async (sessionId, watching) =>
 export const addFolder = async path => await POST('/api/projects', { body: { path }, responseType: 'text' });
 
 export const removeFolder = async name => await DELETE('/api/projects/:name', { urlParameters: { name } });
+
+export const getRemotes = async () => await GET('/api/remotes', { invalidateAfter: 0 });
+
+export const openRemote = async (url, sessionId) => await POST('/api/remotes/open', { body: { url, sessionId } });

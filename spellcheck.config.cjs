@@ -1,5 +1,7 @@
 module.exports = {
 	skipWords: [
+		'notificationclick',
+		'paudes',
 		'hsla',
 		'xdg',
 		'br',

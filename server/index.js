@@ -5,7 +5,7 @@ import path from 'path';
 
 import Argi from 'argi';
 
-import { ensureLocalToken, initAuth, passwordIsSet } from './auth';
+import { ensureLocalToken, initAuth, initServerId, passwordIsSet } from './auth';
 import { initActivity } from './activity';
 import { setHookAddress } from './hookSettings';
 import { initNames } from './names';
@@ -57,6 +57,7 @@ await initNames(options.data);
 await initActivity(options.data);
 await initProjects(options.data);
 await ensureLocalToken(options.data);
+await initServerId(options.data);
 setHookAddress({ host: options.host, port: options.port });
 
 if (!passwordIsSet()) {

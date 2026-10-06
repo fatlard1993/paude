@@ -8,9 +8,10 @@ import Argi from 'argi';
 import packageJSON from '../package.json';
 
 import attachSession from '../cli/attach';
-import { forget, normalizeUrl, resolveServer, saveToken } from '../cli/credentials';
+import { forget, nameServer, normalizeUrl, resolveServer, saveToken } from '../cli/credentials';
 import { allServers, api, ensureLocalServer } from '../cli/servers';
 import pickSession from '../cli/picker';
+import startWatchAlerts from '../cli/watchAlerts';
 import { readHidden } from '../cli/screen';
 
 const USAGE = `paude                  pick a session from this machine and every server you're logged into
@@ -18,8 +19,9 @@ paude add [folder]     make a folder (default: this one) a project on this machi
 paude remove <name>    stop treating a folder added with paude add as a project
 paude serve [options]  run this machine's paude in the foreground (it otherwise starts on its own when needed)
 paude web [url]        open a paude in the browser, already logged in (default: this machine's)
-paude login <url>      log in to a paude server (e.g. https://paude.example.com)
+paude login <url> [--name <name>]  log in to a paude server (e.g. https://paude.example.com), shown by that name
 paude login <invite>   join with an invite link someone sent you
+paude name <url> <name>  show a server you're logged into by a name
 paude logout [url]     sign this machine out of a server and forget the login
 paude --url <url>      pick from one server only; -s <id> attaches straight to a session`;
 
@@ -30,7 +32,7 @@ const parseTarget = target => {
 	return { url: normalizeUrl(base), inviteToken };
 };
 
-const login = async target => {
+const login = async (target, name) => {
 	if (!target) return console.log(USAGE);
 
 	const { url, inviteToken } = parseTarget(target);
@@ -52,7 +54,7 @@ const login = async target => {
 	if (response.status === 429) return console.error(`Too many tries. Wait ${response.headers.get('retry-after')}s.`);
 	if (!response.ok) return console.error(`${url} answered ${response.status}. Is that a paude server?`);
 
-	await saveToken(url, (await response.json()).token);
+	await saveToken(url, (await response.json()).token, name);
 	console.log(inviteToken ? 'Joined. Run paude to open the session.' : 'Logged in. Run paude to pick a session.');
 };
 
@@ -80,13 +82,18 @@ const OUTCOMES = {
 	unauthorized: 'Your login ended (signed out, or the password changed). Run: paude login <url>',
 };
 
+let attachedTo = null;
+
 const attachLoop = async (pick, first) => {
 	let chosen = first;
 
 	while (true) {
+		attachedTo = null;
 		chosen ??= await pick();
 
 		if (!chosen) return;
+
+		attachedTo = chosen.id;
 
 		const { server, id, identity } = chosen;
 		const guest = !identity.owner;
@@ -110,6 +117,8 @@ const runOne = async options => {
 	const id = identity.owner ? options.session : identity.sessionId;
 	const one = [{ ...server, label: new URL(server.url).host }];
 
+	startWatchAlerts(one, () => attachedTo);
+
 	return attachLoop(() => pickSession(one), id ? { server, id, identity } : null);
 };
 
@@ -132,6 +141,8 @@ const run = async () => {
 			`Nothing to show yet. Run paude add in a folder to work on it here, or paude login <url> for a hosted paude.\n\n${USAGE}`,
 		);
 	}
+
+	startWatchAlerts(servers, () => attachedTo);
 
 	return attachLoop(() => pickSession(servers));
 };
@@ -187,8 +198,14 @@ const web = async target => {
 const [command, target] = process.argv.slice(2);
 
 try {
-	if (command === 'login') await login(target);
-	else if (command === 'add') await add(target);
+	if (command === 'login') await login(target, process.argv.slice(4)[0] === '--name' ? process.argv[5] : undefined);
+	else if (command === 'name') {
+		const name = process.argv[4];
+
+		if (!target || !name) console.log('paude name <url> <name>');
+		else if (await nameServer(normalizeUrl(target), name)) console.log(`${normalizeUrl(target)} shows as "${name}".`);
+		else console.log(`Not logged in to ${normalizeUrl(target)}.`);
+	} else if (command === 'add') await add(target);
 	else if (command === 'remove') await remove(target);
 	else if (command === 'serve') await serve(process.argv.slice(3));
 	else if (command === 'web') await web(target);

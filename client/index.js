@@ -3,8 +3,10 @@ import { Page, Router } from '@vanilla-bean/components';
 import Home from './Home';
 import { setIdentity } from './identity';
 import Login from './Login';
+import { registerNotificationWorker } from './notify';
 import Project from './Project';
 import TerminalView from './Terminal/TerminalView';
+import { startWatchAlerts } from './watchAlerts';
 
 import './hotReload';
 
@@ -46,8 +48,8 @@ window.addEventListener('hashchange', ({ oldURL, newURL }) => {
 	if (sessionIn(oldURL) && sessionIn(newURL) && sessionIn(oldURL) !== sessionIn(newURL)) window.location.reload();
 });
 
-// A one-time link from the terminal (paude web) logs the owner in
-const handoffCode = window.location.hash.match(/^#\/handoff\/(.+)$/)?.[1];
+// A one-time link, optionally naming where to land: #/handoff/<code> or #/handoff/<code>/sessions/<id>
+const [, handoffCode, handoffTo] = window.location.hash.match(/^#\/handoff\/([^/]+)(\/sessions\/[^/]+)?$/) ?? [];
 
 if (handoffCode) {
 	// An expired code just leaves the login page showing
@@ -57,12 +59,17 @@ if (handoffCode) {
 		body: JSON.stringify({ code: handoffCode }),
 	});
 
-	window.location.replace('#/');
+	window.location.replace(`#${handoffTo ?? '/'}`);
 }
 
 const { authenticated, passwordSet, identity } = await (await fetch('/api/auth')).json();
 
 setIdentity(identity);
+
+if (authenticated) {
+	registerNotificationWorker();
+	startWatchAlerts(identity);
+}
 
 const content = () => {
 	if (!authenticated) return new Login({ passwordSet, joinFailed });

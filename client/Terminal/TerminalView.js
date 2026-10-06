@@ -10,10 +10,11 @@ import { canNote, canType, identity } from '../identity';
 import { Header } from '../Layout';
 import withoutPointerReporting from '../../shared/pointerReporting';
 import { NOTE_TYPES } from '../../shared/protocol';
+import { showNotification } from '../notify';
 import attach from './attach';
 import KeyBar from './KeyBar';
 import FilesPanel from './FilesPanel';
-import NotesPanel, { desktopNotificationsOn, recall, remember, savedName } from './NotesPanel';
+import NotesPanel, { recall, remember, savedName } from './NotesPanel';
 
 const BACKGROUND = '#1b1b1b';
 const touch = window.matchMedia('(pointer: coarse)').matches;
@@ -729,7 +730,7 @@ export default class TerminalView extends View {
 		const what = `${author} ${tab === 'comments' ? 'commented' : 'says'}: ${text}`;
 
 		if (document.hidden) {
-			if (desktopNotificationsOn()) new Notification('paude', { body: what, tag: `paude-${this.options.id}` });
+			showNotification({ title: 'paude', body: what, tag: `paude-${this.options.id}`, url: window.location.href });
 
 			return;
 		}
