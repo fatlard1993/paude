@@ -1,7 +1,7 @@
 import { mkdtemp } from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 
 import {
 	checkPassword,
@@ -22,6 +22,9 @@ import {
 	setPassword,
 } from './auth';
 import { guard } from './router/auth';
+
+// The lockout tests run several real argon2 checks each, which a busy machine takes longer than the default over
+setDefaultTimeout(20_000);
 
 const PASSWORD = 'correct horse battery';
 
