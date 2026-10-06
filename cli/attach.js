@@ -2,15 +2,15 @@ import os from 'os';
 
 import { NOTE_TYPES, applyNote } from '../shared/protocol';
 import sessionSocket from '../shared/sessionSocket';
-import { searchParameters } from '../shared/searchQuery';
 import notifier from './notify';
 import outputFilter, { filterText } from './outputFilter';
 import { composeFrame, createMirror } from './compositor';
-import { createBrowser, openFile } from './fileBrowser';
-import { IMAGE_EXTENSIONS, place, pngSize, removeImage, showsImages, toPng, transmit } from './graphics';
+import { createBrowser } from './fileBrowser';
+import { place, removeImage, transmit } from './graphics';
 import { overlayKey, overlayBox } from './overlay';
 import { loadPrefs, savePrefs } from './prefs';
 import readSelection from './selection';
+import sessionFiles from './sessionFiles';
 import {
 	CLEAR,
 	CLEAR_SCROLLBACK,
@@ -99,17 +99,11 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			if (overlay && !drawTimer) drawTimer = setTimeout(redraw, FRAME_MS);
 		};
 
-		const api = path =>
-			fetch(`${server.url}/api/sessions/${id}/${path}`, { headers: { authorization: `Bearer ${server.token}` } });
+		const files = sessionFiles(server, id);
 
 		const openFiles = async () => {
 			try {
-				const response = await api('files');
-
-				if (!response.ok)
-					throw new Error(response.status === 403 ? 'Your invite does not include files.' : 'Could not list files.');
-
-				const paths = await response.json();
+				const paths = await files.list();
 
 				state.files = state.browserState
 					? Object.assign(state.browserState, { paths })
@@ -122,42 +116,26 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			redraw();
 		};
 
-		const readImage = async path => {
-			const response = await api(`raw?path=${encodeURIComponent(path)}`).catch(() => null);
-			const png = response?.ok ? await toPng(new Uint8Array(await response.arrayBuffer())) : null;
+		const readFile = async (path, line) => {
+			const opened = await files.read(path, line);
 
 			if (!state.files) return;
-			state.files.open = png
-				? { path, image: { png, ...pngSize(png) } }
-				: { path, error: response?.ok ? 'This image needs ImageMagick to show here.' : 'Could not open it.' };
+			state.files.open = opened;
 			redraw();
 		};
 
 		const searchFiles = async () => {
 			const { search, prefs } = state.files;
 			const query = search.query.trim();
-			const parameters = new URLSearchParams(searchParameters(query, prefs.search));
 
 			Object.assign(search, { running: true, error: null });
 			redraw();
 
-			const response = await api(`search?${parameters}`).catch(() => null);
-			const body = response ? await response.text() : 'Could not reach the server.';
+			const { results, error } = await files.search(query, prefs.search);
 
 			Object.assign(search, { running: false, typing: false, cursor: 0, lastQuery: query });
-			if (response?.ok) search.results = JSON.parse(body);
-			else Object.assign(search, { results: null, typing: true, error: body || 'Search failed.' });
-			redraw();
-		};
-
-		const readFile = async (path, line) => {
-			if (showsImages() && IMAGE_EXTENSIONS.has(path.split('.').at(-1).toLowerCase())) return readImage(path);
-
-			const response = await api(`file?path=${encodeURIComponent(path)}`).catch(() => null);
-			const text = response ? await response.text() : 'Could not reach the server.';
-
-			if (!state.files) return;
-			state.files.open = response?.ok ? openFile(path, text, line) : { path, error: text || 'Could not open it.' };
+			if (error) Object.assign(search, { results: null, typing: true, error });
+			else search.results = results;
 			redraw();
 		};
 
@@ -196,6 +174,31 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			resolve(outcome);
 		};
 
+		const OVERLAY_ACTIONS = {
+			detach: () => finish('detach'),
+			switch: () => finish('switch'),
+			close: closeOverlay,
+			ignore: () => {},
+			files: openFiles,
+			readFile: ({ path, line }) => readFile(path, line),
+			search: searchFiles,
+			savePrefs: () => {
+				savePrefs(state.files.prefs);
+				redraw();
+			},
+			// OSC 52 puts text on this person's own clipboard, through their terminal
+			copy: ({ text, what }) => {
+				write(`\x1b]52;c;${Buffer.from(text).toString('base64')}\x07`);
+				state.hint = `Sent ${what} to your clipboard, if your terminal allows it`;
+				redraw();
+			},
+			// Pasted, so a multi-line attachment is one paste in Claude's prompt and nothing is sent until Enter
+			attach: ({ text }) => {
+				send({ type: 'input', data: `\x1b[200~${text}\x1b[201~` });
+				closeOverlay();
+			},
+		};
+
 		const stopInput = rawInput(key => {
 			if (!overlay) {
 				// The key itself, not a paste that happens to contain its byte
@@ -218,30 +221,16 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 				return redraw();
 			}
 
-			if (action.type === 'detach' || action.type === 'switch') return finish(action.type);
-			if (action.type === 'close') return closeOverlay();
-			if (action.type === 'ignore') return;
-			if (NOTE_ACTIONS.includes(action.type) && !send(action)) {
-				if (action.text) state.draft = { kind: action.type === 'chat' ? 'chat' : action.type, ...action };
-				state.hint = 'Not sent: reconnecting. Press Enter again once it is back.';
-			}
-			if (action.type === 'files') return openFiles();
-			if (action.type === 'readFile') return readFile(action.path, action.line);
-			if (action.type === 'search') return searchFiles();
-			if (action.type === 'savePrefs') savePrefs(state.files.prefs);
-			// OSC 52 puts text on this person's own clipboard, through their terminal
-			if (action.type === 'copy') {
-				write(`\x1b]52;c;${Buffer.from(action.text).toString('base64')}\x07`);
-				state.hint = `Sent ${action.what} to your clipboard, if your terminal allows it`;
-			}
-			// Pasted, so a multi-line attachment is one paste in Claude's prompt and nothing is sent until Enter
-			if (action.type === 'attach') {
-				send({ type: 'input', data: `\x1b[200~${action.text}\x1b[201~` });
+			if (NOTE_ACTIONS.includes(action.type)) {
+				if (!send(action)) {
+					if (action.text) state.draft = { kind: action.type, ...action };
+					state.hint = 'Not sent: reconnecting. Press Enter again once it is back.';
+				}
 
-				return closeOverlay();
+				return redraw();
 			}
 
-			redraw();
+			(OVERLAY_ACTIONS[action.type] ?? redraw)(action);
 		});
 
 		const onResize = () => {
