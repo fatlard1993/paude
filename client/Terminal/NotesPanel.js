@@ -6,6 +6,7 @@ import { applyNote } from '../../shared/protocol';
 import { REACTION_PALETTE } from '../../shared/reactions';
 import { canNote, identity, identityKey } from '../identity';
 import relativeTime from '../../shared/relativeTime';
+import { element } from '../dom';
 import renderPeople from './People';
 
 const Panel = styled(
@@ -250,15 +251,6 @@ const Panel = styled(
 		}
 	`,
 );
-
-const element = (tag, className, text) => {
-	const node = document.createElement(tag);
-
-	if (className) node.className = className;
-	if (text !== undefined) node.textContent = text;
-
-	return node;
-};
 
 const meta = ({ author, at }) => element('div', 'meta', `${author} · ${relativeTime(at)}`);
 

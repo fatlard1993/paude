@@ -8,6 +8,7 @@ import searchPattern from '../../shared/searchPattern';
 import { listFiles, rawFileUrl, readFile, searchFiles } from '../api';
 import { canType } from '../identity';
 import { recall, remember } from '../storage';
+import { button, dragHandle, element } from '../dom';
 
 const MAX_MATCHES = 200;
 const TOUCH = window.matchMedia('(pointer: coarse)');
@@ -336,31 +337,7 @@ const Panel = styled(
 	`,
 );
 
-const element = (tag, className, text) => {
-	const node = document.createElement(tag);
-
-	if (className) node.className = className;
-	if (text !== undefined) node.textContent = text;
-
-	return node;
-};
-
-const button = (label, onClick, { title, className = '' } = {}) => {
-	const node = element('button', className, label);
-
-	if (title) node.title = title;
-	node.addEventListener('click', onClick);
-
-	return node;
-};
-
-const iconButton = (icon, title, onClick) => {
-	const node = button('', onClick, { title, className: 'icon-only' });
-
-	node.append(element('i', `fa-solid fa-${icon}`));
-
-	return node;
-};
+const iconButton = (name, title, onPress) => button('', onPress, { icon: name, title, className: 'icon-only' });
 
 const BRAND_ICONS = {
 	js: 'js',
@@ -666,22 +643,18 @@ export default class FilesPanel extends Panel {
 
 		if (Number(recall(LIST_WIDTH_KEY))) this.panes.style.setProperty('--list-width', `${recall(LIST_WIDTH_KEY)}px`);
 
-		handle.addEventListener('pointerdown', start => {
-			start.preventDefault();
-			handle.setPointerCapture(start.pointerId);
-			handle.classList.add('dragging');
+		let left;
 
-			const left = this.list.getBoundingClientRect().left;
-			const move = event => setWidth(event.clientX - left);
-			const stop = event => {
+		dragHandle(handle, {
+			onStart: () => {
+				left = this.list.getBoundingClientRect().left;
+				handle.classList.add('dragging');
+			},
+			onMove: event => setWidth(event.clientX - left),
+			onDone: event => {
 				remember(LIST_WIDTH_KEY, String(setWidth(event.clientX - left)));
 				handle.classList.remove('dragging');
-				handle.removeEventListener('pointermove', move);
-				handle.removeEventListener('pointerup', stop);
-			};
-
-			handle.addEventListener('pointermove', move);
-			handle.addEventListener('pointerup', stop);
+			},
 		});
 
 		return handle;

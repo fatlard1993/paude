@@ -1,5 +1,6 @@
 import { createInvite, getInvites, revokeInvite } from '../api';
 import confirmDialog from '../confirmDialog';
+import { element } from '../dom';
 
 const ROLES = [
 	['drive', 'Drive: type into Claude, and all of the above'],
@@ -11,15 +12,6 @@ const EXPIRIES = [
 	[24, '1 day'],
 	[24 * 7, '7 days'],
 ];
-
-const element = (tag, className, text) => {
-	const node = document.createElement(tag);
-
-	if (className) node.className = className;
-	if (text !== undefined) node.textContent = text;
-
-	return node;
-};
 
 const select = options => {
 	const node = element('select');

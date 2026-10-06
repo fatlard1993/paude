@@ -13,6 +13,7 @@ import withoutPointerReporting from '../../shared/pointerReporting';
 import { NOTE_TYPES } from '../../shared/protocol';
 import { showNotification } from '../notify';
 import { recall, remember, savedName } from '../storage';
+import { button, dragHandle } from '../dom';
 import attach from './attach';
 import KeyBar from './KeyBar';
 import FilesPanel from './FilesPanel';
@@ -256,16 +257,11 @@ const TopBar = styled(
 );
 
 const ghostButton = (appendTo, { icon, label, title, onPress, className = '' }) => {
-	const button = document.createElement('button');
+	const node = button(label, onPress, { icon, title: title ?? '', className: `ghost ${className}` });
 
-	button.className = `ghost ${className}`;
-	button.title = title ?? '';
-	if (icon) button.append(Object.assign(document.createElement('i'), { className: `fa-solid fa-${icon}` }));
-	if (label) button.append(label);
-	button.addEventListener('click', onPress);
-	appendTo.elem.append(button);
+	appendTo.elem.append(node);
 
-	return button;
+	return node;
 };
 
 const Screen = styled.Component`
@@ -704,23 +700,19 @@ export default class TerminalView extends View {
 
 		if (Number(recall(key))) setWidth(Number(recall(key)));
 
-		handle.addEventListener('pointerdown', start => {
-			start.preventDefault();
-			handle.setPointerCapture(start.pointerId);
-			panel.classList.add('resizing');
+		let bounds;
+		const widthAt = event => (edge === 'left' ? bounds.right - event.clientX : event.clientX - bounds.left);
 
-			const bounds = panel.getBoundingClientRect();
-			const widthAt = event => (edge === 'left' ? bounds.right - event.clientX : event.clientX - bounds.left);
-			const move = event => setWidth(widthAt(event));
-			const stop = event => {
+		dragHandle(handle, {
+			onStart: () => {
+				bounds = panel.getBoundingClientRect();
+				panel.classList.add('resizing');
+			},
+			onMove: event => setWidth(widthAt(event)),
+			onDone: event => {
 				remember(key, String(setWidth(widthAt(event))));
 				panel.classList.remove('resizing');
-				handle.removeEventListener('pointermove', move);
-				handle.removeEventListener('pointerup', stop);
-			};
-
-			handle.addEventListener('pointermove', move);
-			handle.addEventListener('pointerup', stop);
+			},
 		});
 	}
 
