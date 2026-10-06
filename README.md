@@ -159,6 +159,7 @@ Open the server's address and log in, or follow an invite link.
 - **Editing.** **Edit** on a file you're reading; Ctrl+S saves. If the file changed since you opened it (Claude saved it, most likely), saving stops and asks whether to save yours anyway or load theirs.
 - **Side terminal.** The terminal button in the bar opens a shell in the session's folder, yours alone, which ends when you close it. Select some output (on a phone, **Select**, then the first and last line) and **Attach selection** quotes it in Claude's prompt.
 - **Start over from a point.** Each `done` line Claude prints after a turn is a link that starts a new session holding the conversation up to there.
+- **Finding a session.** Home's search box looks through every session, and a project's through its own: each word you type has to appear in the title, the prompt it began with, the project, branch or worktree. **Show more** pages on. In the terminal, **▸ All sessions** in the picker does the same as you type.
 - **Names.** Click a session's title to pin a name (📌); **Use automatic name** goes back to Claude's.
 
 Both side panels float over the terminal and resize from their inner edge.

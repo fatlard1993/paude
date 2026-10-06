@@ -6,10 +6,13 @@ import { projectOf, projectPath } from '../projects';
 import { worktreeName } from '../worktrees';
 import { titleOf } from './record';
 import { allRunning, runningSession } from './running';
+import { firstPromptOf } from './transcript';
+
+const FIRST_PROMPT_PREVIEW = 200;
 
 export const toSummary =
 	identity =>
-	({ sessionId, summary, customTitle, lastModified, gitBranch, cwd }) => {
+	({ sessionId, summary, customTitle, firstPrompt, lastModified, gitBranch, cwd }) => {
 		const running = runningSession(sessionId);
 
 		return {
@@ -18,6 +21,7 @@ export const toSummary =
 			pinned: Boolean(pinnedName(sessionId)),
 			lastModified,
 			gitBranch,
+			firstPrompt: firstPrompt?.slice(0, FIRST_PROMPT_PREVIEW),
 			project: projectOf(cwd),
 			worktree: worktreeName(projectPath(projectOf(cwd)), cwd),
 			live: Boolean(running),
@@ -38,12 +42,21 @@ const withUnsaved = (saved, belongs) => {
 	return [...unsaved, ...saved].sort((a, b) => (b.lastModified ?? 0) - (a.lastModified ?? 0));
 };
 
-export const listProjectSessions = async (cwd, identity) =>
-	withUnsaved(await listSessions({ dir: cwd, limit: 50 }), folder => projectOf(folder) === projectOf(cwd)).map(
-		toSummary(identity),
+// The SDK doesn't always fill in a session's first prompt; the transcript has it
+const withFirstPrompts = async sessions =>
+	Promise.all(
+		sessions.map(async session =>
+			session.firstPrompt ? session : { ...session, firstPrompt: await firstPromptOf(session.sessionId, session.cwd) },
+		),
 	);
 
+export const listProjectSessions = async (cwd, identity) =>
+	withUnsaved(
+		await withFirstPrompts(await listSessions({ dir: cwd })),
+		folder => projectOf(folder) === projectOf(cwd),
+	).map(toSummary(identity));
+
 export const listAllSessions = async identity =>
-	withUnsaved(await listSessions({ limit: 1000 }), folder => Boolean(projectOf(folder)))
+	withUnsaved(await withFirstPrompts(await listSessions()), folder => Boolean(projectOf(folder)))
 		.map(toSummary(identity))
 		.filter(session => session.project);

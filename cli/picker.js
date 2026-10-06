@@ -1,4 +1,5 @@
 import { runningSummary } from '../shared/checkouts';
+import { matchesQuery } from '../shared/sessionSearch';
 import { readProgress, recentLines } from '../shared/progress';
 import { projectSummary } from '../shared/projects';
 import sessionUrgency from '../shared/urgency';
@@ -191,6 +192,70 @@ const startSession = async (server, project, checkout) => {
 	return result.id;
 };
 
+// Every session on a server, narrowed as you type (title, first prompt, project, branch): the session, or null to
+// go back
+const pickFromAll = (server, sessions) =>
+	new Promise(resolve => {
+		let filter = '';
+		let cursor = 0;
+
+		const matching = () => sessions.filter(session => matchesQuery(session, filter));
+
+		const draw = () => {
+			const { cols, rows } = size();
+			const shown = matching();
+			const room = rows - 6;
+			const start = Math.max(0, Math.min(cursor - Math.floor(room / 2), shown.length - room));
+			const lines = [
+				`${bold('paude · all sessions')}  ${dim(server.label)}`,
+				`${orange('/')} ${printable(filter)}█  ${dim(`${shown.length} of ${sessions.length}`)}`,
+				'',
+			];
+
+			for (const [offset, session] of shown.slice(start, start + room).entries()) {
+				const row = sessionRow(server, session, { showProject: true });
+				const line = `${row.marker} ${row.label}  ${dim(row.detail)}`;
+
+				lines.push(start + offset === cursor ? inverse(fit(line, cols - 1)) : fit(line, cols - 1));
+			}
+
+			if (!shown.length) lines.push(dim('  no sessions match'));
+			write(
+				`${CLEAR}${lines.join('\r\n')}\r\n\r\n${dim(fit('type to search · ↑↓ move · enter open · esc clear or back', cols - 1))}`,
+			);
+		};
+
+		const stop = rawInput(key => {
+			const shown = matching();
+
+			if (is(key, 'up') && !/^[jk]$/.test(key)) cursor = Math.max(0, cursor - 1);
+			else if (is(key, 'down') && !/^[jk]$/.test(key)) cursor = Math.min(shown.length - 1, cursor + 1);
+			else if (is(key, 'enter')) return shown[cursor] && finish(shown[cursor]);
+			else if (key === '\x1b' || key === '\x03') {
+				if (filter && key === '\x1b') {
+					filter = '';
+					cursor = 0;
+				} else return finish(null);
+			} else if (key === '\x7f' || key === '\b') filter = filter.slice(0, -1);
+			else if (!key.startsWith('\x1b')) {
+				filter += printable(key);
+				cursor = 0;
+			}
+
+			cursor = Math.max(0, Math.min(cursor, matching().length - 1));
+			draw();
+		});
+
+		const finish = value => {
+			stop();
+			process.stdout.off('resize', draw);
+			resolve(value);
+		};
+
+		process.stdout.on('resize', draw);
+		draw();
+	});
+
 const STATUS = {
 	waiting: { marker: '\x1b[1;38;5;179m!\x1b[22;39m', label: 'needs you' },
 	working: { marker: orange('◐'), label: 'working' },
@@ -299,6 +364,11 @@ const serverRows = ({ server, identity, sessions, projects, error }, watchedIds,
 	// One row for the projects, so every server's sessions stay in view however many folders one has
 	if (projects.length) {
 		rows.push({
+			label: '▸ All sessions',
+			detail: 'search by title, prompt, project or branch',
+			value: { server, allSessions: true },
+		});
+		rows.push({
 			label: `▸ Projects (${projects.length})`,
 			detail: 'start or find a session in one',
 			marker: projects.some(project => project.liveCount) ? green('●') : ' ',
@@ -364,6 +434,14 @@ const pickSession = async servers => {
 			const { identity } = gathered.find(({ server }) => server === picked.server);
 
 			if (picked.session) return { server: picked.server, id: picked.session.id, identity };
+
+			if (picked.allSessions) {
+				const all = await api(picked.server, '/api/sessions?limit=500');
+				const session = await pickFromAll(picked.server, all);
+
+				if (session) return { server: picked.server, id: session.id, identity };
+				continue;
+			}
 
 			const id = await pickProject(picked.server, picked.projects);
 

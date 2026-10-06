@@ -2,6 +2,7 @@ import { deleteSession, forkSession, listSessions } from '@anthropic-ai/claude-a
 
 import { activitySummary, forgetActivity, setWatching, watchedBy } from '../activity';
 import { credentialOf, identityOf, revokeInvitesFor } from '../auth';
+import { matchesQuery } from '../../shared/sessionSearch';
 import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
 import { listRemotes, remoteLink } from '../remotes';
@@ -38,6 +39,15 @@ const isFolder = async path =>
 				.catch(() => null)
 		)?.isDirectory(),
 	);
+
+// A page of sessions, newest first, narrowed by ?q= (see matchesQuery); x-total-count says how many match in all
+const sessionPage = (sessions, { q, offset, limit }, pageSize) => {
+	const matching = sessions.filter(session => matchesQuery(session, q));
+	const from = Math.max(Number(offset) || 0, 0);
+	const count = Math.min(Math.max(Number(limit) || pageSize, 1), 500);
+
+	return Response.json(matching.slice(from, from + count), { headers: { 'x-total-count': String(matching.length) } });
+};
 
 const runningFolders = () => [...allRunning()].map(session => session.cwd);
 
@@ -159,7 +169,7 @@ const sessionsRoutes = async (request, server) => {
 	}
 
 	match = requestMatch('GET', '/api/sessions', request);
-	if (match) return Response.json((await listAllSessions(identity)).slice(0, Number(match.limit) || 8));
+	if (match) return sessionPage(await listAllSessions(identity), match, 8);
 
 	if (requestMatch('GET', '/api/watching', request)) {
 		const watched = await Promise.all(
@@ -190,7 +200,7 @@ const sessionsRoutes = async (request, server) => {
 
 		if (!cwd) return new Response('Unknown project', { status: 404 });
 
-		return Response.json(await listProjectSessions(cwd, identity));
+		return sessionPage(await listProjectSessions(cwd, identity), match, 50);
 	}
 
 	// Where a new session could go: the main checkout and the worktrees inside the project, with what runs in each

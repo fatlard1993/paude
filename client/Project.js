@@ -5,7 +5,8 @@ import { readProgress, recentLines } from '../shared/progress';
 import { createSession, deleteSession, getCheckouts, getProjectSessions } from './api';
 import { confirmDeleteSession } from './confirmDialog';
 import { element } from './dom';
-import { Empty, Header, Scroll, SectionTitle, sessionCard } from './Layout';
+import sessionList from './SessionList';
+import { Header, Scroll, SectionTitle, sessionCard } from './Layout';
 
 const Composer = styled(
 	Input,
@@ -130,7 +131,23 @@ export default class Project extends View {
 		});
 
 		new SectionTitle({ appendTo: scroll, textContent: 'Sessions' });
-		this.sessions = new Scroll({ appendTo: scroll, style: { padding: 0, overflow: 'visible' } });
+		this.sessions = sessionList({
+			appendTo: scroll,
+			placeholder: `Find a session in ${project}`,
+			empty: 'No sessions in this project yet.',
+			firstPage: 30,
+			fetchPage: async searchParameters => {
+				const { body, response } = await getProjectSessions(project, { searchParameters });
+
+				return { sessions: body ?? [], total: Number(response?.headers.get('x-total-count') ?? 0) };
+			},
+			renderCard: (session, appendTo) =>
+				sessionCard(session, {
+					showProject: false,
+					appendTo,
+					remove: async () => (await confirmDeleteSession(session, deleteSession)) && this.load(),
+				}),
+		});
 
 		this.load();
 		this.loadCheckouts();
@@ -192,20 +209,8 @@ export default class Project extends View {
 		};
 	}
 
-	async load() {
-		const { body: sessions } = await getProjectSessions(this.options.project);
-
-		this.sessions.empty();
-
-		if (!sessions?.length) new Empty({ appendTo: this.sessions, textContent: 'No sessions in this project yet.' });
-
-		for (const session of sessions ?? []) {
-			sessionCard(session, {
-				showProject: false,
-				appendTo: this.sessions,
-				remove: async () => (await confirmDeleteSession(session, deleteSession)) && this.load(),
-			});
-		}
+	load() {
+		return this.sessions.reload();
 	}
 
 	async start() {

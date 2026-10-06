@@ -14,6 +14,7 @@ import {
 } from './api';
 import confirmDialog, { confirmDeleteSession } from './confirmDialog';
 import { identity } from './identity';
+import sessionList from './SessionList';
 import { Empty, Header, LinkCard, Scroll, SectionTitle, sessionCard } from './Layout';
 
 const Grid = styled.Component`
@@ -74,8 +75,22 @@ export default class Home extends View {
 		this.watchingTitle = new SectionTitle({ appendTo: scroll, textContent: 'Watching', style: { display: 'none' } });
 		this.watching = new List({ appendTo: scroll });
 
-		this.recentTitle = new SectionTitle({ appendTo: scroll, textContent: 'Continue' });
-		this.recent = new List({ appendTo: scroll });
+		new SectionTitle({ appendTo: scroll, textContent: 'Continue' });
+		this.recent = sessionList({
+			appendTo: scroll,
+			placeholder: 'Find a session in any project',
+			empty: 'Nothing yet. Pick a project to start a session.',
+			fetchPage: async searchParameters => {
+				const { body, response } = await getRecentSessions({ searchParameters });
+
+				return { sessions: body ?? [], total: Number(response?.headers.get('x-total-count') ?? 0) };
+			},
+			renderCard: (session, appendTo) =>
+				sessionCard(session, {
+					appendTo,
+					remove: async () => (await confirmDeleteSession(session, deleteSession)) && this.load(),
+				}),
+		});
 
 		this.remotes = new Elem({ appendTo: scroll });
 
@@ -151,8 +166,7 @@ export default class Home extends View {
 	}
 
 	async load() {
-		const [{ body: sessions }, { body: projects }, { body: watching }, { body: remotes }] = await Promise.all([
-			getRecentSessions(),
+		const [{ body: projects }, { body: watching }, { body: remotes }] = await Promise.all([
 			getProjects(),
 			getWatching(),
 			identity()?.local ? getRemotes() : { body: [] },
@@ -161,7 +175,6 @@ export default class Home extends View {
 		const remoteWatched = reachable.flatMap(remote => remote.watching.map(session => ({ ...session, remote })));
 		const watched = [...(watching ?? []), ...remoteWatched].sort(byUrgency);
 		const watchedIds = new Set(watched.map(({ id }) => id));
-		const recent = (sessions ?? []).filter(({ id }) => !watchedIds.has(id));
 		const remove = session => async () => (await confirmDeleteSession(session, deleteSession)) && this.load();
 
 		this.watching.empty();
@@ -175,19 +188,8 @@ export default class Home extends View {
 
 		this.renderRemotes(remotes ?? [], new Set(remoteWatched.map(({ id }) => id)));
 
-		this.recent.empty();
-		// Everything recent may already be listed under Watching
-		this.recentTitle.elem.style.display = recent.length || !watched.length ? '' : 'none';
-
-		if (!recent.length && !watched.length)
-			new Empty({ appendTo: this.recent, textContent: 'Nothing yet. Pick a project to start a session.' });
-
-		for (const session of recent) {
-			sessionCard(session, {
-				appendTo: this.recent,
-				remove: remove(session),
-			});
-		}
+		// What's under Watching isn't listed again, unless a search asks for it
+		this.recent.reload({ exclude: watchedIds });
 
 		this.projects.empty();
 

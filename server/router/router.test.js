@@ -188,3 +188,19 @@ test('changes are for those who may browse files, and saving is for those who ma
 		).status,
 	).toBe(404);
 });
+
+test('sessions page and search: every word has to match, and the header says how many do in all', async () => {
+	const page = async query => {
+		const response = await call(`/api/sessions?${query}`, { token: tokens.owner });
+
+		return { ids: (await response.json()).map(({ id }) => id), total: Number(response.headers.get('x-total-count')) };
+	};
+
+	expect(await page('q=fake+session')).toMatchObject({ total: 2 });
+	expect((await page('q=fake&limit=1')).ids).toHaveLength(1);
+	expect((await page('q=fake&limit=1&offset=1')).ids).toHaveLength(1);
+	expect(await page('q=fake+minecraft')).toEqual({ ids: [], total: 0 });
+	expect((await call('/api/projects/app/sessions?q=fake', { token: tokens.owner })).headers.get('x-total-count')).toBe(
+		'2',
+	);
+});

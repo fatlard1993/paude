@@ -1,10 +1,11 @@
-import { mkdtemp, readdir, rm, writeFile } from 'fs/promises';
+import { mkdtemp, rm, writeFile } from 'fs/promises';
 import os from 'os';
 import { basename, isAbsolute, join, relative, sep } from 'path';
 
 import { diffOf, listChanges } from './changes';
 import { isSecret, readProjectFile } from './files';
 import { promptText } from './sessions/history';
+import { claudeHome, transcriptLines } from './sessions/transcript';
 import { proposalsOf } from './sessions/proposals';
 import gitEnvironment from './utils/gitEnvironment';
 
@@ -13,34 +14,6 @@ const BACKUP_NAME = /^[0-9a-f]+@v\d+$/;
 const PROMPT_PREVIEW = 160;
 
 export class DiffError extends Error {}
-
-const claudeHome = () => process.env.CLAUDE_CONFIG_DIR ?? join(os.homedir(), '.claude');
-
-// Claude Code keeps a session's transcript in a folder named after the directory it started in
-const transcriptLines = async (id, cwd) => {
-	const projects = join(claudeHome(), 'projects');
-	let file = Bun.file(join(projects, cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${id}.jsonl`));
-
-	if (!(await file.exists())) {
-		const folders = await readdir(projects).catch(() => []);
-		const found = await Promise.all(folders.map(folder => Bun.file(join(projects, folder, `${id}.jsonl`)).exists()));
-		const index = found.indexOf(true);
-
-		if (index === -1) return [];
-		file = Bun.file(join(projects, folders[index], `${id}.jsonl`));
-	}
-
-	return (await file.text())
-		.split('\n')
-		.filter(Boolean)
-		.flatMap(line => {
-			try {
-				return [JSON.parse(line)];
-			} catch {
-				return [];
-			}
-		});
-};
 
 // Only what's inside the session's project, and never a secret, whatever Claude touched elsewhere
 const projectPath = (cwd, path) => {
