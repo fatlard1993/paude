@@ -346,7 +346,7 @@ const Presence = styled(
 			color: ${colors.light(colors.orange)};
 		}
 
-		/* A phone keeps the session's name; the people are a tap away in the panel */
+		/* The people stay a tap away in the panel */
 		@media (max-width: 600px) {
 			.who {
 				display: none;

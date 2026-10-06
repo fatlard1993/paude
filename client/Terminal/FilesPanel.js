@@ -1079,7 +1079,7 @@ export default class FilesPanel extends Panel {
 	}
 
 	// One code block, so the syntax font sees whole constructs (comments, strings) across lines. Click a line
-	// number to pick it; Shift+click another to pick the range between.
+	// number to pick it; Shift+click another (or, on a touch screen, tap it) to pick the range between.
 	source() {
 		const wrapper = element('div', 'source');
 		const gutter = element('div', 'gutter');
@@ -1093,7 +1093,6 @@ export default class FilesPanel extends Panel {
 
 			if (!number || event.target === gutter) return;
 
-			// A touch screen has no Shift: tapping a second line while one is picked extends to it
 			const extend =
 				event.shiftKey ||
 				(TOUCH.matches &&

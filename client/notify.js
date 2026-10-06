@@ -12,8 +12,6 @@ export const registerNotificationWorker = async () => {
 	}
 };
 
-// A desktop (or phone) notification when they're switched on; false when it couldn't be shown, so the caller can
-// fall back to something in the page
 export const showNotification = async ({ title, body, tag, url }) => {
 	if (!desktopNotificationsOn()) return false;
 

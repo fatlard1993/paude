@@ -1,5 +1,7 @@
 module.exports = {
 	skipWords: [
+		'memoized',
+		'tokenize',
 		'uri',
 		'passthrough',
 		'introducer',
@@ -104,7 +106,6 @@ module.exports = {
 		'autofocus',
 		'bel',
 		'caddy',
-		'cancelling',
 		'cascadia',
 		'deja',
 		'hasher',

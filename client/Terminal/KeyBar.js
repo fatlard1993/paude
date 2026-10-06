@@ -40,7 +40,7 @@ const Bar = styled(
 );
 
 // Fires on click, which a swipe along the bar cancels, so scrolling to a key doesn't press the ones it passes.
-// Cancelling pointerdown keeps focus, and the phone keyboard, on the terminal.
+// Canceling pointerdown keeps focus, and the phone keyboard, on the terminal.
 const keyButton = (label, press) => {
 	const button = document.createElement('button');
 

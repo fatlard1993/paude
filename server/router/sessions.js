@@ -56,7 +56,6 @@ const sessionsRoutes = async (request, server) => {
 	match = requestMatch('DELETE', '/api/projects/:project', request);
 	if (match) return new Response(null, { status: (await unregisterFolder(match.project)) ? 204 : 404 });
 
-	// Sessions on the other paudes this user is logged into from here
 	// Only from this machine's own token: the owner password of a server reached from elsewhere doesn't open the
 	// other servers this machine happens to be logged into
 	if (pathname.startsWith('/api/remotes') && !identity?.local)

@@ -338,7 +338,6 @@ export const ensureLocalToken = async dataDir => {
 const HANDOFF_MS = 60_000;
 const handoffs = new Map();
 
-// A guest's code logs in as that guest, on their invite
 export const createHandoff = identity => {
 	const code = randomToken();
 	const now = Date.now();
@@ -353,7 +352,6 @@ export const createHandoff = identity => {
 	return code;
 };
 
-// The login a code is good for, or null when it's spent, expired, or its invite is gone
 export const redeemHandoff = async code => {
 	const handoff = handoffs.get(code);
 
@@ -366,7 +364,7 @@ export const redeemHandoff = async code => {
 	return invite ? createLogin({ invite }) : null;
 };
 
-// Stable per data folder, so a client that reaches one server two ways (localhost and its public address) can tell
+// Stable per data folder, so a client reaching one server at two addresses (localhost and public) sees one server
 let serverId = null;
 
 export const initServerId = async dataDir => {

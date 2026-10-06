@@ -4,7 +4,7 @@ import { getRemotes, getWatching } from './api';
 import { showNotification } from './notify';
 
 const CHECK_MS = 15_000;
-// Other servers answer slower; they're asked every fourth check
+// Other servers answer slower
 const REMOTE_EVERY = 4;
 
 const keyOf = session => (session.remote ? `${session.remote.url} ${session.id}` : session.id);
@@ -23,8 +23,6 @@ const alert = async (session, what) => {
 		new Notify({ type: 'info', content: `${session.title || 'A session'}${what}`, timeout: 8000 });
 };
 
-// Watched sessions, on this server and the others this one knows, checked in the background: a notification when
-// one starts waiting on someone or has news, unless it's the one on screen, and a count of waiting ones in the tab
 export const startWatchAlerts = ({ local }) => {
 	let previous = null;
 	let checks = 0;

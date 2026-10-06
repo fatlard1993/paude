@@ -44,11 +44,10 @@ if (joinToken) {
 	} else joinFailed = true;
 }
 
-// A one-time link, optionally naming where to land: #/handoff/<code> or #/handoff/<code>/sessions/<id>
 const [, handoffCode, handoffTo] = window.location.hash.match(/^#\/handoff\/([^/]+)(\/sessions\/[^/]+)?$/) ?? [];
 
 if (handoffCode) {
-	// An expired code just leaves the login page showing
+	// An expired code leaves the login page showing
 	await fetch('/api/handoff/redeem', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },

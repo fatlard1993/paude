@@ -81,7 +81,7 @@ const authRoutes = async request => {
 		);
 	}
 
-	// The terminal opens the web UI already logged in: it asks for a code, and the browser trades it for a login
+	// A one-time code a logged-in client trades for a browser login: paude web, or another paude opening a session here
 	if (requestMatch('POST', '/api/handoff', request)) {
 		return Response.json({ code: createHandoff(identityOf(credentialOf(request))) });
 	}

@@ -107,7 +107,6 @@ export default class Home extends View {
 		});
 	}
 
-	// A session on another paude: labeled with that server, opened there already logged in
 	remoteCard(session) {
 		return {
 			server: session.remote.name,
@@ -133,7 +132,7 @@ export default class Home extends View {
 
 			const list = new List({ appendTo: this.remotes });
 
-			if (remote.error) new Empty({ appendTo: list, textContent: `Couldn't load: ${remote.error}` });
+			if (remote.error) new Empty({ appendTo: list, textContent: `Could not load: ${remote.error}` });
 			for (const session of recent)
 				sessionCard(session, { appendTo: list, ...this.remoteCard({ ...session, remote }) });
 		}

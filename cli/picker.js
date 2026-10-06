@@ -210,7 +210,7 @@ const pickSession = async servers => {
 	try {
 		while (true) {
 			const seen = new Set();
-			// One server reached two ways (this machine's paude and its public address) is shown once, the first way
+			// Same server at two addresses: shown once, under the first
 			const gathered = (await Promise.all(servers.map(gather))).filter(({ server }) => {
 				if (!server.id) return true;
 				if (seen.has(server.id)) return false;

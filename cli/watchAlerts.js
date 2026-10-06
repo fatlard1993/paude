@@ -3,9 +3,6 @@ import { api } from './servers';
 
 const CHECK_MS = 15_000;
 
-// Watched sessions on every server, checked in the background while paude runs: a desktop notification through the
-// terminal when one starts waiting on someone or has news. `onScreen()` names the session being looked at, which
-// never alerts.
 const startWatchAlerts = (servers, onScreen) => {
 	const notify = notifier();
 	let previous = null;

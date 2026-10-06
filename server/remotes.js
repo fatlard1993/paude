@@ -3,8 +3,7 @@ import { getServerId } from './auth';
 
 const TIMEOUT_MS = 5000;
 
-// The other paudes this user's terminal is logged into, read from the same credentials file the paude command keeps.
-// The tokens stay here; the browser only gets what they fetch.
+// The tokens in the paude command's credentials file stay on this server; the browser only gets what they fetch
 const remoteServers = async () => {
 	const names = await serverNames();
 
@@ -28,7 +27,6 @@ const fetchJson = async ({ url, token }, path, init = {}) => {
 	return response.json();
 };
 
-// Each one's watched and recent sessions; one that turns out to be this server, reached by another address, is left out
 export const listRemotes = async () => {
 	const remotes = await Promise.all(
 		(await remoteServers()).map(async server => {
@@ -55,7 +53,6 @@ export const listRemotes = async () => {
 	return remotes.filter(Boolean);
 };
 
-// A link that opens a session on another paude already logged in, good once, for a minute
 export const remoteLink = async (url, sessionId) => {
 	const server = (await remoteServers()).find(remote => remote.url === url);
 

@@ -187,7 +187,6 @@ export const LinkCard = ({
 }) => {
 	const card = new Card({ tag: 'a', attributes: { href }, appendTo });
 
-	// Somewhere this page can't link to directly: another paude, through a one-time login
 	if (onOpen) {
 		card.elem.addEventListener('click', event => {
 			event.preventDefault();

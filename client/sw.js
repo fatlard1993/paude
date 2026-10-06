@@ -1,5 +1,4 @@
-// Only here so pages can show notifications on phones, where the Notification constructor isn't allowed. A click
-// brings back an open paude tab (or opens one) at the notification's page.
+// Only here so pages can show notifications on phones, where the Notification constructor isn't allowed
 self.addEventListener('notificationclick', event => {
 	event.notification.close();
 
