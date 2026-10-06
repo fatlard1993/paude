@@ -1,5 +1,6 @@
 import { listSessions } from '@anthropic-ai/claude-agent-sdk';
 
+import { pinnedName } from '../names';
 import { projectOf } from '../projects';
 import { runningSession } from './running';
 
@@ -8,7 +9,8 @@ const toSummary = ({ sessionId, summary, customTitle, lastModified, gitBranch, c
 
 	return {
 		id: sessionId,
-		title: customTitle || summary,
+		title: pinnedName(sessionId) || customTitle || summary,
+		pinned: Boolean(pinnedName(sessionId)),
 		lastModified,
 		gitBranch,
 		project: projectOf(cwd),

@@ -1,6 +1,7 @@
 import { Button, Elem, Input, Notify, View, styled } from '@vanilla-bean/components';
 
-import { createSession, getProjectSessions } from './api';
+import { createSession, deleteSession, getProjectSessions } from './api';
+import { confirmDeleteSession } from './confirmDialog';
 import { Empty, Header, Scroll, SectionTitle, sessionCard } from './Layout';
 
 const Composer = styled(
@@ -63,7 +64,13 @@ export default class Project extends View {
 
 		if (!sessions?.length) new Empty({ appendTo: this.sessions, textContent: 'No sessions in this project yet.' });
 
-		for (const session of sessions ?? []) sessionCard(session, { showProject: false, appendTo: this.sessions });
+		for (const session of sessions ?? []) {
+			sessionCard(session, {
+				showProject: false,
+				appendTo: this.sessions,
+				remove: async () => (await confirmDeleteSession(session, deleteSession)) && this.load(),
+			});
+		}
 	}
 
 	async start() {

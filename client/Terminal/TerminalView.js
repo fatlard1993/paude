@@ -4,7 +4,8 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 
-import { getSession } from '../api';
+import { deleteSession, forkSession, getSession, getTurns, nameSession } from '../api';
+import confirmDialog, { confirmDeleteSession, nameDialog } from '../confirmDialog';
 import { canNote, canType, identity } from '../identity';
 import { Header } from '../Layout';
 import withoutPointerReporting from '../../shared/pointerReporting';
@@ -195,6 +196,8 @@ const Presence = styled(
 );
 
 const ICONS = { web: '🌐', terminal: '⌨' };
+// Claude's line at the end of each turn, e.g. "✻ Cooked for 2s · done 2:48 PM"
+const DONE_MARKER = /\S+ for (?:\d+[hms] ?)+ · done \d{1,2}:\d{2}\s?[AP]M/;
 const SOFTWARE_GL = /swiftshader|llvmpipe|softpipe|software/i;
 
 const hardwareWebgl = () => {
@@ -256,6 +259,11 @@ export default class TerminalView extends View {
 			});
 		}
 		this.titleLabel = new Elem({ appendTo: header, addClass: 'title' });
+		if (identity()?.owner) {
+			this.titleLabel.elem.title = 'Rename';
+			this.titleLabel.elem.style.cursor = 'pointer';
+			this.titleLabel.elem.addEventListener('click', () => this.rename());
+		}
 		this.presence = new Presence({ appendTo: header });
 
 		const body = new Body({ appendTo: this });
@@ -266,6 +274,14 @@ export default class TerminalView extends View {
 				textContent: '📁',
 				title: 'Project files',
 				onPointerPress: () => this.toggleFiles(),
+			});
+		}
+		if (identity()?.owner) {
+			new NotesToggle({
+				appendTo: header,
+				textContent: '🗑',
+				title: 'Delete this session',
+				onPointerPress: () => this.deleteThisSession(),
 			});
 		}
 		this.notesToggle = new NotesToggle({
@@ -347,6 +363,7 @@ export default class TerminalView extends View {
 		this.decoder = new TextDecoder();
 		this.terminal.open(this.screen.elem);
 		this.useGpuRenderer();
+		if (identity()?.owner) this.linkDoneMarkers();
 		this.terminal.onData(data => this.sendInput(data));
 		this.terminal.onSelectionChange(() => {
 			this.commentButton.elem.style.display = canNote() && this.terminal.hasSelection() ? '' : 'none';
@@ -601,6 +618,97 @@ export default class TerminalView extends View {
 			this.lineSelectHint(null);
 			this.endLineSelect = null;
 		};
+	}
+
+	// Every "done" line Claude prints after a turn becomes a link that starts a new session from that point
+	linkDoneMarkers() {
+		this.terminal.registerLinkProvider({
+			provideLinks: (lineNumber, callback) => {
+				const text = this.bufferLine(lineNumber - 1);
+				const found = DONE_MARKER.exec(text);
+
+				if (!found) return callback(undefined);
+
+				callback([
+					{
+						range: {
+							start: { x: found.index + 1, y: lineNumber },
+							end: { x: found.index + found[0].length, y: lineNumber },
+						},
+						text: found[0],
+						decorations: { pointerCursor: true, underline: true },
+						hover: () => this.lineSelectHint('Click to start a new session from here'),
+						leave: () => this.lineSelectHint(null),
+						activate: () => this.forkFromMarker(lineNumber - 1),
+					},
+				]);
+			},
+		});
+	}
+
+	bufferLine(index) {
+		return this.terminal.buffer.active.getLine(index)?.translateToString(true) ?? '';
+	}
+
+	// The screen only shows text, so the marker is matched to a turn by position: the nth marker from the bottom
+	// is the nth completed turn from the end, which holds even when older scrollback is gone. The confirmation
+	// shows that turn's prompt, so a mismatch is visible before anything is created.
+	async forkFromMarker(markerLine) {
+		this.lineSelectHint(null);
+
+		let markersBelow = 0;
+
+		for (let index = markerLine + 1; index < this.terminal.buffer.active.length; index++) {
+			if (DONE_MARKER.test(this.bufferLine(index))) markersBelow += 1;
+		}
+
+		const { body, response } = await getTurns(this.options.id);
+
+		if (!response?.ok) return new Notify({ type: 'error', content: "Could not read this session's history." });
+
+		// A turn still in progress has replies but no marker yet
+		const turns = body.busy ? body.turns.slice(0, -1) : body.turns;
+		const turn = turns[turns.length - 1 - markersBelow];
+
+		if (!turn) return new Notify({ type: 'warning', content: 'Could not match that line to a turn in the history.' });
+
+		const confirmed = await confirmDialog({
+			header: 'New session from here?',
+			body: `It will hold this conversation up to and including the turn that began: "${turn.prompt}"`,
+			confirmLabel: 'Start it',
+		});
+
+		if (!confirmed) return;
+
+		const forked = await forkSession(this.options.id, turn.endUuid);
+
+		if (!forked.response?.ok) return new Notify({ type: 'error', content: 'Could not start the new session.' });
+
+		window.location.hash = `#/sessions/${forked.body.id}`;
+	}
+
+	async rename() {
+		const { body } = await getSession(this.options.id);
+		const name = await nameDialog({ current: body?.title, pinned: body?.pinned });
+
+		if (name === null) return;
+
+		const { response } = await nameSession(this.options.id, name);
+
+		if (!response?.ok) return new Notify({ type: 'error', content: 'Could not rename it.' });
+
+		// A session that isn't running has no presence to bring the new name, so the page fetches it
+		const { body: renamed } = await getSession(this.options.id);
+
+		if (renamed?.title) this.titleLabel.elem.textContent = renamed.title;
+	}
+
+	async deleteThisSession() {
+		const { body } = await getSession(this.options.id);
+
+		if (await confirmDeleteSession({ id: this.options.id, title: body?.title }, deleteSession)) {
+			window.location.hash = this.project ? `#/projects/${this.project}` : '#/';
+		}
 	}
 
 	lineSelectHint(text) {

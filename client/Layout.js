@@ -99,6 +99,29 @@ const Card = styled(
 			color: ${colors.light(colors.blue)};
 		}
 
+		.remove {
+			flex-shrink: 0;
+			border: none;
+			background: transparent;
+			opacity: 0;
+			cursor: pointer;
+			font-size: 1em;
+		}
+
+		&:hover .remove, .remove:focus-visible {
+			opacity: 0.7;
+		}
+
+		.remove:hover {
+			opacity: 1;
+		}
+
+		@media (pointer: coarse) {
+			.remove {
+				opacity: 0.6;
+			}
+		}
+
 		.dot {
 			width: 9px;
 			height: 9px;
@@ -118,7 +141,7 @@ const Card = styled(
 	`,
 );
 
-export const LinkCard = ({ href, title, meta = [], project, live, busy, appendTo }) => {
+export const LinkCard = ({ href, title, meta = [], project, live, busy, remove, appendTo }) => {
 	const card = new Card({ tag: 'a', attributes: { href }, appendTo });
 	const body = new Elem({ appendTo: card, addClass: 'body' });
 
@@ -140,16 +163,32 @@ export const LinkCard = ({ href, title, meta = [], project, live, busy, appendTo
 			attributes: { title: busy ? 'working' : 'live' },
 		});
 
+	// Inside the link, so it has to stop the click from also opening the card
+	if (remove) {
+		const button = document.createElement('button');
+
+		button.className = 'remove';
+		button.textContent = '🗑';
+		button.title = 'Delete';
+		button.addEventListener('click', event => {
+			event.preventDefault();
+			event.stopPropagation();
+			remove();
+		});
+		card.elem.append(button);
+	}
+
 	return card;
 };
 
-export const sessionCard = (session, { showProject = true, appendTo }) =>
+export const sessionCard = (session, { showProject = true, appendTo, remove }) =>
 	LinkCard({
 		appendTo,
 		href: `#/sessions/${session.id}`,
-		title: session.title,
+		title: session.pinned ? `📌 ${session.title}` : session.title,
 		project: showProject ? session.project : null,
 		meta: [relativeTime(session.lastModified), session.gitBranch !== 'HEAD' && session.gitBranch],
 		live: session.live,
 		busy: session.busy,
+		remove,
 	});

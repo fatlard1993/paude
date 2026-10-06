@@ -274,3 +274,14 @@ export const revokeInvite = async id => {
 
 	return state.invites.length < before;
 };
+
+export const revokeInvitesFor = async sessionId => {
+	const ids = new Set(state.invites.filter(invite => invite.sessionId === sessionId).map(({ id }) => id));
+
+	if (!ids.size) return;
+
+	state.invites = state.invites.filter(invite => !ids.has(invite.id));
+	state.logins = state.logins.filter(login => !ids.has(login.invite));
+	state.tokens = state.tokens.filter(token => !ids.has(token.invite));
+	await save();
+};

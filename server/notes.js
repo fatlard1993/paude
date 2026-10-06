@@ -1,4 +1,4 @@
-import { mkdir } from 'fs/promises';
+import { mkdir, rm } from 'fs/promises';
 import path from 'path';
 
 import writeJsonFile from '../shared/writeJsonFile';
@@ -102,3 +102,8 @@ export const setResolved = (sessionId, { commentId, resolved, allowed = () => tr
 
 		return true;
 	});
+
+export const deleteNotes = async sessionId => {
+	loaded.delete(sessionId);
+	await rm(fileFor(sessionId), { force: true });
+};

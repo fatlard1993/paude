@@ -2,6 +2,7 @@ import xtermHeadless from '@xterm/headless';
 import serializeAddon from '@xterm/addon-serialize';
 
 import inputKind, { FOCUS_IN } from '../../shared/inputKind';
+import { pinnedName } from '../names';
 
 const { Terminal } = xtermHeadless;
 const { SerializeAddon } = serializeAddon;
@@ -251,7 +252,13 @@ export default class PtySession {
 		}));
 
 		[...this.clients].forEach((client, index) => {
-			send(client.socket, { type: 'presence', busy: this.busy, title: this.title, clients, you: index });
+			send(client.socket, {
+				type: 'presence',
+				busy: this.busy,
+				title: pinnedName(this.id) || this.title,
+				clients,
+				you: index,
+			});
 		});
 	}
 

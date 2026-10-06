@@ -1,9 +1,12 @@
-import { getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
+import { deleteSession, forkSession, getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 
-import { credentialOf } from '../auth';
+import { credentialOf, revokeInvitesFor } from '../auth';
+import { pinName, pinnedName } from '../names';
+import { deleteNotes } from '../notes';
+import { sessionTurns } from '../sessions/history';
 import { listProjects, projectOf, projectPath } from '../projects';
 import { listAllSessions, listProjectSessions } from '../sessions/stored';
-import { openSession, runningSession, startSession } from '../sessions/running';
+import { openSession, runningSession, startSession, stopSession } from '../sessions/running';
 import requestMatch from '../utils/requestMatch';
 
 const sessionsRoutes = async (request, server) => {
@@ -63,6 +66,58 @@ const sessionsRoutes = async (request, server) => {
 		return upgraded ? undefined : new Response('WebSocket upgrade failed', { status: 400 });
 	}
 
+	match = requestMatch('GET', '/api/sessions/:id/turns', request);
+	if (match) {
+		const cwd = runningSession(match.id)?.cwd ?? (await getSessionInfo(match.id))?.cwd;
+
+		if (!projectOf(cwd)) return new Response('Session not found', { status: 404 });
+
+		return Response.json({ turns: await sessionTurns(match.id, cwd), busy: Boolean(runningSession(match.id)?.busy) });
+	}
+
+	// A new session holding this one's conversation up to and including the given message
+	match = requestMatch('POST', '/api/sessions/:id/fork', request);
+	if (match) {
+		const { upToMessageId } = await request.json();
+		const cwd = runningSession(match.id)?.cwd ?? (await getSessionInfo(match.id))?.cwd;
+
+		if (!projectOf(cwd)) return new Response('Session not found', { status: 404 });
+		if (typeof upToMessageId !== 'string') return new Response('Which message to fork after?', { status: 400 });
+
+		const { sessionId } = await forkSession(match.id, { dir: cwd, upToMessageId });
+
+		return Response.json({ id: sessionId });
+	}
+
+	match = requestMatch('DELETE', '/api/sessions/:id', request);
+	if (match) {
+		const cwd = runningSession(match.id)?.cwd ?? (await getSessionInfo(match.id))?.cwd;
+
+		if (!projectOf(cwd)) return new Response('Session not found', { status: 404 });
+
+		await stopSession(match.id);
+		await deleteSession(match.id, { dir: cwd });
+		await deleteNotes(match.id);
+		await revokeInvitesFor(match.id);
+		await pinName(match.id, '');
+
+		return new Response(null, { status: 204 });
+	}
+
+	// An empty name goes back to the automatic one
+	match = requestMatch('PUT', '/api/sessions/:id/name', request);
+	if (match) {
+		const { name } = await request.json();
+		const cwd = runningSession(match.id)?.cwd ?? (await getSessionInfo(match.id))?.cwd;
+
+		if (!projectOf(cwd)) return new Response('Session not found', { status: 404 });
+
+		await pinName(match.id, name);
+		runningSession(match.id)?.broadcastPresence();
+
+		return new Response(null, { status: 204 });
+	}
+
 	match = requestMatch('GET', '/api/sessions/:id', request);
 	if (match) {
 		const running = runningSession(match.id);
@@ -75,7 +130,8 @@ const sessionsRoutes = async (request, server) => {
 			id: match.id,
 			project: projectOf(cwd),
 			live: Boolean(running),
-			title: running?.title || stored?.customTitle || stored?.summary || '',
+			title: pinnedName(match.id) || running?.title || stored?.customTitle || stored?.summary || '',
+			pinned: Boolean(pinnedName(match.id)),
 		});
 	}
 

@@ -1,7 +1,8 @@
 import { Button, Elem, View, styled } from '@vanilla-bean/components';
 
 import { byRecentActivity, projectSummary } from '../shared/projects';
-import { getProjects, getRecentSessions } from './api';
+import { deleteSession, getProjects, getRecentSessions } from './api';
+import { confirmDeleteSession } from './confirmDialog';
 import { Empty, Header, LinkCard, Scroll, SectionTitle, sessionCard } from './Layout';
 
 const Grid = styled.Component`
@@ -58,7 +59,12 @@ export default class Home extends View {
 		if (!sessions?.length)
 			new Empty({ appendTo: this.recent, textContent: 'Nothing yet. Pick a project to start a session.' });
 
-		for (const session of sessions ?? []) sessionCard(session, { appendTo: this.recent });
+		for (const session of sessions ?? []) {
+			sessionCard(session, {
+				appendTo: this.recent,
+				remove: async () => (await confirmDeleteSession(session, deleteSession)) && this.load(),
+			});
+		}
 
 		this.projects.empty();
 

@@ -69,3 +69,7 @@ Open the server's address and log in. Set your name at the top of the chat panel
 - **Size:** the session has one size, set by whoever typed last. Typing takes it over; everyone else sees it scaled to fit.
 - **Comments:** drag over the terminal to select text (on a phone, press **Select** on the key bar and tap the first and last line), then press **Comment**. Clicking a comment's quote finds it in the terminal.
 - **The side panel** (💬) floats over the terminal; drag its left edge to resize it.
+- **Project files** (📁): browse, search by name or contents, and read the session's project (what git shows, so ignored files stay out). Attach a whole file, or click a line number and Shift+click another to attach those lines; either lands in Claude's prompt without sending.
+- **Start over from a point:** every `done` line Claude prints after a turn is a link. Clicking it starts a new session holding the conversation up to that turn.
+- **Names:** click the session's title to pin a name of your own (📌 in the lists); **Use automatic name** goes back to the one Claude keeps up to date. A session started from a point is named after its source, plus "(fork)".
+- **Deleting** (🗑 on the session page, or on a card when you hover it) removes the conversation, its chat and comments, and any invites to it.

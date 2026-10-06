@@ -14,6 +14,16 @@ export const runningSession = id => running.get(id);
 
 export const allRunning = () => running.values();
 
+// Ends a running session's Claude process and waits until it's gone; attached clients are told it ended
+export const stopSession = async id => {
+	const session = running.get(id);
+
+	if (!session) return;
+
+	session.process.kill();
+	await session.process.exited;
+};
+
 const launch = options => {
 	const session = new PtySession({ ...options, claudePath, onExit: ({ id }) => running.delete(id) });
 

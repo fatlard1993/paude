@@ -6,6 +6,7 @@ import path from 'path';
 import Argi from 'argi';
 
 import { initAuth, passwordIsSet } from './auth';
+import { initNames } from './names';
 import { initNotes } from './notes';
 import { setProjectsRoot } from './projects';
 import { sweepCredentials } from './sessions/attachSocket';
@@ -50,6 +51,7 @@ if (process.env.NODE_ENV === 'development') console.log('Options', options);
 setProjectsRoot(options.projects);
 await initAuth(options.data, { watchForChanges: true });
 await initNotes(options.data);
+await initNames(options.data);
 
 if (!passwordIsSet()) console.warn('No password set, so nobody can log in. Run: bun run set-password');
 setClaudePath(options.claude);

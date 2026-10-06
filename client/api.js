@@ -1,4 +1,4 @@
-import { DELETE, GET, POST } from '@vanilla-bean/hypertether';
+import { DELETE, GET, POST, PUT } from '@vanilla-bean/hypertether';
 
 export const getProjects = async options =>
 	await GET('/api/projects', { apiId: 'projects', invalidateAfter: 0, ...options });
@@ -48,3 +48,14 @@ export const searchFiles = async (sessionId, query) =>
 		searchParameters: { q: query },
 		invalidateAfter: 0,
 	});
+
+export const getTurns = async sessionId =>
+	await GET('/api/sessions/:id/turns', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
+
+export const forkSession = async (sessionId, upToMessageId) =>
+	await POST('/api/sessions/:id/fork', { urlParameters: { id: sessionId }, body: { upToMessageId } });
+
+export const deleteSession = async sessionId => await DELETE('/api/sessions/:id', { urlParameters: { id: sessionId } });
+
+export const nameSession = async (sessionId, name) =>
+	await PUT('/api/sessions/:id/name', { urlParameters: { id: sessionId }, body: { name } });
