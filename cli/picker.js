@@ -1,4 +1,5 @@
 import { runningSummary } from '../shared/checkouts';
+import { readProgress, recentLines } from '../shared/progress';
 import { projectSummary } from '../shared/projects';
 import sessionUrgency from '../shared/urgency';
 import relativeTime from '../shared/relativeTime';
@@ -85,11 +86,16 @@ const askLine = ({ title, subtitle, prompt, hint }) =>
 			);
 		};
 
+		// A paste, or fast typing, arrives as one chunk, Enter and all
 		const stop = rawInput(key => {
-			if (is(key, 'enter')) return finish(text.trim());
 			if (key === '\x1b' || key === '\x03') return finish(null);
-			if (key === '\x7f' || key === '\b') text = text.slice(0, -1);
-			else text += printable(key);
+			if (key.startsWith('\x1b')) return;
+
+			for (const character of key) {
+				if (is(character, 'enter')) return finish(text.trim());
+				if (character === '\x7f' || character === '\b') text = text.slice(0, -1);
+				else text += printable(character);
+			}
 
 			draw();
 		});
@@ -122,10 +128,10 @@ const pickCheckout = async (server, project) => {
 		},
 		...checkouts
 			.filter(checkout => !checkout.main)
-			.map(({ name, branch, active }) => ({
+			.map(({ name, path, branch, active }) => ({
 				label: `Worktree ${printable(name)}`,
 				detail: [branch && branch !== name && `on ${printable(branch)}`, running(active)].filter(Boolean).join(' · '),
-				value: { checkout: { join: name } },
+				value: { checkout: { join: path } },
 			})),
 		{ label: '＋ A new worktree', value: 'new' },
 	];
@@ -148,6 +154,41 @@ const pickCheckout = async (server, project) => {
 	});
 
 	return name === null ? null : { checkout: { create: name } };
+};
+
+// Making a worktree streams the repo's own setup, shown here as it runs
+const startSession = async (server, project, checkout) => {
+	const route = `/api/projects/${encodeURIComponent(project)}/sessions`;
+
+	if (!checkout || !('create' in checkout))
+		return (await api(server, route, { method: 'POST', body: JSON.stringify({ checkout }) })).id;
+
+	const response = await fetch(`${server.url}${route}`, {
+		method: 'POST',
+		headers: { authorization: `Bearer ${server.token}`, 'content-type': 'application/json' },
+		body: JSON.stringify({ checkout }),
+	});
+
+	if (!response.ok) throw new Error(await response.text());
+
+	let output = '';
+	const draw = () => {
+		const { cols, rows } = size();
+		const lines = recentLines(output, Math.max(rows - 4, 1)).map(line => fit(printable(line), cols - 1));
+
+		write(`${CLEAR}${bold(`paude · ${project}`)}  ${dim('making the worktree')}\r\n\r\n${lines.join('\r\n')}`);
+	};
+
+	draw();
+
+	const result = await readProgress(response, arrived => {
+		output += arrived;
+		draw();
+	});
+
+	if (result.error) throw new Error(result.error);
+
+	return result.id;
 };
 
 const STATUS = {
@@ -193,12 +234,7 @@ const pickInProject = async (server, project) => {
 	if (!where) return null;
 
 	try {
-		const { id } = await api(server, `/api/projects/${encodeURIComponent(project)}/sessions`, {
-			method: 'POST',
-			body: JSON.stringify({ checkout: where.checkout }),
-		});
-
-		return id;
+		return await startSession(server, project, where.checkout);
 	} catch (error) {
 		await choose({
 			title: `paude · ${project}`,

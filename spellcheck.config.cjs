@@ -2,6 +2,10 @@ module.exports = {
 	skipWords: [
 		'umask',
 		'worktree',
+		'repo',
+		"repo's",
+		'enqueue',
+		'workspace',
 		'worktrees',
 		'toplevel',
 		'prunable',

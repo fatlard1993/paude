@@ -1,6 +1,7 @@
 import { Button, Elem, Input, Notify, View, styled } from '@vanilla-bean/components';
 
 import { runningSummary } from '../shared/checkouts';
+import { readProgress, recentLines } from '../shared/progress';
 import { createSession, deleteSession, getCheckouts, getProjectSessions } from './api';
 import { confirmDeleteSession } from './confirmDialog';
 import { element } from './dom';
@@ -73,6 +74,21 @@ const Where = styled(
 	`,
 );
 
+// The repo's own create command, as it runs
+const Progress = styled(
+	Elem,
+	({ colors }) => `
+		max-height: 14em;
+		overflow: auto;
+		margin: 6px 0;
+		padding: 8px 10px;
+		border-radius: 6px;
+		background: ${colors.alpha(colors.black, 0.35)};
+		font-size: 0.85em;
+		white-space: pre-wrap;
+	`,
+);
+
 const Actions = styled.Component`
 	display: flex;
 	justify-content: flex-end;
@@ -103,6 +119,7 @@ export default class Project extends View {
 		});
 
 		this.where = new Where({ appendTo: scroll, style: { display: 'none' } });
+		this.progress = new Progress({ appendTo: scroll, tag: 'pre', style: { display: 'none' } }).elem;
 
 		const actions = new Actions({ appendTo: scroll });
 
@@ -158,8 +175,8 @@ export default class Project extends View {
 			option('main', 'No worktree', `the project folder, on ${main.branch ?? 'a detached HEAD'}`, main.active),
 			...checkouts
 				.filter(checkout => !checkout.main)
-				.map(({ name, branch, active }) =>
-					option(`join:${name}`, `Worktree ${name}`, branch && branch !== name ? `on ${branch}` : '', active),
+				.map(({ name, path, branch, active }) =>
+					option(`join:${path}`, `Worktree ${name}`, branch && branch !== name ? `on ${branch}` : '', active),
 				),
 			newOption,
 		);
@@ -193,32 +210,61 @@ export default class Project extends View {
 
 	async start() {
 		const text = this.prompt.elem.value.trim();
+		const checkout = this.choice?.();
+		const creating = Boolean(checkout && 'create' in checkout);
 
 		if (this.starting) return;
 
 		this.starting = true;
 		this.startButton.elem.disabled = true;
-		this.startButton.elem.textContent = 'Starting...';
+		this.startButton.elem.textContent = creating ? 'Making the worktree...' : 'Starting...';
 
-		const { body, response } = await createSession(this.options.project, text, this.choice?.());
+		const result = creating ? await this.startInNewWorktree(text, checkout) : await this.startSession(text, checkout);
 
 		this.starting = false;
 		this.startButton.elem.disabled = false;
 		this.startButton.elem.textContent = 'Start session';
 
-		if (!response?.ok) {
-			if (
-				response?.status === 400 ||
-				(response?.status === 404 && typeof body === 'string' && body.includes('worktree'))
-			)
-				return new Notify({ type: 'error', content: body });
+		if (result.error) {
+			if (checkout?.join) this.loadCheckouts();
 
-			const reason =
-				response?.status === 404 ? 'this project folder is gone' : `the server answered ${response?.status}`;
-
-			return new Notify({ type: 'error', content: `Could not start the session: ${reason}.` });
+			return new Notify({ type: 'error', content: result.error, timeout: 10_000 });
 		}
 
-		window.location.hash = `#/sessions/${body.id}`;
+		window.location.hash = `#/sessions/${result.id}`;
+	}
+
+	async startSession(text, checkout) {
+		const { body, response } = await createSession(this.options.project, text, checkout);
+
+		if (response?.ok) return { id: body.id };
+		if (response?.status === 404 && checkout?.join) return { error: 'That worktree is gone; pick again.' };
+
+		const reason = response?.status === 404 ? 'this project folder is gone' : `the server answered ${response?.status}`;
+
+		return { error: `Could not start the session: ${reason}.` };
+	}
+
+	// Streamed, so a repo's own setup shows here while it runs
+	async startInNewWorktree(text, checkout) {
+		const response = await fetch(`/api/projects/${encodeURIComponent(this.options.project)}/sessions`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ text, checkout }),
+		}).catch(() => null);
+
+		if (!response) return { error: 'Could not reach the server.' };
+		if (!response.ok) return { error: await response.text() };
+
+		let output = '';
+
+		this.progress.textContent = '';
+		this.progress.style.display = '';
+
+		return readProgress(response, arrived => {
+			output += arrived;
+			this.progress.textContent = recentLines(output, 12).join('\n');
+			this.progress.scrollTop = this.progress.scrollHeight;
+		});
 	}
 }

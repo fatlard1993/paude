@@ -19,7 +19,14 @@ import {
 import { sessionRecord } from '../sessions/record';
 import { listAllSessions, listProjectSessions, toSummary } from '../sessions/stored';
 import { allRunning, openSession, runningSession, startSession, stopSession } from '../sessions/running';
-import { WorktreeError, checkoutsOf, createWorktree, releaseWorktree } from '../worktrees';
+import {
+	WorktreeError,
+	checkoutsOf,
+	createWorktree,
+	joinWorktree,
+	releaseWorktree,
+	validWorktreeName,
+} from '../worktrees';
 import requestMatch from '../utils/requestMatch';
 
 const isFolder = async path =>
@@ -47,6 +54,52 @@ const worktreeNameFor = text => {
 		.replace(/-+$/, '');
 
 	return words || `session-${crypto.randomUUID().slice(0, 6)}`;
+};
+
+// Making a worktree can take minutes (a repo's own setup), so the answer streams: { output } lines as the command
+// prints them, then { id } for the new session or { error }. A quiet stretch sends { waiting }, or the connection
+// would be dropped as idle. A reader who leaves doesn't stop the worktree being made; only the session waits.
+const HEARTBEAT_MS = 5000;
+
+const creatingSession = (create, text) => {
+	const encoder = new TextEncoder();
+	let open = true;
+	let heartbeat;
+
+	return new Response(
+		new ReadableStream({
+			async start(controller) {
+				const send = message => {
+					if (!open) return;
+
+					try {
+						controller.enqueue(encoder.encode(`${JSON.stringify(message)}\n`));
+					} catch {
+						open = false;
+					}
+				};
+
+				heartbeat = setInterval(() => send({ waiting: true }), HEARTBEAT_MS);
+
+				try {
+					const folder = await create(output => output && send({ output }));
+
+					if (open) send({ id: startSession(folder, text?.trim()).id });
+				} catch (error) {
+					if (!(error instanceof WorktreeError)) console.error('A worktree could not be made', error);
+					send({ error: error instanceof WorktreeError ? error.message : 'The worktree could not be made.' });
+				}
+
+				clearInterval(heartbeat);
+				if (open) controller.close();
+			},
+			cancel() {
+				open = false;
+				clearInterval(heartbeat);
+			},
+		}),
+		{ headers: { 'content-type': 'application/x-ndjson', 'cache-control': 'no-cache' } },
+	);
 };
 
 const sessionsRoutes = async (request, server) => {
@@ -153,20 +206,23 @@ const sessionsRoutes = async (request, server) => {
 
 		if (!(await isFolder(cwd))) return new Response('Unknown project', { status: 404 });
 
+		if (checkout && 'create' in checkout) {
+			const name = checkout.create?.trim() || worktreeNameFor(text);
+
+			if (!validWorktreeName(name))
+				return new Response('Name it with letters, digits, dots, dashes and underscores (up to 64).', { status: 400 });
+
+			return creatingSession(onOutput => createWorktree(cwd, match.project, name, { onOutput }), text);
+		}
+
 		let folder = cwd;
 
 		if (checkout?.join) {
-			const joined = (await checkoutsOf(cwd))?.find(found => !found.main && found.name === checkout.join);
+			const joined = (await checkoutsOf(cwd))?.find(found => !found.main && found.path === checkout.join);
 
-			if (!joined) return new Response(`There is no worktree named ${checkout.join} here.`, { status: 404 });
+			if (!joined) return new Response('That worktree is gone.', { status: 404 });
+			await joinWorktree(joined.path, match.project);
 			folder = joined.path;
-		} else if (checkout && 'create' in checkout) {
-			try {
-				folder = await createWorktree(cwd, checkout.create?.trim() || worktreeNameFor(text));
-			} catch (error) {
-				if (error instanceof WorktreeError) return new Response(error.message, { status: 400 });
-				throw error;
-			}
 		}
 
 		return Response.json({ id: startSession(folder, text?.trim()).id });

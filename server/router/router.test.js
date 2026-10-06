@@ -10,6 +10,7 @@ import { initNames } from '../names';
 import { initNotes } from '../notes';
 import { initProjects, setProjectsRoot } from '../projects';
 import { allRunning, setClaudePath, startSession } from '../sessions/running';
+import { readProgress } from '../../shared/progress';
 import router from './router';
 
 const FAKE_CLAUDE = path.join(import.meta.dir, '..', 'sessions', 'fixtures', 'fake-claude.js');
@@ -140,7 +141,13 @@ test("a session in a worktree needs a usable name, or one that's there to join",
 		call('/api/projects/app/sessions', { token: tokens.owner, method: 'POST', body: { checkout } });
 
 	expect((await start({ create: '../escape' })).status).toBe(400);
-	expect((await start({ join: 'nowhere' })).status).toBe(404);
+	expect((await start({ join: '/nowhere' })).status).toBe(404);
+
+	// Making one streams its progress, and a project that isn't a repository ends in an error, not a session
+	const made = await start({ create: 'fine-name' });
+
+	expect(made.headers.get('content-type')).toBe('application/x-ndjson');
+	expect(await readProgress(made, () => {})).toEqual({ error: "This project isn't the top of a git repository." });
 	expect((await call('/api/projects/app/checkouts', { token: tokens.owner })).status).toBe(200);
 	expect((await call('/api/projects/app/checkouts', { token: tokens.comment })).status).toBe(403);
 });

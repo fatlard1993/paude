@@ -9,6 +9,10 @@ import readJsonFile from '../shared/readJsonFile';
 let root;
 let foldersFile;
 let folders = [];
+// A worktree belongs to its project wherever it lives: [{ path, project, made }] in worktrees.json, `made` when paude
+// created it (and so may remove it)
+let worktreesFile;
+let worktrees = [];
 
 export const setProjectsRoot = path => {
 	root = resolve(path);
@@ -17,6 +21,8 @@ export const setProjectsRoot = path => {
 export const initProjects = async dataDir => {
 	foldersFile = join(dataDir, 'folders.json');
 	folders = await readJsonFile(foldersFile, []);
+	worktreesFile = join(dataDir, 'worktrees.json');
+	worktrees = await readJsonFile(worktreesFile, []);
 };
 
 const rootProjects = async () => {
@@ -29,8 +35,14 @@ const rootProjects = async () => {
 	}
 };
 
+// A worktree another project claims isn't a project of its own, even when it sits in the projects root
 export const listProjects = async () =>
-	[...new Set([...(await rootProjects()), ...folders.map(({ name }) => name)])].sort((a, b) => a.localeCompare(b));
+	[
+		...new Set([
+			...(await rootProjects()).filter(name => !worktrees.some(({ path }) => path === join(root, name))),
+			...folders.map(({ name }) => name),
+		]),
+	].sort((a, b) => a.localeCompare(b));
 
 export const registeredFolders = () => folders.map(folder => ({ ...folder }));
 
@@ -55,10 +67,38 @@ export const projectPath = name => {
 	return folders.find(folder => folder.name === name)?.path ?? join(root, name);
 };
 
-// Sessions can live in a project or one of its worktrees, so any path inside one counts. The deepest registered
-// folder wins, so one registered inside another is its own project.
+export const claimWorktree = async (path, project, { made = false } = {}) => {
+	const existing = worktrees.find(worktree => worktree.path === path);
+
+	if (existing?.project === project && (existing.made || !made)) return;
+	if (existing) Object.assign(existing, { project, made: existing.made || made });
+	else worktrees.push({ path, project, made });
+	await writeJsonFile(worktreesFile, () => worktrees);
+};
+
+export const forgetWorktree = async path => {
+	const before = worktrees.length;
+
+	worktrees = worktrees.filter(worktree => worktree.path !== path);
+	if (worktrees.length !== before) await writeJsonFile(worktreesFile, () => worktrees);
+};
+
+// The claimed worktree a folder is in, the deepest one
+export const worktreeClaim = cwd =>
+	cwd
+		? (worktrees
+				.filter(worktree => inside(resolve(cwd), worktree.path))
+				.sort((a, b) => b.path.length - a.path.length)[0] ?? null)
+		: null;
+
+// Sessions can live in a project or one of its worktrees, so any path inside one counts. A claimed worktree is its
+// project's; otherwise the deepest registered folder wins, so one registered inside another is its own project.
 export const projectOf = cwd => {
 	if (!cwd) return null;
+
+	const claimed = worktreeClaim(cwd);
+
+	if (claimed) return claimed.project;
 
 	const path = resolve(cwd);
 	const registered = folders
