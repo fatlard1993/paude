@@ -53,7 +53,8 @@ fi
 
 cd "$APP"
 say "Installing dependencies and building"
-CI=1 "$BUN" install --frozen-lockfile >/dev/null
+# Without scripts: the prepare script would build (again) and point git hooks at a checkout nobody commits from
+"$BUN" install --frozen-lockfile --ignore-scripts >/dev/null
 NODE_ENV=production "$BUN" run build >/dev/null
 
 # The unit names absolute paths: systemd doesn't read the login shell's PATH, and sessions need claude on it
