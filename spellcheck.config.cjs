@@ -1,5 +1,6 @@
 module.exports = {
 	skipWords: [
+		'wayland',
 		'dtach',
 		'memoized',
 		'tokenize',

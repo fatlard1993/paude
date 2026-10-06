@@ -21,6 +21,20 @@ const version = command => {
 	}
 };
 
+const imageDetail = () => {
+	if (!showsImages()) return 'needs kitty, WezTerm or Ghostty';
+
+	return has('magick') || has('convert')
+		? 'kitty graphics, with ImageMagick for formats other than PNG'
+		: 'PNG only: install ImageMagick for the rest';
+};
+
+const loginDetail = identity => {
+	if (!identity) return 'ended: log in again';
+
+	return identity.owner ? 'owner' : `guest (${identity.role})`;
+};
+
 const KITTY = Boolean(process.env.KITTY_WINDOW_ID) || process.env.TERM === 'xterm-kitty';
 
 // What works here and what doesn't, each with what to do about it
@@ -51,15 +65,7 @@ const checks = async () => {
 			existsSync(path.join(REPO, 'client/build/index.html')) ? 'built' : 'run bun run build in the paude folder',
 		],
 		["This machine's paude", local.ok, local.detail],
-		[
-			'Images in the terminal',
-			showsImages() && (has('magick') || has('convert')),
-			showsImages()
-				? has('magick') || has('convert')
-					? 'kitty graphics, with ImageMagick for formats other than PNG'
-					: 'PNG only: install ImageMagick for the rest'
-				: 'needs kitty, WezTerm or Ghostty',
-		],
+		['Images in the terminal', showsImages() && (has('magick') || has('convert')), imageDetail()],
 		[
 			'Commenting on a selection',
 			!readSelection.unavailable,
@@ -80,11 +86,7 @@ const checks = async () => {
 		try {
 			const { identity } = await api(server, '/api/auth');
 
-			rows.push([
-				`Login: ${server.label}`,
-				Boolean(identity),
-				identity ? (identity.owner ? 'owner' : `guest (${identity.role})`) : 'ended: log in again',
-			]);
+			rows.push([`Login: ${server.label}`, Boolean(identity), loginDetail(identity)]);
 		} catch (error) {
 			rows.push([`Login: ${server.label}`, false, error.message]);
 		}
