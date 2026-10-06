@@ -12,9 +12,9 @@ import {
 	listProjects,
 	projectOf,
 	projectPath,
-	registerFolder,
+	addFolders,
 	registeredFolders,
-	unregisterFolder,
+	removeProject,
 } from '../projects';
 import { sessionRecord } from '../sessions/record';
 import { listAllSessions, listProjectSessions, toSummary } from '../sessions/stored';
@@ -128,7 +128,9 @@ const sessionsRoutes = async (request, server) => {
 
 	if (requestMatch('POST', '/api/projects', request)) {
 		try {
-			return Response.json({ name: await registerFolder((await request.json()).path) });
+			const names = await addFolders((await request.json()).path);
+
+			return Response.json({ name: names[0], names });
 		} catch (error) {
 			if (error instanceof FolderError) return new Response(error.message, { status: 400 });
 			throw error;
@@ -136,7 +138,11 @@ const sessionsRoutes = async (request, server) => {
 	}
 
 	match = requestMatch('DELETE', '/api/projects/:project', request);
-	if (match) return new Response(null, { status: (await unregisterFolder(match.project)) ? 204 : 404 });
+	if (match) {
+		const removed = await removeProject(match.project);
+
+		return removed ? Response.json({ removed }) : new Response('No such project', { status: 404 });
+	}
 
 	// Only from this machine's own token: the owner password of a server reached from elsewhere doesn't open the
 	// other servers this machine happens to be logged into

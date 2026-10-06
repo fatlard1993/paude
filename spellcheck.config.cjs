@@ -2,6 +2,9 @@ module.exports = {
 	skipWords: [
 		'umask',
 		'worktree',
+		'minecraft',
+		'wildcard',
+		'wildcards',
 		'ps',
 		'mkdtemp',
 		'tmpdir',

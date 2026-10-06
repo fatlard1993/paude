@@ -5,11 +5,13 @@ import { beforeAll, expect, test } from 'bun:test';
 
 import {
 	FolderError,
+	addFolders,
 	initProjects,
 	listProjects,
 	projectOf,
 	projectPath,
 	registerFolder,
+	removeProject,
 	setProjectsRoot,
 	unregisterFolder,
 } from './projects';
@@ -50,4 +52,29 @@ test('registrations persist and can be removed', async () => {
 	expect(await unregisterFolder('tool')).toBe(true);
 	expect(await unregisterFolder('tool')).toBe(false);
 	expect(projectOf(path.join(base, 'work/tool'))).toBeNull();
+});
+
+test('a pattern adds every folder it matches as a project of its own, and nothing else', async () => {
+	for (const mod of ['alpha', 'beta', '.hidden']) await mkdir(path.join(base, 'mods', mod), { recursive: true });
+	await Bun.write(path.join(base, 'mods', 'notes.txt'), 'not a folder');
+
+	expect(await addFolders(`${path.join(base, 'mods')}/*`)).toEqual(['alpha', 'beta']);
+	expect(projectOf(path.join(base, 'mods', 'beta', 'src'))).toBe('beta');
+	await expect(addFolders(`${path.join(base, 'mods')}/zzz*`)).rejects.toThrow('No folders match');
+	await expect(addFolders('mods/*')).rejects.toThrow(FolderError);
+});
+
+test('removing takes a project off the list without touching it: an added folder is forgotten, one in the root hidden', async () => {
+	await mkdir(path.join(base, 'root/kept'), { recursive: true });
+
+	expect(await removeProject('alpha')).toBe('removed');
+	expect(await removeProject('kept')).toBe('hidden');
+	expect(await listProjects()).not.toContain('kept');
+	expect(projectOf(path.join(base, 'root/kept/src'))).toBeNull();
+	expect(projectPath('kept')).toBeNull();
+	expect(await removeProject('nothing-here')).toBeNull();
+
+	// Adding it again brings it back, under its own name
+	expect(await addFolders(path.join(base, 'root/kept'))).toEqual(['kept']);
+	expect(await listProjects()).toContain('kept');
 });

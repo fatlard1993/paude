@@ -19,8 +19,8 @@ import { readHidden } from '../cli/screen';
 const KEY_HINTS = 3;
 
 const USAGE = `paude                    pick a session from this machine and every server you're logged into
-paude add [folder]       make a folder (default: this one) a project on this machine's paude
-paude remove <name>      stop treating a folder added with paude add as a project
+paude add [folder...]    make folders (default: this one) projects on this machine's paude; ~/mods/* adds each
+paude remove <name...>   take projects off the list (nothing on disk changes)
 paude web [url]          open a paude in the browser, already logged in (default: this machine's)
 paude login <url>        log in to a paude server (e.g. https://paude.example.com); --name <name> shows it by that name
 paude login <invite>     join with an invite link someone sent you
@@ -169,27 +169,43 @@ const run = async () => {
 	return attachLoop(() => pickSession(servers));
 };
 
-const add = async folder => {
+// Each a folder or a pattern for several ("~/Projects/mods/*"); a pattern the shell already expanded arrives as many
+const add = async requested => {
 	const server = await ensureLocalServer();
-	const requested = path.resolve(folder ?? process.cwd());
-	const { name } = await api(server, '/api/projects', { method: 'POST', body: JSON.stringify({ path: requested }) });
 
-	console.log(`${requested} is the project "${name}" on this machine's paude. Run paude to open a session in it.`);
+	for (const folder of requested.length ? requested : [process.cwd()]) {
+		// A pattern is resolved but left for the server to expand; ~ works quoted or not
+		const full = path.resolve(folder.replace(/^~(?=\/|$)/, os.homedir()));
+		const { names } = await api(server, '/api/projects', { method: 'POST', body: JSON.stringify({ path: full }) });
+
+		console.log(
+			names.length === 1
+				? `${full} is the project "${names[0]}" on this machine's paude.`
+				: `${names.length} projects from ${folder}: ${names.join(', ')}`,
+		);
+	}
+
+	console.log('Run paude to open a session in one.');
 };
 
-const remove = async name => {
-	if (!name) return console.log('Which project? paude remove <name>');
+// Off the list, not off the disk: an added folder is forgotten, one in the projects folder is hidden
+const remove = async names => {
+	if (!names.length) return console.log('Which project? paude remove <name>...');
 
 	const server = await ensureLocalServer();
 
-	const response = await fetch(`${server.url}/api/projects/${encodeURIComponent(name)}`, {
-		method: 'DELETE',
-		headers: { authorization: `Bearer ${server.token}` },
-	});
+	for (const name of names) {
+		const response = await fetch(`${server.url}/api/projects/${encodeURIComponent(name)}`, {
+			method: 'DELETE',
+			headers: { authorization: `Bearer ${server.token}` },
+		});
 
-	if (response.status === 404) return console.log(`"${name}" isn't a folder added with paude add.`);
-	if (!response.ok) throw new Error(`This machine's paude answered ${response.status}.`);
-	console.log(`"${name}" is no longer a project. Its sessions are still in Claude Code's history.`);
+		if (response.status === 404) console.log(`"${name}" isn't a project here.`);
+		else if (!response.ok) throw new Error(`This machine's paude answered ${response.status}.`);
+		else if ((await response.json()).removed === 'hidden')
+			console.log(`"${name}" is hidden from the list; paude add brings it back. Nothing was deleted.`);
+		else console.log(`"${name}" is no longer a project. Its folder and sessions are untouched.`);
+	}
 };
 
 const serve = async args => {
@@ -239,8 +255,8 @@ try {
 	} else if (command === 'stop') {
 		console.log((await stopLocalServer()) ? "Stopped this machine's paude." : "This machine's paude isn't running.");
 	} else if (command === 'doctor') await doctor();
-	else if (command === 'add') await add(target);
-	else if (command === 'remove') await remove(target);
+	else if (command === 'add') await add(process.argv.slice(3));
+	else if (command === 'remove') await remove(process.argv.slice(3));
 	else if (command === 'serve') await serve(process.argv.slice(3));
 	else if (command === 'web') await web(target);
 	else if (command === 'logout') await logout(target);

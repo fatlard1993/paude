@@ -91,7 +91,7 @@ export default class Home extends View {
 		const input = document.createElement('input');
 		const button = document.createElement('button');
 
-		input.placeholder = 'Add a folder as a project: /full/path/to/it';
+		input.placeholder = 'Add a folder as a project: ~/path/to/it, or ~/path/* for each folder in it';
 		button.textContent = 'Add';
 		form.elem.append(input, button);
 		form.elem.addEventListener('submit', async event => {
@@ -102,8 +102,14 @@ export default class Home extends View {
 
 			if (!response?.ok) return new Notify({ type: 'error', content: body || 'Could not add that folder.' });
 
+			const { names } = JSON.parse(body);
+
 			input.value = '';
-			new Notify({ type: 'success', content: `Added "${JSON.parse(body).name}"`, timeout: 2000 });
+			new Notify({
+				type: 'success',
+				content: names.length === 1 ? `Added "${names[0]}"` : `Added ${names.length} projects: ${names.join(', ')}`,
+				timeout: 4000,
+			});
 			this.load();
 		});
 	}
@@ -194,21 +200,22 @@ export default class Home extends View {
 				title: project.name,
 				meta: [projectSummary(project)],
 				live: project.liveCount > 0,
-				...(project.registered && {
-					removeLabel: `Stop treating ${project.path} as a project (nothing is deleted)`,
-					removeIcon: 'folder-minus',
-					remove: async () => {
-						const confirmed = await confirmDialog({
-							header: `Stop treating ${project.name} as a project?`,
-							body: `Nothing in ${project.path} is deleted, but its sessions leave these lists and can't be reopened here until you add the folder again.`,
-							confirmLabel: 'Remove',
-						});
+				removeLabel: project.registered
+					? `Stop treating ${project.path} as a project (nothing is deleted)`
+					: `Hide ${project.name} from the list (nothing is deleted)`,
+				removeIcon: 'folder-minus',
+				remove: async () => {
+					const where = project.path ?? project.name;
+					const confirmed = await confirmDialog({
+						header: `Take ${project.name} off the list?`,
+						body: `Nothing in ${where} is deleted, but its sessions leave these lists and can't be reopened here until you add the folder again.`,
+						confirmLabel: 'Remove',
+					});
 
-						if (!confirmed) return;
-						await removeFolder(project.name);
-						this.load();
-					},
-				}),
+					if (!confirmed) return;
+					await removeFolder(project.name);
+					this.load();
+				},
 			});
 		}
 	}
