@@ -31,7 +31,7 @@
 	},
 	"dependencies": {
 		"@anthropic-ai/claude-agent-sdk": "^0.3.289",
-		"@vanilla-bean/components": "^2.0.4",
+		"@vanilla-bean/components": "2.0.5",
 		"@vanilla-bean/hypertether": "^1.0.2",
 		"@xterm/addon-fit": "^0.11.0",
 		"@xterm/addon-serialize": "^0.14.0",

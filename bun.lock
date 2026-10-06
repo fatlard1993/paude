@@ -6,7 +6,7 @@
       "name": "paude",
       "dependencies": {
         "@anthropic-ai/claude-agent-sdk": "^0.3.289",
-        "@vanilla-bean/components": "^2.0.4",
+        "@vanilla-bean/components": "2.0.5",
         "@vanilla-bean/hypertether": "^1.0.2",
         "@xterm/addon-fit": "^0.11.0",
         "@xterm/addon-serialize": "^0.14.0",
@@ -145,7 +145,7 @@
 
     "@typescript-eslint/visitor-keys": ["@typescript-eslint/visitor-keys@8.71.1", "", { "dependencies": { "@typescript-eslint/types": "8.71.1", "eslint-visitor-keys": "^5.0.0" } }, "sha512-0GxiUGqMU0qXJt58cBsiG3DP8lUmBaFo2vChtUX+CT7PnR3v/VGLLrzVP4K9r1lNiZXjHYefMBbPunplr09v6w=="],
 
-    "@vanilla-bean/components": ["@vanilla-bean/components@2.0.4", "", { "dependencies": { "@ctrl/tinycolor": "^4.2.0", "@fontsource-variable/kode-mono": "^5.2.8", "@fortawesome/fontawesome-free": "^7.3.1", "@vanilla-bean/oxject": "^1.0.0", "nanoid": "6" }, "peerDependencies": { "@eslint/compat": "^2.1.0", "@eslint/js": "^10.0.1", "eslint": "^10.7.0", "eslint-plugin-compat": "^7.0.2", "eslint-plugin-import": "^2.32.0", "eslint-plugin-jsdoc": "^63.0.13", "eslint-plugin-spellcheck": "0.0.20", "eslint-plugin-testing-library": "^7.16.2", "eslint-plugin-write-good-comments": "^0.2.0", "globals": "^17.7.0" }, "optionalPeers": ["@eslint/compat", "@eslint/js", "eslint", "eslint-plugin-compat", "eslint-plugin-import", "eslint-plugin-jsdoc", "eslint-plugin-spellcheck", "eslint-plugin-testing-library", "eslint-plugin-write-good-comments", "globals"] }, "sha512-8zeR/T7JEUoFyb/As0oJoWK1OgioIVkKoQlp5DgfoUksWzIOAsOpT2Mq08CWCfQ5AUhE1eBq7v9c7qnZB6SIEQ=="],
+    "@vanilla-bean/components": ["@vanilla-bean/components@2.0.5", "", { "dependencies": { "@ctrl/tinycolor": "^4.2.0", "@fontsource-variable/kode-mono": "^5.2.8", "@fortawesome/fontawesome-free": "^7.3.1", "@vanilla-bean/oxject": "^1.0.0", "nanoid": "6" }, "peerDependencies": { "@eslint/compat": "^2.1.0", "@eslint/js": "^10.0.1", "eslint": "^10.7.0", "eslint-plugin-compat": "^7.0.2", "eslint-plugin-import": "^2.32.0", "eslint-plugin-jsdoc": "^63.0.13", "eslint-plugin-spellcheck": "0.0.20", "eslint-plugin-testing-library": "^7.16.2", "eslint-plugin-write-good-comments": "^0.2.0", "globals": "^17.7.0" }, "optionalPeers": ["@eslint/compat", "@eslint/js", "eslint", "eslint-plugin-compat", "eslint-plugin-import", "eslint-plugin-jsdoc", "eslint-plugin-spellcheck", "eslint-plugin-testing-library", "eslint-plugin-write-good-comments", "globals"] }, "sha512-SwUh7L0S+9m6/gSsv9b3BqzSI84eIfxhjDKpG34P5kEuuI4Sk8E0QjiG8tcwibvgwkWivuV3+WDR67Y8YMMgNw=="],
 
     "@vanilla-bean/hypertether": ["@vanilla-bean/hypertether@1.0.2", "", {}, "sha512-eXeWARoU8IgG5X6R2O7uUysevEcFo7WE3/VL7gZ1SyQV6AKsfzE2UcMnJJcx737L772t6XFmN8A3CxNnqDafSg=="],
 

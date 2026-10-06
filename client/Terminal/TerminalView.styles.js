@@ -11,13 +11,6 @@ export const Body = styled.Component`
 	display: flex;
 	position: relative;
 
-	/* The page theme sets a font on every element; text xterm draws in the page (its DOM renderer) takes the
-	   terminal's instead */
-	.xterm-rows * {
-		font-family: inherit;
-		font-size: inherit;
-	}
-
 	.terminal-column {
 		flex: 1;
 		min-width: 0;
