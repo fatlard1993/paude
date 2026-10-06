@@ -1,6 +1,6 @@
 import { Button, Elem, Input, Notify, View, styled } from '@vanilla-bean/components';
 
-import { choiceNeeded, runningSummary } from '../shared/checkouts';
+import { runningSummary } from '../shared/checkouts';
 import { createSession, deleteSession, getCheckouts, getProjectSessions } from './api';
 import { confirmDeleteSession } from './confirmDialog';
 import { element } from './dom';
@@ -119,7 +119,7 @@ export default class Project extends View {
 		this.loadCheckouts();
 	}
 
-	// Asked only when there's a choice to make: something is already running here, or a worktree exists
+	// Asked every time in a git repository
 	async loadCheckouts() {
 		const checkouts = (await getCheckouts(this.options.project)).body?.checkouts;
 		const where = this.where.elem;
@@ -128,7 +128,7 @@ export default class Project extends View {
 		where.replaceChildren();
 		where.style.display = 'none';
 
-		if (!choiceNeeded(checkouts)) return;
+		if (!checkouts) return;
 
 		const main = checkouts.find(checkout => checkout.main);
 		const option = (value, title, detail, active) => {

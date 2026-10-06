@@ -1,4 +1,4 @@
-import { choiceNeeded, runningSummary } from '../shared/checkouts';
+import { runningSummary } from '../shared/checkouts';
 import { projectSummary } from '../shared/projects';
 import sessionUrgency from '../shared/urgency';
 import relativeTime from '../shared/relativeTime';
@@ -104,11 +104,11 @@ const askLine = ({ title, subtitle, prompt, hint }) =>
 		draw();
 	});
 
-// Where a new session goes, asked only when there's a choice: { checkout } to start with, or null to go back
+// Where a new session goes, asked every time in a git repository: { checkout } to start with, or null to go back
 const pickCheckout = async (server, project) => {
 	const { checkouts } = await api(server, `/api/projects/${encodeURIComponent(project)}/checkouts`);
 
-	if (!choiceNeeded(checkouts)) return { checkout: undefined };
+	if (!checkouts) return { checkout: undefined };
 
 	const main = checkouts.find(checkout => checkout.main);
 	const running = active => (active ? colored(`${active} running`, 179) : '');

@@ -1,16 +1,9 @@
 import { expect, test } from 'bun:test';
 
-import { choiceNeeded, runningSummary } from './checkouts';
+import { runningSummary } from './checkouts';
 
 const main = (active = 0) => ({ name: null, main: true, active });
 const worktree = (name, active = 0) => ({ name, main: false, active });
-
-test('the choice is offered once something runs here or a worktree exists, and never outside git', () => {
-	expect(choiceNeeded(null)).toBe(false);
-	expect(choiceNeeded([main()])).toBe(false);
-	expect(choiceNeeded([main(1)])).toBe(true);
-	expect(choiceNeeded([main(), worktree('a')])).toBe(true);
-});
 
 test('the summary says how many run, and where', () => {
 	expect(runningSummary([main()])).toBe('No sessions are running here.');
