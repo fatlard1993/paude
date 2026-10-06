@@ -1,5 +1,6 @@
 import { credentialOf, identityOf } from '../auth';
 import { SearchError, listFiles, rawProjectFile, readProjectFile, searchProject } from '../files';
+import { searchOptionsFrom } from '../../shared/searchQuery';
 import { may } from '../permissions';
 import { sessionRecord } from '../sessions/record';
 import requestMatch from '../utils/requestMatch';
@@ -12,19 +13,9 @@ const REFUSED = {
 
 const sessionFolder = async id => (await sessionRecord(id))?.cwd ?? null;
 
-const FLAG = value => value === '1' || value === 'true';
-
-const search = async (cwd, { q, case: caseSensitive, word, regex, include, exclude }) => {
+const search = async (cwd, parameters) => {
 	try {
-		return Response.json(
-			await searchProject(cwd, q, {
-				caseSensitive: FLAG(caseSensitive),
-				wholeWord: FLAG(word),
-				regex: FLAG(regex),
-				include,
-				exclude,
-			}),
-		);
+		return Response.json(await searchProject(cwd, parameters.q, searchOptionsFrom(parameters)));
 	} catch (error) {
 		if (error instanceof SearchError) return new Response(error.message, { status: 400 });
 		throw error;

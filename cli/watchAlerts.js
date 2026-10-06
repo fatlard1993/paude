@@ -1,3 +1,4 @@
+import watchChanges from '../shared/watchChanges';
 import notifier from './notify';
 import { api } from './servers';
 
@@ -19,15 +20,17 @@ const startWatchAlerts = (servers, onScreen) => {
 			)
 		).flat();
 
-		for (const session of previous ? all : []) {
-			const before = previous.get(session.key);
+		const changes = watchChanges({
+			previous,
+			sessions: all,
+			keyOf: session => session.key,
+			onScreen: session => session.id === onScreen(),
+		});
+
+		for (const { session, what } of changes) {
 			const title = session.title || 'A session';
 
-			if (!before || session.id === onScreen()) continue;
-			if (session.status === 'waiting' && before.status !== 'waiting')
-				notify(`paude · ${session.server.label}`, `${title} needs you`);
-			else if (session.unseen > before.unseen)
-				notify(`paude · ${session.server.label}`, `${title}: ${session.unseen} new since you looked`);
+			notify(`paude · ${session.server.label}`, what === 'needs you' ? `${title} ${what}` : `${title}: ${what}`);
 		}
 
 		previous = new Map(all.map(session => [session.key, session]));

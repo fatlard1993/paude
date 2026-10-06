@@ -3,6 +3,7 @@ import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 
 import { pathFilter } from '../../shared/globs';
+import { attachFileText, attachLinesText, extensionOf, kindOf, matchNames } from '../../shared/projectFiles';
 import searchPattern from '../../shared/searchPattern';
 import { listFiles, rawFileUrl, readFile, searchFiles } from '../api';
 import { canType } from '../identity';
@@ -361,12 +362,6 @@ const iconButton = (icon, title, onClick) => {
 	return node;
 };
 
-const extensionOf = path => {
-	const name = path.split('/').at(-1).toLowerCase();
-
-	return name.includes('.') ? name.split('.').at(-1) : name;
-};
-
 const BRAND_ICONS = {
 	js: 'js',
 	mjs: 'js',
@@ -428,23 +423,6 @@ const SOLID_ICONS = {
 	xlsx: 'file-excel',
 	ppt: 'file-powerpoint',
 	pptx: 'file-powerpoint',
-};
-
-const IMAGE = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'ico', 'bmp']);
-const VIDEO = new Set(['mp4', 'webm', 'mov', 'ogv', 'm4v']);
-const AUDIO = new Set(['mp3', 'wav', 'ogg', 'oga', 'm4a', 'flac', 'aac', 'opus']);
-const MARKDOWN = new Set(['md', 'markdown', 'mdx']);
-
-const kindOf = path => {
-	const extension = extensionOf(path);
-
-	if (IMAGE.has(extension)) return 'image';
-	if (VIDEO.has(extension)) return 'video';
-	if (AUDIO.has(extension)) return 'audio';
-	if (extension === 'pdf') return 'pdf';
-	if (MARKDOWN.has(extension)) return 'markdown';
-
-	return 'text';
 };
 
 const ICON_COLORS = {
@@ -564,24 +542,6 @@ const languageOf = path => {
 	const extension = extensionOf(path);
 
 	return LANGUAGES[extension] ?? (CODE_LIKE.has(extension) ? 'javascript' : null);
-};
-
-// Every query character in order, closer together and nearer the file name scoring better
-const fuzzyScore = (path, query, caseSensitive) => {
-	const haystack = caseSensitive ? path : path.toLowerCase();
-	let position = -1;
-	let score = 0;
-
-	for (const character of caseSensitive ? query : query.toLowerCase()) {
-		const found = haystack.indexOf(character, position + 1);
-
-		if (found === -1) return null;
-
-		score += found - position;
-		position = found;
-	}
-
-	return score - position / haystack.length + (haystack.length - haystack.lastIndexOf('/')) / 100;
 };
 
 const buildTree = paths => {
@@ -820,26 +780,14 @@ export default class FilesPanel extends Panel {
 			return;
 		}
 
-		const { caseSensitive, wholeWord, regex } = this.searchOptions;
-		// Whole word and regex ask for exact matching; otherwise names match loosely, the way editors find files
-		const pattern = (wholeWord || regex) && searchPattern(query, this.searchOptions);
+		const matches = matchNames(this.paths, query, this.searchOptions);
 
-		if (pattern === null)
+		if (matches === null)
 			return this.list.replaceChildren(element('div', 'empty', 'That regular expression is not valid.'));
-
-		const matches = (
-			pattern
-				? paths.filter(path => pattern.test(path)).map(path => ({ path, score: path.length }))
-				: paths
-						.map(path => ({ path, score: fuzzyScore(path, query, caseSensitive) }))
-						.filter(({ score }) => score !== null)
-		)
-			.sort((a, b) => a.score - b.score)
-			.slice(0, MAX_MATCHES);
 
 		this.list.replaceChildren(
 			...(matches.length
-				? matches.map(({ path }) => this.fileEntry(path, path))
+				? matches.slice(0, MAX_MATCHES).map(path => this.fileEntry(path, path))
 				: [element('div', 'empty', 'No file names match.')]),
 		);
 	}
@@ -1127,14 +1075,13 @@ export default class FilesPanel extends Panel {
 
 	// Claude Code reads an @-mentioned file itself
 	attachFile() {
-		this.options.attach(`@${this.current} `);
+		this.options.attach(attachFileText(this.current));
 	}
 
 	attachLines() {
 		const { from, to } = this.selection;
-		const range = from === to ? `line ${from}` : `lines ${from}-${to}`;
 
-		this.options.attach(`${this.current} ${range}:\n\`\`\`\n${this.selectedText()}\n\`\`\`\n`);
+		this.options.attach(attachLinesText(this.current, from, to, this.selectedText()));
 	}
 
 	async copyLines() {

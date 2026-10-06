@@ -1,5 +1,6 @@
 import { Notify } from '@vanilla-bean/components';
 
+import watchChanges from '../shared/watchChanges';
 import { getRemotes, getWatching } from './api';
 import { showNotification } from './notify';
 
@@ -45,13 +46,11 @@ export const startWatchAlerts = ({ local }) => {
 
 		document.title = waiting ? `(${waiting}) paude` : 'paude';
 
-		for (const session of previous ? all : []) {
-			const before = previous.get(keyOf(session));
-			const onScreen = !session.remote && window.location.hash === `#/sessions/${session.id}` && !document.hidden;
+		const onScreen = session =>
+			!session.remote && window.location.hash === `#/sessions/${session.id}` && !document.hidden;
 
-			if (!before || onScreen) continue;
-			if (session.status === 'waiting' && before.status !== 'waiting') await alert(session, ' needs you');
-			else if (session.unseen > before.unseen) await alert(session, `: ${session.unseen} new since you looked`);
+		for (const { session, what } of watchChanges({ previous, sessions: all, keyOf, onScreen })) {
+			await alert(session, what === 'needs you' ? ` ${what}` : `: ${what}`);
 		}
 
 		previous = new Map(all.map(session => [keyOf(session), session]));

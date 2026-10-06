@@ -1,4 +1,5 @@
 import { pathFilter } from '../shared/globs';
+import { attachFileText, attachLinesText, extensionOf, kindOf, matchNames } from '../shared/projectFiles';
 import searchPattern from '../shared/searchPattern';
 import { fitCells } from './graphics';
 import { highlightLines } from './highlight';
@@ -35,12 +36,9 @@ const FILE_COLORS = {
 	gif: 140,
 	lock: 244,
 };
-const MARKDOWN = new Set(['md', 'markdown', 'mdx']);
 // VS Code's Alt+C, Alt+W and Alt+R
 const OPTION_KEYS = { c: 'caseSensitive', w: 'wholeWord', r: 'regex' };
 const SEARCH_FIELDS = ['query', 'include', 'exclude'];
-
-const extensionOf = path => path.split('/').at(-1).split('.').at(-1).toLowerCase();
 
 const clamp = (value, low, high) => Math.min(Math.max(value, low), high);
 
@@ -63,7 +61,7 @@ export const openFile = (path, text, line) => {
 		.replace(/\n$/, '')
 		.split('\n')
 		.map(source => printable(source.replaceAll('\t', '    ')));
-	const isMarkdown = MARKDOWN.has(extensionOf(path));
+	const isMarkdown = kindOf(path) === 'markdown';
 
 	return {
 		path,
@@ -78,30 +76,17 @@ export const openFile = (path, text, line) => {
 	};
 };
 
-const fuzzyMatch = (path, query, caseSensitive) => {
-	const haystack = caseSensitive ? path : path.toLowerCase();
-	let position = -1;
-
-	for (const character of caseSensitive ? query : query.toLowerCase()) {
-		position = haystack.indexOf(character, position + 1);
-		if (position === -1) return false;
-	}
-
-	return true;
-};
-
 export const entriesOf = browser => {
 	const options = browser.prefs.search;
 	const paths = browser.paths.filter(pathFilter(options));
 
 	if (browser.filter) {
-		const pattern = (options.wholeWord || options.regex) && searchPattern(browser.filter, options);
-
-		if (pattern === null) return [];
-
-		return paths
-			.filter(path => (pattern ? pattern.test(path) : fuzzyMatch(path, browser.filter, options.caseSensitive)))
-			.map(path => ({ kind: 'file', path, name: path, depth: 0 }));
+		return (matchNames(browser.paths, browser.filter, options) ?? []).map(path => ({
+			kind: 'file',
+			path,
+			name: path,
+			depth: 0,
+		}));
 	}
 
 	const entries = [];
@@ -232,7 +217,7 @@ const listKey = (browser, key, canType) => {
 		return { type: 'redraw' };
 	}
 
-	if (key === 'a' && canType && entry.kind === 'file') return { type: 'attach', text: `@${entry.path} ` };
+	if (key === 'a' && canType && entry.kind === 'file') return { type: 'attach', text: attachFileText(entry.path) };
 
 	return { type: 'ignore' };
 };
@@ -279,11 +264,7 @@ const searchKey = (browser, key) => {
 	return { type: 'redraw' };
 };
 
-const attachLines = (file, from, to) => {
-	const range = from === to ? `line ${from}` : `lines ${from}-${to}`;
-
-	return `${file.path} ${range}:\n\`\`\`\n${file.lines.slice(from - 1, to).join('\n')}\n\`\`\`\n`;
-};
+const attachLines = (file, from, to) => attachLinesText(file.path, from, to, file.lines.slice(from - 1, to).join('\n'));
 
 const markedRange = file =>
 	file.anchor === null
@@ -305,7 +286,7 @@ const fileKey = (browser, key, canType) => {
 	// read itself
 	if (file.error || file.image) {
 		if (ESCAPE.includes(key) || BACK.includes(key)) browser.open = null;
-		else if (key === 'a' && canType) return { type: 'attach', text: `@${file.path} ` };
+		else if (key === 'a' && canType) return { type: 'attach', text: attachFileText(file.path) };
 		else return { type: 'ignore' };
 
 		return { type: 'redraw' };
@@ -332,7 +313,7 @@ const fileKey = (browser, key, canType) => {
 		if (key in MOVES) file.scroll = clamp(file.scroll + MOVES[key], 0, last);
 		else if (key === 'g') file.scroll = 0;
 		else if (key === 'G') file.scroll = last;
-		else if (key === 'a' && canType) return { type: 'attach', text: `@${file.path} ` };
+		else if (key === 'a' && canType) return { type: 'attach', text: attachFileText(file.path) };
 		else if (key === 'y') return { type: 'copy', text: file.text, what: 'the file' };
 		else return { type: 'ignore' };
 
@@ -347,7 +328,7 @@ const fileKey = (browser, key, canType) => {
 	else if (key === 'G') file.cursor = last;
 	else if (key === 'v') file.anchor = file.anchor === null ? file.cursor : null;
 	else if (key === 'a' && canType)
-		return { type: 'attach', text: marked ? attachLines(file, marked.from, marked.to) : `@${file.path} ` };
+		return { type: 'attach', text: marked ? attachLines(file, marked.from, marked.to) : attachFileText(file.path) };
 	else if (key === 'y') {
 		if (!marked) return { type: 'copy', text: file.text, what: 'the file' };
 

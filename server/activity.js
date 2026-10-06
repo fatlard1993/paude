@@ -1,6 +1,7 @@
 import path from 'path';
 
 import writeJsonFile from '../shared/writeJsonFile';
+import readJsonFile from '../shared/readJsonFile';
 
 // What happens in each session, counted, and who watches which: { [sessionId]: { seq, status, at } } and
 // { [identity]: { [sessionId]: { watching, seen } } }. A watcher's unseen count is the session's count past the
@@ -11,13 +12,11 @@ let activity = {};
 let watches = {};
 const listeners = new Set();
 
-const load = async file => ((await Bun.file(file).exists()) ? Bun.file(file).json() : {});
-
 export const initActivity = async dataDir => {
 	activityFile = path.join(dataDir, 'activity.json');
 	watchesFile = path.join(dataDir, 'watches.json');
-	activity = await load(activityFile);
-	watches = await load(watchesFile);
+	activity = await readJsonFile(activityFile, {});
+	watches = await readJsonFile(watchesFile, {});
 };
 
 const saveActivity = () => writeJsonFile(activityFile, () => activity);

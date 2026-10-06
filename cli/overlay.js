@@ -1,4 +1,6 @@
 import inputKind from '../shared/inputKind';
+import { REACTION_PALETTE } from '../shared/reactions';
+import { roleAllows } from '../shared/roles';
 import relativeTime from '../shared/relativeTime';
 import { browserKey, browserKeys, browserView } from './fileBrowser';
 import { bold, dim, fit, heading, keyCap, onBackground, orange, printable, visibleLength, wrap } from './screen';
@@ -31,7 +33,7 @@ export const plainKey = key => {
 	return String.fromCodePoint(code);
 };
 
-const PALETTE = ['👍', '❤️', '😂', '🎉', '👀', '🙏', '✅', '🤔', '🔥'];
+const PALETTE = REACTION_PALETTE.slice(0, 9);
 
 const reactionsOf = item =>
 	Object.entries(item.reactions ?? {})
@@ -48,7 +50,7 @@ const firstLine = text =>
 
 const openComments = notes => notes.comments.filter(({ resolved }) => !resolved).slice(-MAX_LISTED_COMMENTS);
 
-const canTypeIn = state => ['owner', 'drive'].includes(state.role ?? 'owner');
+const canTypeIn = state => roleAllows(state.role ?? 'owner', 'type');
 
 const threadComment = state => state.notes.comments.find(({ id }) => id === state.thread);
 
@@ -282,7 +284,7 @@ export const overlayKey = (state, rawKey, { readSelection = () => null } = {}) =
 
 	state.hint = null;
 
-	const canNote = state.role !== 'watch';
+	const canNote = roleAllows(state.role ?? 'owner', 'note');
 
 	if (state.draft) return draftKey(state, key);
 	if (state.files) {
@@ -314,7 +316,7 @@ export const overlayKey = (state, rawKey, { readSelection = () => null } = {}) =
 		return { type: 'redraw' };
 	}
 
-	if (canNote && key === 'f') return { type: 'files' };
+	if (roleAllows(state.role ?? 'owner', 'files') && key === 'f') return { type: 'files' };
 
 	if (canNote && key === 'm') {
 		const quote = readSelection()?.trim().slice(0, MAX_QUOTE);

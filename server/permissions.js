@@ -1,20 +1,15 @@
+import { roleAllows } from '../shared/roles';
 import { identityKey } from './activity';
 
-export const ROLES = ['watch', 'comment', 'drive'];
+export { ROLES } from '../shared/roles';
 
-const ROLE_ACTIONS = {
-	watch: new Set(),
-	comment: new Set(['note', 'files']),
-	drive: new Set(['note', 'files', 'type']),
-};
-
-// 'type' is terminal input and size; 'note' is chat, comments and replies; 'files' is browsing the project
+// The owner may do everything, everywhere; a guest what their role allows, in the session their invite names
 export const may = (identity, action, sessionId) => {
 	if (!identity) return false;
 	if (identity.owner) return true;
 	if (identity.sessionId !== sessionId) return false;
 
-	return ROLE_ACTIONS[identity.role]?.has(action) ?? false;
+	return roleAllows(identity.role, action);
 };
 
 // The author is who wrote it, not their name: two invites can carry the same one

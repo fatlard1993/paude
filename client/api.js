@@ -1,5 +1,7 @@
 import { DELETE, GET, POST, PUT } from '@vanilla-bean/hypertether';
 
+import { searchParameters } from '../shared/searchQuery';
+
 export const getProjects = async options =>
 	await GET('/api/projects', { apiId: 'projects', invalidateAfter: 0, ...options });
 
@@ -42,17 +44,10 @@ export const readFile = async (sessionId, path) =>
 		invalidateAfter: 0,
 	});
 
-export const searchFiles = async (sessionId, query, { caseSensitive, wholeWord, regex, include, exclude } = {}) =>
+export const searchFiles = async (sessionId, query, options) =>
 	await GET('/api/sessions/:id/search', {
 		urlParameters: { id: sessionId },
-		searchParameters: {
-			q: query,
-			case: caseSensitive ? '1' : '',
-			word: wholeWord ? '1' : '',
-			regex: regex ? '1' : '',
-			include: include ?? '',
-			exclude: exclude ?? '',
-		},
+		searchParameters: searchParameters(query, options),
 		responseType: 'text',
 		invalidateAfter: 0,
 	});

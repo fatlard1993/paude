@@ -1,4 +1,5 @@
 import { byRecentActivity, projectSummary } from '../shared/projects';
+import sessionUrgency from '../shared/urgency';
 import relativeTime from '../shared/relativeTime';
 import {
 	CLEAR,
@@ -165,10 +166,7 @@ const gather = async server => {
 	}
 };
 
-const byUrgency = (a, b) =>
-	(b.session.status === 'waiting') - (a.session.status === 'waiting') ||
-	b.session.unseen - a.session.unseen ||
-	(b.session.activeAt ?? 0) - (a.session.activeAt ?? 0);
+const byUrgency = (a, b) => sessionUrgency(a.session, b.session);
 
 const summaryOf = watched => {
 	const waiting = watched.filter(({ session }) => session.status === 'waiting').length;

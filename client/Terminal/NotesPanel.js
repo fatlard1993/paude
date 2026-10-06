@@ -3,6 +3,7 @@ import { Component, Notify, styled } from '@vanilla-bean/components';
 import { DESKTOP_KEY, NAME_KEY, desktopNotificationsOn, remember, savedName } from '../storage';
 
 import { applyNote } from '../../shared/protocol';
+import { REACTION_PALETTE } from '../../shared/reactions';
 import { canNote, identity, identityKey } from '../identity';
 import relativeTime from '../../shared/relativeTime';
 import renderPeople from './People';
@@ -258,8 +259,6 @@ const element = (tag, className, text) => {
 
 	return node;
 };
-
-const PALETTE = ['👍', '❤️', '😂', '🎉', '👀', '🙏', '✅', '🤔', '🔥', '💯', '🚀', '👏'];
 
 const meta = ({ author, at }) => element('div', 'meta', `${author} · ${relativeTime(at)}`);
 
@@ -549,7 +548,7 @@ export default class NotesPanel extends Panel {
 		add.title = 'React';
 		add.append(element('i', 'fa-regular fa-face-smile'), '+');
 		add.addEventListener('click', () => palette.classList.toggle('open'));
-		for (const emoji of PALETTE) {
+		for (const emoji of REACTION_PALETTE) {
 			const pick = element('button', '', emoji);
 
 			pick.addEventListener('click', () => react(emoji));

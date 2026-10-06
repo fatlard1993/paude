@@ -1,6 +1,7 @@
 import os from 'os';
 
 import { CLOSED, NOTE_TYPES, applyNote } from '../shared/protocol';
+import { searchParameters } from '../shared/searchQuery';
 import notifier from './notify';
 import outputFilter, { filterText } from './outputFilter';
 import { composeFrame, createMirror } from './compositor';
@@ -156,14 +157,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 		const searchFiles = async () => {
 			const { search, prefs } = state.files;
 			const query = search.query.trim();
-			const parameters = new URLSearchParams({
-				q: query,
-				case: prefs.search.caseSensitive ? '1' : '',
-				word: prefs.search.wholeWord ? '1' : '',
-				regex: prefs.search.regex ? '1' : '',
-				include: prefs.search.include,
-				exclude: prefs.search.exclude,
-			});
+			const parameters = new URLSearchParams(searchParameters(query, prefs.search));
 
 			Object.assign(search, { running: true, error: null });
 			redraw();

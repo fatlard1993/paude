@@ -1,6 +1,7 @@
 import { Button, Elem, Notify, View, styled } from '@vanilla-bean/components';
 
 import { byRecentActivity, projectSummary } from '../shared/projects';
+import byUrgency from '../shared/urgency';
 import {
 	addFolder,
 	deleteSession,
@@ -40,9 +41,6 @@ const AddFolder = styled(
 		}
 	`,
 );
-
-const byUrgency = (a, b) =>
-	(b.status === 'waiting') - (a.status === 'waiting') || b.unseen - a.unseen || (b.activeAt ?? 0) - (a.activeAt ?? 0);
 
 const List = styled.Component`
 	display: flex;

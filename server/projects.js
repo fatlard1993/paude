@@ -2,6 +2,7 @@ import { readdir, realpath, stat } from 'fs/promises';
 import { basename, join, relative, resolve, sep } from 'path';
 
 import writeJsonFile from '../shared/writeJsonFile';
+import readJsonFile from '../shared/readJsonFile';
 
 // Projects are the folders directly under the projects root, plus folders registered from anywhere else:
 // [{ name, path }] in folders.json, each named after its folder (with a number when the name is taken)
@@ -15,7 +16,7 @@ export const setProjectsRoot = path => {
 
 export const initProjects = async dataDir => {
 	foldersFile = join(dataDir, 'folders.json');
-	folders = (await Bun.file(foldersFile).exists()) ? await Bun.file(foldersFile).json() : [];
+	folders = await readJsonFile(foldersFile, []);
 };
 
 const rootProjects = async () => {

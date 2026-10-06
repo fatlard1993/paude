@@ -2,6 +2,7 @@ import { mkdir, rm } from 'fs/promises';
 import path from 'path';
 
 import writeJsonFile from '../shared/writeJsonFile';
+import readJsonFile from '../shared/readJsonFile';
 
 // The collaborators' side of a session: a chat and comments on quoted terminal text. None of it is ever typed into
 // Claude, and it outlives the Claude process, so it's kept per session id rather than on the running session.
@@ -25,8 +26,7 @@ const fileFor = sessionId => path.join(dir, `${sessionId.replace(/[^\w-]/g, '')}
 export const getNotes = async sessionId => {
 	if (loaded.has(sessionId)) return loaded.get(sessionId);
 
-	const stored = Bun.file(fileFor(sessionId));
-	const notes = (await stored.exists()) ? await stored.json() : { chat: [], comments: [] };
+	const notes = await readJsonFile(fileFor(sessionId), { chat: [], comments: [] });
 
 	// A concurrent load may have finished first
 	if (!loaded.has(sessionId)) loaded.set(sessionId, notes);
