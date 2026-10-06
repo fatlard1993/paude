@@ -43,6 +43,9 @@ const useWorkspaceTool = async ({ create, remove }) => {
 const WORKSPACE_CREATE =
 	'echo setting up {name}; git worktree add -q -b "ws/$PAUDE_WORKTREE_NAME" "../app-ws-$(echo {name} | tr A-Z a-z)" && echo ready';
 
+// The way the product repo's tool lays them out: every workspace in one folder beside the repo
+const WORKTREES_FOLDER_CREATE = 'mkdir -p ../app-worktrees && git worktree add -q -b {name} ../app-worktrees/{name}';
+
 beforeEach(async () => {
 	root = await realpath(await mkdtemp(join(os.tmpdir(), 'paude-worktrees-')));
 	repo = join(root, 'projects', 'app');
@@ -176,4 +179,12 @@ test("joining a worktree from elsewhere makes it the project's; worktrees paude 
 	expect(await releaseWorktree(repo, theirs, [])).toBeNull();
 	expect(await releaseWorktree(repo, repo, [])).toBeNull();
 	expect(await exists(theirs)).toBe(true);
+});
+
+test("a folder of the project's worktrees beside it isn't listed as a project either", async () => {
+	await useWorkspaceTool({ create: WORKTREES_FOLDER_CREATE });
+
+	expect(await createWorktree(repo, 'app', 'feature-a')).toBe(join(root, 'projects', 'app-worktrees', 'feature-a'));
+	expect(await listProjects()).toEqual(['app']);
+	expect(projectOf(join(root, 'projects', 'app-worktrees', 'feature-a', 'src'))).toBe('app');
 });

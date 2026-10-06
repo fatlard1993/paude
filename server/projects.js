@@ -35,11 +35,15 @@ const rootProjects = async () => {
 	}
 };
 
-// A worktree another project claims isn't a project of its own, even when it sits in the projects root
+// A worktree another project claims isn't a project of its own, even when it sits in the projects root; nor is a
+// folder holding them (a workspace tool's <repo>-worktrees)
+const holdsOthersWorktrees = name =>
+	worktrees.some(({ path, project }) => project !== name && inside(path, join(root, name)));
+
 export const listProjects = async () =>
 	[
 		...new Set([
-			...(await rootProjects()).filter(name => !worktrees.some(({ path }) => path === join(root, name))),
+			...(await rootProjects()).filter(name => !holdsOthersWorktrees(name)),
 			...folders.map(({ name }) => name),
 		]),
 	].sort((a, b) => a.localeCompare(b));
