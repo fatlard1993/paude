@@ -25,7 +25,7 @@ import {
 // Ctrl+] arrives as a plain byte, or as a CSI u sequence once Claude Code has switched on the kitty keyboard protocol
 const OVERLAY_KEYS = ['\x1d', '\x1b[93;5u'];
 
-const NOTE_ACTIONS = ['chat', 'comment', 'reply', 'resolve'];
+const NOTE_ACTIONS = ['chat', 'comment', 'reply', 'resolve', 'react'];
 const FRAME_MS = 33;
 
 const displayName = () => process.env.PAUDE_NAME || os.userInfo().username;
@@ -192,6 +192,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			overlay = true;
 			state.draft = null;
 			state.thread = null;
+			state.reacting = false;
 			state.files = null;
 			state.hint = null;
 			write(`${MOUSE_OFF}${PLAIN_KEYS}${HIDE_CURSOR}`);

@@ -31,6 +31,15 @@ export const plainKey = key => {
 	return String.fromCodePoint(code);
 };
 
+// The same palette as the web panel; in a thread, + then a number reacts
+const PALETTE = ['👍', '❤️', '😂', '🎉', '👀', '🙏', '✅', '🤔', '🔥'];
+
+// " 👍 2  🎉 1", or nothing; emoji come from the server, which only keeps real ones
+const reactionsOf = item =>
+	Object.entries(item.reactions ?? {})
+		.map(([emoji, authors]) => ` ${emoji} ${authors.length}`)
+		.join(' ');
+
 const firstLine = text =>
 	printable(
 		text
@@ -61,7 +70,10 @@ const listView = state => {
 	});
 	const chat = notes.chat
 		.slice(-CHAT_LINES)
-		.map(({ author, text, at }) => `  ${bold(printable(author))} ${dim(relativeTime(at))}  ${printable(text)}`);
+		.map(
+			message =>
+				`  ${bold(printable(message.author))} ${dim(relativeTime(message.at))}  ${printable(message.text)}${dim(reactionsOf(message))}`,
+		);
 	const comments = openComments(notes).map(({ author, quote, text, replies }, index) => {
 		const thread = replies.length ? dim(` (${replies.length} ${replies.length === 1 ? 'reply' : 'replies'})`) : '';
 
@@ -87,9 +99,10 @@ const threadView = (state, width) => {
 
 	const quote = String(comment.quote).split('\n');
 	const shownQuote = quote.slice(0, QUOTE_LINES).map(line => dim(`│ ${printable(line)}`));
-	const entry = ({ author, at, text }) => [
-		`${bold(printable(author))} ${dim(relativeTime(at))}`,
-		...wrap(printable(text), width - 2).map(line => `  ${line}`),
+	const entry = item => [
+		`${bold(printable(item.author))} ${dim(relativeTime(item.at))}`,
+		...wrap(printable(item.text), width - 2).map(line => `  ${line}`),
+		...(item.reactions && reactionsOf(item) ? [`  ${reactionsOf(item)}`] : []),
 	];
 
 	return [
@@ -110,11 +123,15 @@ const keysFor = (state, canNote) => {
 	if (state.files) return browserKeys(state.files, canTypeIn(state), keyCap);
 	if (state.draft) return [`${keyCap('enter')} send`, `${keyCap('esc')} cancel`];
 
+	if (state.reacting)
+		return [...PALETTE.map((emoji, index) => `${keyCap(String(index + 1))} ${emoji}`), `${keyCap('esc')} cancel`];
+
 	if (state.thread) {
 		const comment = threadComment(state);
 
 		return [
 			canNote && comment && `${keyCap('r')} reply`,
+			canNote && comment && `${keyCap('+')} react`,
 			canNote && comment && `${keyCap('x')} ${comment.resolved ? 'reopen' : 'resolve'}`,
 			`${keyCap('esc')} back`,
 		].filter(Boolean);
@@ -246,7 +263,21 @@ const threadKey = (state, key, canNote) => {
 
 	if (key === 'x') return { type: 'resolve', commentId: comment.id, resolved: !comment.resolved };
 
+	if (key === '+') {
+		state.reacting = true;
+
+		return { type: 'redraw' };
+	}
+
 	return { type: 'ignore' };
+};
+
+const reactKey = (state, key) => {
+	const emoji = PALETTE[Number(key) - 1];
+
+	state.reacting = false;
+
+	return /^[1-9]$/.test(key) && emoji ? { type: 'react', commentId: state.thread, emoji } : { type: 'redraw' };
 };
 
 // Handles a keypress while the overlay is up. Returns the action the attach loop should take; 'ignore' needs no
@@ -270,6 +301,7 @@ export const overlayKey = (state, rawKey, { readSelection = () => null } = {}) =
 
 		return { type: 'redraw' };
 	}
+	if (state.reacting) return reactKey(state, key);
 	if (state.thread) return threadKey(state, key, canNote);
 
 	if (CANCEL.includes(key) || key === 'q') return { type: 'close' };

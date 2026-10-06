@@ -94,6 +94,26 @@ const Panel = styled(
 			flex: 1;
 		}
 
+		.who .guest-name {
+			flex: 1;
+			display: flex;
+			align-items: baseline;
+			gap: 6px;
+			padding: 4px 2px;
+			min-width: 0;
+		}
+
+		.who .guest-name .as {
+			color: ${colors.light(colors.gray)};
+			font-size: 0.85em;
+		}
+
+		.who .guest-name strong {
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
 		.who .bell {
 			border: none;
 			background: transparent;
@@ -150,6 +170,73 @@ const Panel = styled(
 			cursor: pointer;
 		}
 
+		.reactions {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 4px;
+		}
+
+		.reactions:empty {
+			display: none;
+		}
+
+		.reactions .chip {
+			padding: 1px 7px;
+			border: 1px solid ${colors.alpha(colors.white, 0.12)};
+			border-radius: 10px;
+			background: ${colors.alpha(colors.white, 0.04)};
+			color: inherit;
+			font: inherit;
+			font-size: 0.85em;
+			cursor: pointer;
+		}
+
+		.reactions .chip.mine {
+			border-color: ${colors.alpha(colors.blue, 0.7)};
+			background: ${colors.alpha(colors.blue, 0.2)};
+		}
+
+		.reactions .chip.add {
+			opacity: 0.45;
+		}
+
+		.reactions .chip.add:hover, .message:hover .chip.add, .comment:hover > .reactions .chip.add {
+			opacity: 0.9;
+		}
+
+		.reactions .palette {
+			display: none;
+			flex-basis: 100%;
+			flex-wrap: wrap;
+			gap: 2px;
+			padding: 4px;
+			border-radius: 6px;
+			background: rgba(12, 12, 14, 0.9);
+		}
+
+		.reactions .palette.open {
+			display: flex;
+		}
+
+		.reactions .palette button {
+			border: none;
+			background: transparent;
+			font-size: 1.15em;
+			padding: 2px 4px;
+			border-radius: 4px;
+			cursor: pointer;
+		}
+
+		.reactions .palette button:hover {
+			background: ${colors.alpha(colors.white, 0.1)};
+		}
+
+		.reactions .palette input {
+			width: 90px;
+			font-size: 0.85em;
+		}
+
 		.reply {
 			margin-left: 12px;
 		}
@@ -194,6 +281,8 @@ const element = (tag, className, text) => {
 
 	return node;
 };
+
+const PALETTE = ['👍', '❤️', '😂', '🎉', '👀', '🙏', '✅', '🤔', '🔥', '💯', '🚀', '👏'];
 
 const meta = ({ author, at }) => element('div', 'meta', `${author} · ${relativeTime(at)}`);
 
@@ -240,17 +329,8 @@ export default class NotesPanel extends Panel {
 		this.drafts = new Map();
 
 		const who = element('div', 'who');
-		const name = element('input');
 
-		name.placeholder = 'Your name';
-		// A guest is the name on their invite
-		name.value = identity()?.owner ? savedName() : (identity()?.name ?? '');
-		name.disabled = !identity()?.owner;
-		name.addEventListener('change', () => {
-			remember(NAME_KEY, name.value.trim());
-			this.options.send({ type: 'rename', name: name.value.trim() });
-		});
-		who.append(name, this.bellButton());
+		who.append(identity()?.owner ? this.nameInput() : this.guestName(), this.bellButton());
 
 		this.tabButtons = {};
 
@@ -282,6 +362,28 @@ export default class NotesPanel extends Panel {
 	}
 
 	// Desktop notifications for when this tab is in the background; asking permission needs a click, so it's here
+	nameInput() {
+		const name = element('input');
+
+		name.placeholder = 'Your name';
+		name.value = savedName();
+		name.addEventListener('change', () => {
+			remember(NAME_KEY, name.value.trim());
+			this.options.send({ type: 'rename', name: name.value.trim() });
+		});
+
+		return name;
+	}
+
+	// A guest is the name on their invite, which they can't change, so it reads as a label
+	guestName() {
+		const label = element('div', 'guest-name');
+
+		label.append(element('span', 'as', 'You are'), element('strong', '', identity()?.name ?? 'a guest'));
+
+		return label;
+	}
+
 	bellButton() {
 		const bell = element('button', 'bell');
 		const show = () => {
@@ -372,7 +474,7 @@ export default class NotesPanel extends Panel {
 		return this.notes.chat.map(message => {
 			const node = element('div', 'message');
 
-			node.append(meta(message), element('div', 'text', message.text));
+			node.append(meta(message), element('div', 'text', message.text), this.reactions(message, { chatId: message.id }));
 
 			return node;
 		});
@@ -404,12 +506,21 @@ export default class NotesPanel extends Panel {
 			);
 			if (identity()?.owner || comment.author === identity()?.name) actions.append(resolve);
 
-			node.append(quote, meta(comment), element('div', 'text', comment.text));
+			node.append(
+				quote,
+				meta(comment),
+				element('div', 'text', comment.text),
+				this.reactions(comment, { commentId: comment.id }),
+			);
 
 			for (const reply of comment.replies) {
 				const replyNode = element('div', 'reply');
 
-				replyNode.append(meta(reply), element('div', 'text', reply.text));
+				replyNode.append(
+					meta(reply),
+					element('div', 'text', reply.text),
+					this.reactions(reply, { commentId: comment.id, replyId: reply.id }),
+				);
 				node.append(replyNode);
 			}
 
@@ -429,6 +540,51 @@ export default class NotesPanel extends Panel {
 
 			return node;
 		});
+	}
+
+	// Slack-style: each emoji with how many reacted (yours highlighted, click to add or take back yours), and a
+	// button that opens a palette, with a field for any other emoji
+	reactions(item, target) {
+		const row = element('div', 'reactions');
+		const react = emoji => this.options.send({ type: 'react', ...target, emoji });
+
+		for (const [emoji, authors] of Object.entries(item.reactions ?? {})) {
+			const chip = element(
+				'button',
+				`chip${authors.includes(this.myName) ? ' mine' : ''}`,
+				`${emoji} ${authors.length}`,
+			);
+
+			chip.title = authors.join(', ');
+			chip.disabled = !canNote();
+			chip.addEventListener('click', () => react(emoji));
+			row.append(chip);
+		}
+
+		if (!canNote()) return row;
+
+		const add = element('button', 'chip add');
+		const palette = element('div', 'palette');
+		const other = element('input');
+
+		add.title = 'React';
+		add.append(element('i', 'fa-regular fa-face-smile'), '+');
+		add.addEventListener('click', () => palette.classList.toggle('open'));
+		for (const emoji of PALETTE) {
+			const pick = element('button', '', emoji);
+
+			pick.addEventListener('click', () => react(emoji));
+			palette.append(pick);
+		}
+		other.placeholder = 'any emoji';
+		other.maxLength = 16;
+		other.addEventListener('keydown', event => {
+			if (event.key === 'Enter' && other.value.trim()) react(other.value.trim());
+		});
+		palette.append(other);
+		row.append(add, palette);
+
+		return row;
 	}
 
 	async renderPeople() {

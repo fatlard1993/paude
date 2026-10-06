@@ -103,6 +103,49 @@ export const setResolved = (sessionId, { commentId, resolved, allowed = () => tr
 		return true;
 	});
 
+// One emoji: a pictograph with any skin tone, variation selector or zero-width joins. Each item holds a handful of
+// different ones, as a chat would.
+const EMOJI = /^\p{Extended_Pictographic}(?:\uFE0F|\p{Emoji_Modifier}|\u200D\p{Extended_Pictographic})*\uFE0F?$/u;
+const MAX_EMOJI_LENGTH = 16;
+const MAX_REACTIONS = 20;
+
+// Adds the author's reaction, or takes it back if they had already reacted with that emoji
+const toggleReaction = (item, author, emoji) => {
+	const reactions = (item.reactions ??= {});
+	const authors = reactions[emoji] ?? [];
+
+	if (!authors.includes(author) && !reactions[emoji] && Object.keys(reactions).length >= MAX_REACTIONS) return false;
+
+	reactions[emoji] = authors.includes(author) ? authors.filter(name => name !== author) : [...authors, author];
+	if (!reactions[emoji].length) delete reactions[emoji];
+
+	return true;
+};
+
+export const validEmoji = emoji => typeof emoji === 'string' && emoji.length <= MAX_EMOJI_LENGTH && EMOJI.test(emoji);
+
+// A reaction on a chat message, a comment, or one of its replies
+export const react = async (sessionId, author, { chatId, commentId, replyId, emoji }) => {
+	const name = clean(author, MAX_AUTHOR) || 'someone';
+
+	if (!validEmoji(emoji)) return null;
+
+	if (chatId) {
+		const message = (await getNotes(sessionId)).chat.find(({ id }) => id === chatId);
+
+		if (!message || !toggleReaction(message, name, emoji)) return null;
+		await save(sessionId);
+
+		return { type: 'chatUpdate', message };
+	}
+
+	return updateComment(sessionId, commentId, comment => {
+		const target = replyId ? comment.replies.find(({ id }) => id === replyId) : comment;
+
+		return Boolean(target) && toggleReaction(target, name, emoji);
+	});
+};
+
 export const deleteNotes = async sessionId => {
 	loaded.delete(sessionId);
 	await rm(fileFor(sessionId), { force: true });

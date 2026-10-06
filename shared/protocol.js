@@ -2,7 +2,7 @@
 // text frames carry JSON whose `type` is one of these.
 
 // Collaborators' notes: never sent to Claude
-export const NOTE_TYPES = ['notes', 'chat', 'comment'];
+export const NOTE_TYPES = ['notes', 'chat', 'chatUpdate', 'comment'];
 
 // Close codes a client acts on instead of reconnecting
 export const CLOSED = {
@@ -24,6 +24,15 @@ export const applyNote = (notes, message) => {
 		notes.chat.push(message.message);
 
 		return { author: message.message.author, text: message.message.text, tab: 'chat' };
+	}
+
+	// A reaction changed an existing message
+	if (message.type === 'chatUpdate') {
+		const index = notes.chat.findIndex(({ id }) => id === message.message.id);
+
+		if (index !== -1) notes.chat[index] = message.message;
+
+		return null;
 	}
 
 	if (message.type !== 'comment') return null;

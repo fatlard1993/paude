@@ -85,6 +85,7 @@ Open the server's address and log in. Set your name at the top of the chat panel
 
 - **Size:** the session has one size, set by whoever typed last. Typing takes it over; everyone else sees it scaled to fit.
 - **Comments:** drag over the terminal to select text (on a phone, press **Select** on the key bar and tap the first and last line), then press **Comment**. Clicking a comment's quote finds it in the terminal.
+- **Reactions:** react to chat messages, comments and replies with any emoji, as in Slack; click a reaction to add or take back yours. In the terminal, **+** then a number reacts to an open thread.
 - **The side panel** (💬) floats over the terminal; drag its left edge to resize it.
 - **Project files** (📁): browse, search, and read the session's project (what git shows, so ignored files stay out). Search by name, or by contents with VS Code's options: match case, whole word, regular expression, and files to include or exclude. Code is syntax highlighted; markdown shows rendered or as source (your choice is remembered); images, audio, video and PDFs open in place. Attach a whole file, or click a line number and Shift+click another to attach those lines; either lands in Claude's prompt without sending. The panel can go full screen, and both side panels resize from their inner edge.
 - **Scrolling:** the wheel scrolls Claude's own transcript. Claude keeps one screen for everyone, so it scrolls for everyone watching.

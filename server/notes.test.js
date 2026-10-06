@@ -87,3 +87,32 @@ test('chat keeps only the most recent messages past its cap', async () => {
 	expect(chat).toHaveLength(2000);
 	expect(chat.at(-1).text).toBe('newest');
 });
+
+test('reactions toggle per person, on comments, replies and chat, and only take emoji', async () => {
+	const { react, validEmoji } = await import('./notes');
+	const { message } = await addChat('reacting', 'ann', 'hello');
+	const { comment } = await addComment('reacting', 'ann', { quote: 'q', text: 'look' });
+	const { comment: replied } = await addReply('reacting', 'bob', { commentId: comment.id, text: 'ok' });
+	const replyId = replied.replies[0].id;
+
+	expect((await react('reacting', 'bob', { chatId: message.id, emoji: '👍' })).message.reactions).toEqual({
+		'👍': ['bob'],
+	});
+	expect((await react('reacting', 'ann', { chatId: message.id, emoji: '👍' })).message.reactions).toEqual({
+		'👍': ['bob', 'ann'],
+	});
+	expect((await react('reacting', 'bob', { chatId: message.id, emoji: '👍' })).message.reactions).toEqual({
+		'👍': ['ann'],
+	});
+
+	expect((await react('reacting', 'bob', { commentId: comment.id, emoji: '🎉' })).comment.reactions).toEqual({
+		'🎉': ['bob'],
+	});
+	expect(
+		(await react('reacting', 'ann', { commentId: comment.id, replyId, emoji: '❤️' })).comment.replies[0].reactions,
+	).toEqual({ '❤️': ['ann'] });
+
+	for (const emoji of ['👍🏽', '🧑‍💻', '❤️']) expect(validEmoji(emoji)).toBe(true);
+	for (const emoji of ['a', '<b>', '👍x', '', '👍'.repeat(9)]) expect(validEmoji(emoji)).toBe(false);
+	expect(await react('reacting', 'bob', { chatId: message.id, emoji: 'nope' })).toBeNull();
+});

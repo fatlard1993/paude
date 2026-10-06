@@ -174,3 +174,26 @@ test('keys reported through the kitty protocol or modifyOtherKeys act like plain
 	expect(plainKey('q')).toBe('q');
 	expect(plainKey('\x1b[A')).toBe('\x1b[A');
 });
+
+test('in a thread, + then a number reacts with that emoji; anything else cancels', () => {
+	const state = {
+		id: 's',
+		role: 'owner',
+		draft: null,
+		thread: 'c',
+		presence: { clients: [] },
+		notes: {
+			chat: [],
+			comments: [
+				{ id: 'c', author: 'ann', quote: 'q', text: 't', replies: [], resolved: false, reactions: { '👍': ['bob'] } },
+			],
+		},
+	};
+
+	expect(overlayKey(state, '+')).toEqual({ type: 'redraw' });
+	expect(overlayKey(state, '1')).toEqual({ type: 'react', commentId: 'c', emoji: '👍' });
+	overlayKey(state, '+');
+	expect(overlayKey(state, 'z')).toEqual({ type: 'redraw' });
+	expect(state.reacting).toBe(false);
+	expect(overlayBox(state, 100, 40).lines.join('\n')).toContain('👍 1');
+});
