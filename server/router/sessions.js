@@ -173,7 +173,10 @@ const sessionsRoutes = async (request, server) => {
 		const { cwd } = record;
 
 		await stopSession(match.id);
-		await deleteSession(match.id, { dir: cwd });
+		// A session that never got a prompt has no transcript to delete
+		await deleteSession(match.id, { dir: cwd }).catch(error => {
+			if (!/not found/i.test(error.message)) throw error;
+		});
 		await deleteNotes(match.id);
 		await revokeInvitesFor(match.id);
 		await pinName(match.id, '');

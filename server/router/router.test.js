@@ -118,3 +118,9 @@ test('package files are served from the allowed packages only', async () => {
 
 	expect(await escaped.text()).not.toContain('"name": "marked"');
 });
+
+test('a session that never got a prompt still deletes cleanly', async () => {
+	const fresh = startSession(session.cwd);
+
+	expect((await call(`/api/sessions/${fresh.id}`, { token: tokens.owner, method: 'DELETE' })).status).toBe(204);
+});
