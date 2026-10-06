@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>paude</title>
+
+		<meta charset="UTF-8" />
+		<meta http-equiv="cleartype" content="on" />
+
+		<meta name="author" content="justfatlard" />
+		<meta name="description" content="Long-lived Claude sessions, reachable from anywhere" />
+
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=5.0" />
+		<meta name="HandheldFriendly" content="true" />
+		<meta name="MobileOptimized" content="320" />
+
+		<meta name="mobile-web-app-capable" content="yes" />
+
+		<meta name="apple-mobile-web-app-title" content="paude" />
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+		<meta name="application-name" content="paude" />
+		<meta name="msapplication-tooltip" content="paude" />
+		<meta name="msapplication-TileColor" content="#3475b2" />
+
+		<meta name="theme-color" content="#3475b2" />
+
+		<!-- Keeps browser-rendered UI the theme can't reach (select dropdowns, autofill, form controls) dark -->
+		<style>
+			:root {
+				color-scheme: dark;
+			}
+		</style>
+
+		<!-- crypto.randomUUID exists only in secure contexts (https or localhost), and a bundled dependency needs it
+		before any module runs; getRandomValues has no such restriction -->
+		<script>
+			if (!crypto.randomUUID) {
+				crypto.randomUUID = () =>
+					([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c =>
+						(c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16),
+					);
+			}
+		</script>
+
+		<script type="module" src="./index.js"></script>
+	</head>
+	<body></body>
+</html>
