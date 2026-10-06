@@ -32,6 +32,8 @@ describe('guestMayRequest', () => {
 		expect(guestMayRequest(ana, 'GET', '/api/sessions/s1')).toBe(true);
 		expect(guestMayRequest(ana, 'GET', '/api/sessions/s1/attach')).toBe(true);
 		expect(guestMayRequest(ana, 'GET', '/api/sessions/s2/attach')).toBe(false);
+		expect(guestMayRequest(ana, 'GET', '/api/sessions/s1/file')).toBe(true);
+		expect(guestMayRequest(ana, 'GET', '/api/sessions/s2/files')).toBe(false);
 		expect(guestMayRequest(ana, 'GET', '/api/projects')).toBe(false);
 		expect(guestMayRequest(ana, 'GET', '/api/sessions')).toBe(false);
 		expect(guestMayRequest(ana, 'POST', '/api/invites')).toBe(false);

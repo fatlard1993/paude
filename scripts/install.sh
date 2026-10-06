@@ -35,6 +35,9 @@ if ! command -v bun >/dev/null 2>&1; then
 fi
 
 BUN="$(command -v bun)"
+# Claude's Bash tool loads the shell named here; systemd's own SHELL can predate a chsh, leaving sessions in bash
+# without the login shell's PATH and tools
+LOGIN_SHELL="$(getent passwd "$(id -un)" | cut -d: -f7)"
 
 if ! command -v claude >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/claude" ]; then
 	say "Claude Code isn't installed for this user; sessions need it: curl -fsSL https://claude.ai/install.sh | bash"
@@ -67,6 +70,7 @@ After=network.target
 WorkingDirectory=$APP
 ExecStart=$BUN server/index.js --projects $PROJECTS --host 127.0.0.1 --port $PORT
 Environment=NODE_ENV=production
+Environment=SHELL=$LOGIN_SHELL
 Environment=PATH=$HOME/.local/bin:$(dirname "$BUN"):/usr/local/bin:/usr/bin:/bin
 Restart=on-failure
 RestartSec=5

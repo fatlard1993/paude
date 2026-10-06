@@ -19,12 +19,16 @@ export const may = (identity, action, sessionId) => {
 export const mayResolve = (identity, comment) =>
 	Boolean(identity?.owner || (identity && comment.author === identity.name));
 
-// The routes a guest can reach, all about their own session; anything else under /api is the owner's
+// The routes a guest can reach, all about their own session; anything else under /api is the owner's. What their
+// role allows within those is checked by the route itself.
+const OWN_SESSION_ROUTES = ['/attach', '/files', '/file', '/search'];
+
 export const guestMayRequest = (identity, method, pathname) => {
 	const own = `/api/sessions/${identity.sessionId}`;
 
 	return (
-		(method === 'GET' && (pathname === '/api/auth' || pathname === own || pathname === `${own}/attach`)) ||
+		(method === 'GET' &&
+			(pathname === '/api/auth' || pathname === own || OWN_SESSION_ROUTES.some(route => pathname === own + route))) ||
 		(method === 'POST' && pathname === '/api/logout') ||
 		(method === 'DELETE' && pathname === '/api/tokens/current')
 	);

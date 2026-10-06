@@ -30,3 +30,21 @@ export const createInvite = async (sessionId, invite) =>
 	await POST('/api/sessions/:id/invites', { urlParameters: { id: sessionId }, body: invite });
 
 export const revokeInvite = async id => await DELETE('/api/invites/:id', { urlParameters: { id } });
+
+export const listFiles = async sessionId =>
+	await GET('/api/sessions/:id/files', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
+
+export const readFile = async (sessionId, path) =>
+	await GET('/api/sessions/:id/file', {
+		urlParameters: { id: sessionId },
+		searchParameters: { path },
+		responseType: 'text',
+		invalidateAfter: 0,
+	});
+
+export const searchFiles = async (sessionId, query) =>
+	await GET('/api/sessions/:id/search', {
+		urlParameters: { id: sessionId },
+		searchParameters: { q: query },
+		invalidateAfter: 0,
+	});

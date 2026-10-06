@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import requestMatch from '../utils/requestMatch';
 
 import authRoutes, { guard } from './auth';
+import filesRoutes from './files';
 import sessionsRoutes from './sessions';
 import staticRoutes from './static';
 
@@ -38,6 +39,9 @@ const router = async (request, server) => {
 		if (response) return response;
 
 		response = await authRoutes(request);
+		if (response) return response;
+
+		response = await filesRoutes(request);
 		if (response) return response;
 
 		response = await sessionsRoutes(request, server);

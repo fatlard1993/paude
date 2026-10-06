@@ -1,5 +1,11 @@
 module.exports = {
 	skipWords: [
+		'subarray',
+		'untracked',
+		'charset',
+		'utf',
+		'realpath',
+		'symlink',
 		'swiftshader',
 		'llvmpipe',
 		'softpipe',

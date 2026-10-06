@@ -11,6 +11,7 @@ import withoutPointerReporting from '../../shared/pointerReporting';
 import { NOTE_TYPES } from '../../shared/protocol';
 import attach from './attach';
 import KeyBar from './KeyBar';
+import FilesPanel from './FilesPanel';
 import NotesPanel, { desktopNotificationsOn, recall, remember, savedName } from './NotesPanel';
 
 const BACKGROUND = '#1b1b1b';
@@ -33,12 +34,11 @@ const Body = styled.Component`
 	}
 
 	/* Floats over the terminal rather than taking a column, so opening it never changes the session's size */
-	.notes {
+	.notes,
+	.files {
 		position: absolute;
 		top: 8px;
-		right: 8px;
 		bottom: 8px;
-		width: min(var(--notes-width, 360px), calc(100% - 16px));
 		z-index: 2;
 		border-radius: 10px;
 		border: 1px solid rgba(255, 255, 255, 0.12);
@@ -48,17 +48,30 @@ const Body = styled.Component`
 		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
 		overflow: hidden;
 		opacity: 0;
-		transform: translateX(12px);
 		pointer-events: none;
 		transition:
 			opacity 0.15s ease,
 			transform 0.15s ease;
 	}
 
-	.notes.open {
+	.notes.open,
+	.files.open {
 		opacity: 1;
 		transform: none;
 		pointer-events: auto;
+	}
+
+	.notes {
+		right: 8px;
+		width: min(var(--notes-width, 360px), calc(100% - 16px));
+		transform: translateX(12px);
+	}
+
+	/* Reading code wants room; it opens from the other side */
+	.files {
+		left: 8px;
+		width: min(62%, calc(100% - 16px));
+		transform: translateX(-12px);
 	}
 
 	.notes .resize {
@@ -90,6 +103,13 @@ const Body = styled.Component`
 
 		.notes .resize {
 			display: none;
+		}
+
+		.files {
+			inset: 0;
+			width: auto;
+			border-radius: 0;
+			border: none;
 		}
 	}
 `;
@@ -240,6 +260,14 @@ export default class TerminalView extends View {
 
 		const body = new Body({ appendTo: this });
 
+		if (canNote()) {
+			new NotesToggle({
+				appendTo: header,
+				textContent: '📁',
+				title: 'Project files',
+				onPointerPress: () => this.toggleFiles(),
+			});
+		}
 		this.notesToggle = new NotesToggle({
 			appendTo: header,
 			textContent: '💬',
@@ -266,6 +294,13 @@ export default class TerminalView extends View {
 			});
 		}
 
+		this.files = new FilesPanel({
+			appendTo: body,
+			addClass: 'files',
+			sessionId: this.options.id,
+			close: () => this.toggleFiles(false),
+			attach: text => this.attachToPrompt(text),
+		});
 		this.notes = new NotesPanel({
 			appendTo: body,
 			addClass: 'notes',
@@ -473,6 +508,21 @@ export default class TerminalView extends View {
 			handle.addEventListener('pointermove', move);
 			handle.addEventListener('pointerup', stop);
 		});
+	}
+
+	toggleFiles(open = !this.files.elem.classList.contains('open')) {
+		this.files.elem.classList.toggle('open', open);
+		if (open) this.files.refresh();
+	}
+
+	// Pasted rather than typed, so a multi-line attachment lands in Claude's prompt as one paste and nothing is sent
+	// until someone presses Enter
+	attachToPrompt(text) {
+		this.sendInput(`\x1b[200~${text}\x1b[201~`);
+		this.terminal.focus();
+		// Out of the way of the prompt it just added to; reopening returns to the same file and lines
+		this.toggleFiles(false);
+		new Notify({ type: 'success', content: 'Added to the prompt', timeout: 1500 });
 	}
 
 	get notesOpen() {
