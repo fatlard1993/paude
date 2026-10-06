@@ -16,7 +16,7 @@ import { button, dragHandle } from '../dom';
 import attach from './attach';
 import KeyBar from './KeyBar';
 import selectLinesByTap from './lineSelect';
-import xtermOptions from './xtermOptions';
+import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from './xtermOptions';
 import FilesPanel from './FilesPanel';
 import NotesPanel from './NotesPanel';
 import SideShell from './SideShell';
@@ -261,6 +261,7 @@ export default class TerminalView extends View {
 		this.decoder = new TextDecoder();
 		this.terminal.open(this.screen.elem);
 		this.useGpuRenderer();
+		redrawWhenSymbolsLoad(this.terminal);
 		if (identity()?.owner) this.linkDoneMarkers();
 		this.terminal.onData(data => this.sendInput(data));
 		this.scrollClaudeWithWheel();
@@ -275,10 +276,12 @@ export default class TerminalView extends View {
 				name: savedName(),
 				...this.naturalSize(),
 			}),
-			onOutput: data =>
-				this.terminal.write(
-					withoutPointerReporting(this.decoder.decode(data, { stream: true }), this.trackPointerMode),
-				),
+			onOutput: data => {
+				const text = this.decoder.decode(data, { stream: true });
+
+				loadSymbolsFor(text);
+				this.terminal.write(withoutPointerReporting(text, this.trackPointerMode));
+			},
 			onMessage: message => this.handleMessage(message),
 			onState: state => this.showConnection(state),
 		});
@@ -343,6 +346,7 @@ export default class TerminalView extends View {
 			this.terminal.resize(message.cols, message.rows);
 			this.decoder = new TextDecoder();
 			this.pointerModes.clear();
+			loadSymbolsFor(message.data);
 			this.terminal.write(withoutPointerReporting(message.data, this.trackPointerMode));
 			this.fitScale();
 		} else if (message.type === 'size') {

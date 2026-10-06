@@ -7,7 +7,7 @@ import { button, element, icon } from '../dom';
 import KeyBar from './KeyBar';
 import selectLinesByTap from './lineSelect';
 import Panel from './SideShell.styles';
-import xtermOptions from './xtermOptions';
+import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from './xtermOptions';
 
 // Why it ended, when the person didn't end it themselves
 const endedBecause = ({ code, reason }, opened) => {
@@ -71,8 +71,10 @@ export default class SideShell extends Panel {
 			theme: { background: 'rgba(0, 0, 0, 0)' },
 		});
 		this.fitter = new FitAddon();
+		this.decoder = new TextDecoder();
 		this.terminal.loadAddon(this.fitter);
 		this.terminal.open(this.screen);
+		redrawWhenSymbolsLoad(this.terminal);
 		this.screen.append(this.hint);
 		this.terminal.onData(data => this.send({ type: 'input', data }));
 		this.terminal.onResize(({ cols, rows }) => this.send({ type: 'resize', cols, rows }));
@@ -95,7 +97,12 @@ export default class SideShell extends Panel {
 			this.terminal.focus();
 		});
 		socket.addEventListener('message', ({ data }) => {
-			if (typeof data !== 'string') this.terminal?.write(new Uint8Array(data));
+			if (typeof data === 'string' || !this.terminal) return;
+
+			const text = this.decoder.decode(data, { stream: true });
+
+			loadSymbolsFor(text);
+			this.terminal.write(text);
 		});
 		socket.addEventListener('close', event => {
 			if (this.socket !== socket) return;
