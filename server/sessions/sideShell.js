@@ -11,7 +11,16 @@ const KILL_AFTER_MS = 2000;
 
 const shells = new Set();
 
-const loginShell = () => [process.env.SHELL || os.userInfo().shell || '/bin/sh', '-l'];
+const MAX_COMMAND = 1000;
+
+// The person's own login shell, or one command run by it (an editor on a file, say), which ends the shell when done
+const loginShell = command => {
+	const shell = process.env.SHELL || os.userInfo().shell || '/bin/sh';
+
+	return typeof command === 'string' && command && command.length <= MAX_COMMAND
+		? [shell, '-l', '-i', '-c', command]
+		: [shell, '-l'];
+};
 
 const clamp = (value, min, max) => Math.min(Math.max(Math.round(Number(value)) || min, min), max);
 
@@ -26,11 +35,11 @@ const end = socket => {
 	setTimeout(() => shell.exitCode === null && shell.kill('SIGKILL'), KILL_AFTER_MS).unref();
 };
 
-const spawn = (socket, { cols, rows }) => {
+const spawn = (socket, { cols, rows, command }) => {
 	if (shells.size >= MAX_SHELLS) return socket.close(CLOSED.ended, 'Too many side terminals are open');
 
 	try {
-		socket.data.shell = Bun.spawn(loginShell(), {
+		socket.data.shell = Bun.spawn(loginShell(command), {
 			cwd: socket.data.cwd,
 			env: { ...sessionEnvironment(), TERM: 'xterm-256color', COLORTERM: 'truecolor' },
 			terminal: { cols: clamp(cols, 20, 500), rows: clamp(rows, 5, 200), data: (terminal, data) => socket.send(data) },

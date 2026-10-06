@@ -168,3 +168,23 @@ test('a running session nobody has prompted yet is listed with its project, and 
 
 	expect(listed).toMatchObject({ title: 'Fake session', live: true });
 });
+
+test('changes are for those who may browse files, and saving is for those who may type', async () => {
+	const own = `/api/sessions/${session.id}`;
+
+	expect((await call(`${own}/changes`, { token: tokens.watch })).status).toBe(403);
+	expect((await call(`${own}/changes`, { token: tokens.comment })).status).toBe(200);
+	expect(
+		(await call(`${own}/file`, { token: tokens.comment, method: 'PUT', body: { path: 'a', text: '', hash: '' } }))
+			.status,
+	).toBe(403);
+	expect(
+		(
+			await call(`${own}/file`, {
+				token: tokens.owner,
+				method: 'PUT',
+				body: { path: 'nowhere.js', text: '', hash: '' },
+			})
+		).status,
+	).toBe(404);
+});

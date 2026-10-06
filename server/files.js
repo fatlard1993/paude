@@ -16,6 +16,8 @@ const SKIPPED_OUTSIDE_GIT = /(^|\/)(node_modules|\.git|build|dist|\.env[^/]*)(\/
 const SECRET =
 	/(^|\/)(\.env(\.[^/]*)?|\.mcp\.json|\.npmrc|\.netrc|id_(rsa|ed25519|ecdsa)[^/]*|[^/]*\.(pem|key|p12|pfx)|\.claude\/settings\.local\.json)$/;
 
+export const isSecret = path => SECRET.test(path);
+
 const SKIPPED_DIRECTORIES = ['node_modules', '.git', 'build', 'dist'].map(name => `--exclude-dir=${name}`);
 
 const listings = new Map();
@@ -89,6 +91,9 @@ export const rawProjectFile = async (cwd, path) => {
 	return { status: 200, file };
 };
 
+const hashOf = bytes => new Bun.CryptoHasher('sha256').update(bytes).digest('hex');
+
+// The text and a hash of exactly what was read, which a save hands back
 export const readProjectFile = async (cwd, path) => {
 	const file = await projectFile(cwd, path);
 
@@ -100,7 +105,24 @@ export const readProjectFile = async (cwd, path) => {
 
 	if (bytes.subarray(0, 8000).includes(0)) return { status: 415 };
 
-	return { status: 200, text: new TextDecoder().decode(bytes) };
+	return { status: 200, text: new TextDecoder().decode(bytes), hash: hashOf(bytes) };
+};
+
+// A hand edit goes only to a text file already in the project, and only over the version that was opened: a newer
+// change (Claude's, most likely) comes back as a 409 with the current text instead of being lost
+export const writeProjectFile = async (cwd, path, text, hash) => {
+	const current = await readProjectFile(cwd, path);
+
+	if (current.status !== 200) return { status: current.status };
+
+	const bytes = new TextEncoder().encode(typeof text === 'string' ? text : '');
+
+	if (typeof text !== 'string' || bytes.length > MAX_BYTES) return { status: 413 };
+	if (current.hash !== hash) return { status: 409, text: current.text, hash: current.hash };
+
+	await Bun.write(resolve(cwd, path), bytes);
+
+	return { status: 200, hash: hashOf(bytes) };
 };
 
 export class SearchError extends Error {}

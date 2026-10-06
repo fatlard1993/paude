@@ -1,5 +1,6 @@
 import { credentialOf, identityOf } from '../auth';
-import { SearchError, listFiles, rawProjectFile, readProjectFile, searchProject } from '../files';
+import { diffOf, listChanges } from '../changes';
+import { SearchError, listFiles, rawProjectFile, readProjectFile, searchProject, writeProjectFile } from '../files';
 import { searchOptionsFrom } from '../../shared/searchQuery';
 import { may } from '../permissions';
 import { sessionRecord } from '../sessions/record';
@@ -47,9 +48,33 @@ const raw = async (cwd, path, userAgent) => {
 	return new Response(file, { headers });
 };
 
+// A hand edit is a write to the project, so it takes the same trust as typing into Claude
+const save = async (request, id) => {
+	if (!may(identityOf(credentialOf(request)), 'type', id))
+		return new Response('Your invite does not include editing', { status: 403 });
+
+	const cwd = await sessionFolder(id);
+
+	if (!cwd) return new Response('Session not found', { status: 404 });
+
+	const { path, text, hash } = await request.json();
+	const saved = await writeProjectFile(cwd, path, text, hash);
+
+	if (saved.status === 409) return Response.json({ text: saved.text, hash: saved.hash }, { status: 409 });
+	if (saved.status !== 200) return new Response(REFUSED[saved.status], { status: saved.status });
+
+	return Response.json({ hash: saved.hash });
+};
+
 // Reading a session's project needs at least the comment role; watchers see only the terminal
 const filesRoutes = async request => {
+	const saving = requestMatch('PUT', '/api/sessions/:id/file', request);
+
+	if (saving) return save(request, saving.id);
+
 	const match =
+		requestMatch('GET', '/api/sessions/:id/changes', request) ||
+		requestMatch('GET', '/api/sessions/:id/diff', request) ||
 		requestMatch('GET', '/api/sessions/:id/files', request) ||
 		requestMatch('GET', '/api/sessions/:id/file', request) ||
 		requestMatch('GET', '/api/sessions/:id/search', request) ||
@@ -66,13 +91,21 @@ const filesRoutes = async request => {
 	const { pathname } = new URL(request.url);
 
 	if (pathname.endsWith('/files')) return Response.json(await listFiles(cwd));
+	if (pathname.endsWith('/changes')) return Response.json(await listChanges(cwd));
+	if (pathname.endsWith('/diff')) {
+		const diff = await diffOf(cwd, match.path);
+
+		return diff === null
+			? new Response('That file has no changes', { status: 404 })
+			: new Response(diff, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+	}
 	if (pathname.endsWith('/search')) return search(cwd, match);
 	if (pathname.endsWith('/raw')) return raw(cwd, match.path, request.headers.get('user-agent'));
 
-	const { status, text } = await readProjectFile(cwd, match.path);
+	const { status, text, hash } = await readProjectFile(cwd, match.path);
 
 	return status === 200
-		? new Response(text, { headers: { 'content-type': 'text/plain; charset=utf-8' } })
+		? new Response(text, { headers: { 'content-type': 'text/plain; charset=utf-8', 'x-content-hash': hash } })
 		: new Response(REFUSED[status], { status });
 };
 

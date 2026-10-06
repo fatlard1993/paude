@@ -2,6 +2,13 @@ module.exports = {
 	skipWords: [
 		'umask',
 		'worktree',
+		'emacs',
+		'esac',
+		'hx',
+		'joe',
+		'kak',
+		'nano',
+		'nvim',
 		'repo',
 		"repo's",
 		'enqueue',

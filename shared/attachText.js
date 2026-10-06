@@ -10,3 +10,6 @@ export const attachLinesText = (path, from, to, text) => {
 };
 
 export const attachOutputText = text => `From my terminal:\n${quoted(text)}`;
+
+// Changed lines, as a diff, from the file they're in
+export const attachDiffText = (path, diff) => `${path}, changed:\n\`\`\`diff\n${diff}\n\`\`\`\n`;

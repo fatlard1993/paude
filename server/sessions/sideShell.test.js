@@ -86,3 +86,12 @@ test("a revoked driver's shell closes, typing or not", async () => {
 	expect(socket.closed).toBe(CLOSED.unauthorized);
 	await shell.exited;
 });
+
+test('a shell can run one command instead, and ends when it does', async () => {
+	const socket = fakeSocket(credentialFor(await createToken('owner')));
+
+	say(socket, { type: 'hello', cols: 80, rows: 24, command: 'echo ran-$((6 * 7)) in "$(pwd)"' });
+
+	expect(await until(() => socket.closed === CLOSED.ended)).toBe(true);
+	expect(socket.output).toContain(`ran-42 in ${folder}`);
+});
