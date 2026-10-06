@@ -516,19 +516,20 @@ export default class TerminalView extends View {
 		});
 	}
 
-	// Claude draws on the alternate screen, which has no scrollback, and keeps its transcript's scrolling to itself.
-	// With mouse reporting withheld from the browser, xterm would turn the wheel into arrow keys, which Claude reads
-	// as walking through past prompts; the wheel goes to Claude as a wheel instead, when Claude has asked for one.
+	// Claude scrolls its transcript itself, redrawing in place on whichever screen it uses, so the browser's own
+	// scrollback has nothing in it. Mouse reporting is withheld from the browser, so the wheel goes to Claude as a
+	// wheel whenever Claude has asked for one; left to xterm on the alternate screen, it would become arrow keys,
+	// which Claude reads as walking through past prompts.
 	scrollClaudeWithWheel() {
 		this.pointerModes = new Set();
 		this.trackPointerMode = (mode, on) => (on ? this.pointerModes.add(mode) : this.pointerModes.delete(mode));
 
 		this.terminal.attachCustomWheelEventHandler(event => {
-			if (this.terminal.buffer.active.type !== 'alternate') return true;
-
 			const tracking = ['1000', '1002', '1003'].some(mode => this.pointerModes.has(mode));
 
-			if (!tracking || !canType() || !event.deltaY) return false;
+			// Not asked for: xterm scrolls its own scrollback, which the alternate screen doesn't have
+			if (!tracking) return this.terminal.buffer.active.type !== 'alternate';
+			if (!canType() || !event.deltaY) return false;
 
 			const bounds = this.terminal.element.getBoundingClientRect();
 			const column = Math.min(
