@@ -363,6 +363,10 @@ export default class TerminalView extends View {
 
 	renderPresence(presence) {
 		const { busy, waiting, title, clients, you } = presence;
+
+		// Claude waiting, or done, is when a proposal appears or a turn's changes land
+		if (this.lastPresence && (waiting !== this.lastPresence.waiting || busy !== this.lastPresence.busy))
+			this.files?.changesMayHaveChanged();
 		const offline = this.connectionState === 'reconnecting' || this.connectionState === 'ended';
 
 		this.lastPresence = presence;

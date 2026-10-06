@@ -338,6 +338,111 @@ const Panel = styled(
 			color: ${colors.white};
 		}
 
+		.diff.split .split-row {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+		}
+
+		.diff.split .side {
+			display: flex;
+			min-width: 0;
+			white-space: pre-wrap;
+			overflow-wrap: anywhere;
+		}
+
+		.diff.split .side.left {
+			border-right: 1px solid ${colors.alpha(colors.white, 0.08)};
+		}
+
+		.diff.split .side.added {
+			background: ${colors.alpha(colors.green, 0.16)};
+		}
+
+		.diff.split .side.removed {
+			background: ${colors.alpha(colors.red, 0.16)};
+		}
+
+		.diff.split .side.empty {
+			background: ${colors.alpha(colors.black, 0.25)};
+		}
+
+		.diff.split .side.picked {
+			box-shadow: inset 3px 0 ${colors.light(colors.yellow)};
+			background-image: linear-gradient(${colors.alpha(colors.yellow, 0.16)}, ${colors.alpha(colors.yellow, 0.16)});
+		}
+
+		.diff.split code {
+			white-space: pre-wrap;
+		}
+
+		.diff .number {
+			flex-shrink: 0;
+			width: 4ch;
+			padding-right: 6px;
+			text-align: right;
+			color: ${colors.gray};
+			font-family: ui-monospace, monospace;
+			cursor: pointer;
+			user-select: none;
+		}
+
+		.diff .number:hover {
+			color: ${colors.white};
+		}
+
+		.diff .split-note {
+			padding-left: 8px;
+			color: ${colors.light(colors.gray)};
+		}
+
+		.diff .file-head {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			margin-top: 12px;
+			padding: 6px 8px;
+			border-top: 1px solid ${colors.alpha(colors.white, 0.12)};
+			font-weight: bold;
+		}
+
+		.diff .file-head .status {
+			margin-left: 0;
+		}
+
+		.list .section {
+			margin: 10px 4px 4px;
+			font-size: 0.8em;
+			text-transform: uppercase;
+			letter-spacing: 0.05em;
+			color: ${colors.light(colors.gray)};
+		}
+
+		.list .entry .detail {
+			margin-left: auto;
+			padding-left: 8px;
+			font-size: 0.85em;
+			color: ${colors.light(colors.gray)};
+		}
+
+		.list .entry.proposal {
+			background: ${colors.alpha(colors.yellow, 0.14)};
+		}
+
+		.list .comparing {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 6px;
+			margin-bottom: 6px;
+			padding: 6px;
+			border-radius: 4px;
+			background: ${colors.alpha(colors.blue, 0.18)};
+		}
+
+		.bar button.proposing {
+			box-shadow: inset 0 -2px ${colors.light(colors.yellow)};
+		}
+
 		textarea.editor {
 			box-sizing: border-box;
 			width: 100%;

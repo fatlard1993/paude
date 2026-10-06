@@ -42,13 +42,16 @@ export const listFiles = async sessionId =>
 export const getChanges = async sessionId =>
 	await GET('/api/sessions/:id/changes', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 
-export const getDiff = async (sessionId, path) =>
-	await GET('/api/sessions/:id/diff', {
+// `source` is { source: 'changes', path }, { source: 'turn', turn }, { source: 'files', a, b } or { source: 'proposal' }
+export const getDiffSet = async (sessionId, source) =>
+	await GET('/api/sessions/:id/diffs', {
 		urlParameters: { id: sessionId },
-		searchParameters: { path },
-		responseType: 'text',
+		searchParameters: source,
 		invalidateAfter: 0,
 	});
+
+export const getTurnChanges = async sessionId =>
+	await GET('/api/sessions/:id/turn-changes', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 
 // `hash` is the one the file was read with; a 409 answers with the newer text and its hash
 export const saveFile = async (sessionId, path, text, hash) =>

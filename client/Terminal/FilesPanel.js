@@ -4,15 +4,16 @@ import { marked } from 'marked';
 
 import { pathFilter } from '../../shared/globs';
 import { attachDiffText, attachFileText, attachLinesText } from '../../shared/attachText';
+import relativeTime from '../../shared/relativeTime';
 import { diffLines } from '../../shared/diff';
 import { extensionOf, kindOf, matchNames } from '../../shared/projectFiles';
 import searchPattern from '../../shared/searchPattern';
-import { getChanges, getDiff, listFiles, rawFileUrl, readFile, saveFile, searchFiles } from '../api';
+import { getChanges, getDiffSet, getTurnChanges, listFiles, rawFileUrl, readFile, saveFile, searchFiles } from '../api';
 import { canType } from '../identity';
 import { recall, remember } from '../storage';
 import confirmDialog from '../confirmDialog';
 import { button, dragHandle, element } from '../dom';
-import renderDiff from './DiffView';
+import renderDiffSet from './DiffView';
 import Panel, { LINE_HEIGHT } from './FilesPanel.styles';
 
 const MAX_MATCHES = 200;
@@ -23,6 +24,9 @@ const MARKDOWN_KEY = 'paude.markdownView';
 const LIST_WIDTH_KEY = 'paude.filesListWidth';
 const MIN_LIST_WIDTH = 140;
 const MIN_VIEWER_WIDTH = 200;
+const DIFF_LAYOUT_KEY = 'paude.diffLayout';
+// Narrower than this, side by side leaves too little of each line
+const SPLIT_MIN_WIDTH = 700;
 
 const iconButton = (name, title, onPress) => button('', onPress, { icon: name, title, className: 'icon-only' });
 
@@ -326,6 +330,10 @@ export default class FilesPanel extends Panel {
 		this.list = element('div', 'list');
 		this.viewer = element('div', 'viewer');
 		this.panes.append(this.list, this.splitter(), this.viewer);
+		// Full screen, the splitter or the window can carry the viewer across the width side by side needs
+		new ResizeObserver(() => {
+			if (this.view === 'diff' && this.diffSet && this.renderedLayout !== this.diffLayout) this.renderViewer();
+		}).observe(this.viewer);
 		this.elem.append(bar, this.filters, this.panes);
 
 		// Esc steps back out of full screen first, then closes the panel
@@ -333,7 +341,8 @@ export default class FilesPanel extends Panel {
 			if (event.key !== 'Escape') return;
 
 			event.stopPropagation();
-			if (this.isFullscreen) this.toggleFullscreen(false);
+			if (this.comparing) this.stopComparing();
+			else if (this.isFullscreen) this.toggleFullscreen(false);
 			else this.options.close();
 		});
 
@@ -438,14 +447,29 @@ export default class FilesPanel extends Panel {
 	}
 
 	// null outside git, which hides the Changes mode
+	// What changed: since the last commit (null outside git), what Claude proposes, and each turn's edits
 	async refreshChanges() {
-		const { body, response } = await getChanges(this.options.sessionId);
+		const id = this.options.sessionId;
+		const [changes, turns, proposal] = await Promise.all([
+			getChanges(id),
+			getTurnChanges(id),
+			getDiffSet(id, { source: 'proposal' }),
+		]);
 
-		this.changes = response?.ok ? body : null;
+		this.changes = changes.response?.ok ? changes.body : null;
+		this.turns = turns.response?.ok ? turns.body : [];
+		this.proposal = proposal.response?.ok && proposal.body.files.length ? proposal.body : null;
 		this.changedPaths = new Map((this.changes ?? []).map(change => [change.path, change]));
-		this.modeButtons.changes.style.display = this.changes ? '' : 'none';
+		this.modeButtons.changes.style.display = this.changes || this.turns.length || this.proposal ? '' : 'none';
 		this.changeCount.textContent = this.changes?.length ? String(this.changes.length) : '';
-		if (!this.changes && this.mode === 'changes') this.mode = 'names';
+		this.modeButtons.changes.classList.toggle('proposing', Boolean(this.proposal));
+		if (this.modeButtons.changes.style.display === 'none' && this.mode === 'changes') this.mode = 'names';
+	}
+
+	// Only an open list showing the changes refreshes; the rest catch up when opened
+	changesMayHaveChanged() {
+		if (this.elem.classList.contains('open') && this.mode === 'changes')
+			this.refreshChanges().then(() => this.mode === 'changes' && this.renderList());
 	}
 
 	setMode(mode) {
@@ -469,7 +493,7 @@ export default class FilesPanel extends Panel {
 		clearTimeout(this.searchTimer);
 
 		if (this.mode === 'changes') return this.renderChanges(query);
-		if (!query) return this.list.replaceChildren(...this.treeEntries(buildTree(paths), 0));
+		if (!query) return this.list.replaceChildren(...this.comparingNotice(), ...this.treeEntries(buildTree(paths), 0));
 
 		if (this.mode === 'contents') {
 			this.searchTimer = setTimeout(() => this.searchContents(query), SEARCH_DELAY_MS);
@@ -483,6 +507,7 @@ export default class FilesPanel extends Panel {
 			return this.list.replaceChildren(element('div', 'empty', 'That regular expression is not valid.'));
 
 		this.list.replaceChildren(
+			...this.comparingNotice(),
 			...(matches.length
 				? matches.slice(0, MAX_MATCHES).map(path => this.fileEntry(path, path))
 				: [element('div', 'empty', 'No file names match.')]),
@@ -498,15 +523,50 @@ export default class FilesPanel extends Panel {
 					this.searchOptions,
 				) ?? [])
 			: changes.map(({ path }) => path);
+		const turns = query
+			? this.turns.filter(({ prompt }) => prompt.toLowerCase().includes(query.toLowerCase()))
+			: this.turns;
+		const entries = [];
 
-		if (!changes.length)
-			return this.list.replaceChildren(element('div', 'empty', 'Nothing has changed since the last commit.'));
+		if (this.proposal && !query) {
+			const count = this.proposal.files.length;
+			const entry = element('div', 'entry proposal');
 
-		this.list.replaceChildren(
-			...(shown.length
-				? shown.map(path => this.fileEntry(path, path, undefined, { diff: true }))
-				: [element('div', 'empty', 'No changed file names match.')]),
+			entry.append(
+				icon('fa-solid fa-hand', '#e5c07b'),
+				element('span', 'label', `Claude proposes ${count === 1 ? 'a change' : `${count} changes`}`),
+			);
+			entry.addEventListener('click', () => this.openDiffSet({ source: 'proposal' }));
+			entries.push(entry);
+		}
+
+		if (this.changes) {
+			entries.push(element('div', 'section', 'Since the last commit'));
+			if (!changes.length) entries.push(element('div', 'empty', 'Nothing yet.'));
+			else if (!shown.length) entries.push(element('div', 'empty', 'No changed file names match.'));
+			entries.push(...shown.map(path => this.fileEntry(path, path, undefined, { diff: true })));
+		}
+
+		if (this.turns.length) {
+			entries.push(element('div', 'section', "Claude's turns"));
+			entries.push(...turns.map(turn => this.turnEntry(turn)));
+		}
+
+		this.list.replaceChildren(...entries);
+	}
+
+	turnEntry(turn) {
+		const entry = element('div', `entry turn${this.diffSource?.turn === turn.id ? ' current' : ''}`);
+
+		entry.append(
+			icon('fa-solid fa-comment', PLAIN_COLOR),
+			element('span', 'label', turn.prompt),
+			element('span', 'detail', `${turn.files} · ${relativeTime(Date.parse(turn.at))}`),
 		);
+		entry.title = turn.prompt;
+		entry.addEventListener('click', () => this.openDiffSet({ source: 'turn', turn: turn.id }));
+
+		return entry;
 	}
 
 	async searchContents(query) {
@@ -608,7 +668,15 @@ export default class FilesPanel extends Panel {
 		if (change) entry.append(statusMark(change.status));
 		entry.dataset.path = path;
 		entry.title = change?.from ? `${path} (from ${change.from})` : path;
-		entry.addEventListener('click', () => (diff ? this.openDiff(path) : this.open(path, line)));
+		entry.addEventListener('click', () => {
+			if (this.comparing && !diff) {
+				const first = this.comparing;
+
+				this.comparing = null;
+				this.openDiffSet({ source: 'files', a: first, b: path });
+			} else if (diff) this.openDiff(path);
+			else this.open(path, line);
+		});
 
 		return entry;
 	}
@@ -633,24 +701,33 @@ export default class FilesPanel extends Panel {
 		return leave;
 	}
 
-	async openDiff(path) {
+	openDiff(path) {
+		return this.openDiffSet({ source: 'changes', path });
+	}
+
+	// Any kind of diff: a changed file, a turn, a proposal, or two files compared
+	async openDiffSet(source) {
 		if (!(await this.leaveEditing())) return;
 
-		this.current = path;
+		const single = source.path ?? source.b ?? null;
+
+		this.current = single;
 		this.view = 'diff';
-		this.kind = kindOf(path);
+		this.kind = single ? kindOf(single) : 'text';
+		this.diffSource = source;
+		this.diffSet = null;
 		this.diffSelection = null;
-		this.diffText = null;
 		this.failure = null;
 		this.panes.classList.add('reading');
-		this.markCurrent(path);
+		this.markCurrent(single);
+		if (this.mode === 'changes') this.renderList();
 
-		const { body, response } = await getDiff(this.options.sessionId, path);
+		const { body, response } = await getDiffSet(this.options.sessionId, source);
 
-		if (this.current !== path || this.view !== 'diff') return;
+		if (this.diffSource !== source) return;
 
-		if (response?.ok) this.diffText = body;
-		else this.failure = typeof body === 'string' ? body : 'Could not show its changes.';
+		if (response?.ok) this.diffSet = body;
+		else this.failure = typeof body === 'string' ? body : 'Could not show the changes.';
 		this.renderViewer();
 	}
 
@@ -699,6 +776,8 @@ export default class FilesPanel extends Panel {
 	}
 
 	viewerHead() {
+		if (this.view === 'diff') return this.diffHead();
+
 		const head = element('div', 'head');
 		const back = button('←', () => this.panes.classList.remove('reading'));
 		const change = this.changedPaths?.get(this.current);
@@ -711,7 +790,6 @@ export default class FilesPanel extends Panel {
 		if (change) head.append(statusMark(change.status));
 
 		if (this.editing) return this.editingHead(head);
-		if (this.view === 'diff') return this.diffHead(head, change);
 
 		if (this.kind === 'markdown' && this.lines) {
 			head.append(
@@ -724,6 +802,8 @@ export default class FilesPanel extends Panel {
 		}
 
 		if (change) head.append(button('Changes', () => this.openDiff(this.current), { title: 'What changed in it' }));
+		if (this.lines)
+			head.append(button('Compare...', () => this.startComparing(), { title: 'Compare it with another file' }));
 
 		if (canType()) {
 			if (this.lines && this.showingSource) head.append(button('Edit', () => this.startEditing(), { icon: 'pen' }));
@@ -751,20 +831,42 @@ export default class FilesPanel extends Panel {
 		return head;
 	}
 
-	diffHead(head, change) {
-		if (change && change.status !== 'deleted') head.append(button('Open file', () => this.open(this.current)));
+	get diffLayout() {
+		if (this.viewer.clientWidth && this.viewer.clientWidth < SPLIT_MIN_WIDTH) return 'unified';
 
-		if (canType() && this.diffRows?.length) {
-			head.append(button('Attach changes', () => this.attachDiff(this.diffRows)));
+		return recall(DIFF_LAYOUT_KEY) === 'unified' ? 'unified' : 'split';
+	}
+
+	diffHead() {
+		const head = element('div', 'head');
+		const back = button('←', () => this.panes.classList.remove('reading'));
+		const set = this.diffSet;
+		const single = set?.files.length === 1 ? set.files[0] : null;
+		const title = element('div', 'path', set?.title ?? '');
+		const wide = !this.viewer.clientWidth || this.viewer.clientWidth >= SPLIT_MIN_WIDTH;
+
+		back.className = 'back';
+		title.title = set?.title ?? '';
+		head.append(back, ...(single ? [fileIcon(single.path)] : []), title);
+
+		if (wide)
+			head.append(
+				button(this.diffLayout === 'split' ? 'Unified' : 'Side by side', () => {
+					remember(DIFF_LAYOUT_KEY, this.diffLayout === 'split' ? 'unified' : 'split');
+					this.renderViewer();
+				}),
+			);
+
+		if (single && single.status !== 'deleted' && this.paths.includes(single.path))
+			head.append(button('Open file', () => this.open(single.path)));
+
+		if (canType() && set?.files.length) {
+			head.append(button('Attach all', () => this.attachDiffSet()));
 
 			if (this.diffSelection) {
 				const count = this.diffSelection.to - this.diffSelection.from + 1;
 
-				head.append(
-					button(`Attach ${count === 1 ? 'line' : `${count} lines`}`, () =>
-						this.attachDiff(this.diffRows.slice(this.diffSelection.from, this.diffSelection.to + 1)),
-					),
-				);
+				head.append(button(`Attach ${count === 1 ? 'line' : `${count} lines`}`, () => this.attachPickedLines()));
 			}
 		}
 
@@ -787,7 +889,6 @@ export default class FilesPanel extends Panel {
 		const scroll = this.body?.scrollTop ?? 0;
 
 		this.body = element('div', 'body');
-		this.diffRows = null;
 
 		if (this.failure && !['image', 'video', 'audio', 'pdf'].includes(this.kind)) {
 			this.body.append(element('div', 'empty', this.failure));
@@ -808,34 +909,71 @@ export default class FilesPanel extends Panel {
 	}
 
 	diff() {
-		if (this.diffText === null) return element('div', 'empty', 'Loading its changes...');
+		if (this.diffSet === null) return element('div', 'empty', 'Loading the changes...');
 
-		const { container, rows } = renderDiff({
-			text: this.diffText,
-			language: languageOf(this.current),
+		this.renderedLayout = this.diffLayout;
+
+		const { container, files } = renderDiffSet({
+			set: this.diffSet,
+			layout: this.renderedLayout,
+			languageOf,
 			selection: this.diffSelection,
-			onPick: (index, event) => {
+			onPick: (file, index, event) => {
+				const current = this.diffSelection?.file === file ? this.diffSelection : null;
 				const extend =
-					event.shiftKey ||
-					(TOUCH.matches &&
-						this.diffSelection &&
-						this.diffSelection.from === this.diffSelection.to &&
-						this.diffSelection.anchor !== index);
-				const anchor = extend && this.diffSelection ? this.diffSelection.anchor : index;
+					event.shiftKey || (TOUCH.matches && current && current.from === current.to && current.anchor !== index);
+				const anchor = extend && current ? current.anchor : index;
 
-				this.diffSelection = { anchor, from: Math.min(anchor, index), to: Math.max(anchor, index) };
+				this.diffSelection = { file, anchor, from: Math.min(anchor, index), to: Math.max(anchor, index) };
 				this.renderViewer();
 			},
-			onAttachHunk: canType() ? hunk => this.attachDiff(hunk.lines) : null,
+			onAttachLines: canType() ? (file, lines) => this.attachDiffLines(this.diffFiles[file].path, lines) : null,
 		});
 
-		this.diffRows = rows;
+		this.diffFiles = files;
 
 		return container;
 	}
 
-	attachDiff(lines) {
-		this.options.attach(attachDiffText(this.current, diffLines(lines)));
+	attachDiffLines(path, lines) {
+		this.options.attach(attachDiffText(path, diffLines(lines)));
+	}
+
+	attachPickedLines() {
+		const { file, from, to } = this.diffSelection;
+
+		this.attachDiffLines(this.diffFiles[file].path, this.diffFiles[file].lines.slice(from, to + 1));
+	}
+
+	attachDiffSet() {
+		this.options.attach(
+			this.diffFiles
+				.filter(({ lines }) => lines.length)
+				.map(({ path, lines }) => attachDiffText(path, diffLines(lines)))
+				.join(''),
+		);
+	}
+
+	comparingNotice() {
+		if (!this.comparing) return [];
+
+		const notice = element('div', 'comparing', `Pick a file to compare with ${this.comparing}`);
+
+		notice.append(button('Cancel', () => this.stopComparing()));
+
+		return [notice];
+	}
+
+	stopComparing() {
+		this.comparing = null;
+		this.renderList();
+	}
+
+	// Compare: the list picks the file to compare the open one with
+	startComparing() {
+		this.comparing = this.current;
+		this.setMode('names');
+		this.panes.classList.remove('reading');
 	}
 
 	// The syntax font colors the text being typed, the same as it does the source view
