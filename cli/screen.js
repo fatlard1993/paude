@@ -3,6 +3,9 @@ const CTRL_C = '\x03';
 export const ENTER_ALT_SCREEN = `${ESC}[?1049h${ESC}[?25l`;
 export const LEAVE_ALT_SCREEN = `${ESC}[?25h${ESC}[?1049l`;
 export const CLEAR = `${ESC}[H${ESC}[2J`;
+// Claude turns mouse reporting on in this terminal; while paude's overlay is up, a brushed touchpad would otherwise
+// arrive as keys. Snapshots carry Claude's modes, so returning to it restores reporting.
+export const MOUSE_OFF = `${ESC}[?1000l${ESC}[?1002l${ESC}[?1003l${ESC}[?1006l`;
 export const CLEAR_SCROLLBACK = `${ESC}[3J`;
 
 // Modes Claude Code may switch on in this terminal through the stream; a detach turns them all back off
@@ -113,3 +116,30 @@ export const readHidden = label =>
 
 		process.stdin.on('data', onData);
 	});
+
+// Breaks plain text into lines of at most `width` characters, at spaces where it can
+export const wrap = (text, width) => {
+	const lines = [];
+
+	for (const paragraph of String(text).split('\n')) {
+		let line = '';
+
+		for (const word of paragraph.split(' ')) {
+			if (line && line.length + 1 + word.length > width) {
+				lines.push(line);
+				line = '';
+			}
+
+			for (let rest = word; rest.length; rest = rest.slice(width)) {
+				const piece = rest.slice(0, width);
+
+				if (piece.length < width || !rest.slice(width)) line = line ? `${line} ${piece}` : piece;
+				else lines.push(piece);
+			}
+		}
+
+		lines.push(line);
+	}
+
+	return lines;
+};

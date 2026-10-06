@@ -10,7 +10,7 @@ import { Header } from '../Layout';
 import { NOTE_TYPES } from '../../shared/protocol';
 import attach from './attach';
 import KeyBar from './KeyBar';
-import NotesPanel, { savedName } from './NotesPanel';
+import NotesPanel, { desktopNotificationsOn, recall, remember, savedName } from './NotesPanel';
 
 const BACKGROUND = '#1b1b1b';
 const touch = window.matchMedia('(pointer: coarse)').matches;
@@ -31,22 +31,41 @@ const Body = styled.Component`
 		position: relative;
 	}
 
+	/* Floats over the terminal rather than taking a column, so opening it never changes the session's size */
 	.notes {
-		width: 340px;
-		flex-shrink: 0;
+		position: absolute;
+		top: 8px;
+		right: 8px;
+		bottom: 8px;
+		width: min(360px, calc(100% - 16px));
+		z-index: 2;
+		border-radius: 10px;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		background: rgba(24, 24, 27, 0.62);
+		backdrop-filter: blur(14px) saturate(140%);
+		-webkit-backdrop-filter: blur(14px) saturate(140%);
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+		overflow: hidden;
+		opacity: 0;
+		transform: translateX(12px);
+		pointer-events: none;
+		transition:
+			opacity 0.15s ease,
+			transform 0.15s ease;
+	}
+
+	.notes.open {
+		opacity: 1;
+		transform: none;
+		pointer-events: auto;
 	}
 
 	@media ${NARROW} {
 		.notes {
-			position: absolute;
 			inset: 0;
 			width: auto;
-			z-index: 2;
-			display: none;
-		}
-
-		.notes.open {
-			display: flex;
+			border-radius: 0;
+			border: none;
 		}
 	}
 `;
@@ -63,15 +82,10 @@ const SelectButton = styled(
 	`,
 );
 
-// Only needed where the panel isn't already showing beside the terminal
 const NotesToggle = styled(
 	Button,
 	() => `
 		flex-shrink: 0;
-
-		@media not ${NARROW} {
-			display: none;
-		}
 	`,
 );
 
@@ -133,6 +147,7 @@ const Presence = styled(
 );
 
 const ICONS = { web: '🌐', terminal: '⌨' };
+const NOTES_OPEN_KEY = 'paude.notesOpen';
 const ROLE_LABELS = { owner: 'owner', drive: 'can type', comment: 'can chat and comment', watch: 'watching' };
 
 const bufferLines = terminal => {
@@ -222,10 +237,13 @@ export default class TerminalView extends View {
 			send: message => this.connection?.send(message),
 			jump: quote => this.jumpTo(quote),
 			reveal: () => this.toggleNotes(true),
+			announce: arrived => this.announce(arrived),
 			showUnread: count => {
 				this.notesToggle.elem.textContent = count ? `💬 ${count}` : '💬';
 			},
 		});
+
+		if (recall(NOTES_OPEN_KEY)) this.toggleNotes(true);
 
 		this.loadInfo();
 	}
@@ -292,8 +310,8 @@ export default class TerminalView extends View {
 
 			gpu.onContextLoss(() => gpu.dispose());
 			this.terminal.loadAddon(gpu);
-		} catch (error) {
-			console.warn('WebGL unavailable; using the DOM renderer', error);
+		} catch {
+			// No WebGL here; the DOM renderer it was created with stays in use
 		}
 	}
 
@@ -349,6 +367,7 @@ export default class TerminalView extends View {
 		const offline = this.connectionState === 'reconnecting' || this.connectionState === 'ended';
 
 		this.lastPresence = presence;
+		this.notes.myName = clients[you]?.name;
 		if (title && this.connectionState !== 'ended') this.titleLabel.elem.textContent = title;
 
 		this.presence.empty();
@@ -375,7 +394,26 @@ export default class TerminalView extends View {
 
 	toggleNotes(open = !this.notes.elem.classList.contains('open')) {
 		this.notes.elem.classList.toggle('open', open);
+		remember(NOTES_OPEN_KEY, open ? 'yes' : '');
 		if (open) this.notes.showTab(this.notes.tab);
+	}
+
+	get notesOpen() {
+		return this.notes.elem.classList.contains('open');
+	}
+
+	// Someone else's chat or comment: a toast when the panel isn't showing it, and a desktop notification (if
+	// switched on) when this tab isn't in front
+	announce({ author, text, tab }) {
+		const what = `${author} ${tab === 'comments' ? 'commented' : 'says'}: ${text}`;
+
+		if (document.hidden) {
+			if (desktopNotificationsOn()) new Notification('paude', { body: what, tag: `paude-${this.options.id}` });
+
+			return;
+		}
+
+		if (!this.notesOpen || this.notes.tab !== tab) new Notify({ type: 'info', content: what, timeout: 6000 });
 	}
 
 	commentOnSelection() {

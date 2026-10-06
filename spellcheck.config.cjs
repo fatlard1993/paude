@@ -1,5 +1,6 @@
 module.exports = {
 	skipWords: [
+		'touchpad',
 		'webgl',
 		'gpu',
 		'renderer',

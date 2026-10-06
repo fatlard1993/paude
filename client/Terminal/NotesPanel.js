@@ -6,22 +6,29 @@ import relativeTime from '../../shared/relativeTime';
 import renderPeople from './People';
 
 const NAME_KEY = 'paude.name';
+const DESKTOP_KEY = 'paude.desktopNotifications';
 
-export const savedName = () => {
+// Per-browser preferences; private windows can refuse storage, and then they last until reload
+export const recall = key => {
 	try {
-		return localStorage.getItem(NAME_KEY) ?? '';
+		return localStorage.getItem(key) ?? '';
 	} catch {
 		return '';
 	}
 };
 
-const saveName = name => {
+export const remember = (key, value) => {
 	try {
-		localStorage.setItem(NAME_KEY, name);
+		localStorage.setItem(key, value);
 	} catch {
-		// Private windows can refuse storage; the name still applies until reload
+		// Kept for this page only
 	}
 };
+
+export const savedName = () => recall(NAME_KEY);
+
+export const desktopNotificationsOn = () =>
+	'Notification' in window && Notification.permission === 'granted' && recall(DESKTOP_KEY) === 'yes';
 
 const Panel = styled(
 	Component,
@@ -29,8 +36,7 @@ const Panel = styled(
 		display: flex;
 		flex-direction: column;
 		min-height: 0;
-		background: ${colors.blackish()};
-		border-left: 1px solid ${colors.alpha(colors.white, 0.08)};
+		height: 100%;
 
 		.tabs, .who, .composer {
 			display: flex;
@@ -65,6 +71,13 @@ const Panel = styled(
 
 		.who input {
 			flex: 1;
+		}
+
+		.who .bell {
+			border: none;
+			background: transparent;
+			font-size: 1.1em;
+			cursor: pointer;
 		}
 
 		.list {
@@ -214,10 +227,10 @@ export default class NotesPanel extends Panel {
 		name.value = identity()?.owner ? savedName() : (identity()?.name ?? '');
 		name.disabled = !identity()?.owner;
 		name.addEventListener('change', () => {
-			saveName(name.value.trim());
+			remember(NAME_KEY, name.value.trim());
 			this.options.send({ type: 'rename', name: name.value.trim() });
 		});
-		who.append(name);
+		who.append(name, this.bellButton());
 
 		this.tabButtons = {};
 
@@ -248,8 +261,31 @@ export default class NotesPanel extends Panel {
 		this.showTab('chat');
 	}
 
+	// Desktop notifications for when this tab is in the background; asking permission needs a click, so it's here
+	bellButton() {
+		const bell = element('button', 'bell');
+		const show = () => {
+			bell.textContent = desktopNotificationsOn() ? '🔔' : '🔕';
+			bell.title = desktopNotificationsOn()
+				? 'Desktop notifications on (while this tab is in the background)'
+				: 'Desktop notifications off';
+		};
+
+		bell.addEventListener('click', async () => {
+			if (!('Notification' in window)) return;
+
+			if (desktopNotificationsOn()) remember(DESKTOP_KEY, '');
+			else if ((await Notification.requestPermission()) === 'granted') remember(DESKTOP_KEY, 'yes');
+
+			show();
+		});
+		show();
+
+		return bell;
+	}
+
 	get visible() {
-		return this.elem.offsetParent !== null;
+		return this.elem.classList.contains('open') && !document.hidden;
 	}
 
 	showTab(tab) {
@@ -283,6 +319,7 @@ export default class NotesPanel extends Panel {
 		const arrived = applyNote(this.notes, message);
 
 		if (arrived) this.noteUnread(arrived.tab);
+		if (arrived && arrived.author !== this.myName) this.options.announce?.(arrived);
 
 		if (this.tab !== 'people') this.renderList();
 	}

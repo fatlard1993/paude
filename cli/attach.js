@@ -10,6 +10,7 @@ import {
 	CLEAR_SCROLLBACK,
 	ENTER_ALT_SCREEN,
 	LEAVE_ALT_SCREEN,
+	MOUSE_OFF,
 	RESET_MODES,
 	rawInput,
 	size,
@@ -19,7 +20,7 @@ import {
 // Ctrl+] arrives as a plain byte, or as a CSI u sequence once Claude Code has switched on the kitty keyboard protocol
 const OVERLAY_KEYS = ['\x1d', '\x1b[93;5u'];
 
-const NOTE_ACTIONS = ['chat', 'comment', 'reply'];
+const NOTE_ACTIONS = ['chat', 'comment', 'reply', 'resolve'];
 
 const displayName = () => process.env.PAUDE_NAME || os.userInfo().username;
 
@@ -48,7 +49,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			presence: { clients: [] },
 			notes: { chat: [], comments: [] },
 			draft: null,
-			picking: false,
+			thread: null,
 			hint: null,
 		};
 		let socket;
@@ -70,9 +71,9 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 		const openOverlay = () => {
 			overlay = true;
 			state.draft = null;
-			state.picking = false;
+			state.thread = null;
 			state.hint = null;
-			write(ENTER_ALT_SCREEN);
+			write(`${ENTER_ALT_SCREEN}${MOUSE_OFF}`);
 			redraw();
 		};
 
@@ -106,6 +107,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 
 			if (action.type === 'detach' || action.type === 'switch') return finish(action.type);
 			if (action.type === 'close') return closeOverlay();
+			if (action.type === 'ignore') return;
 			if (NOTE_ACTIONS.includes(action.type)) send(action);
 
 			redraw();

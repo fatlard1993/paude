@@ -1,7 +1,7 @@
 import xtermHeadless from '@xterm/headless';
 import serializeAddon from '@xterm/addon-serialize';
 
-import inputKind, { FOCUS_IN } from './inputKind';
+import inputKind, { FOCUS_IN } from '../../shared/inputKind';
 
 const { Terminal } = xtermHeadless;
 const { SerializeAddon } = serializeAddon;
