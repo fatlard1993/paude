@@ -2,7 +2,8 @@ import { listSessions } from '@anthropic-ai/claude-agent-sdk';
 
 import { activitySummary } from '../activity';
 import { pinnedName } from '../names';
-import { projectOf } from '../projects';
+import { projectOf, projectPath } from '../projects';
+import { worktreeName } from '../worktrees';
 import { titleOf } from './record';
 import { runningSession } from './running';
 
@@ -18,6 +19,7 @@ export const toSummary =
 			lastModified,
 			gitBranch,
 			project: projectOf(cwd),
+			worktree: worktreeName(projectPath(projectOf(cwd)), cwd),
 			live: Boolean(running),
 			busy: Boolean(running?.busy),
 			attached: running?.clients.size ?? 0,

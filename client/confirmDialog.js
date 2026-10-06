@@ -1,4 +1,4 @@
-import { Dialog } from '@vanilla-bean/components';
+import { Dialog, Notify } from '@vanilla-bean/components';
 
 // Resolves to whether the confirming button was pressed. Confirm is second because the dialog focuses its first
 // button, so a reflexive Enter keeps things as they are; any other way out (backdrop, Escape) is a no.
@@ -31,7 +31,16 @@ export const confirmDeleteSession = async (session, deleteSession) => {
 
 	if (!confirmed) return false;
 
-	const { response } = await deleteSession(session.id);
+	const { response, body } = await deleteSession(session.id);
+
+	// The last session in a worktree paude made takes the worktree with it, unless it has changes
+	if (response?.ok && body?.worktree) {
+		new Notify(
+			body.removed
+				? { type: 'success', content: `Worktree ${body.worktree} removed too; its branch stays.` }
+				: { type: 'warning', content: `Kept worktree ${body.worktree}: ${body.why}`, timeout: 10_000 },
+		);
+	}
 
 	return Boolean(response?.ok);
 };

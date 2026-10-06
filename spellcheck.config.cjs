@@ -1,6 +1,10 @@
 module.exports = {
 	skipWords: [
 		'umask',
+		'worktree',
+		'worktrees',
+		'toplevel',
+		'prunable',
 		'ns',
 		'dotless',
 		'makefile',

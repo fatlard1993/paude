@@ -1,4 +1,4 @@
-import { deleteSession, forkSession } from '@anthropic-ai/claude-agent-sdk';
+import { deleteSession, forkSession, listSessions } from '@anthropic-ai/claude-agent-sdk';
 
 import { activitySummary, forgetActivity, setWatching, watchedBy } from '../activity';
 import { credentialOf, identityOf, revokeInvitesFor } from '../auth';
@@ -18,8 +18,36 @@ import {
 } from '../projects';
 import { sessionRecord } from '../sessions/record';
 import { listAllSessions, listProjectSessions, toSummary } from '../sessions/stored';
-import { openSession, runningSession, startSession, stopSession } from '../sessions/running';
+import { allRunning, openSession, runningSession, startSession, stopSession } from '../sessions/running';
+import { WorktreeError, checkoutsOf, createWorktree, releaseWorktree } from '../worktrees';
 import requestMatch from '../utils/requestMatch';
+
+const isFolder = async path =>
+	Boolean(
+		path &&
+		(
+			await Bun.file(path)
+				.stat()
+				.catch(() => null)
+		)?.isDirectory(),
+	);
+
+const runningFolders = () => [...allRunning()].map(session => session.cwd);
+
+// A worktree named from the first words of the prompt, or at random when there is none
+const worktreeNameFor = text => {
+	const words = (text ?? '')
+		.toLowerCase()
+		.replace(/[^a-z0-9\s-]/g, ' ')
+		.split(/\s+/)
+		.filter(Boolean)
+		.slice(0, 4)
+		.join('-')
+		.slice(0, 40)
+		.replace(/-+$/, '');
+
+	return words || `session-${crypto.randomUUID().slice(0, 6)}`;
+};
 
 const sessionsRoutes = async (request, server) => {
 	let match;
@@ -106,23 +134,42 @@ const sessionsRoutes = async (request, server) => {
 		return Response.json(await listProjectSessions(cwd, identity));
 	}
 
-	match = requestMatch('POST', '/api/projects/:project/sessions', request);
+	// Where a new session could go: the main checkout and the worktrees inside the project, with what runs in each
+	match = requestMatch('GET', '/api/projects/:project/checkouts', request);
 	if (match) {
 		const cwd = projectPath(match.project);
 
-		const { text } = await request.json();
+		if (!(await isFolder(cwd))) return new Response('Unknown project', { status: 404 });
 
-		if (
-			!cwd ||
-			!(
-				await Bun.file(cwd)
-					.stat()
-					.catch(() => null)
-			)?.isDirectory()
-		)
-			return new Response('Unknown project', { status: 404 });
+		return Response.json({ checkouts: await checkoutsOf(cwd, runningFolders()) });
+	}
 
-		return Response.json({ id: startSession(cwd, text?.trim()).id });
+	// `checkout` is { join: name } for a worktree in the project, { create: name } for a new one, or absent for the
+	// project folder itself
+	match = requestMatch('POST', '/api/projects/:project/sessions', request);
+	if (match) {
+		const cwd = projectPath(match.project);
+		const { text, checkout } = await request.json();
+
+		if (!(await isFolder(cwd))) return new Response('Unknown project', { status: 404 });
+
+		let folder = cwd;
+
+		if (checkout?.join) {
+			const joined = (await checkoutsOf(cwd))?.find(found => !found.main && found.name === checkout.join);
+
+			if (!joined) return new Response(`There is no worktree named ${checkout.join} here.`, { status: 404 });
+			folder = joined.path;
+		} else if (checkout && 'create' in checkout) {
+			try {
+				folder = await createWorktree(cwd, checkout.create?.trim() || worktreeNameFor(text));
+			} catch (error) {
+				if (error instanceof WorktreeError) return new Response(error.message, { status: 400 });
+				throw error;
+			}
+		}
+
+		return Response.json({ id: startSession(folder, text?.trim()).id });
 	}
 
 	match = requestMatch('GET', '/api/sessions/:id/attach', request);
@@ -199,7 +246,13 @@ const sessionsRoutes = async (request, server) => {
 		await pinName(match.id, '');
 		await forgetActivity(match.id);
 
-		return new Response(null, { status: 204 });
+		const projectDir = projectPath(projectOf(cwd));
+		const remaining = projectDir
+			? [...(await listSessions({ dir: projectDir, limit: 1000 })).map(session => session.cwd), ...runningFolders()]
+			: [];
+		const released = projectDir ? await releaseWorktree(projectDir, cwd, remaining).catch(() => null) : null;
+
+		return released ? Response.json(released) : new Response(null, { status: 204 });
 	}
 
 	// An empty name goes back to the automatic one

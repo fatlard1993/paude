@@ -16,10 +16,13 @@ export const getProjectSessions = async (project, options) =>
 		...options,
 	});
 
-export const createSession = async (project, text) =>
+export const getCheckouts = async project =>
+	await GET('/api/projects/:project/checkouts', { urlParameters: { project }, invalidateAfter: 0 });
+
+export const createSession = async (project, text, checkout) =>
 	await POST('/api/projects/:project/sessions', {
 		urlParameters: { project },
-		body: { text },
+		body: { text, checkout },
 		invalidates: [['sessions', project]],
 	});
 

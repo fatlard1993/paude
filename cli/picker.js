@@ -1,3 +1,4 @@
+import { choiceNeeded, runningSummary } from '../shared/checkouts';
 import { projectSummary } from '../shared/projects';
 import sessionUrgency from '../shared/urgency';
 import relativeTime from '../shared/relativeTime';
@@ -22,12 +23,12 @@ import {
 import { api } from './servers';
 
 // Any key in `keys` resolves with that key and the selected row
-const choose = ({ title, subtitle, rows: entries, hint, keys = [] }) =>
+const choose = ({ title, subtitle, rows: entries, hint, keys = [], initial = 0 }) =>
 	new Promise(resolve => {
 		const selectable = entries
 			.map((entry, index) => (entry.value === undefined ? null : index))
 			.filter(index => index !== null);
-		let cursor = 0;
+		let cursor = Math.max(0, selectable.indexOf(initial));
 
 		const draw = () => {
 			const { cols, rows } = size();
@@ -71,6 +72,84 @@ const choose = ({ title, subtitle, rows: entries, hint, keys = [] }) =>
 		draw();
 	});
 
+// One line of text typed in place: Enter keeps it, Esc gives up (null)
+const askLine = ({ title, subtitle, prompt, hint }) =>
+	new Promise(resolve => {
+		let text = '';
+
+		const draw = () => {
+			const { cols } = size();
+
+			write(
+				`${CLEAR}${bold(title)}${subtitle ? `  ${subtitle}` : ''}\r\n\r\n${prompt} ${text}█\r\n\r\n${dim(fit(hint, cols - 1))}`,
+			);
+		};
+
+		const stop = rawInput(key => {
+			if (is(key, 'enter')) return finish(text.trim());
+			if (key === '\x1b' || key === '\x03') return finish(null);
+			if (key === '\x7f' || key === '\b') text = text.slice(0, -1);
+			else text += printable(key);
+
+			draw();
+		});
+
+		const finish = value => {
+			stop();
+			process.stdout.off('resize', draw);
+			resolve(value);
+		};
+
+		process.stdout.on('resize', draw);
+		draw();
+	});
+
+// Where a new session goes, asked only when there's a choice: { checkout } to start with, or null to go back
+const pickCheckout = async (server, project) => {
+	const { checkouts } = await api(server, `/api/projects/${encodeURIComponent(project)}/checkouts`);
+
+	if (!choiceNeeded(checkouts)) return { checkout: undefined };
+
+	const main = checkouts.find(checkout => checkout.main);
+	const running = active => (active ? colored(`${active} running`, 179) : '');
+	const rows = [
+		{
+			label: 'No worktree',
+			detail: [`the project folder, on ${main.branch ?? 'a detached HEAD'}`, running(main.active)]
+				.filter(Boolean)
+				.join(' · '),
+			value: { checkout: undefined },
+		},
+		...checkouts
+			.filter(checkout => !checkout.main)
+			.map(({ name, branch, active }) => ({
+				label: `Worktree ${printable(name)}`,
+				detail: [branch && branch !== name && `on ${printable(branch)}`, running(active)].filter(Boolean).join(' · '),
+				value: { checkout: { join: name } },
+			})),
+		{ label: '＋ A new worktree', value: 'new' },
+	];
+	const picked = await choose({
+		title: `paude · ${project}`,
+		subtitle: runningSummary(checkouts),
+		hint: '↑↓ move · enter start here · esc back',
+		rows,
+		// The main checkout is already busy: a worktree is the likelier want
+		initial: main.active ? rows.length - 1 : 0,
+	});
+
+	if (picked !== 'new') return picked;
+
+	const name = await askLine({
+		title: `paude · ${project}`,
+		subtitle: dim('a new worktree'),
+		prompt: 'Name:',
+		hint: 'enter create it (empty: named from the prompt, or at random) · esc back',
+	});
+
+	return name === null ? null : { checkout: { create: name } };
+};
+
 const STATUS = {
 	waiting: { marker: '\x1b[1;38;5;179m!\x1b[22;39m', label: 'needs you' },
 	working: { marker: orange('◐'), label: 'working' },
@@ -85,6 +164,7 @@ const sessionRow = (server, session, { showServer, showProject }) => ({
 		STATUS[session.status]?.label,
 		showServer && server.label,
 		showProject && session.project,
+		session.worktree && `⎇ ${printable(session.worktree)}`,
 		relativeTime(session.lastModified ?? session.activeAt),
 		session.attached ? `${session.attached} here` : '',
 	]
@@ -108,12 +188,27 @@ const pickInProject = async (server, project) => {
 
 	if (!picked?.create) return picked?.session?.id ?? null;
 
-	const { id } = await api(server, `/api/projects/${encodeURIComponent(project)}/sessions`, {
-		method: 'POST',
-		body: JSON.stringify({}),
-	});
+	const where = await pickCheckout(server, project);
 
-	return id;
+	if (!where) return null;
+
+	try {
+		const { id } = await api(server, `/api/projects/${encodeURIComponent(project)}/sessions`, {
+			method: 'POST',
+			body: JSON.stringify({ checkout: where.checkout }),
+		});
+
+		return id;
+	} catch (error) {
+		await choose({
+			title: `paude · ${project}`,
+			subtitle: colored(printable(error.message), 179),
+			hint: 'enter back',
+			rows: [{ label: 'Back', value: true }],
+		});
+
+		return null;
+	}
 };
 
 const pickProject = async (server, projects) => {

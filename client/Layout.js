@@ -249,7 +249,8 @@ export const sessionCard = (session, { showProject = true, appendTo, remove, ser
 		meta: [
 			server,
 			relativeTime(session.lastModified ?? session.activeAt),
-			session.gitBranch !== 'HEAD' && session.gitBranch,
+			session.worktree && `⎇ ${session.worktree}`,
+			session.gitBranch !== 'HEAD' && session.gitBranch !== session.worktree && session.gitBranch,
 		],
 		live: session.live,
 		busy: session.status === 'working' || session.busy,

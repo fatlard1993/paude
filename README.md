@@ -60,6 +60,12 @@ Logins need HTTPS: the login cookie is `Secure`, which browsers accept only over
 
 Then, from any machine: `paude login https://203.0.113.7 --name vps` (the name is how the picker shows it; `paude name <url> <name>` renames a login you have). A session nobody is attached to exits after an hour (later if Claude is still working); opening it again resumes it. With [dtach](https://github.com/crigler/dtach) installed (`paude doctor` checks), sessions keep running through a server restart or update, and the new server takes them back.
 
+## Worktrees
+
+Starting a session in a git project where something is already running, or where worktrees exist, asks where it should go. It shows how many sessions run here and in which checkout, then offers the main checkout, a worktree to join, or a new one. In the browser that's under the prompt on the project page; in the terminal, a step after **＋ New session**.
+
+A new worktree goes in `.paude/worktrees/<name>` inside the project, on a branch of the same name. Left unnamed, it's named after the first words of the prompt. Paude adds `.paude/` to the repo's local exclude file, so the main checkout never lists it as untracked. Deleting a session also removes the worktree paude made for it once no other session, running or saved, is in it. git keeps a worktree that has uncommitted changes, and the page says so. The branch always stays.
+
 ## Who can do what
 
 The password belongs to the owner, and the owner can type into any session, which means running commands as the server's user. Give it only to someone you'd give that shell.

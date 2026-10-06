@@ -2,6 +2,7 @@ import { realpath } from 'fs/promises';
 import { resolve, sep } from 'path';
 
 import { pathFilter } from '../shared/globs';
+import gitEnvironment from './utils/gitEnvironment';
 
 const MAX_FILES = 20_000;
 const MAX_BYTES = 1024 * 1024;
@@ -20,7 +21,13 @@ const SKIPPED_DIRECTORIES = ['node_modules', '.git', 'build', 'dist'].map(name =
 const listings = new Map();
 
 const run = async (args, cwd) => {
-	const child = Bun.spawn(args, { cwd, stdout: 'pipe', stderr: 'ignore', timeout: SEARCH_TIMEOUT_MS });
+	const child = Bun.spawn(args, {
+		cwd,
+		env: gitEnvironment(),
+		stdout: 'pipe',
+		stderr: 'ignore',
+		timeout: SEARCH_TIMEOUT_MS,
+	});
 	const out = await new Response(child.stdout).text();
 
 	await child.exited;
