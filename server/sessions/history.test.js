@@ -49,3 +49,15 @@ test('a pasted prompt starting with < counts; an interrupted turn does not', () 
 		{ prompt: 'next', endUuid: 'a3', last: true },
 	]);
 });
+
+test('a recorded transcript: an interrupted turn has no done line, so it is not a turn', async () => {
+	// Claude Code 2.1.291: a reply, a story interrupted with Esc, then a prompt pasted with HTML
+	const messages = await Bun.file(new URL('./fixtures/interrupted.json', import.meta.url)).json();
+	const turns = turnsFrom(messages);
+
+	expect(turns.map(({ prompt, last }) => [prompt, Boolean(last)])).toEqual([
+		['Reply with exactly: first', false],
+		['<b>pasted</b> reply with exactly: last', true],
+	]);
+	expect(turns.at(-1).endUuid).toBe(messages.at(-1).uuid);
+});

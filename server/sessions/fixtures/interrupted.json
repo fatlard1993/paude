@@ -1,0 +1,93 @@
+[
+	{
+		"type": "user",
+		"uuid": "f2ee8dbd-07d8-4fd6-aab6-b57141e627c7",
+		"message": {
+			"content": "Reply with exactly: first"
+		}
+	},
+	{
+		"type": "assistant",
+		"uuid": "b786d215-06fa-4dc5-aaf3-d002d8ed8552",
+		"message": {
+			"content": [
+				{
+					"type": "text",
+					"text": "first"
+				}
+			]
+		}
+	},
+	{
+		"type": "user",
+		"uuid": "441f742a-c08c-479f-a053-8ce1e3682b70",
+		"message": {
+			"content": "Write a 600-word story about a lighthouse keeper, no tools."
+		}
+	},
+	{
+		"type": "assistant",
+		"uuid": "680d18ef-e610-43df-906a-7152655baf2b",
+		"message": {
+			"content": [
+				{
+					"type": "thinking"
+				}
+			]
+		}
+	},
+	{
+		"type": "assistant",
+		"uuid": "830355dc-ee57-4da8-8a49-29351fc63808",
+		"message": {
+			"content": [
+				{
+					"type": "text",
+					"text": "**The Last Watch at Carrow Point**\n\nFor thirty-one years, Elias Brandt climbed the hundred and twelve steps of Carrow Po..."
+				}
+			]
+		}
+	},
+	{
+		"type": "user",
+		"uuid": "67eaa369-2e1a-4d70-ad76-e35f173f1e02",
+		"message": {
+			"content": [
+				{
+					"type": "text",
+					"text": "[Request interrupted by user]"
+				}
+			]
+		}
+	},
+	{
+		"type": "user",
+		"uuid": "81e2b907-3dee-4faa-b985-4f83d8826d8f",
+		"message": {
+			"content": "<b>pasted</b> reply with exactly: last"
+		}
+	},
+	{
+		"type": "assistant",
+		"uuid": "709821a9-c593-427f-8948-fbaa722b68f1",
+		"message": {
+			"content": [
+				{
+					"type": "thinking"
+				}
+			]
+		}
+	},
+	{
+		"type": "assistant",
+		"uuid": "b03c74f9-1111-4132-9956-1a1e3f2547b5",
+		"message": {
+			"content": [
+				{
+					"type": "text",
+					"text": "last"
+				}
+			]
+		}
+	}
+]

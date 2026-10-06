@@ -9,6 +9,7 @@ test("matches Claude's done lines in either clock, with or without a day", () =>
 		'  Churned for 1s · done 14:05',
 		'✻ Cooked for 3s · done Mon 2:48 PM',
 		'✻ Cooked for 1h 2m · done Oct 3, 14:05',
+		'✻ Churned for 3s · done 10:48 AM · 1 shell still running',
 	])
 		expect(DONE_MARKER.test(line)).toBe(true);
 

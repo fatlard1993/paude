@@ -5,6 +5,7 @@ import inputKind, { FOCUS_IN } from '../../shared/inputKind';
 import { setStatus, statusOf } from '../activity';
 import { hookSettings } from '../hookSettings';
 import { pinnedName } from '../names';
+import parseTitle from './claudeTitle';
 
 const { Terminal } = xtermHeadless;
 const { SerializeAddon } = serializeAddon;
@@ -23,10 +24,6 @@ const SIZE_LIMITS = { cols: [20, 500], rows: [5, 200] };
 // (where its title stops showing whether it's busy).
 const INHERITED_MARKER =
 	/^(CLAUDECODE|CLAUDE_PID|CLAUDE_CODE_(CHILD_SESSION|ENTRYPOINT|EXECPATH|MESSAGING_\w+|SESSION_\w+)|TMUX|TMUX_PANE|STY|COLUMNS|LINES)$/;
-
-// The CLI titles its terminal "✳ <title>" when idle and alternates ◐ ◑ while working
-const TITLE_GLYPH = /^[✳◐◑]\s+/;
-const BUSY_TITLE = /^[◐◑]/;
 
 // Terminal modes the serializer doesn't carry, replayed after each snapshot so a joiner's terminal matches
 // (mouse encoding, focus reports, bracketed paste, cursor keys and visibility)
@@ -79,8 +76,7 @@ export default class PtySession {
 		this.serializer = new SerializeAddon();
 		this.mirror.loadAddon(this.serializer);
 		this.mirror.onTitleChange(terminalTitle => {
-			const busy = BUSY_TITLE.test(terminalTitle);
-			const title = terminalTitle.replace(TITLE_GLYPH, '');
+			const { busy, title } = parseTitle(terminalTitle);
 
 			// The glyph alternates every second while busy; only a change in state or title is news
 			if (busy === this.busy && title === this.title) return;

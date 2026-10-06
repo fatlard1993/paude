@@ -1,0 +1,120 @@
+import { mkdir, mkdtemp } from 'fs/promises';
+import os from 'os';
+import path from 'path';
+import { afterAll, beforeAll, expect, test } from 'bun:test';
+
+import { initActivity, statusOf } from '../activity';
+import { createInvite, createToken, initAuth } from '../auth';
+import { hookSecret, setHookAddress } from '../hookSettings';
+import { initNames } from '../names';
+import { initNotes } from '../notes';
+import { initProjects, setProjectsRoot } from '../projects';
+import { allRunning, setClaudePath, startSession } from '../sessions/running';
+import router from './router';
+
+const FAKE_CLAUDE = path.join(import.meta.dir, '..', 'sessions', 'fixtures', 'fake-claude.js');
+const server = { upgrade: () => false, requestIP: () => ({ address: '127.0.0.1' }) };
+const tokens = {};
+let session;
+let other;
+
+const call = (route, { token, method = 'GET', body, headers = {} } = {}) =>
+	router(
+		new Request(`http://paude.test${route}`, {
+			method,
+			headers: {
+				...(token && { authorization: `Bearer ${token}` }),
+				...(body && { 'content-type': 'application/json' }),
+				...headers,
+			},
+			...(body && { body: JSON.stringify(body) }),
+		}),
+		server,
+	);
+
+beforeAll(async () => {
+	const base = await mkdtemp(path.join(os.tmpdir(), 'paude-router-'));
+	const data = path.join(base, 'data');
+
+	await mkdir(path.join(base, 'projects', 'app'), { recursive: true });
+	process.env.XDG_CONFIG_HOME = path.join(base, 'config');
+	setProjectsRoot(path.join(base, 'projects'));
+	await Promise.all([initAuth(data), initNotes(data), initNames(data), initActivity(data), initProjects(data)]);
+	setHookAddress({ host: '127.0.0.1', port: 1 });
+	setClaudePath(FAKE_CLAUDE);
+
+	session = startSession(path.join(base, 'projects', 'app'));
+	other = startSession(path.join(base, 'projects', 'app'));
+	tokens.owner = await createToken('remote owner');
+	tokens.local = await createToken('this machine', { local: true });
+
+	for (const role of ['comment', 'watch']) {
+		const { invite } = await createInvite({ sessionId: session.id, name: role, role, hours: 1 });
+
+		tokens[role] = await createToken(role, { invite });
+	}
+});
+
+afterAll(() => {
+	for (const running of allRunning()) running.process.kill();
+});
+
+test('the api needs a login; the owner gets in', async () => {
+	expect((await call('/api/projects')).status).toBe(401);
+
+	const projects = await (await call('/api/projects', { token: tokens.owner })).json();
+
+	expect(projects.map(({ name }) => name)).toEqual(['app']);
+});
+
+test('a write from another site is refused', async () => {
+	const response = await call('/api/projects', {
+		token: tokens.owner,
+		method: 'POST',
+		body: { path: '/tmp' },
+		headers: { origin: 'https://evil.example' },
+	});
+
+	expect(response.status).toBe(403);
+});
+
+test('guests reach their own session only, and what their role allows', async () => {
+	expect((await call('/api/projects', { token: tokens.comment })).status).toBe(403);
+	expect((await call(`/api/sessions/${session.id}/files`, { token: tokens.comment })).status).toBe(200);
+	expect((await call(`/api/sessions/${session.id}/files`, { token: tokens.watch })).status).toBe(403);
+	expect((await call(`/api/sessions/${other.id}/files`, { token: tokens.comment })).status).toBe(403);
+	expect(
+		(await call(`/api/sessions/${other.id}/watch`, { token: tokens.comment, method: 'PUT', body: { watching: true } }))
+			.status,
+	).toBe(403);
+	expect(
+		(
+			await call(`/api/sessions/${session.id}/watch`, {
+				token: tokens.comment,
+				method: 'PUT',
+				body: { watching: true },
+			})
+		).status,
+	).toBe(204);
+});
+
+test("other servers are listed only for this machine's own logins", async () => {
+	expect((await call('/api/remotes', { token: tokens.owner })).status).toBe(403);
+	expect((await call('/api/remotes', { token: tokens.local })).status).toBe(200);
+});
+
+test('hooks need the secret, and report on the session in their address', async () => {
+	const post = (secret, payload) => call(`/api/hooks/${secret}/${session.id}`, { method: 'POST', body: payload });
+
+	expect((await post('guess', { hook_event_name: 'Stop' })).status).toBe(404);
+	expect(
+		(await post(hookSecret, { hook_event_name: 'Notification', notification_type: 'permission_prompt' })).status,
+	).toBe(204);
+	expect(statusOf(session.id)).toBe('waiting');
+});
+
+test('package files are served from the allowed packages only', async () => {
+	const escaped = await call('/@fortawesome/fontawesome-free/..%2f..%2fmarked/package.json');
+
+	expect(await escaped.text()).not.toContain('"name": "marked"');
+});
