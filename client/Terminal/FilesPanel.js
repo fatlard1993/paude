@@ -12,6 +12,9 @@ const SEARCH_DELAY_MS = 300;
 const LINE_HEIGHT = 20;
 const OPTIONS_KEY = 'paude.searchOptions';
 const MARKDOWN_KEY = 'paude.markdownView';
+const LIST_WIDTH_KEY = 'paude.filesListWidth';
+const MIN_LIST_WIDTH = 140;
+const MIN_VIEWER_WIDTH = 200;
 // What holds text sits on something solid; the panel around it stays glass
 const LAYER = 'rgba(16, 16, 19, 0.5)';
 
@@ -77,11 +80,15 @@ const Panel = styled(
 		}
 
 		button.toggle {
-			padding: 2px 6px;
+			padding: 2px 7px;
+			border: 1px solid ${colors.alpha(colors.white, 0.25)};
 			background: transparent;
 			font-family: ui-monospace, monospace;
-			font-size: 0.85em;
-			opacity: 0.6;
+			font-weight: bold;
+		}
+
+		button.toggle.active {
+			border-color: ${colors.light(colors.blue)};
 		}
 
 		button.active {
@@ -97,12 +104,24 @@ const Panel = styled(
 			flex: 1;
 			min-height: 0;
 			display: flex;
-			gap: 8px;
+		}
+
+		.splitter {
+			flex-shrink: 0;
+			width: 8px;
+			cursor: ew-resize;
+			border-radius: 3px;
+		}
+
+		.splitter:hover, .splitter.dragging {
+			background: ${colors.alpha(colors.white, 0.15)};
 		}
 
 		.list {
-			width: 34%;
-			min-width: 180px;
+			box-sizing: border-box;
+			width: var(--list-width, 34%);
+			min-width: 140px;
+			flex-shrink: 0;
 			overflow: auto;
 			padding: 6px;
 			font-size: 0.9em;
@@ -290,6 +309,10 @@ const Panel = styled(
 			.list {
 				width: auto;
 				flex: 1;
+			}
+
+			.splitter {
+				display: none;
 			}
 
 			.panes.reading .list, .panes:not(.reading) .viewer {
@@ -535,13 +558,24 @@ const languageOf = path => {
 	return LANGUAGES[extension] ?? (CODE_LIKE.has(extension) ? 'javascript' : null);
 };
 
+// The query as the search options read it, the way the server searches; null when it isn't a valid expression
+const searchPattern = (query, { caseSensitive, wholeWord, regex }, flags = '') => {
+	const source = regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+	try {
+		return new RegExp(wholeWord ? `\\b(?:${source})\\b` : source, `${flags}${caseSensitive ? '' : 'i'}`);
+	} catch {
+		return null;
+	}
+};
+
 // Every query character in order, closer together and nearer the file name scoring better
-const fuzzyScore = (path, query) => {
-	const haystack = path.toLowerCase();
+const fuzzyScore = (path, query, caseSensitive) => {
+	const haystack = caseSensitive ? path : path.toLowerCase();
 	let position = -1;
 	let score = 0;
 
-	for (const character of query.toLowerCase()) {
+	for (const character of caseSensitive ? query : query.toLowerCase()) {
 		const found = haystack.indexOf(character, position + 1);
 
 		if (found === -1) return null;
@@ -649,7 +683,7 @@ export default class FilesPanel extends Panel {
 		this.panes = element('div', 'panes');
 		this.list = element('div', 'list');
 		this.viewer = element('div', 'viewer');
-		this.panes.append(this.list, this.viewer);
+		this.panes.append(this.list, this.splitter(), this.viewer);
 		this.elem.append(bar, this.filters, this.panes);
 
 		// Esc steps back out of full screen first, then closes the panel
@@ -662,6 +696,40 @@ export default class FilesPanel extends Panel {
 		});
 
 		this.setMode('names');
+	}
+
+	// Dragging between the list and the preview sets the list's width, remembered like the panels' own
+	splitter() {
+		const handle = element('div', 'splitter');
+		const setWidth = width => {
+			const clamped = Math.round(Math.min(Math.max(width, MIN_LIST_WIDTH), this.panes.clientWidth - MIN_VIEWER_WIDTH));
+
+			this.panes.style.setProperty('--list-width', `${clamped}px`);
+
+			return clamped;
+		};
+
+		if (Number(recall(LIST_WIDTH_KEY))) this.panes.style.setProperty('--list-width', `${recall(LIST_WIDTH_KEY)}px`);
+
+		handle.addEventListener('pointerdown', start => {
+			start.preventDefault();
+			handle.setPointerCapture(start.pointerId);
+			handle.classList.add('dragging');
+
+			const left = this.list.getBoundingClientRect().left;
+			const move = event => setWidth(event.clientX - left);
+			const stop = event => {
+				remember(LIST_WIDTH_KEY, String(setWidth(event.clientX - left)));
+				handle.classList.remove('dragging');
+				handle.removeEventListener('pointermove', move);
+				handle.removeEventListener('pointerup', stop);
+			};
+
+			handle.addEventListener('pointermove', move);
+			handle.addEventListener('pointerup', stop);
+		});
+
+		return handle;
 	}
 
 	filterInput(key, placeholder) {
@@ -695,10 +763,7 @@ export default class FilesPanel extends Panel {
 	}
 
 	renderToggles() {
-		const contents = this.mode === 'contents';
-
 		for (const [key, node] of Object.entries(this.toggles)) {
-			node.style.display = contents ? '' : 'none';
 			node.classList.toggle('active', Boolean(this.searchOptions[key]));
 		}
 
@@ -760,9 +825,20 @@ export default class FilesPanel extends Panel {
 			return;
 		}
 
-		const matches = paths
-			.map(path => ({ path, score: fuzzyScore(path, query) }))
-			.filter(({ score }) => score !== null)
+		const { caseSensitive, wholeWord, regex } = this.searchOptions;
+		// Whole word and regex ask for exact matching; otherwise names match loosely, the way editors find files
+		const pattern = (wholeWord || regex) && searchPattern(query, this.searchOptions);
+
+		if (pattern === null)
+			return this.list.replaceChildren(element('div', 'empty', 'That regular expression is not valid.'));
+
+		const matches = (
+			pattern
+				? paths.filter(path => pattern.test(path)).map(path => ({ path, score: path.length }))
+				: paths
+						.map(path => ({ path, score: fuzzyScore(path, query, caseSensitive) }))
+						.filter(({ score }) => score !== null)
+		)
 			.sort((a, b) => a.score - b.score)
 			.slice(0, MAX_MATCHES);
 
@@ -798,15 +874,11 @@ export default class FilesPanel extends Panel {
 	}
 
 	// The matched text marked within a hit's line, found the way the server matched it
-	highlighted(text, query, { caseSensitive, wholeWord, regex }) {
+	highlighted(text, query, options) {
 		const node = element('span', 'hit-text');
-		let pattern;
+		const pattern = searchPattern(query, options, 'g');
 
-		try {
-			const source = regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-			pattern = new RegExp(wholeWord ? `\\b(?:${source})\\b` : source, caseSensitive ? 'g' : 'gi');
-		} catch {
+		if (!pattern) {
 			node.textContent = text;
 
 			return node;
