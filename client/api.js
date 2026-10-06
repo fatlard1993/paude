@@ -42,10 +42,18 @@ export const readFile = async (sessionId, path) =>
 		invalidateAfter: 0,
 	});
 
-export const searchFiles = async (sessionId, query) =>
+export const searchFiles = async (sessionId, query, { caseSensitive, wholeWord, regex, include, exclude } = {}) =>
 	await GET('/api/sessions/:id/search', {
 		urlParameters: { id: sessionId },
-		searchParameters: { q: query },
+		searchParameters: {
+			q: query,
+			case: caseSensitive ? '1' : '',
+			word: wholeWord ? '1' : '',
+			regex: regex ? '1' : '',
+			include: include ?? '',
+			exclude: exclude ?? '',
+		},
+		responseType: 'text',
 		invalidateAfter: 0,
 	});
 
@@ -59,3 +67,6 @@ export const deleteSession = async sessionId => await DELETE('/api/sessions/:id'
 
 export const nameSession = async (sessionId, name) =>
 	await PUT('/api/sessions/:id/name', { urlParameters: { id: sessionId }, body: { name } });
+
+export const rawFileUrl = (sessionId, path) =>
+	`/api/sessions/${encodeURIComponent(sessionId)}/raw?path=${encodeURIComponent(path)}`;

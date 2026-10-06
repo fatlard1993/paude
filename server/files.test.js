@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { beforeAll, expect, test } from 'bun:test';
 
-import { listFiles, readProjectFile, searchProject } from './files';
+import { SearchError, listFiles, readProjectFile, searchProject } from './files';
 
 let project;
 let outside;
@@ -51,4 +51,17 @@ test('searches contents case-insensitively, tracked or not, never ignored files'
 	expect(await searchProject(project, 'nothing to')).toEqual([{ path: 'notes.md', line: 1, text: 'nothing to see' }]);
 	expect(await searchProject(project, 'SECRET')).toEqual([]);
 	expect(await searchProject(project, 'x')).toEqual([]);
+});
+
+test('search options: case, whole word, regex, and files to include or exclude', async () => {
+	expect(await searchProject(project, 'hello', { caseSensitive: true })).toEqual([]);
+	expect(await searchProject(project, 'greet', { wholeWord: true })).toEqual([]);
+	expect((await searchProject(project, 'greet', { wholeWord: false })).length).toBe(2);
+	expect(await searchProject(project, 'const \\w+ =', { regex: true })).toEqual([
+		{ path: 'src/app.js', line: 1, text: 'const greeting = "Hello";' },
+	]);
+	expect(await searchProject(project, 'nothing', { include: '*.js' })).toEqual([]);
+	expect((await searchProject(project, 'no', { include: '*.md' })).map(hit => hit.path)).toEqual(['notes.md']);
+	expect((await searchProject(project, 'th', { exclude: 'src' })).map(hit => hit.path)).toEqual(['notes.md']);
+	expect(searchProject(project, '(unclosed', { regex: true })).rejects.toBeInstanceOf(SearchError);
 });

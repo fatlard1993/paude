@@ -44,6 +44,27 @@ const Panel = styled(
 			padding: 8px;
 		}
 
+		/* The panel itself is mostly glass; what holds text sits on something solid enough to read */
+		.tabs, .who {
+			margin: 8px 8px 0;
+			border-radius: 6px;
+			background: rgba(18, 18, 21, 0.82);
+		}
+
+		.message, .comment, .draft, .composer {
+			background: rgba(18, 18, 21, 0.85);
+		}
+
+		.message {
+			padding: 6px 8px;
+			border-radius: 6px;
+		}
+
+		.composer {
+			margin: 8px;
+			border-radius: 6px;
+		}
+
 		.tabs button {
 			flex: 1;
 			padding: 6px;
@@ -84,7 +105,7 @@ const Panel = styled(
 			flex: 1;
 			min-height: 0;
 			overflow-y: auto;
-			padding: 0 8px;
+			padding: 8px;
 			display: flex;
 			flex-direction: column;
 			gap: 8px;
@@ -108,7 +129,6 @@ const Panel = styled(
 		.comment {
 			padding: 8px;
 			border-radius: 6px;
-			background: ${colors.alpha(colors.white, 0.05)};
 			display: flex;
 			flex-direction: column;
 			gap: 6px;

@@ -8,9 +8,13 @@ const MODE_CHANGE = new RegExp(`${ESC}\\[\\?([\\d;]+)([hl])`, 'g');
 // Drops the mouse- and focus-reporting switches from terminal output, keeping any other modes in the same sequence.
 // In a browser, Claude reporting the mouse means a drag can't select text and the wheel can't scroll back, and
 // reporting focus makes Claude redraw on every click, which clears a selection the moment it's made.
-const withoutPointerReporting = text =>
+// `onMode(mode, on)` hears about each one dropped, for a client that still wants to know what Claude asked for.
+const withoutPointerReporting = (text, onMode) =>
 	text.replace(MODE_CHANGE, (sequence, list, action) => {
-		const kept = list.split(';').filter(mode => !POINTER_MODES.has(mode));
+		const modes = list.split(';');
+		const kept = modes.filter(mode => !POINTER_MODES.has(mode));
+
+		if (onMode) for (const mode of modes) if (POINTER_MODES.has(mode)) onMode(mode, action === 'h');
 
 		return kept.length ? `${ESC}[?${kept.join(';')}${action}` : '';
 	});

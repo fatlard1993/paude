@@ -1,10 +1,14 @@
 import { realpath } from 'fs/promises';
 import { resolve, sep } from 'path';
 
+import { pathFilter } from '../shared/globs';
+
 const MAX_FILES = 20_000;
 const MAX_BYTES = 1024 * 1024;
+const MAX_RAW_BYTES = 50 * 1024 * 1024;
 const MAX_HITS = 300;
 const LISTING_TTL_MS = 2000;
+const SEARCH_TIMEOUT_MS = 10_000;
 // Outside git there's no ignore file to go by, so the usual heavy and private folders are skipped by name
 const SKIPPED_OUTSIDE_GIT = /(^|\/)(node_modules|\.git|build|dist|\.env[^/]*)(\/|$)/;
 
@@ -13,7 +17,7 @@ const SKIPPED_DIRECTORIES = ['node_modules', '.git', 'build', 'dist'].map(name =
 const listings = new Map();
 
 const run = async (args, cwd) => {
-	const child = Bun.spawn(args, { cwd, stdout: 'pipe', stderr: 'ignore' });
+	const child = Bun.spawn(args, { cwd, stdout: 'pipe', stderr: 'ignore', timeout: SEARCH_TIMEOUT_MS });
 	const out = await new Response(child.stdout).text();
 
 	await child.exited;
@@ -60,10 +64,23 @@ const insideProject = async (cwd, path) => {
 	}
 };
 
-export const readProjectFile = async (cwd, path) => {
-	if (!(await listFiles(cwd)).includes(path) || !(await insideProject(cwd, path))) return { status: 404 };
+const projectFile = async (cwd, path) =>
+	(await listFiles(cwd)).includes(path) && (await insideProject(cwd, path)) ? Bun.file(resolve(cwd, path)) : null;
 
-	const file = Bun.file(resolve(cwd, path));
+// The file itself, for what the browser shows natively: images, audio, video, PDFs
+export const rawProjectFile = async (cwd, path) => {
+	const file = await projectFile(cwd, path);
+
+	if (!file) return { status: 404 };
+	if (file.size > MAX_RAW_BYTES) return { status: 413 };
+
+	return { status: 200, file };
+};
+
+export const readProjectFile = async (cwd, path) => {
+	const file = await projectFile(cwd, path);
+
+	if (!file) return { status: 404 };
 
 	if (file.size > MAX_BYTES) return { status: 413 };
 
@@ -74,27 +91,33 @@ export const readProjectFile = async (cwd, path) => {
 	return { status: 200, text: new TextDecoder().decode(bytes) };
 };
 
-// Case-insensitive literal search through the listed files
-export const searchProject = async (cwd, query) => {
+export class SearchError extends Error {}
+
+// Searches the listed files the way VS Code's search box does: literal and case-insensitive unless asked otherwise,
+// with optional comma-separated globs of files to include and exclude
+export const searchProject = async (cwd, query, { caseSensitive, wholeWord, regex, include, exclude } = {}) => {
 	if (typeof query !== 'string' || query.length < 2) return [];
 
+	const flags = ['-n', '-I', ...(caseSensitive ? [] : ['-i']), ...(wholeWord ? ['-w'] : []), regex ? '-E' : '-F'];
 	const files = await listFiles(cwd);
-	const git = await run(['git', 'grep', '--untracked', '-n', '-I', '-i', '-F', '-e', query], cwd);
+	const git = await run(['git', 'grep', '--untracked', ...flags, '-e', query], cwd);
 	// Outside git, grep walks the folder itself (a file list as arguments overflows on a big project); its hits
 	// are filtered against the listing like git's
-	const output =
-		git.code <= 1
-			? git.out
-			: (
-					await run(['grep', '-r', '-n', '-I', '-i', '-F', ...SKIPPED_DIRECTORIES, '-e', query, '.'], cwd)
-				).out.replaceAll(/^\.\//gm, '');
+	const fallback =
+		git.code <= 1 ? null : await run(['grep', '-r', ...flags, ...SKIPPED_DIRECTORIES, '-e', query, '.'], cwd);
+
+	if (fallback && fallback.code > 1)
+		throw new SearchError(regex ? 'That regular expression is not valid.' : 'Search failed.');
+
+	const output = fallback ? fallback.out.replaceAll(/^\.\//gm, '') : git.out;
 	const listed = new Set(files);
+	const wanted = pathFilter({ include, exclude });
 	const hits = [];
 
 	for (const line of output.split('\n')) {
 		const match = line.match(/^(.+?):(\d+):(.*)$/);
 
-		if (!match || !listed.has(match[1])) continue;
+		if (!match || !listed.has(match[1]) || !wanted(match[1])) continue;
 
 		hits.push({ path: match[1], line: Number(match[2]), text: match[3].slice(0, 300) });
 		if (hits.length >= MAX_HITS) break;

@@ -1,10 +1,19 @@
 import { Component, Notify, styled } from '@vanilla-bean/components';
+import DOMPurify from 'dompurify';
+import { marked } from 'marked';
 
-import { listFiles, readFile, searchFiles } from '../api';
+import { pathFilter } from '../../shared/globs';
+import { listFiles, rawFileUrl, readFile, searchFiles } from '../api';
 import { canType } from '../identity';
+import { recall, remember } from './NotesPanel';
 
 const MAX_MATCHES = 200;
 const SEARCH_DELAY_MS = 300;
+const LINE_HEIGHT = 20;
+const OPTIONS_KEY = 'paude.searchOptions';
+const MARKDOWN_KEY = 'paude.markdownView';
+// What holds text sits on something solid; the panel around it stays glass
+const LAYER = 'rgba(16, 16, 19, 0.86)';
 
 const Panel = styled(
 	Component,
@@ -12,16 +21,48 @@ const Panel = styled(
 		display: flex;
 		flex-direction: column;
 		height: 100%;
+		gap: 8px;
+		padding: 8px;
+
+		.bar, .filters, .list, .viewer {
+			background: ${LAYER};
+			border-radius: 6px;
+		}
 
 		.bar {
 			display: flex;
 			gap: 6px;
-			padding: 8px;
+			padding: 6px;
 			align-items: center;
 		}
 
-		.bar input {
+		.search {
 			flex: 1;
+			min-width: 0;
+			display: flex;
+			align-items: center;
+			gap: 2px;
+			padding-right: 2px;
+			border-radius: 4px;
+			background: ${colors.alpha(colors.black, 0.6)};
+		}
+
+		.search input {
+			flex: 1;
+			min-width: 0;
+			border: none;
+			background: transparent;
+		}
+
+		.filters {
+			display: none;
+			flex-direction: column;
+			gap: 6px;
+			padding: 6px;
+		}
+
+		.filters.shown {
+			display: flex;
 		}
 
 		button {
@@ -32,46 +73,80 @@ const Panel = styled(
 			color: inherit;
 			font: inherit;
 			cursor: pointer;
+			white-space: nowrap;
+		}
+
+		button.toggle {
+			padding: 2px 6px;
+			background: transparent;
+			font-family: ui-monospace, monospace;
+			font-size: 0.85em;
+			opacity: 0.6;
 		}
 
 		button.active {
-			background: ${colors.alpha(colors.white, 0.25)};
+			background: ${colors.alpha(colors.blue, 0.45)};
+			opacity: 1;
+		}
+
+		button.icon-only {
+			padding: 4px 8px;
 		}
 
 		.panes {
 			flex: 1;
 			min-height: 0;
 			display: flex;
+			gap: 8px;
 		}
 
 		.list {
-			width: 40%;
-			min-width: 200px;
+			width: 34%;
+			min-width: 180px;
 			overflow: auto;
-			padding: 0 8px 8px;
+			padding: 6px;
 			font-size: 0.9em;
 		}
 
 		.list .entry {
+			display: flex;
+			align-items: center;
+			gap: 6px;
 			padding: 2px 4px;
 			border-radius: 3px;
 			cursor: pointer;
 			white-space: nowrap;
+		}
+
+		.list .entry .label {
 			overflow: hidden;
 			text-overflow: ellipsis;
+		}
+
+		.list .entry i {
+			width: 1.1em;
+			flex-shrink: 0;
+			text-align: center;
+			color: ${colors.light(colors.gray)};
+		}
+
+		.list .entry.folder i {
+			color: ${colors.light(colors.blue)};
 		}
 
 		.list .entry:hover, .list .entry.current {
 			background: ${colors.alpha(colors.white, 0.12)};
 		}
 
-		.list .folder {
-			color: ${colors.light(colors.blue)};
-		}
-
 		.list .hit-text {
 			color: ${colors.light(colors.gray)};
-			margin-left: 6px;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.list .hit-text mark {
+			background: ${colors.alpha(colors.yellow, 0.35)};
+			color: inherit;
 		}
 
 		.viewer {
@@ -79,15 +154,16 @@ const Panel = styled(
 			min-width: 0;
 			display: flex;
 			flex-direction: column;
-			border-left: 1px solid ${colors.alpha(colors.white, 0.1)};
+			overflow: hidden;
 		}
 
 		.viewer .head {
 			display: flex;
 			gap: 6px;
 			align-items: center;
-			padding: 0 8px 8px;
+			padding: 6px;
 			flex-wrap: wrap;
+			border-bottom: 1px solid ${colors.alpha(colors.white, 0.08)};
 		}
 
 		.viewer .path {
@@ -98,32 +174,112 @@ const Panel = styled(
 			white-space: nowrap;
 		}
 
-		.code {
+		.body {
 			flex: 1;
+			min-height: 0;
 			overflow: auto;
-			font-family: 'FontWithASyntaxHighlighter', ui-monospace, monospace;
-			font-size: 0.85em;
-			line-height: 1.45;
-			white-space: pre;
-			tab-size: 4;
 		}
 
-		.code .line {
+		.source {
+			position: relative;
 			display: flex;
+			min-width: fit-content;
+			font-size: 13px;
+			line-height: ${LINE_HEIGHT}px;
 		}
 
-		.code .line.selected {
-			background: ${colors.alpha(colors.yellow, 0.18)};
-		}
-
-		.code .number {
+		.gutter {
 			flex-shrink: 0;
-			width: 4.5em;
-			padding-right: 1em;
+			padding: 0 12px 0 8px;
 			text-align: right;
 			color: ${colors.gray};
-			cursor: pointer;
+			font-family: ui-monospace, monospace;
 			user-select: none;
+			cursor: pointer;
+			position: relative;
+			z-index: 1;
+		}
+
+		.gutter div:hover {
+			color: ${colors.white};
+		}
+
+		.source pre, .source code {
+			margin: 0;
+			padding: 0;
+			width: auto;
+			background: transparent;
+			line-height: ${LINE_HEIGHT}px;
+			white-space: pre;
+			tab-size: 4;
+			position: relative;
+			z-index: 1;
+		}
+
+		.source code.plain {
+			font-family: ui-monospace, monospace;
+			color: ${colors.white};
+		}
+
+		.band {
+			position: absolute;
+			left: 0;
+			right: 0;
+			background: ${colors.alpha(colors.yellow, 0.16)};
+			pointer-events: none;
+		}
+
+		.markdown {
+			padding: 8px 16px 16px;
+			line-height: 1.5;
+			max-width: 900px;
+		}
+
+		.markdown img {
+			max-width: 100%;
+		}
+
+		.markdown pre {
+			padding: 8px;
+			border-radius: 4px;
+			overflow: auto;
+		}
+
+		.markdown a {
+			color: ${colors.light(colors.blue)};
+		}
+
+		.markdown table {
+			border-collapse: collapse;
+		}
+
+		.markdown th, .markdown td {
+			border: 1px solid ${colors.alpha(colors.white, 0.15)};
+			padding: 4px 8px;
+		}
+
+		.media {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			min-height: 100%;
+			padding: 8px;
+			box-sizing: border-box;
+		}
+
+		.media img, .media video {
+			max-width: 100%;
+			max-height: 100%;
+			object-fit: contain;
+			background: repeating-conic-gradient(#2a2a2e 0% 25%, #222226 0% 50%) 50% / 16px 16px;
+		}
+
+		.media iframe {
+			width: 100%;
+			height: 100%;
+			min-height: 400px;
+			border: none;
+			background: white;
 		}
 
 		.empty {
@@ -145,10 +301,6 @@ const Panel = styled(
 				display: none;
 			}
 
-			.viewer {
-				border-left: none;
-			}
-
 			.head .back {
 				display: inline-block;
 			}
@@ -165,12 +317,161 @@ const element = (tag, className, text) => {
 	return node;
 };
 
-const button = (label, onClick) => {
-	const node = element('button', '', label);
+const button = (label, onClick, { title, className = '' } = {}) => {
+	const node = element('button', className, label);
 
+	if (title) node.title = title;
 	node.addEventListener('click', onClick);
 
 	return node;
+};
+
+const iconButton = (icon, title, onClick) => {
+	const node = button('', onClick, { title, className: 'icon-only' });
+
+	node.append(element('i', `fa-solid fa-${icon}`));
+
+	return node;
+};
+
+const extensionOf = path => {
+	const name = path.split('/').at(-1).toLowerCase();
+
+	return name.includes('.') ? name.split('.').at(-1) : name;
+};
+
+const BRAND_ICONS = {
+	js: 'js',
+	mjs: 'js',
+	cjs: 'js',
+	jsx: 'react',
+	tsx: 'react',
+	py: 'python',
+	md: 'markdown',
+	mdx: 'markdown',
+	css: 'css3',
+	scss: 'sass',
+	html: 'html5',
+	htm: 'html5',
+	rs: 'rust',
+	go: 'golang',
+	java: 'java',
+	php: 'php',
+	vue: 'vuejs',
+	dockerfile: 'docker',
+	gitignore: 'git-alt',
+	gitattributes: 'git-alt',
+};
+
+const SOLID_ICONS = {
+	ts: 'file-code',
+	json: 'file-code',
+	xml: 'file-code',
+	c: 'file-code',
+	h: 'file-code',
+	cpp: 'file-code',
+	rb: 'file-code',
+	kt: 'file-code',
+	swift: 'file-code',
+	sh: 'terminal',
+	zsh: 'terminal',
+	bash: 'terminal',
+	sql: 'database',
+	db: 'database',
+	sqlite: 'database',
+	lock: 'lock',
+	yml: 'gear',
+	yaml: 'gear',
+	toml: 'gear',
+	ini: 'gear',
+	conf: 'gear',
+	cfg: 'gear',
+	env: 'gear',
+	csv: 'file-csv',
+	pdf: 'file-pdf',
+	zip: 'file-zipper',
+	gz: 'file-zipper',
+	tar: 'file-zipper',
+	tgz: 'file-zipper',
+	txt: 'file-lines',
+	log: 'file-lines',
+	doc: 'file-word',
+	docx: 'file-word',
+	xls: 'file-excel',
+	xlsx: 'file-excel',
+	ppt: 'file-powerpoint',
+	pptx: 'file-powerpoint',
+};
+
+const IMAGE = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'ico', 'bmp']);
+const VIDEO = new Set(['mp4', 'webm', 'mov', 'ogv', 'm4v']);
+const AUDIO = new Set(['mp3', 'wav', 'ogg', 'oga', 'm4a', 'flac', 'aac', 'opus']);
+const MARKDOWN = new Set(['md', 'markdown', 'mdx']);
+
+const kindOf = path => {
+	const extension = extensionOf(path);
+
+	if (IMAGE.has(extension)) return 'image';
+	if (VIDEO.has(extension)) return 'video';
+	if (AUDIO.has(extension)) return 'audio';
+	if (extension === 'pdf') return 'pdf';
+	if (MARKDOWN.has(extension)) return 'markdown';
+
+	return 'text';
+};
+
+const fileIcon = path => {
+	const extension = extensionOf(path);
+	const kind = kindOf(path);
+
+	if (path.split('/').at(-1) === 'package.json') return element('i', 'fa-brands fa-npm');
+	if (BRAND_ICONS[extension]) return element('i', `fa-brands fa-${BRAND_ICONS[extension]}`);
+	if (kind === 'image') return element('i', 'fa-solid fa-file-image');
+	if (kind === 'video') return element('i', 'fa-solid fa-file-video');
+	if (kind === 'audio') return element('i', 'fa-solid fa-file-audio');
+
+	return element('i', `fa-solid fa-${SOLID_ICONS[extension] ?? 'file'}`);
+};
+
+// The syntax font's palettes cover JavaScript-like code, JSON, HTML and CSS; anything else reads better plain
+const LANGUAGES = {
+	json: 'json',
+	html: 'html',
+	htm: 'html',
+	xml: 'html',
+	svg: 'html',
+	vue: 'html',
+	css: 'css',
+	scss: 'css',
+	less: 'css',
+};
+const CODE_LIKE = new Set([
+	'js',
+	'mjs',
+	'cjs',
+	'jsx',
+	'ts',
+	'tsx',
+	'c',
+	'h',
+	'cpp',
+	'java',
+	'go',
+	'rs',
+	'php',
+	'py',
+	'rb',
+	'kt',
+	'swift',
+	'sh',
+	'zsh',
+	'bash',
+]);
+
+const languageOf = path => {
+	const extension = extensionOf(path);
+
+	return LANGUAGES[extension] ?? (CODE_LIKE.has(extension) ? 'javascript' : null);
 };
 
 // Every query character in order, closer together and nearer the file name scoring better
@@ -209,6 +510,35 @@ const buildTree = paths => {
 	return root;
 };
 
+const savedOptions = () => {
+	try {
+		return {
+			caseSensitive: false,
+			wholeWord: false,
+			regex: false,
+			include: '',
+			exclude: '',
+			...JSON.parse(recall(OPTIONS_KEY)),
+		};
+	} catch {
+		return { caseSensitive: false, wholeWord: false, regex: false, include: '', exclude: '' };
+	}
+};
+
+// A link or image in a markdown file, relative to that file, as a project path; null for anything elsewhere
+const projectPathFrom = (file, reference) => {
+	if (!reference || /^(?:[a-z][\w+.-]*:|\/\/|#)/i.test(reference)) return null;
+
+	const parts = reference.startsWith('/') ? [] : file.split('/').slice(0, -1);
+
+	for (const part of reference.split(/[?#]/)[0].split('/')) {
+		if (part === '..') parts.pop();
+		else if (part && part !== '.') parts.push(decodeURIComponent(part));
+	}
+
+	return parts.join('/');
+};
+
 // Browsing, searching and reading a session's project, and attaching a file or some of its lines to Claude's prompt
 export default class FilesPanel extends Panel {
 	build() {
@@ -216,29 +546,112 @@ export default class FilesPanel extends Panel {
 		this.expanded = new Set();
 		this.mode = 'names';
 		this.selection = null;
+		this.searchOptions = savedOptions();
+		this.markdownView = recall(MARKDOWN_KEY) === 'source' ? 'source' : 'rendered';
 
 		const bar = element('div', 'bar');
+		const search = element('div', 'search');
 
 		this.query = element('input');
-		this.query.placeholder = 'Find a file';
 		this.query.addEventListener('input', () => this.renderList());
+		this.toggles = {
+			caseSensitive: button('Aa', () => this.toggleOption('caseSensitive'), {
+				title: 'Match case',
+				className: 'toggle',
+			}),
+			wholeWord: button('ab', () => this.toggleOption('wholeWord'), { title: 'Match whole word', className: 'toggle' }),
+			regex: button('.*', () => this.toggleOption('regex'), { title: 'Use regular expression', className: 'toggle' }),
+		};
+		search.append(this.query, ...Object.values(this.toggles));
+
 		this.modeButtons = {
 			names: button('Names', () => this.setMode('names')),
 			contents: button('Contents', () => this.setMode('contents')),
 		};
+		this.filtersButton = iconButton('filter', 'Files to include and exclude', () => this.toggleFilters());
+		this.fullscreenButton = iconButton('expand', 'Full screen', () => this.toggleFullscreen());
 		bar.append(
-			this.query,
+			search,
 			this.modeButtons.names,
 			this.modeButtons.contents,
-			button('✕', () => this.options.close()),
+			this.filtersButton,
+			this.fullscreenButton,
+			iconButton('xmark', 'Close', () => this.options.close()),
 		);
+
+		this.filters = element('div', 'filters');
+		this.include = this.filterInput('include', 'files to include, e.g. src, *.js');
+		this.exclude = this.filterInput('exclude', 'files to exclude, e.g. **/*.test.js');
+		this.filters.append(this.include, this.exclude);
+		this.filters.classList.toggle('shown', Boolean(this.searchOptions.include || this.searchOptions.exclude));
 
 		this.panes = element('div', 'panes');
 		this.list = element('div', 'list');
 		this.viewer = element('div', 'viewer');
 		this.panes.append(this.list, this.viewer);
-		this.elem.append(bar, this.panes);
+		this.elem.append(bar, this.filters, this.panes);
+
+		// Esc steps back out of full screen first, then closes the panel
+		this.elem.addEventListener('keydown', event => {
+			if (event.key !== 'Escape') return;
+
+			event.stopPropagation();
+			if (this.isFullscreen) this.toggleFullscreen(false);
+			else this.options.close();
+		});
+
 		this.setMode('names');
+	}
+
+	filterInput(key, placeholder) {
+		const input = element('input');
+
+		input.placeholder = placeholder;
+		input.value = this.searchOptions[key];
+		input.addEventListener('input', () => {
+			this.searchOptions[key] = input.value;
+			this.saveOptions();
+			this.renderList();
+		});
+
+		return input;
+	}
+
+	saveOptions() {
+		remember(OPTIONS_KEY, JSON.stringify(this.searchOptions));
+	}
+
+	toggleOption(key) {
+		this.searchOptions[key] = !this.searchOptions[key];
+		this.saveOptions();
+		this.renderToggles();
+		this.renderList();
+	}
+
+	toggleFilters() {
+		this.filters.classList.toggle('shown');
+		this.renderToggles();
+	}
+
+	renderToggles() {
+		const contents = this.mode === 'contents';
+
+		for (const [key, node] of Object.entries(this.toggles)) {
+			node.style.display = contents ? '' : 'none';
+			node.classList.toggle('active', Boolean(this.searchOptions[key]));
+		}
+
+		this.filtersButton.classList.toggle(
+			'active',
+			this.filters.classList.contains('shown') || Boolean(this.searchOptions.include || this.searchOptions.exclude),
+		);
+	}
+
+	toggleFullscreen(on = !this.isFullscreen) {
+		this.isFullscreen = on;
+		this.options.setFullscreen(on);
+		this.fullscreenButton.firstChild.className = `fa-solid fa-${on ? 'compress' : 'expand'}`;
+		this.fullscreenButton.title = on ? 'Leave full screen' : 'Full screen';
 	}
 
 	async refresh() {
@@ -267,15 +680,18 @@ export default class FilesPanel extends Panel {
 
 		for (const [key, node] of Object.entries(this.modeButtons)) node.classList.toggle('active', key === mode);
 
+		this.renderToggles();
 		this.renderList();
 	}
 
 	renderList() {
 		const query = this.query.value.trim();
+		const wanted = pathFilter(this.searchOptions);
+		const paths = this.paths.filter(wanted);
 
 		clearTimeout(this.searchTimer);
 
-		if (!query) return this.list.replaceChildren(...this.treeEntries(buildTree(this.paths), 0));
+		if (!query) return this.list.replaceChildren(...this.treeEntries(buildTree(paths), 0));
 
 		if (this.mode === 'contents') {
 			this.searchTimer = setTimeout(() => this.searchContents(query), SEARCH_DELAY_MS);
@@ -283,7 +699,7 @@ export default class FilesPanel extends Panel {
 			return;
 		}
 
-		const matches = this.paths
+		const matches = paths
 			.map(path => ({ path, score: fuzzyScore(path, query) }))
 			.filter(({ score }) => score !== null)
 			.sort((a, b) => a.score - b.score)
@@ -299,21 +715,53 @@ export default class FilesPanel extends Panel {
 	async searchContents(query) {
 		this.list.replaceChildren(element('div', 'empty', 'Searching...'));
 
-		const { body: hits, response } = await searchFiles(this.options.sessionId, query);
+		const options = { ...this.searchOptions };
+		const { body, response } = await searchFiles(this.options.sessionId, query, options);
 
 		if (this.query.value.trim() !== query || this.mode !== 'contents') return;
-		if (!response?.ok || !hits.length)
-			return this.list.replaceChildren(element('div', 'empty', response?.ok ? 'Nothing found.' : 'Search failed.'));
+		if (!response?.ok) return this.list.replaceChildren(element('div', 'empty', body || 'Search failed.'));
+
+		const hits = JSON.parse(body);
+
+		if (!hits.length) return this.list.replaceChildren(element('div', 'empty', 'Nothing found.'));
 
 		this.list.replaceChildren(
 			...hits.map(hit => {
 				const entry = this.fileEntry(`${hit.path}:${hit.line}`, hit.path, hit.line);
 
-				entry.append(element('span', 'hit-text', hit.text.trim()));
+				entry.append(this.highlighted(hit.text.trim(), query, options));
 
 				return entry;
 			}),
 		);
+	}
+
+	// The matched text marked within a hit's line, found the way the server matched it
+	highlighted(text, query, { caseSensitive, wholeWord, regex }) {
+		const node = element('span', 'hit-text');
+		let pattern;
+
+		try {
+			const source = regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+			pattern = new RegExp(wholeWord ? `\\b(?:${source})\\b` : source, caseSensitive ? 'g' : 'gi');
+		} catch {
+			node.textContent = text;
+
+			return node;
+		}
+
+		let last = 0;
+
+		for (const match of text.matchAll(pattern)) {
+			if (!match[0]) break;
+			node.append(text.slice(last, match.index), element('mark', '', match[0]));
+			last = match.index + match[0].length;
+		}
+
+		node.append(text.slice(last));
+
+		return node;
 	}
 
 	treeEntries(node, depth) {
@@ -328,8 +776,9 @@ export default class FilesPanel extends Panel {
 		for (const [name, child] of folders) {
 			const key = `${depth}:${name}:${child.files[0] ?? ''}`;
 			const open = this.expanded.has(key);
-			const entry = indent(element('div', 'entry folder', `${open ? '▾' : '▸'} ${name}`));
+			const entry = indent(element('div', 'entry folder'));
 
+			entry.append(element('i', `fa-solid fa-${open ? 'folder-open' : 'folder'}`), element('span', 'label', name));
 			entry.addEventListener('click', () => {
 				if (open) this.expanded.delete(key);
 				else this.expanded.add(key);
@@ -344,8 +793,10 @@ export default class FilesPanel extends Panel {
 	}
 
 	fileEntry(label, path, line) {
-		const entry = element('div', `entry${path === this.current ? ' current' : ''}`, label);
+		const entry = element('div', `entry${path === this.current ? ' current' : ''}`);
 
+		entry.append(fileIcon(path), element('span', 'label', label));
+		entry.dataset.path = path;
 		entry.title = path;
 		entry.addEventListener('click', () => this.open(path, line));
 
@@ -353,39 +804,61 @@ export default class FilesPanel extends Panel {
 	}
 
 	async open(path, line) {
+		this.current = path;
+		this.kind = kindOf(path);
+		this.selection = line ? { anchor: line, from: line, to: line } : null;
+		this.lines = null;
+		this.panes.classList.add('reading');
+		this.list
+			.querySelectorAll('.entry')
+			.forEach(entry => entry.classList.toggle('current', entry.dataset.path === path));
+
+		if (['image', 'video', 'audio', 'pdf'].includes(this.kind)) return this.renderViewer();
+
 		const { body, response } = await readFile(this.options.sessionId, path);
 
-		this.current = path;
-		this.selection = line ? { from: line, to: line } : null;
-		this.panes.classList.add('reading');
+		if (this.current !== path) return;
 
 		if (!response?.ok) {
-			this.viewer.replaceChildren(
-				this.viewerHead(path),
-				element('div', 'empty', typeof body === 'string' ? body : 'Could not open it.'),
-			);
+			this.failure = typeof body === 'string' ? body : 'Could not open it.';
+			this.renderViewer();
 
 			return;
 		}
 
+		this.failure = null;
+		this.text = body;
 		this.lines = body.replace(/\n$/, '').split('\n');
 		this.renderViewer();
-		this.list.querySelectorAll('.entry').forEach(entry => entry.classList.toggle('current', entry.title === path));
 
-		if (line) this.code.querySelector(`[data-line="${line}"]`)?.scrollIntoView({ block: 'center' });
+		if (line) this.body.scrollTop = (line - 1) * LINE_HEIGHT - this.body.clientHeight / 2;
 	}
 
-	viewerHead(path) {
+	get showingSource() {
+		return this.kind === 'text' || (this.kind === 'markdown' && this.markdownView === 'source');
+	}
+
+	viewerHead() {
 		const head = element('div', 'head');
 		const back = button('←', () => this.panes.classList.remove('reading'));
 
 		back.className = 'back';
-		head.append(back, element('div', 'path', path));
+		head.append(back, fileIcon(this.current), element('div', 'path', this.current));
+
+		if (this.kind === 'markdown' && this.lines) {
+			head.append(
+				button(this.markdownView === 'rendered' ? 'Source' : 'Rendered', () => {
+					this.markdownView = this.markdownView === 'rendered' ? 'source' : 'rendered';
+					remember(MARKDOWN_KEY, this.markdownView);
+					this.renderViewer();
+				}),
+			);
+		}
 
 		if (canType()) {
 			head.append(button('Attach file', () => this.attachFile()));
 
-			if (this.selection) {
+			if (this.selection && this.lines && this.showingSource) {
 				const { from, to } = this.selection;
 
 				head.append(
@@ -394,36 +867,116 @@ export default class FilesPanel extends Panel {
 			}
 		}
 
-		if (this.selection) head.append(button('Copy', () => this.copyLines()));
+		if (this.selection && this.lines && this.showingSource) head.append(button('Copy', () => this.copyLines()));
+		if (this.kind !== 'text' && this.kind !== 'markdown') {
+			const link = element('a', '', 'Open');
+
+			link.href = rawFileUrl(this.options.sessionId, this.current);
+			link.target = '_blank';
+			link.rel = 'noopener';
+			head.append(link);
+		}
 
 		return head;
 	}
 
-	// Click a line number to pick it; Shift+click another to pick the range between
 	renderViewer() {
-		const { from, to } = this.selection ?? {};
+		const scroll = this.body?.scrollTop ?? 0;
 
-		this.code = element('div', 'code');
-		this.lines.forEach((text, index) => {
-			const number = index + 1;
-			const row = element('div', `line${number >= from && number <= to ? ' selected' : ''}`);
-			const gutter = element('span', 'number', String(number));
+		this.body = element('div', 'body');
 
-			row.dataset.line = String(number);
-			gutter.addEventListener('click', event => {
-				const anchor = event.shiftKey && this.selection ? this.selection.anchor : number;
+		if (this.failure && !['image', 'video', 'audio', 'pdf'].includes(this.kind)) {
+			this.body.append(element('div', 'empty', this.failure));
+		} else if (this.kind === 'image' || this.kind === 'video' || this.kind === 'audio' || this.kind === 'pdf') {
+			this.body.append(this.media());
+		} else if (this.kind === 'markdown' && this.markdownView === 'rendered') {
+			this.body.append(this.renderedMarkdown());
+		} else {
+			this.body.append(this.source());
+		}
 
-				this.selection = { anchor, from: Math.min(anchor, number), to: Math.max(anchor, number) };
-				this.renderViewer();
-			});
-			row.append(gutter, element('span', '', text || ' '));
-			this.code.append(row);
+		this.viewer.replaceChildren(this.viewerHead(), this.body);
+		this.body.scrollTop = scroll;
+	}
+
+	media() {
+		const holder = element('div', 'media');
+		const url = rawFileUrl(this.options.sessionId, this.current);
+		const tag = { image: 'img', video: 'video', audio: 'audio', pdf: 'iframe' }[this.kind];
+		const node = element(tag);
+
+		node.src = url;
+		if (this.kind === 'video' || this.kind === 'audio') node.controls = true;
+		if (this.kind === 'image') node.alt = this.current;
+		node.addEventListener('error', () => holder.replaceChildren(element('div', 'empty', 'Could not show this file.')));
+		holder.append(node);
+
+		return holder;
+	}
+
+	// Someone else's markdown shown on paude's own page: the HTML is sanitized, and its relative images and links
+	// point back into the project
+	renderedMarkdown() {
+		const container = element('div', 'markdown');
+
+		container.innerHTML = DOMPurify.sanitize(marked.parse(this.text));
+
+		for (const image of container.querySelectorAll('img[src]')) {
+			const path = projectPathFrom(this.current, image.getAttribute('src'));
+
+			if (path !== null) image.src = rawFileUrl(this.options.sessionId, path);
+		}
+
+		for (const link of container.querySelectorAll('a[href]')) {
+			const path = projectPathFrom(this.current, link.getAttribute('href'));
+
+			if (path !== null && this.paths.includes(path)) {
+				link.addEventListener('click', event => {
+					event.preventDefault();
+					this.open(path);
+				});
+			} else if (!link.getAttribute('href').startsWith('#')) {
+				link.target = '_blank';
+				link.rel = 'noopener noreferrer';
+			}
+		}
+
+		return container;
+	}
+
+	// One code block, so the syntax font sees whole constructs (comments, strings) across lines. Click a line
+	// number to pick it; Shift+click another to pick the range between.
+	source() {
+		const wrapper = element('div', 'source');
+		const gutter = element('div', 'gutter');
+		const language = languageOf(this.current);
+		const pre = element('pre');
+		const code = element('code', language ? `language-${language}` : 'plain', this.lines.join('\n'));
+
+		gutter.append(...this.lines.map((_, index) => element('div', '', String(index + 1))));
+		gutter.addEventListener('click', event => {
+			const number = Number(event.target.textContent);
+
+			if (!number || event.target === gutter) return;
+
+			const anchor = event.shiftKey && this.selection ? this.selection.anchor : number;
+
+			this.selection = { anchor, from: Math.min(anchor, number), to: Math.max(anchor, number) };
+			this.renderViewer();
 		});
 
-		const scroll = this.viewer.querySelector('.code')?.scrollTop ?? 0;
+		if (this.selection) {
+			const band = element('div', 'band');
 
-		this.viewer.replaceChildren(this.viewerHead(this.current), this.code);
-		this.code.scrollTop = scroll;
+			band.style.top = `${(this.selection.from - 1) * LINE_HEIGHT}px`;
+			band.style.height = `${(this.selection.to - this.selection.from + 1) * LINE_HEIGHT}px`;
+			wrapper.append(band);
+		}
+
+		pre.append(code);
+		wrapper.append(gutter, pre);
+
+		return wrapper;
 	}
 
 	selectedText() {

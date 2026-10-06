@@ -41,11 +41,12 @@ const Body = styled.Component`
 		top: 8px;
 		bottom: 8px;
 		z-index: 2;
+		box-sizing: border-box;
 		border-radius: 10px;
 		border: 1px solid rgba(255, 255, 255, 0.12);
-		background: rgba(24, 24, 27, 0.35);
-		backdrop-filter: blur(10px) saturate(140%);
-		-webkit-backdrop-filter: blur(10px) saturate(140%);
+		background: rgba(24, 24, 27, 0.12);
+		backdrop-filter: blur(14px) saturate(150%);
+		-webkit-backdrop-filter: blur(14px) saturate(150%);
 		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
 		overflow: hidden;
 		opacity: 0;
@@ -71,26 +72,42 @@ const Body = styled.Component`
 	/* Reading code wants room; it opens from the other side */
 	.files {
 		left: 8px;
-		width: min(62%, calc(100% - 16px));
+		width: min(var(--files-width, 62%), calc(100% - 16px));
 		transform: translateX(-12px);
 	}
 
-	.notes .resize {
+	.files.fullscreen {
+		inset: 8px;
+		width: auto;
+	}
+
+	.resize {
 		position: absolute;
-		left: 0;
 		top: 0;
 		bottom: 0;
 		width: 6px;
 		cursor: ew-resize;
-		z-index: 1;
+		z-index: 3;
 	}
 
-	.notes .resize:hover,
-	.notes.resizing .resize {
+	.notes .resize {
+		left: 0;
+	}
+
+	.files .resize {
+		right: 0;
+	}
+
+	.files.fullscreen .resize {
+		display: none;
+	}
+
+	.resize:hover,
+	.resizing .resize {
 		background: rgba(255, 255, 255, 0.15);
 	}
 
-	.notes.resizing {
+	.resizing {
 		transition: none;
 	}
 
@@ -102,7 +119,7 @@ const Body = styled.Component`
 			border: none;
 		}
 
-		.notes .resize {
+		.resize {
 			display: none;
 		}
 
@@ -214,7 +231,8 @@ const hardwareWebgl = () => {
 };
 const NOTES_OPEN_KEY = 'paude.notesOpen';
 const NOTES_WIDTH_KEY = 'paude.notesWidth';
-const MIN_NOTES_WIDTH = 260;
+const FILES_WIDTH_KEY = 'paude.filesWidth';
+const MIN_PANEL_WIDTH = 260;
 const ROLE_LABELS = { owner: 'owner', drive: 'can type', comment: 'can chat and comment', watch: 'watching' };
 
 const bufferLines = terminal => {
@@ -315,6 +333,7 @@ export default class TerminalView extends View {
 			addClass: 'files',
 			sessionId: this.options.id,
 			close: () => this.toggleFiles(false),
+			setFullscreen: on => this.files.elem.classList.toggle('fullscreen', on),
 			attach: text => this.attachToPrompt(text),
 		});
 		this.notes = new NotesPanel({
@@ -330,7 +349,8 @@ export default class TerminalView extends View {
 			},
 		});
 
-		this.addResizeHandle();
+		this.addResizeHandle(this.notes.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
+		this.addResizeHandle(this.files.elem, { variable: '--files-width', key: FILES_WIDTH_KEY, edge: 'right' });
 		if (recall(NOTES_OPEN_KEY)) this.toggleNotes(true);
 
 		this.loadInfo();
@@ -365,6 +385,7 @@ export default class TerminalView extends View {
 		this.useGpuRenderer();
 		if (identity()?.owner) this.linkDoneMarkers();
 		this.terminal.onData(data => this.sendInput(data));
+		this.scrollClaudeWithWheel();
 		this.terminal.onSelectionChange(() => {
 			this.commentButton.elem.style.display = canNote() && this.terminal.hasSelection() ? '' : 'none';
 		});
@@ -376,7 +397,10 @@ export default class TerminalView extends View {
 				name: savedName(),
 				...this.naturalSize(),
 			}),
-			onOutput: data => this.terminal.write(withoutPointerReporting(this.decoder.decode(data, { stream: true }))),
+			onOutput: data =>
+				this.terminal.write(
+					withoutPointerReporting(this.decoder.decode(data, { stream: true }), this.trackPointerMode),
+				),
 			onMessage: message => this.handleMessage(message),
 			onState: state => this.showConnection(state),
 		});
@@ -441,7 +465,8 @@ export default class TerminalView extends View {
 			this.terminal.reset();
 			this.terminal.resize(message.cols, message.rows);
 			this.decoder = new TextDecoder();
-			this.terminal.write(withoutPointerReporting(message.data));
+			this.pointerModes.clear();
+			this.terminal.write(withoutPointerReporting(message.data, this.trackPointerMode));
 			this.fitScale();
 		} else if (message.type === 'size') {
 			this.terminal.resize(message.cols, message.rows);
@@ -492,13 +517,13 @@ export default class TerminalView extends View {
 	}
 
 	// Dragging the panel's left edge sets its width, kept between sessions
-	addResizeHandle() {
-		const panel = this.notes.elem;
+	// Dragging the panel's inner edge sets its width, remembered per panel
+	addResizeHandle(panel, { variable, key, edge }) {
 		const handle = document.createElement('div');
 		const setWidth = width => {
-			const clamped = Math.round(Math.min(Math.max(width, MIN_NOTES_WIDTH), window.innerWidth * 0.8));
+			const clamped = Math.round(Math.min(Math.max(width, MIN_PANEL_WIDTH), window.innerWidth * 0.9));
 
-			panel.style.setProperty('--notes-width', `${clamped}px`);
+			panel.style.setProperty(variable, `${clamped}px`);
 
 			return clamped;
 		};
@@ -506,17 +531,18 @@ export default class TerminalView extends View {
 		handle.className = 'resize';
 		panel.append(handle);
 
-		if (Number(recall(NOTES_WIDTH_KEY))) setWidth(Number(recall(NOTES_WIDTH_KEY)));
+		if (Number(recall(key))) setWidth(Number(recall(key)));
 
 		handle.addEventListener('pointerdown', start => {
 			start.preventDefault();
 			handle.setPointerCapture(start.pointerId);
 			panel.classList.add('resizing');
 
-			const right = panel.getBoundingClientRect().right;
-			const move = event => setWidth(right - event.clientX);
+			const bounds = panel.getBoundingClientRect();
+			const widthAt = event => (edge === 'left' ? bounds.right - event.clientX : event.clientX - bounds.left);
+			const move = event => setWidth(widthAt(event));
 			const stop = event => {
-				remember(NOTES_WIDTH_KEY, String(setWidth(right - event.clientX)));
+				remember(key, String(setWidth(widthAt(event))));
 				panel.classList.remove('resizing');
 				handle.removeEventListener('pointermove', move);
 				handle.removeEventListener('pointerup', stop);
@@ -618,6 +644,42 @@ export default class TerminalView extends View {
 			this.lineSelectHint(null);
 			this.endLineSelect = null;
 		};
+	}
+
+	// Claude draws on the alternate screen, which has no scrollback, and keeps its transcript's scrolling to itself.
+	// With mouse reporting withheld from the browser, xterm would turn the wheel into arrow keys, which Claude reads
+	// as walking through past prompts; the wheel goes to Claude as a wheel instead, when Claude has asked for one.
+	scrollClaudeWithWheel() {
+		this.pointerModes = new Set();
+		this.trackPointerMode = (mode, on) => (on ? this.pointerModes.add(mode) : this.pointerModes.delete(mode));
+
+		this.terminal.attachCustomWheelEventHandler(event => {
+			if (this.terminal.buffer.active.type !== 'alternate') return true;
+
+			const tracking = ['1000', '1002', '1003'].some(mode => this.pointerModes.has(mode));
+
+			if (!tracking || !canType() || !event.deltaY) return false;
+
+			const bounds = this.terminal.element.getBoundingClientRect();
+			const column = Math.min(
+				Math.max(Math.ceil(((event.clientX - bounds.left) / bounds.width) * this.terminal.cols), 1),
+				this.terminal.cols,
+			);
+			const row = Math.min(
+				Math.max(Math.ceil(((event.clientY - bounds.top) / bounds.height) * this.terminal.rows), 1),
+				this.terminal.rows,
+			);
+			const button = event.deltaY < 0 ? 64 : 65;
+			const report = this.pointerModes.has('1006')
+				? `\x1b[<${button};${column};${row}M`
+				: `\x1b[M${String.fromCharCode(32 + button, 32 + column, 32 + row)}`;
+			// A touchpad sends many small deltas; a notch of a wheel is about 100
+			const notches = Math.max(1, Math.round(Math.abs(event.deltaY) / 100));
+
+			this.sendInput(report.repeat(notches));
+
+			return false;
+		});
 	}
 
 	// Every "done" line Claude prints after a turn becomes a link that starts a new session from that point
