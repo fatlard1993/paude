@@ -1,6 +1,7 @@
 import os from 'os';
 
-import { CLOSED, NOTE_TYPES, applyNote } from '../shared/protocol';
+import { NOTE_TYPES, applyNote } from '../shared/protocol';
+import sessionSocket from '../shared/sessionSocket';
 import { searchParameters } from '../shared/searchQuery';
 import notifier from './notify';
 import outputFilter, { filterText } from './outputFilter';
@@ -31,20 +32,6 @@ const FRAME_MS = 33;
 
 const displayName = () => process.env.PAUDE_NAME || os.userInfo().username;
 
-// A refused upgrade only shows up as an abnormal close; the server says why when asked directly
-const whyRefused = async ({ url, token }, id) => {
-	try {
-		const { status } = await fetch(`${url}/api/sessions/${id}`, { headers: { authorization: `Bearer ${token}` } });
-
-		if (status === 401) return 'unauthorized';
-		if (status === 404) return 'ended';
-	} catch {
-		// Unreachable: the server or the network is down, so keep retrying
-	}
-
-	return null;
-};
-
 // Resolves to 'detach' | 'switch' | 'ended' | 'unauthorized'
 const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHint = false } = {}) =>
 	new Promise(resolve => {
@@ -58,21 +45,13 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			thread: null,
 			hint: null,
 		};
-		let socket;
 		let overlay = false;
 		let done = false;
-		let retry;
-		let retryDelay = 1000;
 		let filter = outputFilter();
 		let warnedOffline = false;
 		const notify = notifier();
 
-		const send = message => {
-			if (socket?.readyState !== WebSocket.OPEN) return false;
-			socket.send(JSON.stringify(message));
-
-			return true;
-		};
+		const send = message => connection?.send(message) ?? false;
 
 		const mirror = createMirror();
 		let drawTimer = null;
@@ -207,14 +186,13 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			if (done) return;
 
 			done = true;
-			clearTimeout(retry);
 			stopInput();
 			process.stdout.off('resize', onResize);
 			clearTimeout(drawTimer);
 			hideImage();
 			if (overlay) write(RESTORE_KEYS);
 			write(`${RESET_MODES}\r\n`);
-			socket?.close();
+			connection?.close();
 			resolve(outcome);
 		};
 
@@ -292,56 +270,30 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 
 				redraw();
 			} else if (message.type === 'notice') notify('paude', message.text);
-			else if (message.type === 'exit') finish('ended');
 		};
+
+		// The one key that matters shows for a moment before Claude's screen takes over
+		if (showKeyHint) write(`\r\n  \x1b[2mCtrl+] opens paude's box: chat, comments, files, switch or detach\x1b[0m\r\n`);
 
 		// A dropped connection (laptop sleep, network change) reconnects; the fresh snapshot redraws the screen
-		const connect = () => {
-			if (done) return;
-
-			filter = outputFilter();
-			socket = new WebSocket(`${server.url.replace(/^http/, 'ws')}/api/sessions/${id}/attach`, {
-				headers: { authorization: `Bearer ${server.token}` },
-			});
-			socket.binaryType = 'arraybuffer';
-
-			socket.addEventListener('open', () => {
-				retryDelay = 1000;
-				warnedOffline = false;
-				send({ type: 'hello', kind: 'terminal', label: os.hostname(), name: displayName(), ...size() });
-			});
-
-			socket.addEventListener('message', ({ data }) => {
-				if (typeof data !== 'string') {
-					const bytes = new Uint8Array(data);
-
-					mirror.write(bytes, redrawSoon);
-					if (!overlay) write(filter(bytes));
-
-					return;
-				}
-
-				handleMessage(JSON.parse(data));
-			});
-
-			socket.addEventListener('close', async ({ code }) => {
-				if (done) return;
-				if (code === CLOSED.unauthorized) return finish('unauthorized');
-				if (code === CLOSED.ended) return finish('ended');
-
-				const refused = await whyRefused(server, id);
-
-				if (refused) return finish(refused);
-
-				retry = setTimeout(connect, retryDelay);
-				retryDelay = Math.min(retryDelay * 2, 10_000);
-			});
-		};
-
-		if (showKeyHint) {
-			write(`\r\n  \x1b[2mCtrl+] opens paude's box: chat, comments, files, switch or detach\x1b[0m\r\n`);
-			setTimeout(connect, 1500);
-		} else connect();
+		const connection = sessionSocket({
+			url: server.url,
+			sessionId: id,
+			headers: { authorization: `Bearer ${server.token}` },
+			startAfter: showKeyHint ? 1500 : 0,
+			hello: () => ({ kind: 'terminal', label: os.hostname(), name: displayName(), ...size() }),
+			onOutput: bytes => {
+				mirror.write(bytes, redrawSoon);
+				if (!overlay) write(filter(bytes));
+			},
+			onMessage: handleMessage,
+			onState: connectionState => {
+				if (connectionState === 'connected') {
+					filter = outputFilter();
+					warnedOffline = false;
+				} else if (connectionState !== 'reconnecting') finish(connectionState);
+			},
+		});
 	});
 
 export default attachSession;
