@@ -5,6 +5,9 @@
 # Linux (a systemd user service) or macOS (a launchd agent). Installs to ~/.paude-server, runs on 127.0.0.1:8044,
 # and serves sessions in the subfolders of ~/Projects. Put HTTPS in front (see the README) before reaching it from
 # anywhere else.
+#
+# From a checkout, `sh scripts/install.sh --dev` runs that checkout as the service instead: as it is (no clone, no
+# pull), in development, restarting itself as files change. Running the plain installer again goes back.
 
 set -e
 
@@ -16,6 +19,17 @@ DATA="${PAUDE_DATA:-$HOME/.paude}"
 UNIT="$HOME/.config/systemd/user/paude.service"
 LABEL="com.github.fatlard1993.paude"
 AGENT="$HOME/Library/LaunchAgents/$LABEL.plist"
+
+DEV=no
+for arg in "$@"; do [ "$arg" = "--dev" ] && DEV=yes; done
+if [ "$DEV" = yes ]; then
+	APP="$(cd "$(dirname "$0")/.." && pwd)"
+	MODE=development
+	WATCH="--watch "
+else
+	MODE=production
+	WATCH=""
+fi
 
 say() { printf '> %s\n' "$*"; }
 die() {
@@ -67,7 +81,11 @@ if ! command -v claude >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/claude" ]; th
 	say "Claude Code isn't installed for this user; sessions need it: curl -fsSL https://claude.ai/install.sh | bash"
 fi
 
-if [ -d "$APP/.git" ]; then
+if [ "$DEV" = yes ]; then
+	[ -f "$APP/server/index.js" ] || die "--dev runs from a paude checkout: sh scripts/install.sh --dev"
+	say "Running the checkout at $APP, in development"
+	changed=no
+elif [ -d "$APP/.git" ]; then
 	before="$(git -C "$APP" rev-parse HEAD)"
 	say "Updating $APP"
 	git -C "$APP" pull --ff-only --quiet
@@ -79,10 +97,16 @@ else
 fi
 
 cd "$APP"
-say "Installing dependencies and building"
-# Without scripts: the prepare script would build (again) and point git hooks at a checkout nobody commits from
-"$BUN" install --frozen-lockfile --ignore-scripts >/dev/null
-NODE_ENV=production "$BUN" run build >/dev/null
+if [ "$DEV" = yes ]; then
+	say "Installing dependencies"
+	# The development server builds the client itself, and again whenever it changes
+	"$BUN" install >/dev/null
+else
+	say "Installing dependencies and building"
+	# Without scripts: the prepare script would build (again) and point git hooks at a checkout nobody commits from
+	"$BUN" install --frozen-lockfile --ignore-scripts >/dev/null
+	NODE_ENV=production "$BUN" run build >/dev/null
+fi
 
 restart_note() {
 	if PATH="$SERVICE_PATH" command -v dtach >/dev/null 2>&1; then
@@ -100,8 +124,8 @@ After=network.target
 
 [Service]
 WorkingDirectory=$APP
-ExecStart=$BUN server/index.js --projects $PROJECTS --host 127.0.0.1 --port $PORT
-Environment=NODE_ENV=production
+ExecStart=$BUN ${WATCH}server/index.js --projects $PROJECTS --host 127.0.0.1 --port $PORT
+Environment=NODE_ENV=$MODE
 Environment=SHELL=$LOGIN_SHELL
 Environment=PATH=$SERVICE_PATH
 # A restart stops the server only: sessions held by dtach carry on, and the new server takes them back
@@ -149,7 +173,7 @@ install_launchd() {
 	<string>$LABEL</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>$BUN</string>
+		<string>$BUN</string>$([ "$DEV" = yes ] && printf '\n\t\t<string>--watch</string>')
 		<string>server/index.js</string>
 		<string>--projects</string>
 		<string>$PROJECTS</string>
@@ -163,7 +187,7 @@ install_launchd() {
 	<key>EnvironmentVariables</key>
 	<dict>
 		<key>NODE_ENV</key>
-		<string>production</string>
+		<string>$MODE</string>
 		<key>SHELL</key>
 		<string>$LOGIN_SHELL</string>
 		<key>PATH</key>
@@ -221,7 +245,11 @@ until curl -sf "http://127.0.0.1:$PORT/api/auth" >/dev/null 2>&1; do
 	sleep 1
 done
 
-say "paude is running on 127.0.0.1:$PORT"
+if [ "$DEV" = yes ]; then
+	say "paude is running on 127.0.0.1:$PORT from $APP; it restarts itself as you save, and sessions carry on"
+else
+	say "paude is running on 127.0.0.1:$PORT"
+fi
 
 curl -sf "http://127.0.0.1:$PORT/api/auth" | grep -q '"passwordSet":true' ||
 	say "No password yet; only this machine can log in until you run: cd $APP && bun run set-password"

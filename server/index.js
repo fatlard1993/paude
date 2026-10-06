@@ -76,7 +76,7 @@ setClaudePath(options.claude);
 setHolderFolder(path.join(options.data, 'held'));
 await adoptHeldSessions();
 
-server.init({ host: options.host, port: options.port });
+server.init({ host: options.host, port: options.port, data: options.data });
 setInterval(() => {
 	sweepCredentials();
 	sweepSideShells();
@@ -88,7 +88,7 @@ if (process.env.NODE_ENV === 'development') {
 			if (['stop', 'close', 'exit'].includes(line)) process.kill(process.pid, 'SIGTERM');
 			else if (line === 'b') {
 				console.log('>> Building...');
-				spawnBuild();
+				spawnBuild(options.data);
 			}
 		}
 	} catch (error) {
