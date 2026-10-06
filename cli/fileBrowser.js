@@ -1,3 +1,4 @@
+import { fitCells } from './graphics';
 import { ACCENT, colored, dim, onBackground, orange, printable } from './screen';
 
 const PAGE = 10;
@@ -178,8 +179,9 @@ const listKey = (browser, key, canType) => {
 const fileKey = (browser, key, canType) => {
 	const file = browser.open;
 
-	// A file that couldn't be shown (binary, too big, gone) can still be left, or handed to Claude to read itself
-	if (file.error) {
+	// An image, or a file that couldn't be shown (binary, too big, gone), can still be left, or handed to Claude to
+	// read itself
+	if (file.error || file.image) {
 		if (ESCAPE.includes(key) || BACK.includes(key)) browser.open = null;
 		else if (key === 'a' && canType) return { type: 'attach', text: `@${file.path} ` };
 		else return { type: 'ignore' };
@@ -239,6 +241,16 @@ const fileView = (browser, width, room) => {
 
 	if (file.error) return [orange(file.path), '', dim(file.error)];
 
+	// The terminal draws the image over these rows; they're left empty for it
+	if (file.image) {
+		file.image.cells = fitCells(file.image, width, Math.max(room - 1, 1));
+
+		return [
+			`${colored(printable(file.path), ACCENT)} ${dim(`${file.image.width}×${file.image.height}`)}`,
+			...Array.from({ length: file.image.cells.rows }, () => ''),
+		];
+	}
+
 	const [from, to] =
 		file.anchor === null ? [-1, -1] : [Math.min(file.anchor, file.cursor), Math.max(file.anchor, file.cursor)];
 	const gutter = String(file.lines.length).length;
@@ -263,7 +275,8 @@ export const browserView = (browser, width, room) =>
 export const browserKeys = (browser, canType, keyCap) => {
 	if (browser.typing) return [`${keyCap('enter')} keep filter`, `${keyCap('esc')} clear`];
 
-	if (browser.open?.error) return [canType && `${keyCap('a')} attach file`, `${keyCap('esc')} back`].filter(Boolean);
+	if (browser.open?.error || browser.open?.image)
+		return [canType && `${keyCap('a')} attach file`, `${keyCap('esc')} back`].filter(Boolean);
 
 	if (browser.open) {
 		const marked = browser.open.anchor !== null;

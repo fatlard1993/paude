@@ -1,5 +1,7 @@
 module.exports = {
 	skipWords: [
+		'magick',
+		'ghostty',
 		'fg',
 		'aa',
 		'aac',

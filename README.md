@@ -58,7 +58,7 @@ Inside a session everything goes to Claude except `Ctrl+]`, which floats paude's
 - **c**: send a chat message
 - **m**: comment on the text you've selected. Shift+drag over it in Claude first (a plain drag goes to Claude); on macOS, copy it instead.
 - a comment's number: read its thread, then **r** to reply or **x** to resolve
-- **f**: the project's files. Arrows (or j/k) move, Enter opens a folder or file, **/** filters by name; in a file, **v** marks lines from the cursor and **a** attaches the marked lines (or the whole file) to Claude's prompt without sending
+- **f**: the project's files. Arrows (or j/k) move, Enter opens a folder or file, **/** filters by name; in a file, **v** marks lines from the cursor and **a** attaches the marked lines (or the whole file) to Claude's prompt without sending. In kitty, WezTerm or Ghostty, images show right in the box (formats other than PNG need ImageMagick)
 - **s**: switch session; **d**: detach; **Esc**: back to Claude
 
 `PAUDE_NAME` sets the name others see (default: your username). `paude logout` revokes this machine's token on the server.

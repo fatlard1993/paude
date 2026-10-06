@@ -5,6 +5,7 @@ import notifier from './notify';
 import outputFilter from './outputFilter';
 import { composeFrame, createMirror } from './compositor';
 import { createBrowser } from './fileBrowser';
+import { IMAGE_EXTENSIONS, place, pngSize, removeImage, showsImages, toPng, transmit } from './graphics';
 import { overlayKey, overlayBox } from './overlay';
 import readSelection from './selection';
 import {
@@ -77,8 +78,38 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			if (!overlay) return;
 
 			const { cols, rows } = size();
+			const box = overlayBox(state, cols, rows);
 
-			write(composeFrame({ mirror, cols, rows, box: overlayBox(state, cols, rows) }));
+			write(composeFrame({ mirror, cols, rows, box }));
+			showImage(box);
+		};
+
+		// An open image sits in the box below the file's name: sent to the terminal once, and moved only when the
+		// box does, so redrawing the frame behind it costs nothing
+		let sentImage = null;
+		let placement = null;
+
+		const hideImage = () => {
+			if (sentImage) write(removeImage());
+			sentImage = null;
+			placement = null;
+		};
+
+		const showImage = box => {
+			const image = overlay ? state.files?.open?.image : null;
+
+			if (!image?.cells) return hideImage();
+			if (sentImage !== image) {
+				write(transmit(image.png));
+				sentImage = image;
+				placement = null;
+			}
+
+			const where = { x: box.x + 3, y: box.y + 3, ...image.cells };
+			const key = JSON.stringify(where);
+
+			if (key !== placement) write(place(where));
+			placement = key;
 		};
 
 		// Claude can stream many chunks a second; the frame behind the box catches up at most every few frames
@@ -108,7 +139,20 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			redraw();
 		};
 
+		const readImage = async path => {
+			const response = await api(`raw?path=${encodeURIComponent(path)}`).catch(() => null);
+			const png = response?.ok ? await toPng(new Uint8Array(await response.arrayBuffer())) : null;
+
+			if (!state.files) return;
+			state.files.open = png
+				? { path, image: { png, ...pngSize(png) } }
+				: { path, error: response?.ok ? 'This image needs ImageMagick to show here.' : 'Could not open it.' };
+			redraw();
+		};
+
 		const readFile = async path => {
+			if (showsImages() && IMAGE_EXTENSIONS.has(path.split('.').at(-1).toLowerCase())) return readImage(path);
+
 			const response = await api(`file?path=${encodeURIComponent(path)}`).catch(() => null);
 			const text = response ? await response.text() : 'Could not reach the server.';
 
@@ -133,6 +177,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			overlay = false;
 			clearTimeout(drawTimer);
 			drawTimer = null;
+			hideImage();
 			write(RESTORE_KEYS);
 			// The fresh snapshot repaints Claude's screen, cursor and modes where the box was
 			send({ type: 'refresh' });
@@ -146,6 +191,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			stopInput();
 			process.stdout.off('resize', onResize);
 			clearTimeout(drawTimer);
+			hideImage();
 			if (overlay) write(RESTORE_KEYS);
 			write(`${RESET_MODES}\r\n`);
 			socket?.close();
