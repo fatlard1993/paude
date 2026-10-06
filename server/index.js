@@ -7,7 +7,7 @@ import Argi from 'argi';
 
 import { ensureLocalToken, initAuth, initServerId, passwordIsSet } from './auth';
 import { initActivity } from './activity';
-import { setHookAddress } from './hookSettings';
+import { curlMissing, setHookAddress } from './hookSettings';
 import { initNames } from './names';
 import { initNotes } from './notes';
 import { initProjects, setProjectsRoot } from './projects';
@@ -60,6 +60,7 @@ await ensureLocalToken(options.data);
 await initServerId(options.data);
 await Bun.write(path.join(options.data, 'server.pid'), `${process.pid}\n`);
 setHookAddress({ host: options.host, port: options.port });
+if (curlMissing()) console.warn("curl isn't installed, so sessions can't report working, needs you or ready.");
 
 if (!passwordIsSet()) {
 	console.warn(

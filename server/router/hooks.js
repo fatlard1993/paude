@@ -5,13 +5,14 @@ import requestMatch from '../utils/requestMatch';
 
 // Where the hooks in hookSettings report; authenticated by the secret in the address rather than a login
 const hooksRoutes = async request => {
-	const match = requestMatch('POST', '/api/hooks/:secret', request);
+	const match =
+		requestMatch('POST', '/api/hooks/:secret/:session', request) || requestMatch('POST', '/api/hooks/:secret', request);
 
 	if (!match) return null;
 	if (match.secret !== hookSecret) return new Response('Not Found', { status: 404 });
 
 	const payload = await request.json();
-	const id = payload?.session_id;
+	const id = match.session ?? payload?.session_id;
 	const status = HOOK_EVENTS[payload?.hook_event_name]?.(payload);
 
 	if (typeof id !== 'string' || !runningSession(id)) return new Response(null, { status: 204 });

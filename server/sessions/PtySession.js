@@ -100,7 +100,7 @@ export default class PtySession {
 
 		this.process = Bun.spawn([claudePath, ...args], {
 			cwd,
-			env: { ...sessionEnvironment(), TERM: 'xterm-256color', COLORTERM: 'truecolor' },
+			env: { ...sessionEnvironment(), TERM: 'xterm-256color', COLORTERM: 'truecolor', PAUDE_SESSION: id },
 			terminal: {
 				cols: this.cols,
 				rows: this.rows,
@@ -211,6 +211,9 @@ export default class PtySession {
 			this.drive(client);
 		}
 
+		// Someone answered the question (or pressed Esc on it); hooks and the title say what follows
+		if (kind === 'typing' && statusOf(this.id) === 'waiting') setStatus(this.id, 'working');
+
 		this.process.terminal.write(data);
 	}
 
@@ -276,7 +279,7 @@ export default class PtySession {
 	resetIdle(delay = IDLE_EXIT_MS) {
 		clearTimeout(this.idleTimer);
 		this.idleTimer = setTimeout(() => {
-			if (this.busy) this.resetIdle(BUSY_RECHECK_MS);
+			if (this.busy || statusOf(this.id) === 'working') this.resetIdle(BUSY_RECHECK_MS);
 			else this.process.kill();
 		}, delay);
 		this.idleTimer.unref?.();

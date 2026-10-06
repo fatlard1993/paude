@@ -14,14 +14,20 @@ export const HOOK_EVENTS = {
 		['permission_prompt', 'elicitation_dialog'].includes(payload.notification_type) ? 'waiting' : null,
 	UserPromptSubmit: () => 'working',
 	PostToolUse: () => 'working',
+	PostToolUseFailure: () => 'working',
+	PermissionDenied: () => 'working',
 	Stop: () => 'ready',
+	StopFailure: () => 'ready',
 };
+
+export const curlMissing = () => !Bun.which('curl');
 
 // The --settings JSON that adds paude's hooks alongside the person's own (Claude Code runs both)
 export const hookSettings = () => {
 	if (!hookUrl) return null;
 
-	const command = `curl -fsS --max-time 2 -X POST -H 'content-type: application/json' --data-binary @- '${hookUrl}' >/dev/null 2>&1 || true`;
+	// The session is named by paude's id, from the environment it starts Claude in: Claude's own id changes on /clear
+	const command = `curl -fsS --max-time 2 -X POST -H 'content-type: application/json' --data-binary @- "${hookUrl}/$PAUDE_SESSION" >/dev/null 2>&1 || true`;
 	const hook = [{ hooks: [{ type: 'command', command }] }];
 
 	return JSON.stringify({ hooks: Object.fromEntries(Object.keys(HOOK_EVENTS).map(event => [event, hook])) });
