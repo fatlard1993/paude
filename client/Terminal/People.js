@@ -1,9 +1,9 @@
 import { createInvite, getInvites, revokeInvite } from '../api';
 
 const ROLES = [
-	['drive', 'Drive: type into Claude, chat, comment'],
-	['comment', 'Comment: chat and comment, no typing'],
-	['watch', 'Watch: read only'],
+	['drive', 'Drive: type into Claude, and all of the above'],
+	['comment', 'Comment: chat, comment, read the files'],
+	['watch', 'View: the terminal only'],
 ];
 const EXPIRIES = [
 	[1, '1 hour'],

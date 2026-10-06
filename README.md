@@ -5,7 +5,7 @@ Claude Code sessions you can reach from anywhere and work in together: the real 
 ![A session in the browser: Claude's finished change, and a comment thread beside it](docs/web-session.png)
 
 - **One session, many screens.** Every session is `claude` in a pseudo-terminal. Everyone attached sees the same screen, from a terminal (the `paude` command) or a browser, phones included. Walk away from one device and pick up on another; the session keeps running.
-- **Company.** Invite people by link as drivers, commenters or watchers. They get a chat, comments on selected output, and emoji reactions, none of which Claude ever sees.
+- **Company.** Invite people by link as drivers, commenters or viewers. They get a chat, comments on selected output, and emoji reactions, none of which Claude ever sees.
 - **The project at hand.** Browse, search and read the session's files, with syntax highlighting and rendered markdown, and attach a file or a few lines to the prompt.
 - **What needs you.** Watched sessions show whether Claude is working, waiting on you, or ready, and how much happened since you last looked, across every paude you use.
 
@@ -66,11 +66,11 @@ The password belongs to the owner, and the owner can type into any session, whic
 
 Everyone else comes in by invite: in a session's **People** tab, name the person, pick a role and an expiry (an hour, a day, a week), and send them the link. It opens that one session, in a browser or with `paude login <link>`.
 
-| Role    | Can                             |
-| ------- | ------------------------------- |
-| Drive   | type into Claude, chat, comment |
-| Comment | chat and comment                |
-| Watch   | read                            |
+| Role    | Can                                     |
+| ------- | --------------------------------------- |
+| Drive   | type into Claude, and everything below  |
+| Comment | chat, comment, read the project's files |
+| View    | see the terminal                        |
 
 Revoking an invite, or changing the password with `bun run set-password` (a running server picks it up), signs those people out everywhere at once.
 

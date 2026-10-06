@@ -6,7 +6,7 @@ import '@xterm/xterm/css/xterm.css';
 
 import { deleteSession, forkSession, getSession, getTurns, nameSession, setWatching } from '../api';
 import confirmDialog, { confirmDeleteSession, nameDialog } from '../confirmDialog';
-import { canNote, canType, identity } from '../identity';
+import { canBrowse, canNote, canType, identity } from '../identity';
 import { Header } from '../Layout';
 import DONE_MARKER from '../../shared/doneMarker';
 import withoutPointerReporting from '../../shared/pointerReporting';
@@ -373,7 +373,7 @@ const NOTES_OPEN_KEY = 'paude.notesOpen';
 const NOTES_WIDTH_KEY = 'paude.notesWidth';
 const FILES_WIDTH_KEY = 'paude.filesWidth';
 const MIN_PANEL_WIDTH = 260;
-const ROLE_LABELS = { owner: 'owner', drive: 'can type', comment: 'can chat and comment', watch: 'watching' };
+const ROLE_LABELS = { owner: 'owner', drive: 'can type', comment: 'can chat and comment', watch: 'viewing' };
 
 const bufferLines = terminal => {
 	const buffer = terminal.buffer.active;
@@ -432,7 +432,7 @@ export default class TerminalView extends View {
 
 		const body = new Body({ appendTo: this });
 
-		if (canNote()) {
+		if (canBrowse()) {
 			this.filesButton = ghostButton(header, {
 				icon: 'folder-tree',
 				title: 'Project files',

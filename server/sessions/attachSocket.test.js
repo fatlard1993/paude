@@ -30,7 +30,9 @@ describe('attach socket messages', () => {
 		const target = socket();
 
 		// A live owner login, so each message gets past the credential check to the handler lookup
-		target.data.credential = credentialOf(new Request('http://paude.test/', { headers: { cookie: `paude_login=${login}` } }));
+		target.data.credential = credentialOf(
+			new Request('http://paude.test/', { headers: { cookie: `paude_login=${login}` } }),
+		);
 		expect(target.data.credential).not.toBeNull();
 
 		const failures = spyOn(console, 'error').mockImplementation(() => {});

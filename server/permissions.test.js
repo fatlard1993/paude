@@ -39,3 +39,21 @@ describe('guestMayRequest', () => {
 		expect(guestMayRequest(ana, 'POST', '/api/invites')).toBe(false);
 	});
 });
+
+test('a comment is resolvable by whoever wrote it, not by someone sharing their name', async () => {
+	const { mayResolve } = await import('./permissions');
+	const sam = { owner: false, inviteId: 'a', name: 'Sam', role: 'comment', sessionId: 's' };
+	const otherSam = { owner: false, inviteId: 'b', name: 'Sam', role: 'comment', sessionId: 's' };
+	const comment = { author: 'Sam', authorId: 'invite:a' };
+
+	expect(mayResolve(sam, comment)).toBe(true);
+	expect(mayResolve(otherSam, comment)).toBe(false);
+	expect(mayResolve({ owner: true }, comment)).toBe(true);
+});
+
+test('files are part of comment and drive, not view', async () => {
+	const { may } = await import('./permissions');
+
+	expect(may({ owner: false, role: 'comment', sessionId: 's' }, 'files', 's')).toBe(true);
+	expect(may({ owner: false, role: 'watch', sessionId: 's' }, 'files', 's')).toBe(false);
+});

@@ -9,4 +9,6 @@ export const identity = () => current;
 
 export const canType = () => Boolean(current?.owner || current?.role === 'drive');
 
+export const canBrowse = () => canNote();
+
 export const canNote = () => Boolean(current?.owner || current?.role === 'drive' || current?.role === 'comment');

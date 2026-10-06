@@ -69,7 +69,7 @@ const filesRoutes = async request => {
 		requestMatch('GET', '/api/sessions/:id/raw', request);
 
 	if (!match) return null;
-	if (!may(identityOf(credentialOf(request)), 'note', match.id))
+	if (!may(identityOf(credentialOf(request)), 'files', match.id))
 		return new Response('Not part of your invite', { status: 403 });
 
 	const cwd = await sessionFolder(match.id);

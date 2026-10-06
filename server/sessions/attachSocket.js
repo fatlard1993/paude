@@ -1,5 +1,5 @@
 import inputKind from '../../shared/inputKind';
-import { markSeen, onActivity, recordChange, watchIfNew } from '../activity';
+import { identityKey, markSeen, onActivity, recordChange, watchIfNew } from '../activity';
 import { credentialValid, identityOf } from '../auth';
 import { addChat, addComment, addReply, getNotes, react, setResolved } from '../notes';
 import { may, mayResolve } from '../permissions';
@@ -84,9 +84,10 @@ const handlers = {
 		if (socket.data.identity.owner) socket.data.session?.rename(socket.data.client, name);
 	},
 	chat: (socket, { text }) => shareChange(socket, (id, author) => addChat(id, author, text)),
-	comment: (socket, { quote, text }) => shareChange(socket, (id, author) => addComment(id, author, { quote, text })),
+	comment: (socket, { quote, text }) =>
+		shareChange(socket, (id, author) => addComment(id, author, { quote, text }, identityKey(socket.data.identity))),
 	reply: (socket, { commentId, text }) =>
-		shareChange(socket, (id, author) => addReply(id, author, { commentId, text })),
+		shareChange(socket, (id, author) => addReply(id, author, { commentId, text }, identityKey(socket.data.identity))),
 	// A reaction isn't news: it doesn't count as a change, and it doesn't start watching
 	async react(socket, { chatId, commentId, replyId, emoji }) {
 		const { session, client } = socket.data;
