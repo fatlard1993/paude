@@ -1,5 +1,10 @@
 module.exports = {
 	skipWords: [
+		'wl',
+		'xclip',
+		'darwin',
+		'pbpaste',
+		'stderr',
 		'uint',
 		'pv',
 		'argi',

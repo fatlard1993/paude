@@ -4,6 +4,7 @@ import { CLOSED, NOTE_TYPES, applyNote } from '../shared/protocol';
 import notifier from './notify';
 import outputFilter from './outputFilter';
 import { overlayKey, renderOverlay } from './overlay';
+import readSelection from './selection';
 import {
 	CLEAR,
 	CLEAR_SCROLLBACK,
@@ -17,6 +18,8 @@ import {
 
 // Ctrl+] arrives as a plain byte, or as a CSI u sequence once Claude Code has switched on the kitty keyboard protocol
 const OVERLAY_KEYS = ['\x1d', '\x1b[93;5u'];
+
+const NOTE_ACTIONS = ['chat', 'comment', 'reply'];
 
 const displayName = () => process.env.PAUDE_NAME || os.userInfo().username;
 
@@ -38,7 +41,16 @@ const whyRefused = async ({ url, token }, id) => {
 // Resolves to 'detach' | 'switch' | 'ended' | 'unauthorized'.
 const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 	new Promise(resolve => {
-		const state = { id, canSwitch, role, presence: { clients: [] }, notes: { chat: [], comments: [] }, draft: null };
+		const state = {
+			id,
+			canSwitch,
+			role,
+			presence: { clients: [] },
+			notes: { chat: [], comments: [] },
+			draft: null,
+			picking: false,
+			hint: null,
+		};
 		let socket;
 		let overlay = false;
 		let done = false;
@@ -58,6 +70,8 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 		const openOverlay = () => {
 			overlay = true;
 			state.draft = null;
+			state.picking = false;
+			state.hint = null;
 			write(ENTER_ALT_SCREEN);
 			redraw();
 		};
@@ -88,11 +102,11 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 				return send({ type: 'input', data: key });
 			}
 
-			const action = overlayKey(state, key);
+			const action = overlayKey(state, key, { readSelection });
 
 			if (action.type === 'detach' || action.type === 'switch') return finish(action.type);
 			if (action.type === 'close') return closeOverlay();
-			if (action.type === 'chat') send({ type: 'chat', text: action.text });
+			if (NOTE_ACTIONS.includes(action.type)) send(action);
 
 			redraw();
 		});

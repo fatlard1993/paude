@@ -12,7 +12,8 @@ describe('printable', () => {
 });
 
 describe('overlayKey', () => {
-	const fresh = () => ({ draft: null });
+	const fresh = (extra = {}) => ({ draft: null, picking: false, notes: { chat: [], comments: [] }, ...extra });
+	const typeAll = (state, keys) => keys.forEach(key => overlayKey(state, key));
 
 	test('maps the menu keys', () => {
 		expect(overlayKey(fresh(), 'd')).toEqual({ type: 'detach' });
@@ -24,31 +25,60 @@ describe('overlayKey', () => {
 		const state = fresh();
 
 		overlayKey(state, 'c');
-		for (const key of ['h', 'e', 'y', 'y', '\x7f', '\x1b[A']) overlayKey(state, key);
+		typeAll(state, ['h', 'e', 'y', 'y', '\x7f', '\x1b[A']);
 
-		expect(state.draft).toBe('hey[A');
+		expect(state.draft.text).toBe('hey[A');
 		expect(overlayKey(state, '\r')).toEqual({ type: 'chat', text: 'hey[A' });
 		expect(state.draft).toBeNull();
-	});
-
-	test('a guest without switching or chat rights gets neither key', () => {
-		const watcher = { draft: null, canSwitch: false, role: 'watch' };
-
-		expect(overlayKey(watcher, 's')).toEqual({ type: 'close' });
-		expect(overlayKey(watcher, 'c')).toEqual({ type: 'close' });
-		expect(watcher.draft).toBeNull();
 	});
 
 	test('escape abandons the draft, and an empty one sends nothing', () => {
 		const state = fresh();
 
-		overlayKey(state, 'c');
-		overlayKey(state, 'x');
-		overlayKey(state, '\x1b');
+		typeAll(state, ['c', 'x', '\x1b']);
 		expect(state.draft).toBeNull();
 
 		overlayKey(state, 'c');
 		expect(overlayKey(state, '\r')).toEqual({ type: 'redraw' });
+	});
+
+	test('m comments on the selected text', () => {
+		const state = fresh();
+
+		overlayKey(state, 'm', { readSelection: () => '  npm ERR! code 1\n' });
+		typeAll(state, ['w', 'h', 'y']);
+
+		expect(overlayKey(state, '\r')).toEqual({ type: 'comment', quote: 'npm ERR! code 1', text: 'why' });
+	});
+
+	test('m with nothing selected explains instead of opening a draft', () => {
+		const state = fresh();
+
+		overlayKey(state, 'm', { readSelection: () => null });
+
+		expect(state.draft).toBeNull();
+		expect(state.hint).toContain('Nothing selected');
+	});
+
+	test('r then a number replies to that open comment', () => {
+		const comments = [
+			{ id: 'a', author: 'ana', quote: 'x', text: 'one', replies: [], resolved: false },
+			{ id: 'b', author: 'ben', quote: 'y', text: 'two', replies: [], resolved: true },
+			{ id: 'c', author: 'cat', quote: 'z', text: 'three', replies: [], resolved: false },
+		];
+		const state = fresh({ notes: { chat: [], comments } });
+
+		typeAll(state, ['r', '2', 'o', 'k']);
+
+		expect(overlayKey(state, '\r')).toEqual({ type: 'reply', commentId: 'c', text: 'ok' });
+	});
+
+	test('a guest without switching or note rights gets none of those keys', () => {
+		const watcher = fresh({ canSwitch: false, role: 'watch' });
+
+		for (const key of ['s', 'c', 'm', 'r'])
+			expect(overlayKey(watcher, key, { readSelection: () => 'x' })).toEqual({ type: 'close' });
+		expect(watcher.draft).toBeNull();
 	});
 });
 
@@ -57,6 +87,7 @@ test('the overlay never prints escape sequences a collaborator sends', () => {
 	const screen = renderOverlay({
 		id: 'abc',
 		draft: null,
+		picking: false,
 		presence: { busy: false, title: hostile, you: 0, clients: [{ kind: hostile, name: hostile, driver: true }] },
 		notes: {
 			chat: [{ author: hostile, text: hostile, at: Date.now() }],
