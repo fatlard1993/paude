@@ -6,7 +6,7 @@ import { setStatus, statusOf } from '../activity';
 import { hookSettings } from '../hookSettings';
 import { pinnedName } from '../names';
 import parseTitle from './claudeTitle';
-import { endHeld, heldCommand } from './holder';
+import { endHeld, heldCommand, releaseHeld } from './holder';
 
 const { Terminal } = xtermHeadless;
 const { SerializeAddon } = serializeAddon;
@@ -303,6 +303,7 @@ export default class PtySession {
 
 		this.clients.clear();
 		this.mirror.dispose();
+		releaseHeld(this.id);
 		this.onExit?.(this);
 	}
 }

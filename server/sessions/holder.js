@@ -76,6 +76,11 @@ export const endHeld = id => {
 
 export const isHeld = id => Boolean(folder && heldPid(id));
 
+// After a session ends: its files go once nothing holds it any more
+export const releaseHeld = id => {
+	if (folder && !heldPid(id)) forget(id);
+};
+
 // Sessions still running from before this server started: [{ id, cwd }]
 export const heldSessions = async () => {
 	if (!folder) return [];

@@ -1,3 +1,4 @@
+import { existsSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import os from 'os';
 import path from 'path';
@@ -56,5 +57,7 @@ test.skipIf(!Bun.which('dtach'))(
 		second.end();
 		await second.process.exited;
 		expect(await until(() => !isHeld(id))).toBe(true);
+		expect(await until(async () => !(await heldSessions()).some(held => held.id === id))).toBe(true);
+		expect(await until(() => !existsSync(path.join(cwd, 'held', `${id}.json`)))).toBe(true);
 	},
 );
