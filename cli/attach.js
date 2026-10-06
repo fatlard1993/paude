@@ -4,6 +4,7 @@ import { CLOSED, NOTE_TYPES, applyNote } from '../shared/protocol';
 import notifier from './notify';
 import outputFilter from './outputFilter';
 import { composeFrame, createMirror } from './compositor';
+import { createBrowser } from './fileBrowser';
 import { overlayKey, overlayBox } from './overlay';
 import readSelection from './selection';
 import {
@@ -85,10 +86,44 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			if (overlay && !drawTimer) drawTimer = setTimeout(redraw, FRAME_MS);
 		};
 
+		const api = path =>
+			fetch(`${server.url}/api/sessions/${id}/${path}`, { headers: { authorization: `Bearer ${server.token}` } });
+
+		// The browser keeps its place between visits; only the list of files is fetched again
+		const openFiles = async () => {
+			try {
+				const response = await api('files');
+
+				if (!response.ok)
+					throw new Error(response.status === 403 ? 'Your invite does not include files.' : 'Could not list files.');
+
+				const paths = await response.json();
+
+				state.files = state.lastFiles ? Object.assign(state.lastFiles, { paths }) : createBrowser(paths);
+				state.lastFiles = state.files;
+			} catch (error) {
+				state.hint = error.message;
+			}
+
+			redraw();
+		};
+
+		const readFile = async path => {
+			const response = await api(`file?path=${encodeURIComponent(path)}`).catch(() => null);
+			const text = response ? await response.text() : 'Could not reach the server.';
+
+			if (!state.files) return;
+			state.files.open = response?.ok
+				? { path, lines: text.replace(/\n$/, '').split('\n'), cursor: 0, anchor: null }
+				: { path, error: text || 'Could not open it.' };
+			redraw();
+		};
+
 		const openOverlay = () => {
 			overlay = true;
 			state.draft = null;
 			state.thread = null;
+			state.files = null;
 			state.hint = null;
 			write(`${MOUSE_OFF}${PLAIN_KEYS}${HIDE_CURSOR}`);
 			redraw();
@@ -130,6 +165,14 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			if (action.type === 'close') return closeOverlay();
 			if (action.type === 'ignore') return;
 			if (NOTE_ACTIONS.includes(action.type)) send(action);
+			if (action.type === 'files') return openFiles();
+			if (action.type === 'readFile') return readFile(action.path);
+			// Pasted, so a multi-line attachment is one paste in Claude's prompt and nothing is sent until Enter
+			if (action.type === 'attach') {
+				send({ type: 'input', data: `\x1b[200~${action.text}\x1b[201~` });
+
+				return closeOverlay();
+			}
 
 			redraw();
 		});

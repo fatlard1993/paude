@@ -1,5 +1,6 @@
 import inputKind from '../shared/inputKind';
 import relativeTime from '../shared/relativeTime';
+import { browserKey, browserKeys, browserView } from './fileBrowser';
 import { bold, dim, fit, heading, keyCap, onBackground, orange, printable, visibleLength, wrap } from './screen';
 
 const KIND_LABELS = { terminal: 'terminal', web: 'browser' };
@@ -39,6 +40,9 @@ const firstLine = text =>
 	);
 
 const openComments = notes => notes.comments.filter(({ resolved }) => !resolved).slice(-MAX_LISTED_COMMENTS);
+
+// Attaching puts text in Claude's prompt, which only those who may type can do
+const canTypeIn = state => ['owner', 'drive'].includes(state.role ?? 'owner');
 
 const threadComment = state => state.notes.comments.find(({ id }) => id === state.thread);
 
@@ -103,6 +107,7 @@ const BORDER = text => `\x1b[38;5;242m${text}\x1b[39m`;
 const MAX_BOX_WIDTH = 78;
 
 const keysFor = (state, canNote) => {
+	if (state.files) return browserKeys(state.files, canTypeIn(state), keyCap);
 	if (state.draft) return [`${keyCap('enter')} send`, `${keyCap('esc')} cancel`];
 
 	if (state.thread) {
@@ -118,6 +123,7 @@ const keysFor = (state, canNote) => {
 	return [
 		canNote && `${keyCap('c')} chat`,
 		canNote && `${keyCap('m')} comment on selection`,
+		canNote && `${keyCap('f')} files`,
 		`${keyCap('d')} detach`,
 		state.canSwitch !== false && `${keyCap('s')} switch`,
 		`${keyCap('esc')} back to Claude`,
@@ -136,23 +142,32 @@ const packKeys = (keys, width) =>
 		return rows;
 	}, []);
 
+const mainView = (state, width, room) => {
+	if (state.files) return browserView(state.files, width, room);
+
+	return state.thread ? threadView(state, width) : listView(state);
+};
+
 // The overlay as a box floating over Claude's screen, near the top right where it covers the least of the prompt:
 // { x, y, width, lines }, every line exactly width wide. A narrow terminal gives it the whole width.
 export const overlayBox = (state, cols, rows) => {
-	const width = cols < 50 ? cols : Math.min(cols - 2, MAX_BOX_WIDTH);
+	// Reading a file wants most of the screen; Claude still shows around its edges
+	const widest = state.files ? cols - 4 : MAX_BOX_WIDTH;
+	const width = cols < 50 ? cols : Math.min(cols - 2, widest);
 	const inner = width - 4;
 	const draft = state.draft
 		? wrap(`${DRAFT_PROMPTS[state.draft.kind](state.draft)} ${printable(state.draft.text)}█`, inner)
 		: [];
 	const keys = [...draft, ...packKeys(keysFor(state, state.role !== 'watch'), inner)];
-	const content = [
-		...(state.thread ? threadView(state, inner) : listView(state)),
-		...(state.hint ? ['', ...wrap(state.hint, inner).map(orange)] : []),
-	];
 	// Borders and the rule above the keys take three rows; one row of Claude stays visible above and below
 	const room = Math.max(rows - 2 - 3 - keys.length, 1);
+	const content = [
+		...mainView(state, inner, room),
+		...(state.hint ? ['', ...wrap(state.hint, inner).map(orange)] : []),
+	];
 	// The list keeps its newest lines when it overflows; a thread keeps its top, where the quote and comment are
-	const shown = state.thread ? content.slice(0, room) : content.slice(Math.max(0, content.length - room));
+	const shown =
+		state.thread || state.files ? content.slice(0, room) : content.slice(Math.max(0, content.length - room));
 	const title = fit(
 		` ${heading('paude')} ${bold(printable(state.presence.title) || state.id)} ${state.presence.busy ? orange('● working') : dim('○ idle')} `,
 		width - 4,
@@ -239,6 +254,14 @@ export const overlayKey = (state, rawKey, { readSelection = () => null } = {}) =
 	const canNote = state.role !== 'watch';
 
 	if (state.draft) return draftKey(state, key);
+	if (state.files) {
+		const action = browserKey(state.files, key, { canType: canTypeIn(state) });
+
+		if (action.type !== 'leave') return action;
+		state.files = null;
+
+		return { type: 'redraw' };
+	}
 	if (state.thread) return threadKey(state, key, canNote);
 
 	if (CANCEL.includes(key) || key === 'q') return { type: 'close' };
@@ -258,6 +281,8 @@ export const overlayKey = (state, rawKey, { readSelection = () => null } = {}) =
 
 		return { type: 'redraw' };
 	}
+
+	if (canNote && key === 'f') return { type: 'files' };
 
 	if (canNote && key === 'm') {
 		const quote = readSelection()?.trim().slice(0, MAX_QUOTE);

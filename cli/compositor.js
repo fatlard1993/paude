@@ -24,7 +24,9 @@ const colorCodes = (cell, foreground) => {
 };
 
 // xterm's attribute checks return numbers, and a stray 0 would be a reset in the middle of the style
-const styleOf = (cell, dim) =>
+const SHADOW = 232;
+
+const styleOf = (cell, dim, shade) =>
 	[
 		0,
 		...[
@@ -39,11 +41,11 @@ const styleOf = (cell, dim) =>
 			.filter(([on]) => on)
 			.map(([, code]) => code),
 		...colorCodes(cell, true),
-		...colorCodes(cell, false),
+		...(shade ? [48, 5, SHADOW] : colorCodes(cell, false)),
 	].join(';');
 
 // Columns [from, to) of one mirrored row as text with its colors. A wide character cut by either edge becomes a space.
-const renderCells = (line, from, to, dim, cell) => {
+const renderCells = (line, from, to, dim, cell, shade = false) => {
 	let out = '';
 	let style = null;
 
@@ -52,13 +54,15 @@ const renderCells = (line, from, to, dim, cell) => {
 		const width = current?.getWidth() ?? 1;
 
 		if (!current || width === 0 || (width === 2 && x + 1 >= to)) {
-			if (style !== '') out += `${ESC}[0m`;
-			style = '';
+			const blank = shade ? `${ESC}[0;48;5;${SHADOW}m` : `${ESC}[0m`;
+
+			if (style !== blank) out += blank;
+			style = blank;
 			out += ' ';
 			continue;
 		}
 
-		const next = styleOf(current, dim);
+		const next = styleOf(current, dim, shade);
 
 		if (next !== style) out += `${ESC}[${next}m`;
 		style = next;
@@ -70,21 +74,30 @@ const renderCells = (line, from, to, dim, cell) => {
 };
 
 // The whole terminal, row by row: Claude's screen dimmed behind, the box's lines (each exactly box.width wide)
-// over it at box.x, box.y
+// over it at box.x, box.y, and a shadow down its left side and along its bottom so it reads as lifted off the page
 export const composeFrame = ({ mirror, cols, rows, box }) => {
 	const buffer = mirror.buffer.active;
 	const cell = buffer.getNullCell();
+	const bottom = box.y + box.lines.length;
+	const shadowX = Math.max(box.x - 1, 0);
 	let frame = BEGIN_FRAME;
 
 	for (let y = 0; y < rows; y++) {
 		const line = y < mirror.rows ? buffer.getLine(buffer.viewportY + y) : undefined;
 		const boxLine = box.lines[y - box.y];
+		const cells = (from, to, shade) => (from < to ? renderCells(line, from, to, true, cell, shade) : '');
 
 		frame += `${ESC}[${y + 1};1H`;
-		frame +=
-			boxLine === undefined
-				? renderCells(line, 0, cols, true, cell)
-				: renderCells(line, 0, box.x, true, cell) + boxLine + renderCells(line, box.x + box.width, cols, true, cell);
+
+		if (boxLine !== undefined) {
+			const shaded = y > box.y ? shadowX : box.x;
+
+			frame += cells(0, shaded, false) + cells(shaded, box.x, true) + boxLine + cells(box.x + box.width, cols, false);
+		} else if (y === bottom && box.x > 0) {
+			const end = Math.min(box.x + box.width - 1, cols);
+
+			frame += cells(0, shadowX, false) + cells(shadowX, end, true) + cells(end, cols, false);
+		} else frame += cells(0, cols, false);
 	}
 
 	return `${frame}${END_FRAME}`;
