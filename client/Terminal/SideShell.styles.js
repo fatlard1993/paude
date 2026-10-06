@@ -67,12 +67,17 @@ const Panel = styled(
 			min-height: 0;
 			padding: 4px;
 			border-radius: 6px;
-			background: rgba(10, 10, 12, 0.72);
+			background: rgba(16, 16, 19, 0.55);
 			overflow: hidden;
 		}
 
 		.screen .xterm {
 			height: 100%;
+		}
+
+		/* xterm paints its viewport solid from the theme, alpha dropped */
+		.screen .xterm-viewport {
+			background-color: transparent !important;
 		}
 
 		.screen.selecting {
