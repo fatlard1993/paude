@@ -132,12 +132,128 @@ const Body = styled.Component`
 	}
 `;
 
-const NotesToggle = styled(
-	Button,
-	() => `
-		flex-shrink: 0;
+// A slim strip of glass, in keeping with the panels that float beneath it
+const TopBar = styled(
+	Header,
+	({ colors }) => `
+		max-width: none;
+		gap: 4px;
+		padding: 6px 10px;
+		background: rgba(24, 24, 27, 0.55);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+
+		.title {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			font-size: 1em;
+			min-width: 0;
+		}
+
+		.crumb {
+			color: ${colors.gray};
+			font-weight: normal;
+			cursor: pointer;
+			flex-shrink: 0;
+		}
+
+		.crumb:hover {
+			color: ${colors.white};
+		}
+
+		.name {
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.state {
+			width: 8px;
+			height: 8px;
+			flex-shrink: 0;
+			border-radius: 50%;
+			background: ${colors.alpha(colors.white, 0.25)};
+		}
+
+		.state.busy {
+			background: ${colors.light(colors.orange)};
+			animation: paude-pulse 1.2s ease-in-out infinite;
+		}
+
+		.state.offline {
+			background: ${colors.red};
+		}
+
+		@keyframes paude-pulse {
+			50% {
+				opacity: 0.35;
+			}
+		}
+
+		.ghost {
+			position: relative;
+			flex-shrink: 0;
+			min-width: 32px;
+			height: 32px;
+			padding: 0 8px;
+			border: none;
+			border-radius: 6px;
+			background: transparent;
+			color: ${colors.alpha(colors.white, 0.7)};
+			font: inherit;
+			cursor: pointer;
+		}
+
+		.ghost:hover {
+			background: ${colors.alpha(colors.white, 0.08)};
+			color: ${colors.white};
+		}
+
+		.ghost.active {
+			background: ${colors.alpha(colors.blue, 0.25)};
+			color: ${colors.lighter(colors.blue)};
+		}
+
+		.ghost.danger:hover {
+			color: ${colors.light(colors.red)};
+		}
+
+		.ghost .count {
+			position: absolute;
+			top: 1px;
+			right: 0;
+			min-width: 14px;
+			padding: 0 3px;
+			border-radius: 7px;
+			background: ${colors.orange};
+			color: ${colors.white};
+			font-size: 10px;
+			line-height: 14px;
+		}
+
+		.divider {
+			width: 1px;
+			height: 20px;
+			margin: 0 4px;
+			background: rgba(255, 255, 255, 0.1);
+		}
 	`,
 );
+
+// A plain icon button for the top bar
+const ghostButton = (appendTo, { icon, label, title, onPress, className = '' }) => {
+	const button = document.createElement('button');
+
+	button.className = `ghost ${className}`;
+	button.title = title ?? '';
+	if (icon) button.append(Object.assign(document.createElement('i'), { className: `fa-solid fa-${icon}` }));
+	if (label) button.append(label);
+	button.addEventListener('click', onPress);
+	appendTo.elem.append(button);
+
+	return button;
+};
 
 const Screen = styled.Component`
 	flex: 1;
@@ -191,28 +307,35 @@ const Presence = styled(
 		font-size: 0.8em;
 		overflow: hidden;
 
+		align-items: center;
+
 		.who {
+			display: flex;
+			align-items: center;
+			gap: 5px;
 			padding: 2px 8px;
 			border-radius: 10px;
-			background: ${colors.alpha(colors.white, 0.08)};
+			background: ${colors.alpha(colors.white, 0.06)};
+			color: ${colors.alpha(colors.white, 0.75)};
 			white-space: nowrap;
 		}
 
+		.who i {
+			font-size: 0.85em;
+			opacity: 0.6;
+		}
+
 		.who.driver {
-			outline: 1px solid ${colors.light(colors.orange)};
+			box-shadow: inset 0 0 0 1px ${colors.alpha(colors.orange, 0.6)};
 		}
 
 		.status {
-			color: ${colors.gray};
-		}
-
-		.status.busy {
 			color: ${colors.light(colors.orange)};
 		}
 	`,
 );
 
-const ICONS = { web: '🌐', terminal: '⌨' };
+const ICONS = { web: 'globe', terminal: 'terminal' };
 // Claude's line at the end of each turn, e.g. "✻ Cooked for 2s · done 2:48 PM"
 const DONE_MARKER = /\S+ for (?:\d+[hms] ?)+ · done \d{1,2}:\d{2}\s?[AP]M/;
 const SOFTWARE_GL = /swiftshader|llvmpipe|softpipe|software/i;
@@ -258,55 +381,63 @@ export default class TerminalView extends View {
 	}
 
 	build() {
-		const header = new Header({ appendTo: this, style: { maxWidth: 'none' } });
+		const header = new TopBar({ appendTo: this });
 
 		if (identity()?.owner) {
-			new Button({
-				appendTo: header,
+			ghostButton(header, {
 				icon: 'arrow-left',
-				onPointerPress: () => (window.location.hash = this.project ? `#/projects/${this.project}` : '#/'),
+				title: 'Back',
+				onPress: () => (window.location.hash = this.project ? `#/projects/${this.project}` : '#/'),
 			});
 		} else {
-			new Button({
-				appendTo: header,
-				textContent: 'Leave',
-				onPointerPress: async () => {
+			ghostButton(header, {
+				label: 'Leave',
+				onPress: async () => {
 					await fetch('/api/logout', { method: 'POST' });
 					window.location.reload();
 				},
 			});
 		}
-		this.titleLabel = new Elem({ appendTo: header, addClass: 'title' });
+
+		const title = new Elem({ appendTo: header, addClass: 'title' });
+
+		this.stateDot = new Elem({ appendTo: title, addClass: 'state' });
+		this.crumb = new Elem({ appendTo: title, addClass: 'crumb', style: { display: 'none' } });
+		this.crumb.elem.addEventListener('click', () => (window.location.hash = `#/projects/${this.project}`));
+		this.titleLabel = new Elem({ appendTo: title, addClass: 'name' });
 		if (identity()?.owner) {
 			this.titleLabel.elem.title = 'Rename';
 			this.titleLabel.elem.style.cursor = 'pointer';
 			this.titleLabel.elem.addEventListener('click', () => this.rename());
 		}
 		this.presence = new Presence({ appendTo: header });
+		new Elem({ appendTo: header, addClass: 'divider' });
 
 		const body = new Body({ appendTo: this });
 
 		if (canNote()) {
-			new NotesToggle({
-				appendTo: header,
-				textContent: '📁',
+			this.filesButton = ghostButton(header, {
+				icon: 'folder-tree',
 				title: 'Project files',
-				onPointerPress: () => this.toggleFiles(),
+				onPress: () => this.toggleFiles(),
 			});
 		}
-		if (identity()?.owner) {
-			new NotesToggle({
-				appendTo: header,
-				textContent: '🗑',
-				title: 'Delete this session',
-				onPointerPress: () => this.deleteThisSession(),
-			});
-		}
-		this.notesToggle = new NotesToggle({
-			appendTo: header,
-			textContent: '💬',
-			onPointerPress: () => this.toggleNotes(),
+		this.notesToggle = ghostButton(header, {
+			icon: 'comments',
+			title: 'Chat and comments',
+			onPress: () => this.toggleNotes(),
 		});
+		this.unread = Object.assign(document.createElement('span'), { className: 'count' });
+		this.unread.style.display = 'none';
+		this.notesToggle.append(this.unread);
+		if (identity()?.owner) {
+			ghostButton(header, {
+				icon: 'trash-can',
+				title: 'Delete this session',
+				className: 'danger',
+				onPress: () => this.deleteThisSession(),
+			});
+		}
 		const column = new Elem({ appendTo: body, addClass: 'terminal-column' });
 
 		this.screen = new Screen({ appendTo: column });
@@ -345,7 +476,8 @@ export default class TerminalView extends View {
 			reveal: () => this.toggleNotes(true),
 			announce: arrived => this.announce(arrived),
 			showUnread: count => {
-				this.notesToggle.elem.textContent = count ? `💬 ${count}` : '💬';
+				this.unread.textContent = count;
+				this.unread.style.display = count ? '' : 'none';
 			},
 		});
 
@@ -362,6 +494,8 @@ export default class TerminalView extends View {
 		if (!response?.ok) return;
 
 		this.project = body.project;
+		this.crumb.elem.textContent = `${body.project} /`;
+		this.crumb.elem.style.display = identity()?.owner ? '' : 'none';
 		if (!this.titleLabel.elem.textContent) this.titleLabel.elem.textContent = body.title || body.project;
 	}
 
@@ -489,18 +623,26 @@ export default class TerminalView extends View {
 		if (title && this.connectionState !== 'ended') this.titleLabel.elem.textContent = title;
 
 		this.presence.empty();
-		new Elem({
-			appendTo: this.presence,
-			addClass: ['status', ...(busy || offline ? ['busy'] : [])],
-			textContent:
-				{ reconnecting: 'reconnecting...', ended: 'ended' }[this.connectionState] ?? (busy ? 'working' : 'idle'),
-		});
+		this.stateDot.elem.className = `state${busy ? ' busy' : ''}${offline ? ' offline' : ''}`;
+		this.stateDot.elem.title =
+			{ reconnecting: 'Reconnecting', ended: 'Ended' }[this.connectionState] ??
+			(busy ? 'Claude is working' : 'Claude is idle');
+		if (offline) {
+			new Elem({
+				appendTo: this.presence,
+				addClass: 'status',
+				textContent: { reconnecting: 'reconnecting...', ended: 'ended' }[this.connectionState],
+			});
+		}
 
 		clients.forEach((client, index) => {
 			new Elem({
 				appendTo: this.presence,
 				addClass: ['who', ...(client.driver ? ['driver'] : [])],
-				textContent: `${ICONS[client.kind] ?? ''} ${index === you ? 'you' : client.name}`,
+				append: [
+					Object.assign(document.createElement('i'), { className: `fa-solid fa-${ICONS[client.kind] ?? 'user'}` }),
+					index === you ? 'you' : client.name,
+				],
 				attributes: {
 					title: [client.label, ROLE_LABELS[client.role], client.driver && 'sets the terminal size']
 						.filter(Boolean)
@@ -512,6 +654,7 @@ export default class TerminalView extends View {
 
 	toggleNotes(open = !this.notes.elem.classList.contains('open')) {
 		this.notes.elem.classList.toggle('open', open);
+		this.notesToggle.classList.toggle('active', open);
 		remember(NOTES_OPEN_KEY, open ? 'yes' : '');
 		if (open) this.notes.showTab(this.notes.tab);
 	}
@@ -555,6 +698,7 @@ export default class TerminalView extends View {
 
 	toggleFiles(open = !this.files.elem.classList.contains('open')) {
 		this.files.elem.classList.toggle('open', open);
+		this.filesButton?.classList.toggle('active', open);
 		if (open) this.files.refresh();
 	}
 
