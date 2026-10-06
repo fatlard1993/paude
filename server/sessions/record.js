@@ -5,8 +5,9 @@ import { projectOf } from '../projects';
 import { runningSession } from './running';
 
 // One name for a session everywhere: a pinned name, then the one Claude keeps up to date
+// A running session nothing has named yet is one nobody has prompted
 export const titleOf = (id, running, stored) =>
-	pinnedName(id) || running?.title || stored?.customTitle || stored?.summary || '';
+	pinnedName(id) || running?.title || stored?.customTitle || stored?.summary || (running ? 'New session' : '');
 
 // A session in one of the projects: { id, cwd, running, stored, title }, or null for anything else
 export const sessionRecord = async id => {

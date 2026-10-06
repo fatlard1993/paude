@@ -5,7 +5,7 @@ import { pinnedName } from '../names';
 import { projectOf, projectPath } from '../projects';
 import { worktreeName } from '../worktrees';
 import { titleOf } from './record';
-import { runningSession } from './running';
+import { allRunning, runningSession } from './running';
 
 export const toSummary =
 	identity =>
@@ -27,8 +27,23 @@ export const toSummary =
 		};
 	};
 
+// Claude saves a session once it's first prompted, so one that's running but hasn't been asked anything yet isn't in
+// its list. The running ones are added, so a list never shows less than what's running.
+const withUnsaved = (saved, belongs) => {
+	const listed = new Set(saved.map(({ sessionId }) => sessionId));
+	const unsaved = [...allRunning()]
+		.filter(session => !listed.has(session.id) && belongs(session.cwd))
+		.map(session => ({ sessionId: session.id, cwd: session.cwd, lastModified: session.startedAt }));
+
+	return [...unsaved, ...saved].sort((a, b) => (b.lastModified ?? 0) - (a.lastModified ?? 0));
+};
+
 export const listProjectSessions = async (cwd, identity) =>
-	(await listSessions({ dir: cwd, limit: 50 })).map(toSummary(identity));
+	withUnsaved(await listSessions({ dir: cwd, limit: 50 }), folder => projectOf(folder) === projectOf(cwd)).map(
+		toSummary(identity),
+	);
 
 export const listAllSessions = async identity =>
-	(await listSessions({ limit: 1000 })).map(toSummary(identity)).filter(session => session.project);
+	withUnsaved(await listSessions({ limit: 1000 }), folder => Boolean(projectOf(folder)))
+		.map(toSummary(identity))
+		.filter(session => session.project);

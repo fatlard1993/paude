@@ -151,3 +151,20 @@ test("a session in a worktree needs a usable name, or one that's there to join",
 	expect((await call('/api/projects/app/checkouts', { token: tokens.owner })).status).toBe(200);
 	expect((await call('/api/projects/app/checkouts', { token: tokens.comment })).status).toBe(403);
 });
+
+test('a running session nobody has prompted yet is listed with its project, and counted', async () => {
+	const ids = async route => (await (await call(route, { token: tokens.owner })).json()).map(({ id }) => id);
+
+	expect(await ids('/api/projects/app/sessions')).toEqual(expect.arrayContaining([session.id, other.id]));
+	expect(await ids('/api/sessions?limit=8')).toEqual(expect.arrayContaining([session.id, other.id]));
+
+	const app = (await (await call('/api/projects', { token: tokens.owner })).json()).find(({ name }) => name === 'app');
+
+	expect(app.liveCount).toBe(2);
+
+	const listed = (await (await call('/api/projects/app/sessions', { token: tokens.owner })).json()).find(
+		({ id }) => id === session.id,
+	);
+
+	expect(listed).toMatchObject({ title: 'Fake session', live: true });
+});

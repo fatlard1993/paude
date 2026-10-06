@@ -59,6 +59,7 @@ export default class PtySession {
 	title = '';
 	modes = new Map();
 	ended = false;
+	startedAt = Date.now();
 
 	constructor({ id, cwd, resume, prompt, claudePath, onExit, adopt = false }) {
 		this.id = id;
