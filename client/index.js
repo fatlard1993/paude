@@ -40,14 +40,6 @@ if (joinToken) {
 	else joinFailed = true;
 }
 
-// VBC's Router through 2.0.3 keeps the current view when only a route parameter changes, which would leave one
-// session's page (and its delete button) showing under another session's address
-const sessionIn = url => new URL(url).hash.match(/^#\/sessions\/([^/?]+)/)?.[1];
-
-window.addEventListener('hashchange', ({ oldURL, newURL }) => {
-	if (sessionIn(oldURL) && sessionIn(newURL) && sessionIn(oldURL) !== sessionIn(newURL)) window.location.reload();
-});
-
 // A one-time link, optionally naming where to land: #/handoff/<code> or #/handoff/<code>/sessions/<id>
 const [, handoffCode, handoffTo] = window.location.hash.match(/^#\/handoff\/([^/]+)(\/sessions\/[^/]+)?$/) ?? [];
 
