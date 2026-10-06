@@ -1,5 +1,6 @@
 module.exports = {
 	skipWords: [
+		'fg',
 		'aa',
 		'aac',
 		'avif',

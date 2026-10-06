@@ -53,12 +53,12 @@ paude login https://your-server   # trades the password for a token kept in ~/.c
 paude                             # pick a session, or a project and then New session
 ```
 
-Inside a session everything goes to Claude except `Ctrl+]`, which opens paude's overlay: who's here, the chat, open comments, and:
+Inside a session everything goes to Claude except `Ctrl+]`, which floats paude's box over Claude's screen (which keeps updating behind it): who's here, the chat, open comments, and:
 
 - **c**: send a chat message
 - **m**: comment on the text you've selected. Shift+drag over it in Claude first (a plain drag goes to Claude); on macOS, copy it instead.
-- **r**, then a comment's number: reply to it
-- **s**: switch session; **d**: detach
+- a comment's number: read its thread, then **r** to reply or **x** to resolve
+- **s**: switch session; **d**: detach; **Esc**: back to Claude
 
 `PAUDE_NAME` sets the name others see (default: your username). `paude logout` revokes this machine's token on the server.
 

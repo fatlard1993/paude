@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
-import { overlayKey, plainKey, renderOverlay } from './overlay';
-import { printable } from './screen';
+import { overlayBox, overlayKey, plainKey } from './overlay';
+import { printable, visibleLength } from './screen';
 
 describe('printable', () => {
 	test('strips escape sequences and other control characters', () => {
@@ -91,7 +91,7 @@ describe('overlayKey', () => {
 
 	test('the thread view shows the whole quote, the comment and its replies', () => {
 		const state = fresh({ id: 's', presence: { clients: [] }, notes: { chat: [], comments: thread() }, thread: 'c' });
-		const screen = renderOverlay(state);
+		const screen = overlayBox(state, 100, 40).lines.join('\n');
 
 		for (const text of ['line one', 'line two', 'three', 'dee', 'a reply worth reading'])
 			expect(screen).toContain(text);
@@ -116,6 +116,23 @@ describe('overlayKey', () => {
 		expect(overlayKey(fresh(), 'q')).toEqual({ type: 'close' });
 	});
 
+	test('every line of the box is exactly its width, and it fits the terminal', () => {
+		const box = overlayBox(
+			fresh({
+				id: 's',
+				presence: { busy: true, title: 'Release prep', clients: [] },
+				notes: { chat: [], comments: thread() },
+				thread: 'c',
+			}),
+			120,
+			30,
+		);
+
+		expect(box.x + box.width).toBe(120);
+		expect(box.y + box.lines.length).toBeLessThanOrEqual(30);
+		for (const line of box.lines) expect(visibleLength(line)).toBe(box.width);
+	});
+
 	test('a guest without switching or note rights gets none of those keys', () => {
 		const watcher = fresh({ canSwitch: false, role: 'watch' });
 
@@ -128,19 +145,24 @@ describe('overlayKey', () => {
 
 test('the overlay never prints escape sequences a collaborator sends', () => {
 	const hostile = '\x1b[2J\x1b]0;owned\x07';
-	const screen = renderOverlay({
-		id: 'abc',
-		draft: null,
-		thread: null,
-		presence: { busy: false, title: hostile, you: 0, clients: [{ kind: hostile, name: hostile, driver: true }] },
-		notes: {
-			chat: [{ author: hostile, text: hostile, at: Date.now() }],
-			comments: [{ author: hostile, quote: hostile, text: hostile, replies: [], resolved: false }],
+	const { lines } = overlayBox(
+		{
+			id: 'abc',
+			draft: null,
+			thread: null,
+			presence: { busy: false, title: hostile, you: 0, clients: [{ kind: hostile, name: hostile, driver: true }] },
+			notes: {
+				chat: [{ author: hostile, text: hostile, at: Date.now() }],
+				comments: [{ author: hostile, quote: hostile, text: hostile, replies: [], resolved: false }],
+			},
 		},
-	});
+		100,
+		40,
+	);
+	const screen = lines.join('\n');
 
 	expect(screen).not.toContain('\x1b]0;owned');
-	expect(screen.split('\x1b[2J')).toHaveLength(2);
+	expect(screen).not.toContain('\x1b[2J');
 });
 
 test('keys reported through the kitty protocol or modifyOtherKeys act like plain ones', () => {

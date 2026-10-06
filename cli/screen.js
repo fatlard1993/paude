@@ -3,6 +3,7 @@ const CTRL_C = '\x03';
 export const ENTER_ALT_SCREEN = `${ESC}[?1049h${ESC}[?25l`;
 export const LEAVE_ALT_SCREEN = `${ESC}[?25h${ESC}[?1049l`;
 export const CLEAR = `${ESC}[H${ESC}[2J`;
+export const HIDE_CURSOR = `${ESC}[?25l`;
 // Claude turns mouse reporting on in this terminal; while paude's overlay is up, a brushed touchpad would otherwise
 // arrive as keys. Snapshots carry Claude's modes, so returning to it restores reporting.
 export const MOUSE_OFF = `${ESC}[?1000l${ESC}[?1002l${ESC}[?1003l${ESC}[?1006l`;
@@ -44,13 +45,16 @@ export const green = text => `${ESC}[32m${text}${ESC}[39m`;
 export const heading = text => `${ESC}[1;38;5;208m${text}${ESC}[0m`;
 // A key to press, as a chip that reads apart from the text around it
 export const keyCap = key => `${ESC}[1;38;5;16;48;5;208m ${key} ${ESC}[0m`;
-export const bar = (text, width) => {
-	const visible = text.replace(new RegExp(`${ESC}\\[[0-9;?<>]*[A-Za-z]`, 'g'), '').length;
+const SEQUENCE = new RegExp(`${ESC}\\[[0-9;?<>]*[A-Za-z]`, 'g');
 
-	const background = `${ESC}[48;5;236m`;
+export const visibleLength = text => text.replace(SEQUENCE, '').length;
 
-	// Chips and headings inside end in a full reset, which would end the bar with them
-	return `${background}${text.replaceAll(`${ESC}[0m`, `${ESC}[0m${background}`)}${background}${' '.repeat(Math.max(width - visible, 0))}${ESC}[0m`;
+// Text on a background, padded to a width. Chips and headings inside end in a full reset, which would otherwise end
+// the background with them.
+export const onBackground = (text, width, color = 236) => {
+	const background = `${ESC}[48;5;${color}m`;
+
+	return `${background}${text.replaceAll(`${ESC}[0m`, `${ESC}[0m${background}`)}${background}${' '.repeat(Math.max(width - visibleLength(text), 0))}${ESC}[0m`;
 };
 
 // Text from other people (chat, names, quotes) printed raw could carry escape sequences that drive this terminal.

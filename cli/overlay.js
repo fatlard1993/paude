@@ -1,6 +1,6 @@
 import inputKind from '../shared/inputKind';
 import relativeTime from '../shared/relativeTime';
-import { CLEAR, bar, bold, dim, fit, heading, keyCap, orange, printable, size, wrap } from './screen';
+import { bold, dim, fit, heading, keyCap, onBackground, orange, printable, visibleLength, wrap } from './screen';
 
 const KIND_LABELS = { terminal: 'terminal', web: 'browser' };
 const CHAT_LINES = 8;
@@ -98,11 +98,12 @@ const threadView = (state, width) => {
 	];
 };
 
-const footerFor = (state, canNote) => {
-	const { draft } = state;
+const BOX_BACKGROUND = 235;
+const BORDER = text => `\x1b[38;5;242m${text}\x1b[39m`;
+const MAX_BOX_WIDTH = 78;
 
-	if (draft)
-		return `${bold(DRAFT_PROMPTS[draft.kind](draft))} ${draft.text}█  ${keyCap('enter')} send  ${keyCap('esc')} cancel`;
+const keysFor = (state, canNote) => {
+	if (state.draft) return [`${keyCap('enter')} send`, `${keyCap('esc')} cancel`];
 
 	if (state.thread) {
 		const comment = threadComment(state);
@@ -111,9 +112,7 @@ const footerFor = (state, canNote) => {
 			canNote && comment && `${keyCap('r')} reply`,
 			canNote && comment && `${keyCap('x')} ${comment.resolved ? 'reopen' : 'resolve'}`,
 			`${keyCap('esc')} back`,
-		]
-			.filter(Boolean)
-			.join('   ');
+		].filter(Boolean);
 	}
 
 	return [
@@ -122,31 +121,61 @@ const footerFor = (state, canNote) => {
 		`${keyCap('d')} detach`,
 		state.canSwitch !== false && `${keyCap('s')} switch`,
 		`${keyCap('esc')} back to Claude`,
-	]
-		.filter(Boolean)
-		.join('   ');
+	].filter(Boolean);
 };
 
-export const renderOverlay = state => {
-	const { cols, rows } = size();
-	const width = cols - 1;
-	const lines = [
-		bar(
-			`${heading(' paude')} ${bold(printable(state.presence.title) || state.id)}  ${state.presence.busy ? orange('● working') : dim('○ idle')}`,
-			width,
-		),
-		'',
-		...(state.thread ? threadView(state, width) : listView(state)),
-		'',
-		...(state.hint ? [orange(state.hint)] : []),
-	];
-	// The list keeps its newest lines when it overflows; a thread keeps its top, where the quote and comment are
-	const room = rows - 2;
-	const shown = state.thread ? lines.slice(0, room) : lines.slice(Math.max(0, lines.length - room));
-	// The key bar stays on the bottom row however little there is to show
-	const padding = Array.from({ length: Math.max(room + 1 - shown.length, 0) }, () => '');
+// As many keys to a row as fit
+const packKeys = (keys, width) =>
+	keys.reduce((rows, key) => {
+		const last = rows.at(-1);
 
-	return `${CLEAR}${[...shown, ...padding].map(line => fit(line, width)).join('\r\n')}\r\n${bar(fit(footerFor(state, state.role !== 'watch'), width), width)}`;
+		if (last !== undefined && visibleLength(last) + 3 + visibleLength(key) <= width)
+			rows[rows.length - 1] = `${last}   ${key}`;
+		else rows.push(key);
+
+		return rows;
+	}, []);
+
+// The overlay as a box floating over Claude's screen, near the top right where it covers the least of the prompt:
+// { x, y, width, lines }, every line exactly width wide. A narrow terminal gives it the whole width.
+export const overlayBox = (state, cols, rows) => {
+	const width = cols < 50 ? cols : Math.min(cols - 2, MAX_BOX_WIDTH);
+	const inner = width - 4;
+	const draft = state.draft
+		? wrap(`${DRAFT_PROMPTS[state.draft.kind](state.draft)} ${printable(state.draft.text)}█`, inner)
+		: [];
+	const keys = [...draft, ...packKeys(keysFor(state, state.role !== 'watch'), inner)];
+	const content = [
+		...(state.thread ? threadView(state, inner) : listView(state)),
+		...(state.hint ? ['', ...wrap(state.hint, inner).map(orange)] : []),
+	];
+	// Borders and the rule above the keys take three rows; one row of Claude stays visible above and below
+	const room = Math.max(rows - 2 - 3 - keys.length, 1);
+	// The list keeps its newest lines when it overflows; a thread keeps its top, where the quote and comment are
+	const shown = state.thread ? content.slice(0, room) : content.slice(Math.max(0, content.length - room));
+	const title = fit(
+		` ${heading('paude')} ${bold(printable(state.presence.title) || state.id)} ${state.presence.busy ? orange('● working') : dim('○ idle')} `,
+		width - 4,
+	);
+	const row = text =>
+		onBackground(
+			`${BORDER('│')} ${onBackground(fit(text, inner), inner, BOX_BACKGROUND)} ${BORDER('│')}`,
+			width,
+			BOX_BACKGROUND,
+		);
+	const rule = (left, right, label = '') =>
+		onBackground(
+			BORDER(`${left}─`) + label + BORDER(`${'─'.repeat(Math.max(width - 3 - visibleLength(label), 0))}${right}`),
+			width,
+			BOX_BACKGROUND,
+		);
+
+	return {
+		x: cols - width,
+		y: rows > 12 ? 1 : 0,
+		width,
+		lines: [rule('╭', '╮', title), ...shown.map(row), rule('├', '┤'), ...keys.map(row), rule('╰', '╯')],
+	};
 };
 
 const send = draft => {

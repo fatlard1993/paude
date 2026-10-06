@@ -3,13 +3,13 @@ import os from 'os';
 import { CLOSED, NOTE_TYPES, applyNote } from '../shared/protocol';
 import notifier from './notify';
 import outputFilter from './outputFilter';
-import { overlayKey, renderOverlay } from './overlay';
+import { composeFrame, createMirror } from './compositor';
+import { overlayKey, overlayBox } from './overlay';
 import readSelection from './selection';
 import {
 	CLEAR,
 	CLEAR_SCROLLBACK,
-	ENTER_ALT_SCREEN,
-	LEAVE_ALT_SCREEN,
+	HIDE_CURSOR,
 	MOUSE_OFF,
 	PLAIN_KEYS,
 	RESET_MODES,
@@ -23,6 +23,7 @@ import {
 const OVERLAY_KEYS = ['\x1d', '\x1b[93;5u'];
 
 const NOTE_ACTIONS = ['chat', 'comment', 'reply', 'resolve'];
+const FRAME_MS = 33;
 
 const displayName = () => process.env.PAUDE_NAME || os.userInfo().username;
 
@@ -66,8 +67,22 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
 		};
 
+		const mirror = createMirror();
+		let drawTimer = null;
+
 		const redraw = () => {
-			if (overlay) write(renderOverlay(state));
+			clearTimeout(drawTimer);
+			drawTimer = null;
+			if (!overlay) return;
+
+			const { cols, rows } = size();
+
+			write(composeFrame({ mirror, cols, rows, box: overlayBox(state, cols, rows) }));
+		};
+
+		// Claude can stream many chunks a second; the frame behind the box catches up at most every few frames
+		const redrawSoon = () => {
+			if (overlay && !drawTimer) drawTimer = setTimeout(redraw, FRAME_MS);
 		};
 
 		const openOverlay = () => {
@@ -75,13 +90,16 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			state.draft = null;
 			state.thread = null;
 			state.hint = null;
-			write(`${ENTER_ALT_SCREEN}${MOUSE_OFF}${PLAIN_KEYS}`);
+			write(`${MOUSE_OFF}${PLAIN_KEYS}${HIDE_CURSOR}`);
 			redraw();
 		};
 
 		const closeOverlay = () => {
 			overlay = false;
-			write(`${RESTORE_KEYS}${LEAVE_ALT_SCREEN}`);
+			clearTimeout(drawTimer);
+			drawTimer = null;
+			write(RESTORE_KEYS);
+			// The fresh snapshot repaints Claude's screen, cursor and modes where the box was
 			send({ type: 'refresh' });
 		};
 
@@ -92,7 +110,8 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 			clearTimeout(retry);
 			stopInput();
 			process.stdout.off('resize', onResize);
-			if (overlay) write(`${RESTORE_KEYS}${LEAVE_ALT_SCREEN}`);
+			clearTimeout(drawTimer);
+			if (overlay) write(RESTORE_KEYS);
 			write(`${RESET_MODES}\r\n`);
 			socket?.close();
 			resolve(outcome);
@@ -124,7 +143,13 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 
 		const handleMessage = message => {
 			if (message.type === 'snapshot') {
+				mirror.reset();
+				mirror.resize(message.cols, message.rows);
+				mirror.write(message.data, redrawSoon);
 				if (!overlay) write(`${CLEAR}${CLEAR_SCROLLBACK}${message.data}`);
+			} else if (message.type === 'size') {
+				mirror.resize(message.cols, message.rows);
+				redrawSoon();
 			} else if (message.type === 'presence') {
 				state.presence = message;
 				redraw();
@@ -156,7 +181,10 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 
 			socket.addEventListener('message', ({ data }) => {
 				if (typeof data !== 'string') {
-					if (!overlay) write(filter(new Uint8Array(data)));
+					const bytes = new Uint8Array(data);
+
+					mirror.write(bytes, redrawSoon);
+					if (!overlay) write(filter(bytes));
 
 					return;
 				}
