@@ -82,11 +82,6 @@ export default class TerminalView extends View {
 		super({
 			...options,
 			onConnected: () => this.open(),
-			onDisconnected: () => {
-				this.connection?.close();
-				this.resizeObserver?.disconnect();
-				this.terminal?.dispose();
-			},
 		});
 	}
 
@@ -217,6 +212,13 @@ export default class TerminalView extends View {
 
 	open() {
 		if (this.terminal) return;
+
+		// A cleanup, not onDisconnected: the router destroys the view, and a destroyed view never hears its removal
+		this.addCleanup('connections', () => {
+			this.connection?.close();
+			this.resizeObserver?.disconnect();
+			this.terminal?.dispose();
+		});
 
 		this.terminal = new Terminal({
 			fontFamily: 'ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", Menlo, monospace',

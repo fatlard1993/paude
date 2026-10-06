@@ -52,10 +52,13 @@ export default class Home extends View {
 	constructor(options) {
 		const refresh = () => this.load();
 
+		// A cleanup, not onDisconnected: the router destroys the view, and a destroyed view never hears its removal
 		super({
 			...options,
-			onConnected: () => window.addEventListener('focus', refresh),
-			onDisconnected: () => window.removeEventListener('focus', refresh),
+			onConnected: () => {
+				window.addEventListener('focus', refresh);
+				this.addCleanup('focus', () => window.removeEventListener('focus', refresh));
+			},
 		});
 	}
 
