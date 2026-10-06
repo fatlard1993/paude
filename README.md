@@ -29,14 +29,14 @@ Locally there is no password: the server keeps an owner token in `~/.paude/local
 
 ## On a server
 
-The same server, reachable from anywhere. On Linux with a systemd user session:
+The same server, kept running as a service and reachable from elsewhere. On Linux with a systemd user session, or macOS:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/fatlard1993/paude/main/scripts/install.sh | sh
 cd ~/.paude-server && bun run set-password
 ```
 
-That installs to `~/.paude-server` and runs a user service on `127.0.0.1:8044`, serving the folders in `~/Projects`; running it again updates it. Elsewhere, run it yourself: `bun install`, `NODE_ENV=production bun run build`, `bun run set-password`, then `bun start -- --projects ~/Projects`.
+That installs to `~/.paude-server` and runs a user service (a launchd agent on macOS, which also links the `paude` command) on `127.0.0.1:8044`, serving the folders in `~/Projects`; running it again updates it. Elsewhere, run it yourself: `bun install`, `NODE_ENV=production bun run build`, `bun run set-password`, then `bun start -- --projects ~/Projects`.
 
 | Option             | Default              |                                       |
 | ------------------ | -------------------- | ------------------------------------- |
@@ -54,6 +54,19 @@ Logins need HTTPS: the login cookie is `Secure`, which browsers accept only over
 			profile shortlived
 		}
 	}
+	reverse_proxy 127.0.0.1:8044
+}
+```
+
+For a phone on the same network instead, Caddy can sign for the machine's own name with its own certificate authority, which the phone then trusts once (on an iPhone: install the profile, then turn it on under Settings → General → About → Certificate Trust Settings). Caddy keeps that authority's certificate in its data folder as `pki/authorities/local/root.crt`:
+
+```
+{
+	skip_install_trust
+}
+
+workbook.local {
+	tls internal
 	reverse_proxy 127.0.0.1:8044
 }
 ```

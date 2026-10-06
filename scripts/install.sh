@@ -2,8 +2,9 @@
 # paude installer and updater (the same command does both):
 #   curl -fsSL https://raw.githubusercontent.com/fatlard1993/paude/main/scripts/install.sh | sh
 #
-# Linux with a systemd user session. Installs to ~/.paude-server, runs as a user service on 127.0.0.1:8044, and
-# serves sessions in the subfolders of ~/Projects. Put HTTPS in front (see the README) before exposing it.
+# Linux (a systemd user service) or macOS (a launchd agent). Installs to ~/.paude-server, runs on 127.0.0.1:8044,
+# and serves sessions in the subfolders of ~/Projects. Put HTTPS in front (see the README) before reaching it from
+# anywhere else.
 
 set -e
 
@@ -11,7 +12,10 @@ REPO="https://github.com/fatlard1993/paude"
 APP="${PAUDE_APP:-$HOME/.paude-server}"
 PROJECTS="${PAUDE_PROJECTS:-$HOME/Projects}"
 PORT="${PAUDE_PORT:-8044}"
+DATA="${PAUDE_DATA:-$HOME/.paude}"
 UNIT="$HOME/.config/systemd/user/paude.service"
+LABEL="com.github.fatlard1993.paude"
+AGENT="$HOME/Library/LaunchAgents/$LABEL.plist"
 
 say() { printf '> %s\n' "$*"; }
 die() {
@@ -19,12 +23,22 @@ die() {
 	exit 1
 }
 
-if ! command -v systemctl >/dev/null 2>&1 || ! systemctl --user status >/dev/null 2>&1; then
-	die "paude needs a systemd user session (Linux)."
-fi
-command -v git >/dev/null 2>&1 || die "git is required: sudo apt install git"
+case "$(uname -s)" in
+Linux)
+	PLATFORM=linux
+	if ! command -v systemctl >/dev/null 2>&1 || ! systemctl --user status >/dev/null 2>&1; then
+		die "paude needs a systemd user session on Linux."
+	fi
+	command -v git >/dev/null 2>&1 || die "git is required: sudo apt install git"
+	;;
+Darwin)
+	PLATFORM=macos
+	command -v git >/dev/null 2>&1 || die "git is required: xcode-select --install"
+	;;
+*) die "paude runs on Linux (systemd) or macOS." ;;
+esac
 
-for candidate in "$HOME/.bun/bin/bun" "$HOME/.local/bin/bun" /usr/local/bin/bun; do
+for candidate in "$HOME/.bun/bin/bun" "$HOME/.local/bin/bun" /usr/local/bin/bun /opt/homebrew/bin/bun; do
 	if [ -x "$candidate" ] && ! command -v bun >/dev/null 2>&1; then PATH="$(dirname "$candidate"):$PATH"; fi
 done
 
@@ -35,11 +49,19 @@ if ! command -v bun >/dev/null 2>&1; then
 fi
 
 BUN="$(command -v bun)"
-# Claude's Bash tool loads the shell named here; systemd's own SHELL can predate a chsh, leaving sessions in bash
-# without the login shell's PATH and tools
+# Claude's Bash tool loads the shell named here; a service manager's own SHELL can predate a chsh, leaving sessions
+# in a shell without the login shell's PATH and tools
+if [ "$PLATFORM" = macos ]; then
+	LOGIN_SHELL="$(dscl . -read "/Users/$(id -un)" UserShell | awk '{ print $2 }')"
+else
+	LOGIN_SHELL="$(getent passwd "$(id -un)" | cut -d: -f7)"
+fi
 BREW_BIN=""
-if [ -d /home/linuxbrew/.linuxbrew/bin ]; then BREW_BIN="/home/linuxbrew/.linuxbrew/bin:"; fi
-LOGIN_SHELL="$(getent passwd "$(id -un)" | cut -d: -f7)"
+for prefix in /home/linuxbrew/.linuxbrew /opt/homebrew /usr/local; do
+	if [ -x "$prefix/bin/brew" ]; then BREW_BIN="$BREW_BIN$prefix/bin:"; fi
+done
+# Services don't read the login shell's PATH, and sessions need claude (and dtach, and the person's tools) on it
+SERVICE_PATH="$HOME/.local/bin:$(dirname "$BUN"):$BREW_BIN/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 if ! command -v claude >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/claude" ]; then
 	say "Claude Code isn't installed for this user; sessions need it: curl -fsSL https://claude.ai/install.sh | bash"
@@ -62,9 +84,17 @@ say "Installing dependencies and building"
 "$BUN" install --frozen-lockfile --ignore-scripts >/dev/null
 NODE_ENV=production "$BUN" run build >/dev/null
 
-# The unit names absolute paths: systemd doesn't read the login shell's PATH, and sessions need claude on it
-mkdir -p "$(dirname "$UNIT")"
-unit_text="[Unit]
+restart_note() {
+	if PATH="$SERVICE_PATH" command -v dtach >/dev/null 2>&1; then
+		say "Restarting paude (running sessions carry on)"
+	else
+		say "Restarting paude (running sessions restart and resume when reopened; install dtach and they carry on instead)"
+	fi
+}
+
+install_systemd() {
+	mkdir -p "$(dirname "$UNIT")"
+	unit_text="[Unit]
 Description=paude: shared Claude Code sessions
 After=network.target
 
@@ -73,7 +103,7 @@ WorkingDirectory=$APP
 ExecStart=$BUN server/index.js --projects $PROJECTS --host 127.0.0.1 --port $PORT
 Environment=NODE_ENV=production
 Environment=SHELL=$LOGIN_SHELL
-Environment=PATH=$HOME/.local/bin:$(dirname "$BUN"):$BREW_BIN/usr/local/bin:/usr/bin:/bin
+Environment=PATH=$SERVICE_PATH
 # A restart stops the server only: sessions held by dtach carry on, and the new server takes them back
 KillMode=process
 Restart=on-failure
@@ -83,41 +113,115 @@ RestartSec=5
 WantedBy=default.target
 "
 
-# A paude started by hand with systemd-run holds the same name and has to go first
-if [ "$(systemctl --user show paude.service -p Transient --value 2>/dev/null)" = "yes" ]; then
-	say "Replacing a hand-started paude"
-	systemctl --user stop paude.service
-fi
-
-if [ ! -f "$UNIT" ] || [ "$(cat "$UNIT")" != "$unit_text" ]; then
-	printf '%s' "$unit_text" >"$UNIT"
-	systemctl --user daemon-reload
-	changed=yes
-fi
-
-# Keeps the service running with nobody logged in
-command -v loginctl >/dev/null 2>&1 && loginctl enable-linger "$(id -un)" 2>/dev/null || true
-
-if ! systemctl --user is-active --quiet paude.service; then
-	say "Starting paude"
-	systemctl --user enable --now paude.service >/dev/null 2>&1
-elif [ "$changed" = yes ]; then
-	if command -v dtach >/dev/null 2>&1 || [ -x /home/linuxbrew/.linuxbrew/bin/dtach ]; then
-		say "Restarting paude (running sessions carry on)"
-	else
-		say "Restarting paude (running sessions restart and resume when reopened; install dtach and they carry on instead)"
+	# A paude started by hand with systemd-run holds the same name and has to go first
+	if [ "$(systemctl --user show paude.service -p Transient --value 2>/dev/null)" = "yes" ]; then
+		say "Replacing a hand-started paude"
+		systemctl --user stop paude.service
 	fi
-	systemctl --user restart paude.service
-fi
+
+	if [ ! -f "$UNIT" ] || [ "$(cat "$UNIT")" != "$unit_text" ]; then
+		printf '%s' "$unit_text" >"$UNIT"
+		systemctl --user daemon-reload
+		changed=yes
+	fi
+
+	# Keeps the service running with nobody logged in
+	command -v loginctl >/dev/null 2>&1 && loginctl enable-linger "$(id -un)" 2>/dev/null || true
+
+	if ! systemctl --user is-active --quiet paude.service; then
+		say "Starting paude"
+		systemctl --user enable --now paude.service >/dev/null 2>&1
+	elif [ "$changed" = yes ]; then
+		restart_note
+		systemctl --user restart paude.service
+	fi
+}
+
+install_launchd() {
+	mkdir -p "$(dirname "$AGENT")" "$DATA"
+	# Started at login, and again after a crash but not after a clean stop (paude stop). A stop ends the server
+	# alone: sessions held by dtach carry on, and the next server takes them back.
+	agent_text="<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
+<plist version=\"1.0\">
+<dict>
+	<key>Label</key>
+	<string>$LABEL</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>$BUN</string>
+		<string>server/index.js</string>
+		<string>--projects</string>
+		<string>$PROJECTS</string>
+		<string>--host</string>
+		<string>127.0.0.1</string>
+		<string>--port</string>
+		<string>$PORT</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>$APP</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>NODE_ENV</key>
+		<string>production</string>
+		<key>SHELL</key>
+		<string>$LOGIN_SHELL</string>
+		<key>PATH</key>
+		<string>$SERVICE_PATH</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+	<key>AbandonProcessGroup</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>$DATA/server.log</string>
+	<key>StandardErrorPath</key>
+	<string>$DATA/server.log</string>
+</dict>
+</plist>
+"
+	domain="gui/$(id -u)"
+
+	if [ ! -f "$AGENT" ] || [ "$(cat "$AGENT")" != "$agent_text" ]; then
+		printf '%s' "$agent_text" >"$AGENT"
+		launchctl bootout "$domain/$LABEL" 2>/dev/null || true
+		changed=yes
+	fi
+
+	if ! launchctl print "$domain/$LABEL" >/dev/null 2>&1; then
+		say "Starting paude"
+		launchctl bootstrap "$domain" "$AGENT"
+	elif [ "$changed" = yes ]; then
+		restart_note
+		launchctl kickstart -k "$domain/$LABEL"
+	fi
+
+	# The paude command, from this same checkout, so it updates with the server; a paude linked from elsewhere (a
+	# checkout someone works on) is left alone
+	if ! command -v paude >/dev/null 2>&1; then
+		say "Linking the paude command"
+		"$BUN" link >/dev/null
+	fi
+}
+
+if [ "$PLATFORM" = macos ]; then install_launchd; else install_systemd; fi
 
 waited=0
 until curl -sf "http://127.0.0.1:$PORT/api/auth" >/dev/null 2>&1; do
 	waited=$((waited + 1))
-	[ "$waited" -le 20 ] || die "paude didn't answer on port $PORT; see: journalctl --user -u paude -n 20"
+	if [ "$waited" -gt 20 ]; then
+		[ "$PLATFORM" = macos ] && die "paude didn't answer on port $PORT; see: tail -n 20 $DATA/server.log"
+		die "paude didn't answer on port $PORT; see: journalctl --user -u paude -n 20"
+	fi
 	sleep 1
 done
 
 say "paude is running on 127.0.0.1:$PORT"
 
 curl -sf "http://127.0.0.1:$PORT/api/auth" | grep -q '"passwordSet":true' ||
-	say "No password yet; nobody can log in until you run: cd $APP && bun run set-password"
+	say "No password yet; only this machine can log in until you run: cd $APP && bun run set-password"
