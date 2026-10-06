@@ -1,4 +1,4 @@
-import { deleteSession, forkSession, getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
+import { deleteSession, forkSession } from '@anthropic-ai/claude-agent-sdk';
 
 import { activitySummary, forgetActivity, setWatching, watchedBy } from '../activity';
 import { credentialOf, identityOf, revokeInvitesFor } from '../auth';
@@ -15,11 +15,10 @@ import {
 	registeredFolders,
 	unregisterFolder,
 } from '../projects';
+import { sessionRecord } from '../sessions/record';
 import { listAllSessions, listProjectSessions, toSummary } from '../sessions/stored';
 import { openSession, runningSession, startSession, stopSession } from '../sessions/running';
 import requestMatch from '../utils/requestMatch';
-
-const sessionCwd = async id => runningSession(id)?.cwd ?? (await getSessionInfo(id))?.cwd;
 
 const sessionsRoutes = async (request, server) => {
 	let match;
@@ -78,15 +77,9 @@ const sessionsRoutes = async (request, server) => {
 	if (requestMatch('GET', '/api/watching', request)) {
 		const watched = await Promise.all(
 			watchedBy(identity).map(async id => {
-				const running = runningSession(id);
-				const stored = await getSessionInfo(id);
+				const record = await sessionRecord(id);
 
-				if (!projectOf(running?.cwd ?? stored?.cwd)) return null;
-
-				return {
-					...toSummary(identity)({ sessionId: id, cwd: running?.cwd, ...stored }),
-					title: pinnedName(id) || running?.title || stored?.customTitle || stored?.summary || '',
-				};
+				return record && toSummary(identity)({ sessionId: id, ...record.stored, cwd: record.cwd });
 			}),
 		);
 
@@ -97,7 +90,7 @@ const sessionsRoutes = async (request, server) => {
 	if (match) {
 		if (!identity.owner && identity.sessionId !== match.id)
 			return new Response('Not part of your invite', { status: 403 });
-		if (!projectOf(await sessionCwd(match.id))) return new Response('Session not found', { status: 404 });
+		if (!(await sessionRecord(match.id))) return new Response('Session not found', { status: 404 });
 
 		await setWatching(identity, match.id, Boolean((await request.json()).watching));
 
@@ -119,7 +112,15 @@ const sessionsRoutes = async (request, server) => {
 
 		const { text } = await request.json();
 
-		if (!cwd) return new Response('Unknown project', { status: 404 });
+		if (
+			!cwd ||
+			!(
+				await Bun.file(cwd)
+					.stat()
+					.catch(() => null)
+			)?.isDirectory()
+		)
+			return new Response('Unknown project', { status: 404 });
 
 		return Response.json({ id: startSession(cwd, text?.trim()).id });
 	}
@@ -140,9 +141,11 @@ const sessionsRoutes = async (request, server) => {
 
 	match = requestMatch('GET', '/api/sessions/:id/turns', request);
 	if (match) {
-		const cwd = runningSession(match.id)?.cwd ?? (await getSessionInfo(match.id))?.cwd;
+		const record = await sessionRecord(match.id);
 
-		if (!projectOf(cwd)) return new Response('Session not found', { status: 404 });
+		if (!record) return new Response('Session not found', { status: 404 });
+
+		const { cwd } = record;
 
 		return Response.json({ turns: await sessionTurns(match.id, cwd), busy: Boolean(runningSession(match.id)?.busy) });
 	}
@@ -150,9 +153,11 @@ const sessionsRoutes = async (request, server) => {
 	match = requestMatch('POST', '/api/sessions/:id/fork', request);
 	if (match) {
 		const { upToMessageId } = await request.json();
-		const cwd = runningSession(match.id)?.cwd ?? (await getSessionInfo(match.id))?.cwd;
+		const record = await sessionRecord(match.id);
 
-		if (!projectOf(cwd)) return new Response('Session not found', { status: 404 });
+		if (!record) return new Response('Session not found', { status: 404 });
+
+		const { cwd } = record;
 		if (typeof upToMessageId !== 'string') return new Response('Which message to fork after?', { status: 400 });
 
 		const { sessionId } = await forkSession(match.id, { dir: cwd, upToMessageId });
@@ -162,9 +167,11 @@ const sessionsRoutes = async (request, server) => {
 
 	match = requestMatch('DELETE', '/api/sessions/:id', request);
 	if (match) {
-		const cwd = runningSession(match.id)?.cwd ?? (await getSessionInfo(match.id))?.cwd;
+		const record = await sessionRecord(match.id);
 
-		if (!projectOf(cwd)) return new Response('Session not found', { status: 404 });
+		if (!record) return new Response('Session not found', { status: 404 });
+
+		const { cwd } = record;
 
 		await stopSession(match.id);
 		await deleteSession(match.id, { dir: cwd });
@@ -180,9 +187,9 @@ const sessionsRoutes = async (request, server) => {
 	match = requestMatch('PUT', '/api/sessions/:id/name', request);
 	if (match) {
 		const { name } = await request.json();
-		const cwd = runningSession(match.id)?.cwd ?? (await getSessionInfo(match.id))?.cwd;
+		const record = await sessionRecord(match.id);
 
-		if (!projectOf(cwd)) return new Response('Session not found', { status: 404 });
+		if (!record) return new Response('Session not found', { status: 404 });
 
 		await pinName(match.id, name);
 		runningSession(match.id)?.broadcastPresence();
@@ -192,17 +199,17 @@ const sessionsRoutes = async (request, server) => {
 
 	match = requestMatch('GET', '/api/sessions/:id', request);
 	if (match) {
-		const running = runningSession(match.id);
-		const stored = await getSessionInfo(match.id);
-		const cwd = running?.cwd ?? stored?.cwd;
+		const record = await sessionRecord(match.id);
 
-		if (!projectOf(cwd)) return new Response('Session not found', { status: 404 });
+		if (!record) return new Response('Session not found', { status: 404 });
+
+		const { cwd, running, title } = record;
 
 		return Response.json({
 			id: match.id,
 			project: projectOf(cwd),
 			live: Boolean(running),
-			title: pinnedName(match.id) || running?.title || stored?.customTitle || stored?.summary || '',
+			title,
 			pinned: Boolean(pinnedName(match.id)),
 			...activitySummary(identity, match.id, { running: Boolean(running), busy: running?.busy }),
 		});

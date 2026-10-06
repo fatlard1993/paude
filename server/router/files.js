@@ -1,10 +1,7 @@
-import { getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
-
 import { credentialOf, identityOf } from '../auth';
 import { SearchError, listFiles, rawProjectFile, readProjectFile, searchProject } from '../files';
 import { may } from '../permissions';
-import { projectOf } from '../projects';
-import { runningSession } from '../sessions/running';
+import { sessionRecord } from '../sessions/record';
 import requestMatch from '../utils/requestMatch';
 
 const REFUSED = {
@@ -13,11 +10,7 @@ const REFUSED = {
 	415: 'Not a text file',
 };
 
-const sessionFolder = async id => {
-	const cwd = runningSession(id)?.cwd ?? (await getSessionInfo(id))?.cwd;
-
-	return projectOf(cwd) ? cwd : null;
-};
+const sessionFolder = async id => (await sessionRecord(id))?.cwd ?? null;
 
 const FLAG = value => value === '1' || value === 'true';
 
