@@ -42,7 +42,6 @@ export default class Login extends View {
 				textContent: 'Your invite has ended: it expired or was revoked. Ask whoever invited you for a new link.',
 			});
 
-			// The owner may still use this browser
 			const owner = new Button({
 				appendTo: card,
 				textContent: "I'm the owner",

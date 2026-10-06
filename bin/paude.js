@@ -103,7 +103,6 @@ const attachLoop = async (pick, first) => {
 		const { server, id, identity } = chosen;
 		const guest = !identity.owner;
 		const prefs = await loadPrefs();
-		// Guests always; the owner until they've seen it a few times
 		const showKeyHint = guest || (prefs.keyHints ?? 0) < KEY_HINTS;
 
 		if (!guest && showKeyHint) await savePrefs({ ...prefs, keyHints: (prefs.keyHints ?? 0) + 1 });

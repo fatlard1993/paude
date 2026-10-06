@@ -20,7 +20,7 @@ const localServer = async () => ({ url: LOCAL_URL, token: await readLocalToken()
 // Whether this machine has run paude before; a fresh one isn't started until someone asks for it
 const localKnown = () => existsSync(TOKEN_FILE);
 
-// Stops this machine's background paude: its sessions end, and resume when opened again
+// Its sessions end, and resume when opened again
 export const stopLocalServer = async () => {
 	const file = Bun.file(path.join(DATA_DIR, 'server.pid'));
 	const pid = (await file.exists()) ? Number((await file.text()).trim()) : null;

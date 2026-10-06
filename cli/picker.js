@@ -114,7 +114,6 @@ const pickInProject = async (server, project) => {
 	return id;
 };
 
-// Esc in a project comes back here, not to the top
 const pickProject = async (server, projects) => {
 	while (true) {
 		const picked = await choose({

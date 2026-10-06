@@ -249,7 +249,6 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			if (action.type === 'detach' || action.type === 'switch') return finish(action.type);
 			if (action.type === 'close') return closeOverlay();
 			if (action.type === 'ignore') return;
-			// A note that can't go out yet stays the draft it was
 			if (NOTE_ACTIONS.includes(action.type) && !send(action)) {
 				if (action.text) state.draft = { kind: action.type === 'chat' ? 'chat' : action.type, ...action };
 				state.hint = 'Not sent: reconnecting. Press Enter again once it is back.';
@@ -345,7 +344,6 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			});
 		};
 
-		// The one key that matters, shown for a moment before Claude's screen takes over
 		if (showKeyHint) {
 			write(`\r\n  \x1b[2mCtrl+] opens paude's box: chat, comments, files, switch or detach\x1b[0m\r\n`);
 			setTimeout(connect, 1500);

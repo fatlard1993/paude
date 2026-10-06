@@ -23,7 +23,6 @@ const terminatorAfter = (text, from, osc) => {
 	return { at: st, length: 2 };
 };
 
-// The next ESC that opens a string sequence, or -1
 const nextStringStart = (text, from) => {
 	for (let at = text.indexOf('\x1b', from); at !== -1; at = text.indexOf('\x1b', at + 1)) {
 		if (at + 1 >= text.length || STRING_STARTS.has(text[at + 1])) return at;
@@ -82,7 +81,6 @@ const outputFilter = () => {
 	};
 };
 
-// The same, for a whole string at once (a snapshot)
 export const filterText = text => outputFilter()(new TextEncoder().encode(text));
 
 export default outputFilter;

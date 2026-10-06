@@ -20,8 +20,7 @@ const isPng = bytes => PNG_SIGNATURE.every((byte, index) => bytes[index] === byt
 const startsWith = (bytes, signature, offset = 0) =>
 	signature.every((byte, index) => byte === null || bytes[offset + index] === byte);
 
-// The format a file's own bytes say it is, as ImageMagick names its decoder; null for anything else. The decoder is
-// named outright so ImageMagick never guesses one from the content of a file someone else wrote.
+// Named outright, so ImageMagick never picks a decoder from the content of a file someone else wrote
 const bitmapDecoder = bytes => {
 	if (startsWith(bytes, [0xff, 0xd8, 0xff])) return 'jpeg';
 	if (startsWith(bytes, [0x47, 0x49, 0x46, 0x38])) return 'gif';
