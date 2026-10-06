@@ -1,6 +1,8 @@
 import { mkdir, readFile, realpath, writeFile } from 'fs/promises';
 import { basename, dirname, join, relative, sep } from 'path';
 
+import gitEnvironment from './utils/gitEnvironment';
+
 // paude's own worktrees: inside the project, so their sessions are the project's, and outside .claude/worktrees,
 // which Claude Code keeps for itself and may clean up on its own
 export const WORKTREES_DIR = join('.paude', 'worktrees');
@@ -10,7 +12,7 @@ const NESTED_WORKTREE = /(?:^|\/)\.(?:paude|claude)\/worktrees\/([^/]+)/;
 export class WorktreeError extends Error {}
 
 const git = async (args, cwd) => {
-	const child = Bun.spawn(['git', ...args], { cwd, stdout: 'pipe', stderr: 'pipe' });
+	const child = Bun.spawn(['git', ...args], { cwd, env: gitEnvironment(), stdout: 'pipe', stderr: 'pipe' });
 	const [out, err, code] = await Promise.all([
 		new Response(child.stdout).text(),
 		new Response(child.stderr).text(),

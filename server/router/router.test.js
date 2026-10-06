@@ -136,7 +136,8 @@ test('a side terminal is for those who may type: the owner and drivers, never a 
 });
 
 test("a session in a worktree needs a usable name, or one that's there to join", async () => {
-	const start = checkout => call('/api/projects/app/sessions', { token: tokens.owner, method: 'POST', body: { checkout } });
+	const start = checkout =>
+		call('/api/projects/app/sessions', { token: tokens.owner, method: 'POST', body: { checkout } });
 
 	expect((await start({ create: '../escape' })).status).toBe(400);
 	expect((await start({ join: 'nowhere' })).status).toBe(404);

@@ -3,12 +3,13 @@ import os from 'os';
 import { join } from 'path';
 import { beforeEach, expect, test } from 'bun:test';
 
+import gitEnvironment from './utils/gitEnvironment';
 import { WorktreeError, checkoutsOf, createWorktree, releaseWorktree, worktreeName } from './worktrees';
 
 let repo;
 
 const git = (args, cwd = repo) => {
-	const result = Bun.spawnSync(['git', ...args], { cwd, stdout: 'pipe', stderr: 'pipe' });
+	const result = Bun.spawnSync(['git', ...args], { cwd, env: gitEnvironment(), stdout: 'pipe', stderr: 'pipe' });
 
 	if (!result.success) throw new Error(result.stderr.toString());
 
@@ -23,7 +24,9 @@ beforeEach(async () => {
 
 test('a folder outside git has no checkouts; a repo has its main one', async () => {
 	expect(await checkoutsOf(await mkdtemp(join(os.tmpdir(), 'paude-plain-')))).toBeNull();
-	expect(await checkoutsOf(repo)).toEqual([{ name: null, path: repo, branch: 'main', main: true, paude: false, active: 0 }]);
+	expect(await checkoutsOf(repo)).toEqual([
+		{ name: null, path: repo, branch: 'main', main: true, paude: false, active: 0 },
+	]);
 });
 
 test('a new worktree lives in .paude/worktrees on its own branch, unseen by the main checkout', async () => {
