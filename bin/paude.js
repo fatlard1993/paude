@@ -10,6 +10,7 @@ import packageJSON from '../package.json';
 import attachSession from '../cli/attach';
 import { forget, nameServer, normalizeUrl, resolveServer, saveToken } from '../cli/credentials';
 import { allServers, api, ensureLocalServer, stopLocalServer } from '../cli/servers';
+import doctor from '../cli/doctor';
 import pickSession from '../cli/picker';
 import startWatchAlerts from '../cli/watchAlerts';
 import { loadPrefs, savePrefs } from '../cli/prefs';
@@ -28,6 +29,7 @@ paude logout [url]       sign this machine out of a server and forget the login
 paude --url <url>        pick from that server only
 paude --url <url> -s <id>  attach straight to a session there
 paude stop               stop this machine's background paude (after an update, say)
+paude doctor             what works on this machine, and what to install for the rest
 paude serve              run this machine's paude in the foreground instead (--projects, --host, --port, --data, --claude)`;
 
 // An invite link (https://host/#/join/<token>) logs its guest in without a password
@@ -236,7 +238,8 @@ try {
 		else console.log(`Not logged in to ${normalizeUrl(target)}.`);
 	} else if (command === 'stop') {
 		console.log((await stopLocalServer()) ? "Stopped this machine's paude." : "This machine's paude isn't running.");
-	} else if (command === 'add') await add(target);
+	} else if (command === 'doctor') await doctor();
+	else if (command === 'add') await add(target);
 	else if (command === 'remove') await remove(target);
 	else if (command === 'serve') await serve(process.argv.slice(3));
 	else if (command === 'web') await web(target);

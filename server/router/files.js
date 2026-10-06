@@ -34,7 +34,10 @@ const search = async (cwd, { q, case: caseSensitive, word, regex, include, exclu
 // A project's files are someone else's content served from paude's origin: an SVG or HTML file opened directly
 // would run its scripts as paude. The sandbox gives it an origin of its own; Chrome won't show a sandboxed PDF,
 // and its PDF viewer doesn't run a document's scripts against the page anyway.
-const raw = async (cwd, path) => {
+// Chromium's PDF viewer won't show a sandboxed PDF; Firefox's runs a PDF's scripts, so it gets the sandbox
+const chromium = userAgent => /Chrome\/|Chromium\//.test(userAgent ?? '');
+
+const raw = async (cwd, path, userAgent) => {
 	const { status, file } = await rawProjectFile(cwd, path);
 
 	if (status !== 200) return new Response(REFUSED[status], { status });
@@ -46,7 +49,7 @@ const raw = async (cwd, path) => {
 		'cache-control': 'private, no-cache',
 	};
 
-	if (type !== 'application/pdf')
+	if (type !== 'application/pdf' || !chromium(userAgent))
 		headers['content-security-policy'] =
 			"sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; media-src 'self'";
 
@@ -73,7 +76,7 @@ const filesRoutes = async request => {
 
 	if (pathname.endsWith('/files')) return Response.json(await listFiles(cwd));
 	if (pathname.endsWith('/search')) return search(cwd, match);
-	if (pathname.endsWith('/raw')) return raw(cwd, match.path);
+	if (pathname.endsWith('/raw')) return raw(cwd, match.path, request.headers.get('user-agent'));
 
 	const { status, text } = await readProjectFile(cwd, match.path);
 

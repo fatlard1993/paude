@@ -66,6 +66,8 @@ The password belongs to the owner, and the owner can type into any session, whic
 
 Everyone else comes in by invite: in a session's **People** tab, name the person, pick a role and an expiry (an hour, a day, a week), and send them the link. It opens that one session, in a browser or with `paude login <link>`.
 
+A Drive invite can type into Claude, which runs commands as the server's user: give it to someone you'd give that shell, as with the password.
+
 | Role    | Can                                     |
 | ------- | --------------------------------------- |
 | Drive   | type into Claude, and everything below  |

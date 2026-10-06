@@ -2,8 +2,6 @@ import { Component, Elem, styled } from '@vanilla-bean/components';
 
 import relativeTime from '../shared/relativeTime';
 
-export { relativeTime };
-
 const column = `
 	width: 100%;
 	max-width: 960px;

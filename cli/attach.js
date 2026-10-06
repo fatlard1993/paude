@@ -131,10 +131,10 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 
 				const paths = await response.json();
 
-				state.files = state.lastFiles
-					? Object.assign(state.lastFiles, { paths })
+				state.files = state.browserState
+					? Object.assign(state.browserState, { paths })
 					: createBrowser(paths, await loadPrefs());
-				state.lastFiles = state.files;
+				state.browserState = state.files;
 			} catch (error) {
 				state.hint = error.message;
 			}

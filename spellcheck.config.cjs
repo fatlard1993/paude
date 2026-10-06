@@ -1,5 +1,6 @@
 module.exports = {
 	skipWords: [
+		'dtach',
 		'memoized',
 		'tokenize',
 		'uri',

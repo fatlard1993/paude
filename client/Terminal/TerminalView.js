@@ -338,7 +338,7 @@ const Presence = styled(
 			opacity: 0.6;
 		}
 
-		.who.driver {
+		.who.sizer {
 			box-shadow: inset 0 0 0 1px ${colors.alpha(colors.orange, 0.6)};
 		}
 
@@ -668,13 +668,13 @@ export default class TerminalView extends View {
 		clients.forEach((client, index) => {
 			new Elem({
 				appendTo: this.presence,
-				addClass: ['who', ...(client.driver ? ['driver'] : [])],
+				addClass: ['who', ...(client.sizer ? ['sizer'] : [])],
 				append: [
 					Object.assign(document.createElement('i'), { className: `fa-solid fa-${ICONS[client.kind] ?? 'user'}` }),
 					index === you ? 'you' : client.name,
 				],
 				attributes: {
-					title: [client.label, ROLE_LABELS[client.role], client.driver && 'sets the terminal size']
+					title: [client.label, ROLE_LABELS[client.role], client.sizer && 'sets the terminal size']
 						.filter(Boolean)
 						.join(', '),
 				},

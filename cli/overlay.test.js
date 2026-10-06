@@ -150,7 +150,7 @@ test('the overlay never prints escape sequences a collaborator sends', () => {
 			id: 'abc',
 			draft: null,
 			thread: null,
-			presence: { busy: false, title: hostile, you: 0, clients: [{ kind: hostile, name: hostile, driver: true }] },
+			presence: { busy: false, title: hostile, you: 0, clients: [{ kind: hostile, name: hostile, sizer: true }] },
 			notes: {
 				chat: [{ author: hostile, text: hostile, at: Date.now() }],
 				comments: [{ author: hostile, quote: hostile, text: hostile, replies: [], resolved: false }],

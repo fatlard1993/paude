@@ -20,6 +20,16 @@ const localServer = async () => ({ url: LOCAL_URL, token: await readLocalToken()
 // Whether this machine has run paude before; a fresh one isn't started until someone asks for it
 const localKnown = () => existsSync(TOKEN_FILE);
 
+// For paude doctor: whether this machine's paude answers, and is this machine's
+export const localStatus = async () => {
+	const answering = await answeringId(LOCAL_URL);
+
+	if (answering === null) return { ok: true, detail: `not running; paude starts it when needed (${LOCAL_URL})` };
+	if (answering === (await ownId())) return { ok: true, detail: `running on ${LOCAL_URL}` };
+
+	return { ok: false, detail: `something else is answering on ${LOCAL_URL}; set PAUDE_LOCAL_URL to a free address` };
+};
+
 // Its sessions end, and resume when opened again
 export const stopLocalServer = async () => {
 	const file = Bun.file(path.join(DATA_DIR, 'server.pid'));

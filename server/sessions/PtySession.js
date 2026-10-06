@@ -55,6 +55,7 @@ const send = (socket, message) => socket.send(typeof message === 'string' ? mess
 // screen; whoever typed last sets its size. A headless xterm mirrors the screen so late joiners start in sync.
 export default class PtySession {
 	clients = new Set();
+	// The client whose size the session takes (the last to type), not the Drive role
 	driver = null;
 	busy = false;
 	title = '';
@@ -261,7 +262,7 @@ export default class PtySession {
 			label: client.label,
 			name: client.name,
 			role: client.role,
-			driver: client === this.driver,
+			sizer: client === this.driver,
 		}));
 
 		[...this.clients].forEach((client, index) => {
