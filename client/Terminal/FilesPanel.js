@@ -1049,7 +1049,11 @@ export default class FilesPanel extends Panel {
 	renderedMarkdown() {
 		const container = element('div', 'markdown');
 
-		container.innerHTML = DOMPurify.sanitize(marked.parse(this.text));
+		// No forms, inputs or inline styles: a README could otherwise paint a convincing password prompt over the page
+		container.innerHTML = DOMPurify.sanitize(marked.parse(this.text), {
+			FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select', 'option'],
+			FORBID_ATTR: ['style'],
+		});
 
 		for (const image of container.querySelectorAll('img[src]')) {
 			const path = projectPathFrom(this.current, image.getAttribute('src'));

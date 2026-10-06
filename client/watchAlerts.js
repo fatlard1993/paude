@@ -25,7 +25,7 @@ const alert = async (session, what) => {
 
 // Watched sessions, on this server and the others this one knows, checked in the background: a notification when
 // one starts waiting on someone or has news, unless it's the one on screen, and a count of waiting ones in the tab
-export const startWatchAlerts = ({ owner }) => {
+export const startWatchAlerts = ({ local }) => {
 	let previous = null;
 	let checks = 0;
 	let remoteWatched = [];
@@ -33,7 +33,7 @@ export const startWatchAlerts = ({ owner }) => {
 	const check = async () => {
 		const here = (await getWatching()).body ?? [];
 
-		if (owner && checks % REMOTE_EVERY === 0) {
+		if (local && checks % REMOTE_EVERY === 0) {
 			const remotes = (await getRemotes()).body ?? [];
 
 			remoteWatched = remotes

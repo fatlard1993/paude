@@ -20,6 +20,9 @@ import {
 	revokeInvite,
 	revokeToken,
 	setPassword,
+	createHandoff,
+	redeemHandoff,
+	ensureLocalToken,
 } from './auth';
 import { guard } from './router/auth';
 
@@ -249,5 +252,44 @@ describe('invites', () => {
 		await setPassword('another long password');
 
 		expect(inviteFromToken(token)).toBeUndefined();
+	});
+});
+
+describe('handoff and the local token', () => {
+	test("a guest's code logs in as that guest; an owner's carries whether it came from this machine", async () => {
+		const { invite } = await createInvite({ sessionId: 's1', name: 'Sam', role: 'comment', hours: 1 });
+		const guest = await redeemHandoff(createHandoff({ owner: false, inviteId: invite.id }));
+
+		expect(identityOf(credentialOf(request({ cookie: guest })))).toMatchObject({ owner: false, inviteId: invite.id });
+
+		const remote = await redeemHandoff(createHandoff({ owner: true }));
+		const local = await redeemHandoff(createHandoff({ owner: true, local: true }));
+
+		expect(identityOf(credentialOf(request({ cookie: remote })))).toEqual({ owner: true });
+		expect(identityOf(credentialOf(request({ cookie: local })))).toEqual({ owner: true, local: true });
+	});
+
+	test('a code works once, and not after its invite is revoked', async () => {
+		const code = createHandoff({ owner: true });
+
+		expect(await redeemHandoff(code)).toBeTruthy();
+		expect(await redeemHandoff(code)).toBeNull();
+
+		const { invite } = await createInvite({ sessionId: 's1', name: 'Sam', role: 'comment', hours: 1 });
+		const guestCode = createHandoff({ owner: false, inviteId: invite.id });
+
+		await revokeInvite(invite.id);
+		expect(await redeemHandoff(guestCode)).toBeNull();
+	});
+
+	test("this machine's token survives a new password; other logins don't", async () => {
+		await ensureLocalToken(dataDir);
+
+		const local = (await Bun.file(path.join(dataDir, 'local-token')).text()).trim();
+		const other = await createToken('laptop');
+
+		await setPassword('another password');
+		expect(identityOf(credentialOf(request({ bearer: local })))).toEqual({ owner: true, local: true });
+		expect(credentialOf(request({ bearer: other }))).toBeNull();
 	});
 });

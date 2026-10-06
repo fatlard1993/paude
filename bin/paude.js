@@ -9,21 +9,23 @@ import packageJSON from '../package.json';
 
 import attachSession from '../cli/attach';
 import { forget, nameServer, normalizeUrl, resolveServer, saveToken } from '../cli/credentials';
-import { allServers, api, ensureLocalServer } from '../cli/servers';
+import { allServers, api, ensureLocalServer, stopLocalServer } from '../cli/servers';
 import pickSession from '../cli/picker';
 import startWatchAlerts from '../cli/watchAlerts';
 import { readHidden } from '../cli/screen';
 
-const USAGE = `paude                  pick a session from this machine and every server you're logged into
-paude add [folder]     make a folder (default: this one) a project on this machine's paude
-paude remove <name>    stop treating a folder added with paude add as a project
-paude serve [options]  run this machine's paude in the foreground (it otherwise starts on its own when needed)
-paude web [url]        open a paude in the browser, already logged in (default: this machine's)
-paude login <url> [--name <name>]  log in to a paude server (e.g. https://paude.example.com), shown by that name
-paude login <invite>   join with an invite link someone sent you
+const USAGE = `paude                    pick a session from this machine and every server you're logged into
+paude add [folder]       make a folder (default: this one) a project on this machine's paude
+paude remove <name>      stop treating a folder added with paude add as a project
+paude web [url]          open a paude in the browser, already logged in (default: this machine's)
+paude login <url>        log in to a paude server (e.g. https://paude.example.com); --name <name> shows it by that name
+paude login <invite>     join with an invite link someone sent you
 paude name <url> <name>  show a server you're logged into by a name
-paude logout [url]     sign this machine out of a server and forget the login
-paude --url <url>      pick from one server only; -s <id> attaches straight to a session`;
+paude logout [url]       sign this machine out of a server and forget the login
+paude --url <url>        pick from that server only
+paude --url <url> -s <id>  attach straight to a session there
+paude stop               stop this machine's background paude (after an update, say)
+paude serve              run this machine's paude in the foreground instead (--projects, --host, --port, --data, --claude)`;
 
 // An invite link (https://host/#/join/<token>) logs its guest in without a password
 const parseTarget = target => {
@@ -108,7 +110,13 @@ const attachLoop = async (pick, first) => {
 const runOne = async options => {
 	const server = await resolveServer(options.url);
 
-	if (!server.url || !server.token) return console.log(`Not logged in to ${options.url}. Run: paude login <url>`);
+	if (!server.url || !server.token) {
+		return console.log(
+			options.url
+				? `Not logged in to ${options.url}. Run: paude login ${options.url}`
+				: 'Which server? Add --url <url>, or run paude login <url> first.',
+		);
+	}
 
 	const { identity } = await api(server, '/api/auth');
 
@@ -160,9 +168,13 @@ const remove = async name => {
 
 	const server = await ensureLocalServer();
 
-	await api(server, `/api/projects/${encodeURIComponent(name)}`, { method: 'DELETE' }).catch(() => {
-		throw new Error(`"${name}" isn't a folder added with paude add.`);
+	const response = await fetch(`${server.url}/api/projects/${encodeURIComponent(name)}`, {
+		method: 'DELETE',
+		headers: { authorization: `Bearer ${server.token}` },
 	});
+
+	if (response.status === 404) return console.log(`"${name}" isn't a folder added with paude add.`);
+	if (!response.ok) throw new Error(`This machine's paude answered ${response.status}.`);
 	console.log(`"${name}" is no longer a project. Its sessions are still in Claude Code's history.`);
 };
 
@@ -189,22 +201,29 @@ const web = async target => {
 
 	try {
 		Bun.spawn([OPENERS[process.platform] ?? 'xdg-open', link], { stdio: ['ignore', 'ignore', 'ignore'] });
-		console.log(`Opened ${server.url} in your browser. The link works once, for a minute.`);
 	} catch {
-		console.log(`Open this within a minute (it works once): ${link}`);
+		// No browser to open here; the link below still works on any machine that can reach the server
 	}
+	console.log(`Opening ${server.url}. If no browser comes up, open this within a minute (it works once):\n${link}`);
 };
 
 const [command, target] = process.argv.slice(2);
+const flag = name => {
+	const at = process.argv.indexOf(name);
+
+	return at === -1 ? undefined : process.argv[at + 1];
+};
 
 try {
-	if (command === 'login') await login(target, process.argv.slice(4)[0] === '--name' ? process.argv[5] : undefined);
+	if (command === 'login') await login(target, flag('--name'));
 	else if (command === 'name') {
 		const name = process.argv[4];
 
 		if (!target || !name) console.log('paude name <url> <name>');
 		else if (await nameServer(normalizeUrl(target), name)) console.log(`${normalizeUrl(target)} shows as "${name}".`);
 		else console.log(`Not logged in to ${normalizeUrl(target)}.`);
+	} else if (command === 'stop') {
+		console.log((await stopLocalServer()) ? "Stopped this machine's paude." : "This machine's paude isn't running.");
 	} else if (command === 'add') await add(target);
 	else if (command === 'remove') await remove(target);
 	else if (command === 'serve') await serve(process.argv.slice(3));

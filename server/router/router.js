@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid';
 
 import requestMatch from '../utils/requestMatch';
 
+import { setPeerAddress } from '../auth';
 import authRoutes, { guard } from './auth';
 import filesRoutes from './files';
 import hooksRoutes from './hooks';
@@ -10,8 +11,13 @@ import staticRoutes from './static';
 
 // Every other build asset is content-hashed; the document must always revalidate, or a cached copy
 // points at chunk hashes that no longer exist.
+// Forms post only here, nothing frames the page, and no <base> can repoint its links
+const PAGE_POLICY = "form-action 'self'; frame-ancestors 'none'; base-uri 'self'";
+
 const indexResponse = () =>
-	new Response(Bun.file('client/build/index.html'), { headers: { 'Cache-Control': 'no-cache' } });
+	new Response(Bun.file('client/build/index.html'), {
+		headers: { 'Cache-Control': 'no-cache', 'Content-Security-Policy': PAGE_POLICY },
+	});
 
 // Writes and socket upgrades from another site's page (or a rebound DNS name) carry an Origin that isn't this host.
 // WebSockets get no CORS protection, so without this any page the browser visits could attach and type into Claude.
@@ -27,6 +33,8 @@ const router = async (request, server) => {
 		let response;
 
 		if (crossOrigin(request)) return new Response('Cross-origin request refused', { status: 403 });
+
+		setPeerAddress(request, server?.requestIP?.(request)?.address);
 
 		if (requestMatch('GET', '/', request)) return indexResponse();
 

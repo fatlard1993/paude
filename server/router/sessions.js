@@ -24,6 +24,7 @@ const sessionCwd = async id => runningSession(id)?.cwd ?? (await getSessionInfo(
 const sessionsRoutes = async (request, server) => {
 	let match;
 	const identity = identityOf(credentialOf(request));
+	const { pathname } = new URL(request.url);
 
 	if (requestMatch('GET', '/api/projects', request)) {
 		const [projects, sessions] = await Promise.all([listProjects(), listAllSessions(identity)]);
@@ -57,6 +58,11 @@ const sessionsRoutes = async (request, server) => {
 	if (match) return new Response(null, { status: (await unregisterFolder(match.project)) ? 204 : 404 });
 
 	// Sessions on the other paudes this user is logged into from here
+	// Only from this machine's own token: the owner password of a server reached from elsewhere doesn't open the
+	// other servers this machine happens to be logged into
+	if (pathname.startsWith('/api/remotes') && !identity?.local)
+		return new Response('Only from this machine: the paude command, or paude web', { status: 403 });
+
 	if (requestMatch('GET', '/api/remotes', request)) return Response.json(await listRemotes());
 
 	if (requestMatch('POST', '/api/remotes/open', request)) {

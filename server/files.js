@@ -11,6 +11,9 @@ const LISTING_TTL_MS = 2000;
 const SEARCH_TIMEOUT_MS = 10_000;
 // Outside git there's no ignore file to go by, so the usual heavy and private folders are skipped by name
 const SKIPPED_OUTSIDE_GIT = /(^|\/)(node_modules|\.git|build|dist|\.env[^/]*)(\/|$)/;
+// Secrets a project may not have told git to ignore stay out of every listing, for guests above all
+const SECRET =
+	/(^|\/)(\.env(\.[^/]*)?|\.mcp\.json|\.npmrc|\.netrc|id_(rsa|ed25519|ecdsa)[^/]*|[^/]*\.(pem|key|p12|pfx)|\.claude\/settings\.local\.json)$/;
 
 const SKIPPED_DIRECTORIES = ['node_modules', '.git', 'build', 'dist'].map(name => `--exclude-dir=${name}`);
 
@@ -46,7 +49,10 @@ export const listFiles = async cwd => {
 	if (cached && Date.now() - cached.at < LISTING_TTL_MS) return cached.files;
 
 	const git = await run(['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'], cwd);
-	const files = (git.code === 0 ? git.out.split('\0').filter(Boolean) : await walk(cwd)).slice(0, MAX_FILES).sort();
+	const files = (git.code === 0 ? git.out.split('\0').filter(Boolean) : await walk(cwd))
+		.filter(path => !SECRET.test(path))
+		.slice(0, MAX_FILES)
+		.sort();
 
 	listings.set(cwd, { at: Date.now(), files });
 

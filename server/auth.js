@@ -75,15 +75,25 @@ export const passwordIsSet = () => Boolean(state.passwordHash);
 export const setPassword = async password => {
 	state.passwordHash = await Bun.password.hash(password, 'argon2id');
 	state.logins = [];
-	state.tokens = [];
+	// This machine's own token is the same user, not a login; a new password doesn't lock the paude command out
+	state.tokens = state.tokens.filter(token => token.local);
 	state.invites = [];
 	await save();
 };
 
-// Behind Caddy the first X-Forwarded-For entry is the client. IPv6 clients usually hold a whole /64, so that's
-// what gets locked out.
+const peers = new WeakMap();
+
+export const setPeerAddress = (request, address) => peers.set(request, address);
+
+const LOOPBACK = /^(127\.|::1$|::ffff:127\.)/;
+
+// Who is asking: the connection's own address, unless it comes from this machine, where a proxy like Caddy has put
+// the client's address last in X-Forwarded-For (earlier entries are whatever the client claimed). IPv6 clients
+// usually hold a whole /64, so that's what gets locked out.
 const clientKey = request => {
-	const address = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'local';
+	const peer = peers.get(request);
+	const forwarded = request.headers.get('x-forwarded-for')?.split(',').at(-1).trim();
+	const address = (peer && !LOOPBACK.test(peer) ? peer : forwarded) || 'local';
 
 	return address.includes(':') ? address.split(':').slice(0, 4).join(':') : address;
 };
@@ -131,14 +141,31 @@ export const checkPassword = async (request, password) => {
 const liveInvite = id => state.invites.find(invite => invite.id === id && invite.expires > Date.now());
 
 // A guest's login lasts as long as the invite it came from
-export const createLogin = async ({ invite } = {}) => {
+// One invite link opened many times can't grow the stored logins without end: past this, its oldest go
+const MAX_PER_INVITE = 20;
+
+const capPerInvite = (records, invite) => {
+	const own = records.filter(record => record.invite === invite.id);
+
+	if (own.length <= MAX_PER_INVITE) return records;
+
+	const dropped = new Set(own.slice(0, own.length - MAX_PER_INVITE));
+
+	return records.filter(record => !dropped.has(record));
+};
+
+// `local`: made from this machine's own token (the paude command or paude web), which alone may reach the other
+// servers this machine is logged into
+export const createLogin = async ({ invite, local } = {}) => {
 	const token = randomToken();
 
 	state.logins.push({
 		hash: digest(token),
 		expires: invite ? invite.expires : Date.now() + LOGIN_MS,
 		...(invite && { invite: invite.id }),
+		...(local && { local: true }),
 	});
+	if (invite) state.logins = capPerInvite(state.logins, invite);
 	await save();
 
 	return token;
@@ -147,7 +174,7 @@ export const createLogin = async ({ invite } = {}) => {
 export const loginCookie = (token, { clear = false } = {}) =>
 	`${COOKIE}=${clear ? '' : token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${clear ? 0 : LOGIN_MS / 1000}`;
 
-export const createToken = async (name, { invite } = {}) => {
+export const createToken = async (name, { invite, local } = {}) => {
 	const token = randomToken();
 
 	state.tokens.push({
@@ -156,7 +183,9 @@ export const createToken = async (name, { invite } = {}) => {
 		hash: digest(token),
 		created: Date.now(),
 		...(invite && { invite: invite.id }),
+		...(local && { local: true }),
 	});
+	if (invite) state.tokens = capPerInvite(state.tokens, invite);
 	await save();
 
 	return token;
@@ -189,7 +218,7 @@ export const identityOf = credential => {
 	const record = credentialRecord(credential);
 
 	if (!record) return null;
-	if (!record.invite) return { owner: true };
+	if (!record.invite) return { owner: true, ...(record.local && { local: true }) };
 
 	const { id, name, role, sessionId } = liveInvite(record.invite);
 
@@ -291,9 +320,16 @@ export const ensureLocalToken = async dataDir => {
 	const file = path.join(dataDir, 'local-token');
 	const stored = (await Bun.file(file).exists()) ? (await Bun.file(file).text()).trim() : null;
 
-	if (stored && credentialValid(`token:${digest(stored)}`)) return;
+	const existing = stored && state.tokens.find(token => token.hash === digest(stored));
 
-	const token = await createToken('this machine (local)');
+	if (existing) {
+		existing.local = true;
+		await save();
+
+		return;
+	}
+
+	const token = await createToken('this machine (local)', { local: true });
 
 	await Bun.write(file, `${token}\n`);
 	await chmod(file, 0o600);
@@ -305,8 +341,14 @@ const handoffs = new Map();
 // A guest's code logs in as that guest, on their invite
 export const createHandoff = identity => {
 	const code = randomToken();
+	const now = Date.now();
 
-	handoffs.set(code, { expires: Date.now() + HANDOFF_MS, inviteId: identity.owner ? null : identity.inviteId });
+	for (const [stale, { expires }] of handoffs) if (expires < now) handoffs.delete(stale);
+	handoffs.set(code, {
+		expires: now + HANDOFF_MS,
+		inviteId: identity.owner ? null : identity.inviteId,
+		local: Boolean(identity.local),
+	});
 
 	return code;
 };
@@ -317,7 +359,7 @@ export const redeemHandoff = async code => {
 
 	handoffs.delete(code);
 	if (!handoff || handoff.expires < Date.now()) return null;
-	if (!handoff.inviteId) return createLogin();
+	if (!handoff.inviteId) return createLogin({ local: handoff.local });
 
 	const invite = liveInvite(handoff.inviteId);
 

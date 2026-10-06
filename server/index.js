@@ -58,6 +58,7 @@ await initActivity(options.data);
 await initProjects(options.data);
 await ensureLocalToken(options.data);
 await initServerId(options.data);
+await Bun.write(path.join(options.data, 'server.pid'), `${process.pid}\n`);
 setHookAddress({ host: options.host, port: options.port });
 
 if (!passwordIsSet()) {

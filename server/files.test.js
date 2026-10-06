@@ -65,3 +65,29 @@ test('search options: case, whole word, regex, and files to include or exclude',
 	expect((await searchProject(project, 'th', { exclude: 'src' })).map(hit => hit.path)).toEqual(['notes.md']);
 	expect(searchProject(project, '(unclosed', { regex: true })).rejects.toBeInstanceOf(SearchError);
 });
+
+test('secret-looking files stay out of the listing even when git does not ignore them', async () => {
+	for (const secret of [
+		'.env.local',
+		'.mcp.json',
+		'deploy/id_ed25519',
+		'certs/server.key',
+		'.claude/settings.local.json',
+	]) {
+		await mkdir(path.dirname(path.join(project, secret)), { recursive: true });
+		await Bun.write(path.join(project, secret), 'secret\n');
+	}
+	await Bun.sleep(2100);
+
+	const files = await listFiles(project);
+
+	for (const secret of [
+		'.env.local',
+		'.mcp.json',
+		'deploy/id_ed25519',
+		'certs/server.key',
+		'.claude/settings.local.json',
+	])
+		expect(files).not.toContain(secret);
+	expect(files).toContain('src/app.js');
+});

@@ -12,6 +12,7 @@ import {
 	removeFolder,
 } from './api';
 import { confirmDeleteSession } from './confirmDialog';
+import { identity } from './identity';
 import { Empty, Header, LinkCard, Scroll, SectionTitle, sessionCard } from './Layout';
 
 const Grid = styled.Component`
@@ -148,7 +149,7 @@ export default class Home extends View {
 			getRecentSessions(),
 			getProjects(),
 			getWatching(),
-			getRemotes(),
+			identity()?.local ? getRemotes() : { body: [] },
 		]);
 		const reachable = (remotes ?? []).filter(remote => !remote.error);
 		const remoteWatched = reachable.flatMap(remote => remote.watching.map(session => ({ ...session, remote })));
