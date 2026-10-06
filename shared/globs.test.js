@@ -44,3 +44,14 @@ test('search options shape the pattern the way the server reads them', async () 
 	expect(searchPattern('add', { wholeWord: true }).test('adds')).toBe(false);
 	expect(searchPattern('(', { regex: true })).toBeNull();
 });
+
+test('a hostile pattern costs no more than a plain one', () => {
+	const path = `${'src/deeply/nested/'.repeat(4)}component-file-name.test.js`;
+	const started = performance.now();
+
+	for (const hostile of ['**?'.repeat(40) + '\x01', '*a'.repeat(60) + 'b', '**/'.repeat(30) + 'x']) {
+		expect(globMatcher(hostile)(path)).toBe(false);
+	}
+	expect(performance.now() - started).toBeLessThan(200);
+	expect(globMatcher('**/*nested/**/*.test.js')(path)).toBe(true);
+});

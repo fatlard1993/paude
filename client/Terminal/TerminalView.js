@@ -535,6 +535,12 @@ export default class TerminalView extends View {
 			allowProposedApi: true,
 			disableStdin: !canType(),
 			theme: { background: BACKGROUND },
+			// Links in Claude's output (OSC 8) open only on the web; xterm's default would follow javascript: as paude
+			linkHandler: {
+				activate: (event, uri) => {
+					if (/^https?:\/\//i.test(uri)) window.open(uri, '_blank', 'noopener,noreferrer');
+				},
+			},
 		});
 		this.fitter = new FitAddon();
 		this.terminal.loadAddon(this.fitter);

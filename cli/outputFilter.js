@@ -1,14 +1,20 @@
 // Shared session output goes straight to this person's own terminal, and anyone who can type in the session controls
 // it. These OSC commands reach past the screen into the local machine (clipboard, notifications, iTerm2's file and
-// command channel), so they're dropped. Titles and links pass through: Claude uses them.
-const BLOCKED_OSC = new Set(['52', '9', '99', '777', '1337']);
-
-const OSC_START = '\x1b]';
+// command channel, kitty's), so they're dropped; titles and links pass through, as Claude uses them. Device control,
+// application, privacy and start-of-string sequences (DCS, APC, PM, SOS: tmux passthrough, kitty graphics) and 8-bit
+// C1 controls are dropped whole.
+const BLOCKED_OSC = new Set([9, 52, 99, 777, 1337, 5522]);
 const BEL = '\x07';
+const STRING_STARTS = new Set([']', 'P', '_', '^', 'X']);
+// 8-bit string sequences go whole (introducer to ST or BEL), then any C1 control left
+const C1_STRING = new RegExp(`[\u0090\u0098\u009d\u009e\u009f][^\u009c${BEL}]*[\u009c${BEL}]`, 'g');
+const C1 = /[\u0080-\u009f]/g;
+
 const ST = '\x1b\\';
 
-const terminatorAfter = (text, from) => {
-	const bel = text.indexOf(BEL, from);
+// OSC may end with BEL; the other string sequences only with ST
+const terminatorAfter = (text, from, osc) => {
+	const bel = osc ? text.indexOf(BEL, from) : -1;
 	const st = text.indexOf(ST, from);
 
 	if (bel === -1 && st === -1) return null;
@@ -17,20 +23,35 @@ const terminatorAfter = (text, from) => {
 	return { at: st, length: 2 };
 };
 
-// Returns a function that filters one chunk at a time, holding back an OSC sequence split across chunks
+// The next ESC that opens a string sequence, or -1
+const nextStringStart = (text, from) => {
+	for (let at = text.indexOf('\x1b', from); at !== -1; at = text.indexOf('\x1b', at + 1)) {
+		if (at + 1 >= text.length || STRING_STARTS.has(text[at + 1])) return at;
+	}
+
+	return -1;
+};
+
+const kept = (text, start, end) => {
+	if (text[start + 1] !== ']') return false;
+
+	return !BLOCKED_OSC.has(Number.parseInt(text.slice(start + 2, end.at).split(';')[0], 10));
+};
+
+// Returns a function that filters one chunk at a time, holding back a sequence split across chunks
 const outputFilter = () => {
 	const decoder = new TextDecoder();
 	let carry = '';
 
 	return chunk => {
-		const text = carry + decoder.decode(chunk, { stream: true });
+		const text = (carry + decoder.decode(chunk, { stream: true })).replace(C1_STRING, '').replace(C1, '');
 		let out = '';
 		let index = 0;
 
 		carry = '';
 
 		while (index < text.length) {
-			const start = text.indexOf(OSC_START, index);
+			const start = nextStringStart(text, index);
 
 			if (start === -1) {
 				out += text.slice(index);
@@ -39,28 +60,29 @@ const outputFilter = () => {
 
 			out += text.slice(index, start);
 
-			const end = terminatorAfter(text, start + 2);
+			// A lone ESC at the end may open a sequence still on its way
+			if (start + 1 >= text.length) {
+				carry = '\x1b';
+				break;
+			}
+
+			const end = terminatorAfter(text, start + 2, text[start + 1] === ']');
 
 			if (!end) {
 				carry = text.slice(start);
 				break;
 			}
 
-			const command = text.slice(start + 2, end.at).split(';')[0];
-
-			if (!BLOCKED_OSC.has(command)) out += text.slice(start, end.at + end.length);
+			if (kept(text, start, end)) out += text.slice(start, end.at + end.length);
 
 			index = end.at + end.length;
-		}
-
-		// A lone trailing ESC may be the start of an OSC still on its way
-		if (!carry && out.endsWith('\x1b')) {
-			carry = '\x1b';
-			out = out.slice(0, -1);
 		}
 
 		return out;
 	};
 };
+
+// The same, for a whole string at once (a snapshot)
+export const filterText = text => outputFilter()(new TextEncoder().encode(text));
 
 export default outputFilter;

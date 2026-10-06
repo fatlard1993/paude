@@ -6,7 +6,8 @@ const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const CELL_ASPECT = 2;
 const CELL_WIDTH_PIXELS = 9;
 
-export const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'bmp', 'ico']);
+// SVG isn't here: rendering it can reach outside the file, so it opens in the browser, which sandboxes it
+export const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'bmp', 'ico']);
 
 export const showsImages = () =>
 	process.env.TERM === 'xterm-kitty' ||
@@ -16,13 +17,33 @@ export const showsImages = () =>
 
 const isPng = bytes => PNG_SIGNATURE.every((byte, index) => bytes[index] === byte);
 
-// The protocol takes PNG; anything else goes through ImageMagick when it's installed
+const startsWith = (bytes, signature, offset = 0) =>
+	signature.every((byte, index) => byte === null || bytes[offset + index] === byte);
+
+// The format a file's own bytes say it is, as ImageMagick names its decoder; null for anything else. The decoder is
+// named outright so ImageMagick never guesses one from the content of a file someone else wrote.
+const bitmapDecoder = bytes => {
+	if (startsWith(bytes, [0xff, 0xd8, 0xff])) return 'jpeg';
+	if (startsWith(bytes, [0x47, 0x49, 0x46, 0x38])) return 'gif';
+	if (startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) && startsWith(bytes, [0x57, 0x45, 0x42, 0x50], 8)) return 'webp';
+	if (startsWith(bytes, [0x42, 0x4d])) return 'bmp';
+	if (startsWith(bytes, [0x00, 0x00, 0x01, 0x00])) return 'ico';
+	if (startsWith(bytes, [0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69], 4)) return 'avif';
+
+	return null;
+};
+
+// The protocol takes PNG; the common bitmap formats go through ImageMagick when it's installed
 export const toPng = async bytes => {
 	if (isPng(bytes)) return bytes;
 
+	const decoder = bitmapDecoder(bytes);
+
+	if (!decoder) return null;
+
 	for (const command of [
-		['magick', '-', 'png:-'],
-		['convert', '-', 'png:-'],
+		['magick', `${decoder}:-`, 'png:-'],
+		['convert', `${decoder}:-`, 'png:-'],
 	]) {
 		try {
 			const child = Bun.spawn(command, { stdin: bytes, stdout: 'pipe', stderr: 'ignore' });

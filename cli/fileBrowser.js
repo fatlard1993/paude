@@ -459,7 +459,7 @@ const fileHeader = (file, detail) => `${colored(printable(file.path), ACCENT)} $
 const fileView = (browser, width, room) => {
 	const file = browser.open;
 
-	if (file.error) return [orange(file.path), '', dim(file.error)];
+	if (file.error) return [orange(printable(file.path)), '', dim(printable(file.error))];
 
 	// The terminal draws the image over these rows; they're left empty for it
 	if (file.image) {

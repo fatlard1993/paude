@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import outputFilter from './outputFilter';
+import outputFilter, { filterText } from './outputFilter';
 
 const bytes = text => new TextEncoder().encode(text);
 
@@ -33,4 +33,23 @@ test('multibyte characters split across chunks survive', () => {
 	const glyph = bytes('✳');
 
 	expect(filter(glyph.slice(0, 1)) + filter(glyph.slice(1))).toBe('✳');
+});
+
+test('padded OSC numbers, string sequences and C1 controls are dropped too', () => {
+	const filter = outputFilter();
+	const input = [
+		'a',
+		'\x1b]052;c;Y3Vy\x07',
+		'\x1bPtmux;\x1b\x1b]52;c;x\x07\x1b\\',
+		'\x1b_Gf=100;AAAA\x1b\\',
+		'\u009d52;c;x\u009c',
+		'\x1b]2;title\x07',
+		'b',
+	].join('');
+
+	expect(filter(bytes(input))).toBe('a\x1b]2;title\x07b');
+});
+
+test('a whole snapshot is filtered the same way', () => {
+	expect(filterText('x\x1b]52;c;Y3Vy\x07y')).toBe('xy');
 });

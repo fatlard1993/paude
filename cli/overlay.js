@@ -35,7 +35,7 @@ const PALETTE = ['👍', '❤️', '😂', '🎉', '👀', '🙏', '✅', '🤔'
 
 const reactionsOf = item =>
 	Object.entries(item.reactions ?? {})
-		.map(([emoji, authors]) => ` ${emoji} ${authors.length}`)
+		.map(([emoji, authors]) => ` ${printable(emoji)} ${authors.length}`)
 		.join(' ');
 
 const firstLine = text =>

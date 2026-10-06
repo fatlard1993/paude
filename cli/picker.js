@@ -170,7 +170,7 @@ const summaryOf = watched => {
 const serverRows = ({ server, identity, sessions, projects, error }, watchedIds, watched, several) => {
 	const rows = [{ label: several ? server.label : 'Continue' }];
 
-	if (error) return [...rows, { note: error }];
+	if (error) return [...rows, { note: printable(error) }];
 
 	const recent = sessions.filter(session => !watchedIds.has(session.id));
 

@@ -147,7 +147,7 @@ export default class PtySession {
 		clearTimeout(this.idleTimer);
 
 		if (!this.driver && canDrive(client)) this.drive(client);
-		else if (client.kind === 'terminal') this.fitSize();
+		else if (client.kind === 'terminal' && canDrive(client)) this.fitSize();
 
 		this.sendSnapshot(client);
 		this.broadcastPresence();
@@ -218,7 +218,7 @@ export default class PtySession {
 		client.cols = clampSize(cols, SIZE_LIMITS.cols);
 		client.rows = clampSize(rows, SIZE_LIMITS.rows);
 
-		if (this.driver === client || client.kind === 'terminal') this.fitSize();
+		if (canDrive(client)) this.fitSize();
 	}
 
 	drive(client) {
@@ -232,7 +232,10 @@ export default class PtySession {
 	fitSize() {
 		if (!this.driver) return;
 
-		const terminals = [...this.clients].filter(client => client.kind === 'terminal' && client.cols && client.rows);
+		// Only someone who may type gets a say; a watcher's small terminal shows the session cut off instead
+		const terminals = [...this.clients].filter(
+			client => client.kind === 'terminal' && canDrive(client) && client.cols && client.rows,
+		);
 		const cols = Math.min(this.driver.cols, ...terminals.map(client => client.cols));
 		const rows = Math.min(this.driver.rows, ...terminals.map(client => client.rows));
 

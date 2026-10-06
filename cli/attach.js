@@ -2,7 +2,7 @@ import os from 'os';
 
 import { CLOSED, NOTE_TYPES, applyNote } from '../shared/protocol';
 import notifier from './notify';
-import outputFilter from './outputFilter';
+import outputFilter, { filterText } from './outputFilter';
 import { composeFrame, createMirror } from './compositor';
 import { createBrowser, openFile } from './fileBrowser';
 import { IMAGE_EXTENSIONS, place, pngSize, removeImage, showsImages, toPng, transmit } from './graphics';
@@ -272,7 +272,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner' } = {}) =>
 				mirror.reset();
 				mirror.resize(message.cols, message.rows);
 				mirror.write(message.data, redrawSoon);
-				if (!overlay) write(`${CLEAR}${CLEAR_SCROLLBACK}${message.data}`);
+				if (!overlay) write(`${CLEAR}${CLEAR_SCROLLBACK}${filterText(message.data)}`);
 			} else if (message.type === 'size') {
 				mirror.resize(message.cols, message.rows);
 				redrawSoon();

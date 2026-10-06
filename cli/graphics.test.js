@@ -21,12 +21,17 @@ test('reads the size from a PNG and passes PNGs through untouched', async () => 
 	expect(await toPng(image)).toBe(image);
 });
 
-test('converts other formats through ImageMagick', async () => {
-	const svg = new TextEncoder().encode(
-		'<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="red"/></svg>',
-	);
+test('converts the common bitmaps, and refuses anything that only claims to be one', async () => {
+	const child = Bun.spawn(['magick', '-size', '30x10', 'xc:red', 'gif:-'], { stdout: 'pipe' });
+	const gif = new Uint8Array(await new Response(child.stdout).arrayBuffer());
 
-	expect(pngSize(await toPng(svg))).toEqual({ width: 40, height: 20 });
+	expect(pngSize(await toPng(gif))).toEqual({ width: 30, height: 10 });
+
+	const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>';
+	const mvg = 'push graphic-context\nviewbox 0 0 4 4\nimage over 0,0 0,0 "text:/etc/passwd"\npop graphic-context';
+	const msl = '<?xml version="1.0"?><image><read filename="x"/><write filename="/tmp/paude-msl"/></image>';
+
+	for (const text of [svg, mvg, msl]) expect(await toPng(new TextEncoder().encode(text))).toBeNull();
 });
 
 test('sends a large image in chunks the protocol accepts', async () => {
