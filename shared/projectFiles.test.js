@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { attachLinesText, extensionOf, kindOf, matchNames } from './projectFiles';
+import { extensionOf, kindOf, matchNames } from './projectFiles';
 
 const paths = ['src/math.js', 'src/math.test.js', 'src/upper.js', 'README.md', 'docs/logo.svg', 'Dockerfile'];
 
@@ -30,9 +30,4 @@ test('names match loosely by default, exactly for whole word and regex, inside t
 		'README.md',
 		'Dockerfile',
 	]);
-});
-
-test('attached lines say where they came from', () => {
-	expect(attachLinesText('a.js', 2, 3, 'b\nc')).toBe('a.js lines 2-3:\n```\nb\nc\n```\n');
-	expect(attachLinesText('a.js', 2, 2, 'b')).toBe('a.js line 2:\n```\nb\n```\n');
 });

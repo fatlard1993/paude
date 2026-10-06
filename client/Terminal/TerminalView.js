@@ -15,12 +15,14 @@ import { recall, remember, savedName } from '../storage';
 import { button, dragHandle } from '../dom';
 import attach from './attach';
 import KeyBar from './KeyBar';
+import selectLinesByTap from './lineSelect';
+import xtermOptions from './xtermOptions';
 import FilesPanel from './FilesPanel';
 import NotesPanel from './NotesPanel';
+import SideShell from './SideShell';
 import { Body, CommentButton, NARROW, Presence, SelectHint, TopBar } from './TerminalView.styles';
 
 const BACKGROUND = '#1b1b1b';
-const touch = window.matchMedia('(pointer: coarse)').matches;
 
 const ghostButton = (appendTo, { icon, label, title, onPress, className = '' }) => {
 	const node = button(label, onPress, { icon, title: title ?? '', className: `ghost ${className}` });
@@ -66,6 +68,8 @@ const NOTES_OPEN_KEY = 'paude.notesOpen';
 const NOTES_WIDTH_KEY = 'paude.notesWidth';
 const FILES_WIDTH_KEY = 'paude.filesWidth';
 const MIN_PANEL_WIDTH = 260;
+const SHELL_HEIGHT_KEY = 'paude.shellHeight';
+const MIN_PANEL_HEIGHT = 140;
 const ROLE_LABELS = { owner: 'owner', drive: 'can type', comment: 'can chat and comment', watch: 'viewing' };
 
 const bufferLines = terminal => {
@@ -127,6 +131,13 @@ export default class TerminalView extends View {
 				onPress: () => this.toggleFiles(),
 			});
 		}
+		if (canType()) {
+			this.shellButton = ghostButton(header, {
+				icon: 'terminal',
+				title: 'Side terminal: a shell in this folder that ends when you close it',
+				onPress: () => this.toggleShell(),
+			});
+		}
 		this.watchButton = ghostButton(header, {
 			icon: 'eye',
 			title: 'Watch: count what changes here while you are away',
@@ -175,8 +186,23 @@ export default class TerminalView extends View {
 			sessionId: this.options.id,
 			close: () => this.toggleFiles(false),
 			setFullscreen: on => this.files.elem.classList.toggle('fullscreen', on),
-			attach: text => this.attachToPrompt(text),
+			attach: text => {
+				if (this.attachToPrompt(text)) this.toggleFiles(false);
+			},
 		});
+		if (canType()) {
+			this.shell = new SideShell({
+				appendTo: body,
+				addClass: 'shell',
+				sessionId: this.options.id,
+				close: () => this.toggleShell(false),
+				attach: text => this.attachToPrompt(text),
+				ended: why => {
+					this.toggleShell(false);
+					if (why) new Notify({ type: 'warning', content: why });
+				},
+			});
+		}
 		this.notes = new NotesPanel({
 			appendTo: body,
 			addClass: 'notes',
@@ -193,6 +219,9 @@ export default class TerminalView extends View {
 
 		this.addResizeHandle(this.notes.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
 		this.addResizeHandle(this.files.elem, { variable: '--files-width', key: FILES_WIDTH_KEY, edge: 'right' });
+		if (this.shell) {
+			this.addResizeHandle(this.shell.elem, { variable: '--shell-height', key: SHELL_HEIGHT_KEY, edge: 'top' });
+		}
 		if (recall(NOTES_OPEN_KEY)) this.toggleNotes(true);
 
 		this.loadInfo();
@@ -216,25 +245,16 @@ export default class TerminalView extends View {
 		// A cleanup, not onDisconnected: the router destroys the view, and a destroyed view never hears its removal
 		this.addCleanup('connections', () => {
 			this.connection?.close();
+			this.shell?.stop();
 			this.resizeObserver?.disconnect();
 			this.terminal?.dispose();
 		});
 
 		this.terminal = new Terminal({
-			fontFamily: 'ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", Menlo, monospace',
-			fontSize: touch ? 12 : 14,
-			lineHeight: 1.15,
+			...xtermOptions,
 			scrollback: 5000,
-			cursorBlink: true,
-			allowProposedApi: true,
 			disableStdin: !canType(),
 			theme: { background: BACKGROUND },
-			// Links in Claude's output (OSC 8) open only on the web; xterm's default would follow javascript: as paude
-			linkHandler: {
-				activate: (event, uri) => {
-					if (/^https?:\/\//i.test(uri)) window.open(uri, '_blank', 'noopener,noreferrer');
-				},
-			},
 		});
 		this.fitter = new FitAddon();
 		this.terminal.loadAddon(this.fitter);
@@ -383,10 +403,15 @@ export default class TerminalView extends View {
 		if (open) this.notes.showTab(this.notes.tab);
 	}
 
+	// A side panel's inner edge drags its width; the side terminal's top edge drags its height
 	addResizeHandle(panel, { variable, key, edge }) {
 		const handle = document.createElement('div');
-		const setWidth = width => {
-			const clamped = Math.round(Math.min(Math.max(width, MIN_PANEL_WIDTH), window.innerWidth * 0.9));
+		const vertical = edge === 'top';
+		const setWidth = size => {
+			const [min, max] = vertical
+				? [MIN_PANEL_HEIGHT, window.innerHeight * 0.85]
+				: [MIN_PANEL_WIDTH, window.innerWidth * 0.9];
+			const clamped = Math.round(Math.min(Math.max(size, min), max));
 
 			panel.style.setProperty(variable, `${clamped}px`);
 
@@ -399,7 +424,11 @@ export default class TerminalView extends View {
 		if (Number(recall(key))) setWidth(Number(recall(key)));
 
 		let bounds;
-		const widthAt = event => (edge === 'left' ? bounds.right - event.clientX : event.clientX - bounds.left);
+		const widthAt = event => {
+			if (vertical) return bounds.bottom - event.clientY;
+
+			return edge === 'left' ? bounds.right - event.clientX : event.clientX - bounds.left;
+		};
 
 		dragHandle(handle, {
 			onStart: () => {
@@ -420,19 +449,26 @@ export default class TerminalView extends View {
 		if (open) this.files.refresh();
 	}
 
+	toggleShell(open = !this.shell.running) {
+		this.shell.elem.classList.toggle('open', open);
+		this.shellButton?.classList.toggle('active', open);
+		if (open) this.shell.start();
+		else this.shell.stop();
+	}
+
 	// Pasted rather than typed, so a multi-line attachment lands in Claude's prompt as one paste and nothing is sent
 	// until someone presses Enter
 	attachToPrompt(text) {
 		if (!this.sendInput(`\x1b[200~${text}\x1b[201~`)) {
 			new Notify({ type: 'warning', content: 'Not attached: reconnecting. Try again in a moment.' });
 
-			return;
+			return false;
 		}
 
 		this.terminal.focus();
-		// Out of the way of the prompt it just added to; reopening returns to the same file and lines
-		this.toggleFiles(false);
 		new Notify({ type: 'success', content: 'Added to the prompt', timeout: 1500 });
+
+		return true;
 	}
 
 	get notesOpen() {
@@ -462,54 +498,18 @@ export default class TerminalView extends View {
 		this.terminal.clearSelection();
 	}
 
-	// Touch screens can't drag-select in a terminal: tap the first line, then the last. Every touch is swallowed
-	// before xterm sees it, or xterm would move or clear the selection between the two taps.
 	startLineSelect() {
-		const screen = this.screen.elem;
-
 		if (this.endLineSelect) return this.endLineSelect();
 
-		let first = null;
-		const swallow = event => {
-			event.preventDefault();
-			event.stopPropagation();
-		};
-		const rowAt = event => {
-			const rect = this.terminal.element.querySelector('.xterm-screen').getBoundingClientRect();
-			const row = Math.floor(((event.clientY - rect.top) / rect.height) * this.terminal.rows);
-
-			return Math.min(Math.max(row, 0), this.terminal.rows - 1) + this.terminal.buffer.active.viewportY;
-		};
-		const onTap = event => {
-			swallow(event);
-
-			const row = rowAt(event);
-
-			if (first === null) {
-				first = row;
-				this.terminal.selectLines(row, row);
-				this.lineSelectHint('Now tap the last line');
-
-				return;
-			}
-
-			this.terminal.selectLines(Math.min(first, row), Math.max(first, row));
-			this.endLineSelect();
-		};
-		const SWALLOWED = ['pointerdown', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'click'];
-
-		screen.classList.add('selecting');
-		this.lineSelectHint('Tap the first line to comment on');
-		screen.addEventListener('pointerup', onTap, true);
-		for (const type of SWALLOWED) screen.addEventListener(type, swallow, { capture: true, passive: false });
-
-		this.endLineSelect = () => {
-			screen.classList.remove('selecting');
-			screen.removeEventListener('pointerup', onTap, true);
-			for (const type of SWALLOWED) screen.removeEventListener(type, swallow, { capture: true });
-			this.lineSelectHint(null);
-			this.endLineSelect = null;
-		};
+		this.endLineSelect = selectLinesByTap({
+			terminal: this.terminal,
+			screen: this.screen.elem,
+			hint: text => this.lineSelectHint(text),
+			purpose: 'comment on',
+			onEnd: () => {
+				this.endLineSelect = null;
+			},
+		});
 	}
 
 	// Claude draws on the alternate screen, which has no scrollback, and keeps its transcript's scrolling to itself.

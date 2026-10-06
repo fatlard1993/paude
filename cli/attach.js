@@ -1,5 +1,6 @@
 import os from 'os';
 
+import { attachOutputText } from '../shared/attachText';
 import { NOTE_TYPES, applyNote } from '../shared/protocol';
 import sessionSocket from '../shared/sessionSocket';
 import notifier from './notify';
@@ -11,6 +12,7 @@ import { overlayKey, overlayBox } from './overlay';
 import { loadPrefs, savePrefs } from './prefs';
 import readSelection from './selection';
 import sessionFiles from './sessionFiles';
+import openSideShell, { LEAVE_SHELL } from './sideShell';
 import {
 	CLEAR,
 	CLEAR_SCROLLBACK,
@@ -19,6 +21,7 @@ import {
 	PLAIN_KEYS,
 	RESET_MODES,
 	RESTORE_KEYS,
+	SHOW_CURSOR,
 	rawInput,
 	size,
 	write,
@@ -64,7 +67,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			const { cols, rows } = size();
 			const box = overlayBox(state, cols, rows);
 
-			write(composeFrame({ mirror, cols, rows, box }));
+			write(composeFrame({ mirror: state.shell?.mirror ?? mirror, cols, rows, box }));
 			showImage(box);
 		};
 
@@ -160,10 +163,68 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			send({ type: 'refresh' });
 		};
 
+		// The side terminal takes the screen from the box; the box's plain keys stay pushed while it's up
+		const openShell = () => {
+			const shell = openSideShell(server, id, {
+				size: size(),
+				onOutput: text => {
+					if (overlay) redrawSoon();
+					else write(text);
+				},
+				onEnd: why => {
+					if (state.shell !== shell) return;
+
+					state.shell = null;
+					write(LEAVE_SHELL);
+					if (overlay) {
+						write(RESTORE_KEYS);
+						state.hint = why ?? 'The side terminal ended.';
+						redraw();
+					} else if (why) {
+						overlay = true;
+						state.hint = why;
+						write(`${MOUSE_OFF}${HIDE_CURSOR}`);
+						redraw();
+					} else {
+						write(RESTORE_KEYS);
+						send({ type: 'refresh' });
+					}
+				},
+			});
+
+			state.shell = shell;
+			overlay = false;
+			clearTimeout(drawTimer);
+			drawTimer = null;
+			hideImage();
+			write(`${CLEAR}${SHOW_CURSOR}`);
+		};
+
+		const backToShell = () => {
+			overlay = false;
+			clearTimeout(drawTimer);
+			drawTimer = null;
+			write(`${RESTORE_KEYS}${CLEAR}${state.shell.screen()}${SHOW_CURSOR}`);
+		};
+
+		const endShell = () => {
+			const { shell } = state;
+
+			state.shell = null;
+			shell?.close();
+			write(`${LEAVE_SHELL}${RESTORE_KEYS}`);
+			closeOverlay();
+		};
+
 		const finish = outcome => {
 			if (done) return;
 
 			done = true;
+			if (state.shell) {
+				state.shell.close();
+				state.shell = null;
+				write(LEAVE_SHELL);
+			}
 			stopInput();
 			process.stdout.off('resize', onResize);
 			clearTimeout(drawTimer);
@@ -179,6 +240,13 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			switch: () => finish('switch'),
 			close: closeOverlay,
 			ignore: () => {},
+			shell: openShell,
+			backToShell,
+			endShell,
+			attachOutput: ({ text }) => {
+				send({ type: 'input', data: `\x1b[200~${attachOutputText(text)}\x1b[201~` });
+				endShell();
+			},
 			files: openFiles,
 			readFile: ({ path, line }) => readFile(path, line),
 			search: searchFiles,
@@ -203,6 +271,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			if (!overlay) {
 				// The key itself, not a paste that happens to contain its byte
 				if (OVERLAY_KEYS.includes(key)) return openOverlay();
+				if (state.shell) return state.shell.input(key);
 				if (!send({ type: 'input', data: key }) && !warnedOffline) {
 					warnedOffline = true;
 					notify('paude', 'Reconnecting: what you type is lost until it is back');
@@ -235,6 +304,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 
 		const onResize = () => {
 			send({ type: 'resize', ...size() });
+			state.shell?.resize(size());
 			redraw();
 		};
 
@@ -245,7 +315,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 				mirror.reset();
 				mirror.resize(message.cols, message.rows);
 				mirror.write(message.data, redrawSoon);
-				if (!overlay) write(`${CLEAR}${CLEAR_SCROLLBACK}${filterText(message.data)}`);
+				if (!overlay && !state.shell) write(`${CLEAR}${CLEAR_SCROLLBACK}${filterText(message.data)}`);
 			} else if (message.type === 'size') {
 				mirror.resize(message.cols, message.rows);
 				redrawSoon();
@@ -273,7 +343,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			hello: () => ({ kind: 'terminal', label: os.hostname(), name: displayName(), ...size() }),
 			onOutput: bytes => {
 				mirror.write(bytes, redrawSoon);
-				if (!overlay) write(filter(bytes));
+				if (!overlay && !state.shell) write(filter(bytes));
 			},
 			onMessage: handleMessage,
 			onState: connectionState => {

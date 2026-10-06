@@ -3,7 +3,8 @@ import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 
 import { pathFilter } from '../../shared/globs';
-import { attachFileText, attachLinesText, extensionOf, kindOf, matchNames } from '../../shared/projectFiles';
+import { attachFileText, attachLinesText } from '../../shared/attachText';
+import { extensionOf, kindOf, matchNames } from '../../shared/projectFiles';
 import searchPattern from '../../shared/searchPattern';
 import { listFiles, rawFileUrl, readFile, searchFiles } from '../api';
 import { canType } from '../identity';

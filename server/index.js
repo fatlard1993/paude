@@ -12,6 +12,7 @@ import { initNames } from './names';
 import { initNotes } from './notes';
 import { initProjects, setProjectsRoot } from './projects';
 import { sweepCredentials } from './sessions/attachSocket';
+import { sweepSideShells } from './sessions/sideShell';
 import { setHolderFolder } from './sessions/holder';
 import { adoptHeldSessions, setClaudePath } from './sessions/running';
 import server, { spawnBuild } from './server';
@@ -76,7 +77,10 @@ setHolderFolder(path.join(options.data, 'held'));
 await adoptHeldSessions();
 
 server.init({ host: options.host, port: options.port });
-setInterval(sweepCredentials, 30_000).unref();
+setInterval(() => {
+	sweepCredentials();
+	sweepSideShells();
+}, 30_000).unref();
 
 if (process.env.NODE_ENV === 'development') {
 	try {

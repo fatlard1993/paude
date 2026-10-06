@@ -3,6 +3,7 @@ import { deleteSession, forkSession } from '@anthropic-ai/claude-agent-sdk';
 import { activitySummary, forgetActivity, setWatching, watchedBy } from '../activity';
 import { credentialOf, identityOf, revokeInvitesFor } from '../auth';
 import { pinName, pinnedName } from '../names';
+import { may } from '../permissions';
 import { listRemotes, remoteLink } from '../remotes';
 import { deleteNotes } from '../notes';
 import { sessionTurns } from '../sessions/history';
@@ -133,6 +134,22 @@ const sessionsRoutes = async (request, server) => {
 		// undefined tells the router the request was answered by the upgrade
 		const upgraded = server.upgrade(request, {
 			data: { route: 'attach', sessionId: session.id, credential: credentialOf(request) },
+		});
+
+		return upgraded ? undefined : new Response('WebSocket upgrade failed', { status: 400 });
+	}
+
+	match = requestMatch('GET', '/api/sessions/:id/shell', request);
+	if (match) {
+		if (!may(identity, 'type', match.id))
+			return new Response('Your invite does not include a terminal', { status: 403 });
+
+		const record = await sessionRecord(match.id);
+
+		if (!record) return new Response('Session not found', { status: 404 });
+
+		const upgraded = server.upgrade(request, {
+			data: { route: 'shell', sessionId: record.id, cwd: record.cwd, credential: credentialOf(request) },
 		});
 
 		return upgraded ? undefined : new Response('WebSocket upgrade failed', { status: 400 });

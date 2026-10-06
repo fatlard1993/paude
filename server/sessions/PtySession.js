@@ -31,7 +31,7 @@ const INHERITED_MARKER =
 const TRACKED_MODES = new Set(['1', '25', '1000', '1002', '1003', '1004', '1006', '2004']);
 const MODE_CHANGE = new RegExp(`${ESC}\\[\\?([\\d;]+)([hl])`, 'g');
 
-const sessionEnvironment = () =>
+export const sessionEnvironment = () =>
 	Object.fromEntries(Object.entries(process.env).filter(([name]) => !INHERITED_MARKER.test(name)));
 
 const clientName = (name, fallback) =>

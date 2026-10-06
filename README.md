@@ -68,11 +68,11 @@ Everyone else comes in by invite: in a session's **People** tab, name the person
 
 A Drive invite can type into Claude, which runs commands as the server's user: give it to someone you'd give that shell, as with the password.
 
-| Role    | Can                                     |
-| ------- | --------------------------------------- |
-| Drive   | type into Claude, and everything below  |
-| Comment | chat, comment, read the project's files |
-| View    | see the terminal                        |
+| Role    | Can                                                          |
+| ------- | ------------------------------------------------------------ |
+| Drive   | type into Claude, open a side terminal, and everything below |
+| Comment | chat, comment, read the project's files                      |
+| View    | see the terminal                                             |
 
 Revoking an invite, or changing the password with `bun run set-password` (a running server picks it up), signs those people out everywhere at once.
 
@@ -88,6 +88,7 @@ Inside a session everything goes to Claude except **Ctrl+]**, which floats the b
 | **m** | comment on your selection (Shift+drag over Claude's output first; on macOS, copy it) |
 | **1**-**9** | open a comment's thread; there, **r** replies, **x** resolves (or reopens), **+** then a number reacts |
 | **f** | the project's files |
+| **t** | a side terminal: a shell in the session's folder, for a few quick commands. Ctrl+] brings the box back over it: **a** quotes your selection in Claude's prompt, **k** ends it, **Esc** returns to it. It ends when you go back to Claude |
 | **s**, **d** | switch session, detach |
 | **Esc** | back to Claude |
 
@@ -114,6 +115,7 @@ Open the server's address and log in, or follow an invite link.
 - **Scrolling.** The wheel scrolls Claude's transcript, for everyone, since there is one screen.
 - **Comments.** Drag over the terminal to select (on a phone, **Select** on the key bar, then tap the first and last line) and press **Comment**. Clicking a comment's quote finds it in the terminal. Reactions work on chat, comments and replies; click one to add or take back yours.
 - **Files.** The reader, from the folder button in the bar: search by name or contents with the same options as the terminal, and read highlighted code, rendered markdown, images, audio, video and PDFs. Click a line number and Shift+click another (on a phone, tap another) to attach those lines.
+- **Side terminal.** The terminal button in the bar opens a shell in the session's folder, yours alone, which ends when you close it. Select some output (on a phone, **Select**, then the first and last line) and **Attach selection** quotes it in Claude's prompt.
 - **Start over from a point.** Each `done` line Claude prints after a turn is a link that starts a new session holding the conversation up to there.
 - **Names.** Click a session's title to pin a name (📌); **Use automatic name** goes back to Claude's.
 

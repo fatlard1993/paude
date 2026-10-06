@@ -21,7 +21,7 @@ export const mayResolve = (identity, comment) =>
 
 // The routes a guest can reach, all about their own session; anything else under /api is the owner's. What their
 // role allows within those is checked by the route itself.
-const OWN_SESSION_ROUTES = ['/attach', '/files', '/file', '/search', '/raw'];
+const OWN_SESSION_ROUTES = ['/attach', '/shell', '/files', '/file', '/search', '/raw'];
 
 export const guestMayRequest = (identity, method, pathname) => {
 	const own = `/api/sessions/${identity.sessionId}`;

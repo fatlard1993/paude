@@ -21,7 +21,8 @@ export const Body = styled.Component`
 
 	/* Floats over the terminal rather than taking a column, so opening it never changes the session's size */
 	.notes,
-	.files {
+	.files,
+	.shell {
 		position: absolute;
 		top: 8px;
 		bottom: 8px;
@@ -42,7 +43,8 @@ export const Body = styled.Component`
 	}
 
 	.notes.open,
-	.files.open {
+	.files.open,
+	.shell.open {
 		opacity: 1;
 		transform: none;
 		pointer-events: auto;
@@ -58,6 +60,14 @@ export const Body = styled.Component`
 		left: 8px;
 		width: min(var(--files-width, 62%), calc(100% - 16px));
 		transform: translateX(-12px);
+	}
+
+	.shell {
+		top: auto;
+		left: 8px;
+		right: 8px;
+		height: min(var(--shell-height, 42%), calc(100% - 16px));
+		transform: translateY(12px);
 	}
 
 	.files.fullscreen {
@@ -80,6 +90,16 @@ export const Body = styled.Component`
 
 	.files .resize {
 		right: 0;
+	}
+
+	.shell .resize {
+		top: 0;
+		bottom: auto;
+		left: 0;
+		right: 0;
+		width: auto;
+		height: 6px;
+		cursor: ns-resize;
 	}
 
 	.files.fullscreen .resize {
@@ -107,11 +127,18 @@ export const Body = styled.Component`
 			display: none;
 		}
 
-		.files {
+		.files,
+		.shell {
 			inset: 0;
 			width: auto;
+			height: auto;
 			border-radius: 0;
 			border: none;
+		}
+
+		/* Full screen over Claude's own key bar, which would show through the glass */
+		.shell {
+			background: rgba(24, 24, 27, 0.96);
 		}
 	}
 `;

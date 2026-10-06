@@ -52,6 +52,27 @@ describe('overlayKey', () => {
 		expect(overlayKey(state, '\r')).toEqual({ type: 'comment', quote: 'npm ERR! code 1', text: 'why' });
 	});
 
+	test('t opens a side terminal for those who may type, and only them', () => {
+		expect(overlayKey(fresh(), 't')).toEqual({ type: 'shell' });
+		expect(overlayKey(fresh({ role: 'drive' }), 't')).toEqual({ type: 'shell' });
+		expect(overlayKey(fresh({ role: 'comment' }), 't')).toEqual({ type: 'ignore' });
+	});
+
+	test('over the side terminal, a quotes the selection, k ends it, and esc goes back to it', () => {
+		const state = fresh({ shell: {} });
+
+		expect(overlayKey(state, 'a', { readSelection: () => '  $ make\nok\n' })).toEqual({
+			type: 'attachOutput',
+			text: '$ make\nok',
+		});
+		expect(overlayKey(state, 'k')).toEqual({ type: 'endShell' });
+		expect(overlayKey(state, '\x1b')).toEqual({ type: 'backToShell' });
+		expect(overlayKey(state, 'c')).toEqual({ type: 'ignore' });
+
+		overlayKey(state, 'a', { readSelection: () => null });
+		expect(state.hint).toContain('Nothing selected');
+	});
+
 	test('m with nothing selected explains instead of opening a draft', () => {
 		const state = fresh();
 

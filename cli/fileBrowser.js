@@ -1,5 +1,6 @@
 import { pathFilter } from '../shared/globs';
-import { attachFileText, attachLinesText, extensionOf, kindOf, matchNames } from '../shared/projectFiles';
+import { attachFileText, attachLinesText } from '../shared/attachText';
+import { extensionOf, kindOf, matchNames } from '../shared/projectFiles';
 import searchPattern from '../shared/searchPattern';
 import { fitCells } from './graphics';
 import { highlightLines } from './highlight';

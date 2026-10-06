@@ -119,6 +119,12 @@ const BORDER = text => `\x1b[38;5;242m${text}\x1b[39m`;
 const MAX_BOX_WIDTH = 78;
 
 const keysFor = (state, canNote) => {
+	if (state.shell)
+		return [
+			`${keyCap('a')} attach your selection`,
+			`${keyCap('k')} end it, back to Claude`,
+			`${keyCap('esc')} back to the terminal`,
+		];
 	if (state.files) return browserKeys(state.files, canTypeIn(state), keyCap);
 	if (state.draft) return [`${keyCap('enter')} send`, `${keyCap('esc')} cancel`];
 
@@ -140,6 +146,7 @@ const keysFor = (state, canNote) => {
 		canNote && `${keyCap('c')} chat`,
 		canNote && `${keyCap('m')} comment on selection`,
 		canNote && `${keyCap('f')} files`,
+		canTypeIn(state) && `${keyCap('t')} side terminal`,
 		`${keyCap('d')} detach`,
 		state.canSwitch !== false && `${keyCap('s')} switch`,
 		`${keyCap('esc')} back to Claude`,
@@ -157,7 +164,14 @@ const packKeys = (keys, width) =>
 		return rows;
 	}, []);
 
+const SHELL_HELP = [
+	"A shell in this session's folder. It ends when you go back to Claude.",
+	'',
+	"Select some output (Shift+drag; on macOS, copy it), then press a to quote it in Claude's prompt.",
+];
+
 const mainView = (state, width, room) => {
+	if (state.shell) return SHELL_HELP.flatMap(line => (line ? wrap(line, width) : ['']));
 	if (state.files) return browserView(state.files, width, room);
 
 	return state.thread ? threadView(state, width) : listView(state);
@@ -275,6 +289,23 @@ const reactKey = (state, key) => {
 	return /^[1-9]$/.test(key) && emoji ? { type: 'react', commentId: state.thread, emoji } : { type: 'redraw' };
 };
 
+// The box over the side terminal: quote a selection into Claude's prompt, or leave
+const shellKey = (state, key, readSelection) => {
+	if (CANCEL.includes(key)) return { type: 'backToShell' };
+	if (key === 'k' || key === 'q') return { type: 'endShell' };
+	if (key !== 'a') return { type: 'ignore' };
+
+	const text = readSelection()?.trim();
+
+	if (text) return { type: 'attachOutput', text };
+
+	state.hint = readSelection.unavailable
+		? "paude can't read your selection here: install wl-clipboard (Wayland) or xclip (X11)."
+		: 'Nothing selected. Shift+drag over the output first (on macOS, copy it), then Ctrl+] and a.';
+
+	return { type: 'redraw' };
+};
+
 // 'ignore' needs no redraw
 export const overlayKey = (state, rawKey, { readSelection = () => null } = {}) => {
 	// Mouse and focus reports, and terminal replies, aren't keys
@@ -287,6 +318,7 @@ export const overlayKey = (state, rawKey, { readSelection = () => null } = {}) =
 	const canNote = roleAllows(state.role ?? 'owner', 'note');
 
 	if (state.draft) return draftKey(state, key);
+	if (state.shell) return shellKey(state, key, readSelection);
 	if (state.files) {
 		const action = browserKey(state.files, key, { canType: canTypeIn(state) });
 
@@ -317,6 +349,7 @@ export const overlayKey = (state, rawKey, { readSelection = () => null } = {}) =
 	}
 
 	if (roleAllows(state.role ?? 'owner', 'files') && key === 'f') return { type: 'files' };
+	if (canTypeIn(state) && key === 't') return { type: 'shell' };
 
 	if (canNote && key === 'm') {
 		const quote = readSelection()?.trim().slice(0, MAX_QUOTE);

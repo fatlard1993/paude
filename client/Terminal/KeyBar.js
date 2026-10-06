@@ -55,7 +55,7 @@ export default class KeyBar extends Bar {
 	build() {
 		const select = keyButton('Select', () => this.options.selectLines());
 
-		select.title = 'Comment on lines: tap the first, then the last';
+		select.title = this.options.selectTitle ?? 'Comment on lines: tap the first, then the last';
 		this.elem.append(select);
 
 		// Someone who may comment but not type gets Select alone

@@ -124,3 +124,13 @@ test('a session that never got a prompt still deletes cleanly', async () => {
 
 	expect((await call(`/api/sessions/${fresh.id}`, { token: tokens.owner, method: 'DELETE' })).status).toBe(204);
 });
+
+test('a side terminal is for those who may type: the owner and drivers, never a commenter or viewer', async () => {
+	const shell = id => `/api/sessions/${id}/shell`;
+
+	// The test server refuses every upgrade, so reaching it answers 400
+	expect((await call(shell(session.id), { token: tokens.owner })).status).toBe(400);
+	expect((await call(shell(session.id), { token: tokens.comment })).status).toBe(403);
+	expect((await call(shell(session.id), { token: tokens.watch })).status).toBe(403);
+	expect((await call(shell(other.id), { token: tokens.comment })).status).toBe(403);
+});

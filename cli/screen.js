@@ -4,6 +4,7 @@ export const ENTER_ALT_SCREEN = `${ESC}[?1049h${ESC}[?25l`;
 export const LEAVE_ALT_SCREEN = `${ESC}[?25h${ESC}[?1049l`;
 export const CLEAR = `${ESC}[H${ESC}[2J`;
 export const HIDE_CURSOR = `${ESC}[?25l`;
+export const SHOW_CURSOR = `${ESC}[?25h`;
 // Claude turns mouse reporting on in this terminal; while paude's overlay is up, a brushed touchpad would otherwise
 // arrive as keys. Snapshots carry Claude's modes, so returning to it restores reporting.
 export const MOUSE_OFF = `${ESC}[?1000l${ESC}[?1002l${ESC}[?1003l${ESC}[?1006l`;

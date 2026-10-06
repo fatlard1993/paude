@@ -1,6 +1,7 @@
 module.exports = {
 	skipWords: [
 		'umask',
+		'ns',
 		'dotless',
 		'makefile',
 		'wx',

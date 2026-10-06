@@ -61,12 +61,3 @@ export const matchNames = (paths, query, options = {}) => {
 		.sort((a, b) => a.score - b.score)
 		.map(({ path }) => path);
 };
-
-// What attaching puts in Claude's prompt: an @-mention Claude Code reads itself, or the lines quoted with their place
-export const attachFileText = path => `@${path} `;
-
-export const attachLinesText = (path, from, to, text) => {
-	const range = from === to ? `line ${from}` : `lines ${from}-${to}`;
-
-	return `${path} ${range}:\n\`\`\`\n${text}\n\`\`\`\n`;
-};

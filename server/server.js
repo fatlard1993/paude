@@ -1,5 +1,6 @@
 import router from './router/router';
 import attachSocket from './sessions/attachSocket';
+import sideShell from './sessions/sideShell';
 
 const reloadSockets = {};
 
@@ -40,9 +41,11 @@ export default {
 				},
 				message(socket, message) {
 					if (socket.data.route === 'attach') attachSocket.message(socket, message);
+					else if (socket.data.route === 'shell') sideShell.message(socket, message);
 				},
 				close(socket) {
 					if (socket.data.route === 'attach') attachSocket.close(socket);
+					else if (socket.data.route === 'shell') sideShell.close(socket);
 					else delete reloadSockets[socket.data.clientId];
 				},
 			},
