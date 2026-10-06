@@ -9,6 +9,7 @@ import { canType } from '../identity';
 import { recall, remember } from './NotesPanel';
 
 const MAX_MATCHES = 200;
+const TOUCH = window.matchMedia('(pointer: coarse)');
 const SEARCH_DELAY_MS = 300;
 const LINE_HEIGHT = 20;
 const OPTIONS_KEY = 'paude.searchOptions';
@@ -321,6 +322,14 @@ const Panel = styled(
 
 			.head .back {
 				display: inline-block;
+			}
+
+			.bar {
+				flex-wrap: wrap;
+			}
+
+			.bar .search {
+				flex-basis: 100%;
 			}
 		}
 	`,
@@ -1080,7 +1089,14 @@ export default class FilesPanel extends Panel {
 
 			if (!number || event.target === gutter) return;
 
-			const anchor = event.shiftKey && this.selection ? this.selection.anchor : number;
+			// A touch screen has no Shift: tapping a second line while one is picked extends to it
+			const extend =
+				event.shiftKey ||
+				(TOUCH.matches &&
+					this.selection &&
+					this.selection.from === this.selection.to &&
+					this.selection.anchor !== number);
+			const anchor = extend && this.selection ? this.selection.anchor : number;
 
 			this.selection = { anchor, from: Math.min(anchor, number), to: Math.max(anchor, number) };
 			this.renderViewer();

@@ -243,6 +243,13 @@ const TopBar = styled(
 			margin: 0 4px;
 			background: rgba(255, 255, 255, 0.1);
 		}
+
+		/* A phone keeps the session's name: the project gives way */
+		@media (max-width: 600px) {
+			.crumb, .divider {
+				display: none;
+			}
+		}
 	`,
 );
 
@@ -335,6 +342,13 @@ const Presence = styled(
 
 		.status {
 			color: ${colors.light(colors.orange)};
+		}
+
+		/* A phone keeps the session's name; the people are a tap away in the panel */
+		@media (max-width: 600px) {
+			.who {
+				display: none;
+			}
 		}
 	`,
 );
