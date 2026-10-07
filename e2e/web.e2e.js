@@ -411,3 +411,46 @@ test(
 	},
 	TIMEOUT_MS,
 );
+
+test(
+	"tasks: the project's scripts run from the panel, their problems open the file, and the output streams",
+	async () => {
+		const server = servers.turns;
+
+		await Bun.write(
+			`${server.project}/package.json`,
+			JSON.stringify({
+				scripts: { check: 'echo "server/app.js:4:2: error: something is off" && exit 1', hello: 'echo hi there' },
+			}),
+		);
+
+		const { browser, page } = await openSession('dom', server);
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(1000);
+		};
+
+		try {
+			await press('[title^="Tasks"]');
+			expect(await page.$$eval('.tasks .task-name', names => names.map(name => name.textContent.trim()))).toEqual([
+				'check',
+				'hello',
+			]);
+
+			await press('.tasks .task [title^="Run "][title$="run check"]');
+			expect(await page.$eval('.tasks .run-head', head => head.textContent)).toContain('failed');
+			expect(await page.$eval('.tasks .run-output', output => output.textContent)).toContain('something is off');
+
+			await press('.tasks .run-head [title="Back to the tasks"]');
+			expect(await page.$eval('.tasks .problem', problem => problem.textContent)).toContain('server/app.js:4');
+
+			await press('.tasks .problem');
+			expect(await page.$eval('.files .band', band => band.style.top)).toBe('60px');
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);

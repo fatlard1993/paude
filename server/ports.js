@@ -138,3 +138,82 @@ const deduplicated = found =>
 
 export const sessionListeners = async () =>
 	deduplicated(process.platform === 'darwin' ? await macListeners() : await linuxListeners());
+
+// Every process a session runs, for the Tasks panel: [{ pid, session, task, command, args, cpuSeconds, memoryBytes,
+// startedAt, own }], `task` naming the run that started it, and `own` marking Claude itself
+const TASK_MARK = /(?:^|\0| )PAUDE_TASK=([\w-]+)/;
+const CLOCK_TICKS = 100;
+const PAGE_BYTES = 4096;
+
+const linuxProcesses = async () => {
+	const uptime = Number((await readFile('/proc/uptime', 'utf8').catch(() => '0')).split(' ')[0]);
+	const bootedAt = Date.now() - uptime * 1000;
+	const pids = (await readdir('/proc').catch(() => [])).filter(name => /^\d+$/.test(name));
+	const found = await Promise.all(
+		pids.map(async pid => {
+			const environment = await readFile(`/proc/${pid}/environ`, 'latin1').catch(() => '');
+			const session = MARK.exec(environment)?.[1];
+
+			if (!session) return null;
+
+			const [command, cmdline, stat, statm] = await Promise.all([
+				readFile(`/proc/${pid}/comm`, 'utf8').catch(() => ''),
+				readFile(`/proc/${pid}/cmdline`, 'utf8').catch(() => ''),
+				readFile(`/proc/${pid}/stat`, 'utf8').catch(() => ''),
+				readFile(`/proc/${pid}/statm`, 'utf8').catch(() => ''),
+			]);
+			// The fields after the command, which is in parentheses and may hold spaces
+			const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+
+			return {
+				pid: Number(pid),
+				session,
+				task: TASK_MARK.exec(environment)?.[1] ?? null,
+				command: command.trim(),
+				args: cmdline.split('\0').filter(Boolean).join(' ').slice(0, 300),
+				cpuSeconds: (Number(fields[11]) + Number(fields[12])) / CLOCK_TICKS,
+				memoryBytes: Number(statm.split(' ')[1]) * PAGE_BYTES,
+				startedAt: bootedAt + (Number(fields[19]) / CLOCK_TICKS) * 1000,
+				own: OWN.has(command.trim()),
+			};
+		}),
+	);
+
+	return found.filter(Boolean);
+};
+
+// ps's cpu time ([[dd-]hh:]mm:ss.cc) as seconds
+const seconds = time =>
+	time
+		.replace('-', ':')
+		.split(':')
+		.reverse()
+		.reduce((total, part, index) => total + Number(part) * [1, 60, 3600, 86400][index], 0);
+
+const macProcesses = async () =>
+	output(['ps', '-A', '-E', '-ww', '-o', 'pid=,time=,rss=,etime=,comm=,command='])
+		.split('\n')
+		.flatMap(line => {
+			const [, pid, time, rss, elapsed, comm] = /^\s*(\d+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(\S+)/.exec(line) ?? [];
+			const session = MARK.exec(line)?.[1];
+
+			if (!pid || !session) return [];
+
+			const command = comm.split('/').at(-1);
+
+			return [
+				{
+					pid: Number(pid),
+					session,
+					task: TASK_MARK.exec(line)?.[1] ?? null,
+					command,
+					args: command,
+					cpuSeconds: seconds(time),
+					memoryBytes: Number(rss) * 1024,
+					startedAt: Date.now() - seconds(elapsed) * 1000,
+					own: OWN.has(command),
+				},
+			];
+		});
+
+export const sessionProcesses = async () => (process.platform === 'darwin' ? macProcesses() : linuxProcesses());

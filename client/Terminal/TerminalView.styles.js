@@ -55,6 +55,7 @@ export const Body = styled.Component`
 	.git,
 	.shares,
 	.activity,
+	.tasks,
 	.files,
 	.shell {
 		position: absolute;
@@ -80,6 +81,7 @@ export const Body = styled.Component`
 	.git.open,
 	.shares.open,
 	.activity.open,
+	.tasks.open,
 	.files.open,
 	.shell.open {
 		opacity: 1;
@@ -90,7 +92,8 @@ export const Body = styled.Component`
 	.notes,
 	.git,
 	.shares,
-	.activity {
+	.activity,
+	.tasks {
 		right: 8px;
 		width: min(var(--notes-width, 360px), calc(100% - 16px));
 		transform: translateX(12px);
@@ -127,7 +130,8 @@ export const Body = styled.Component`
 	.notes .resize,
 	.git .resize,
 	.shares .resize,
-	.activity .resize {
+	.activity .resize,
+	.tasks .resize {
 		left: 0;
 	}
 
@@ -162,7 +166,8 @@ export const Body = styled.Component`
 		.notes,
 		.git,
 		.shares,
-		.activity {
+		.activity,
+		.tasks {
 			inset: 0;
 			width: auto;
 			border-radius: 0;
@@ -279,6 +284,18 @@ export const TopBar = styled(
 
 		.ghost.danger:hover {
 			color: ${colors.light(colors.red)};
+		}
+
+		/* A task is running */
+		.ghost.busy i {
+			color: ${colors.light(colors.yellow)};
+			animation: paude-busy 1.2s ease-in-out infinite;
+		}
+
+		@keyframes paude-busy {
+			50% {
+				opacity: 0.4;
+			}
 		}
 
 		.ghost .count {

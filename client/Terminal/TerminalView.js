@@ -34,6 +34,7 @@ import FilesPanel from './FilesPanel';
 import GitPanel from './GitPanel';
 import SharesPanel from './SharesPanel';
 import ActivityPanel from './ActivityPanel';
+import TasksPanel from './TasksPanel';
 import NotesPanel from './NotesPanel';
 import SideShell from './SideShell';
 import { BackMenu, Body, NARROW, Presence, SelectHint, SelectionActions, TopBar } from './TerminalView.styles';
@@ -168,6 +169,11 @@ export default class TerminalView extends View {
 				title: 'Activity: what Claude did, turn by turn',
 				onPress: () => this.toggleActivity(),
 			});
+			this.tasksButton = ghostButton(header, {
+				icon: 'list-check',
+				title: "Tasks: the project's checks and tests, problems, and what's running",
+				onPress: () => this.toggleTasks(),
+			});
 			this.gitButton = ghostButton(header, {
 				icon: 'code-branch',
 				title: 'Git: changes, history, branches',
@@ -287,6 +293,19 @@ export default class TerminalView extends View {
 				},
 			});
 			this.addResizeHandle(this.activity.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
+			this.tasks = new TasksPanel({
+				appendTo: body,
+				addClass: 'tasks',
+				sessionId: this.options.id,
+				close: () => this.toggleTasks(false),
+				openFile: (path, line) => {
+					if (window.matchMedia(NARROW).matches) this.toggleTasks(false);
+					this.toggleFiles(true);
+					this.files.open(path, line);
+				},
+				attach: text => this.attachToPrompt(text),
+			});
+			this.addResizeHandle(this.tasks.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
 		}
 		this.shares = new SharesPanel({
 			appendTo: body,
@@ -491,6 +510,8 @@ export default class TerminalView extends View {
 			this.fitScale();
 		} else if (message.type === 'presence') {
 			this.renderPresence(message);
+		} else if (message.type === 'runs') {
+			this.showRuns(message.runs);
 		} else if (message.type === 'shares') {
 			this.showShares(message.shares);
 		} else if (message.type === 'notice') {
@@ -616,6 +637,24 @@ export default class TerminalView extends View {
 		if (keep !== 'git' && this.git?.elem.classList.contains('open')) this.toggleGit(false);
 		if (keep !== 'shares' && this.shares.elem.classList.contains('open')) this.toggleShares(false);
 		if (keep !== 'activity' && this.activity?.elem.classList.contains('open')) this.toggleActivity(false);
+		if (keep !== 'tasks' && this.tasks?.elem.classList.contains('open')) this.toggleTasks(false);
+	}
+
+	toggleTasks(open = !this.tasks.elem.classList.contains('open')) {
+		if (open) this.closeOthersOnTheRight('tasks');
+		this.tasks.elem.classList.toggle('open', open);
+		this.tasksButton?.classList.toggle('active', open);
+		if (open) this.tasks.refresh();
+		this.focusPanel(this.tasks.elem, open);
+	}
+
+	// A run started or ended: the button shows one is going, and an open panel catches up
+	showRuns(runs) {
+		this.tasksButton?.classList.toggle(
+			'busy',
+			runs.some(run => run.code === undefined || run.code === null),
+		);
+		if (this.tasks?.elem.classList.contains('open')) this.tasks.refresh();
 	}
 
 	toggleActivity(open = !this.activity.elem.classList.contains('open')) {

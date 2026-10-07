@@ -59,6 +59,30 @@ export const runGit = async (sessionId, action, body = {}) =>
 export const getTimeline = async sessionId =>
 	await GET('/api/sessions/:id/timeline', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 
+// The Tasks panel: { tasks, runs, processes }
+export const getTasks = async sessionId =>
+	await GET('/api/sessions/:id/tasks', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
+
+// A run's summary and what it printed from `from` on
+export const getRun = async (sessionId, runId, from = 0) =>
+	await GET('/api/sessions/:id/tasks/runs/:run', {
+		urlParameters: { id: sessionId, run: runId },
+		searchParameters: { from },
+		invalidateAfter: 0,
+	});
+
+export const runTask = async (sessionId, task) =>
+	await POST('/api/sessions/:id/tasks/run', { urlParameters: { id: sessionId }, body: { task } });
+
+export const stopRun = async (sessionId, runId) =>
+	await POST('/api/sessions/:id/tasks/runs/:run/stop', { urlParameters: { id: sessionId, run: runId } });
+
+export const setAfterTurn = async (sessionId, task, on) =>
+	await POST('/api/sessions/:id/tasks/after-turn', { urlParameters: { id: sessionId }, body: { task, on } });
+
+export const stopProcess = async (sessionId, pid) =>
+	await POST('/api/sessions/:id/processes/:pid/stop', { urlParameters: { id: sessionId, pid } });
+
 // { shares: [{ id, name, kind, port, path, auto, url }], origin }
 export const getShares = async sessionId =>
 	await GET('/api/sessions/:id/shares', { urlParameters: { id: sessionId }, invalidateAfter: 0 });

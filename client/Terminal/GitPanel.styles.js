@@ -282,6 +282,68 @@ const Panel = styled(
 			margin-top: 6px;
 		}
 
+		/* The Tasks panel */
+		.task-name {
+			flex: 1;
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			text-align: left;
+			background: transparent;
+		}
+
+		.outcome.ok { color: ${colors.light(colors.green)}; }
+		.outcome.failed { color: ${colors.light(colors.red)}; }
+		.outcome.running { color: ${colors.light(colors.yellow)}; }
+
+		button.on {
+			background: ${colors.alpha(colors.blue, 0.45)};
+		}
+
+		.problem {
+			display: flex;
+			gap: 8px;
+			align-items: baseline;
+			padding: 3px 6px;
+			text-align: left;
+			background: transparent;
+			white-space: normal;
+			font-size: 0.9em;
+		}
+
+		.problem:hover {
+			background: ${colors.alpha(colors.white, 0.05)};
+		}
+
+		.problem .where {
+			flex-shrink: 0;
+			color: ${colors.light(colors.red)};
+		}
+
+		.problem.warning .where {
+			color: ${colors.light(colors.yellow)};
+		}
+
+		.problem .message {
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.run-head {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			flex-wrap: wrap;
+			margin-bottom: 6px;
+		}
+
+		.run-output {
+			flex: 1;
+			margin: 0;
+			max-height: none;
+		}
+
 		/* The Activity panel's turns and their steps */
 		.turn {
 			display: flex;
