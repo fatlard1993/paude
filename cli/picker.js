@@ -338,6 +338,8 @@ const gather = async server => {
 	const visit = await visitServer(server);
 
 	server.id = visit.serverId;
+	// A name given here wins over the one the server goes by
+	if (!server.local && !server.alias && visit.name) server.label = visit.name;
 
 	return { server, ...visit };
 };

@@ -7,6 +7,7 @@ import { recall, remember } from './storage';
 import { registerNotificationWorker } from './notify';
 import Project from './Project';
 import TerminalView from './Terminal/TerminalView';
+import { setServerName } from './tabTitle';
 import { startWatchAlerts } from './watchAlerts';
 import fitToKeyboard from './viewport';
 
@@ -58,9 +59,10 @@ if (handoffCode) {
 	window.location.replace(`#${handoffTo ?? '/'}`);
 }
 
-const { authenticated, passwordSet, identity } = await (await fetch('/api/auth')).json();
+const { authenticated, passwordSet, identity, name } = await (await fetch('/api/auth')).json();
 
 setIdentity(identity);
+setServerName(name);
 
 if (authenticated) {
 	registerNotificationWorker();

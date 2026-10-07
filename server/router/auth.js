@@ -1,4 +1,5 @@
 import { watchIfNew } from '../activity';
+import { serverName } from '../serverSettings';
 import {
 	checkPassword,
 	createHandoff,
@@ -57,6 +58,7 @@ const authRoutes = async request => {
 			passwordSet: passwordIsSet(),
 			identity,
 			serverId: getServerId(),
+			name: await serverName(),
 		});
 	}
 

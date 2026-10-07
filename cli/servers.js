@@ -121,7 +121,7 @@ export const allServers = async () => {
 	const names = await serverNames();
 	const remote = Object.entries(await allTokens())
 		.filter(([url]) => url !== LOCAL_URL)
-		.map(([url, token]) => ({ url, token, label: names[url] ?? hostLabel(url) }));
+		.map(([url, token]) => ({ url, token, alias: names[url], label: names[url] ?? hostLabel(url) }));
 
 	return [...(localKnown() ? [await ensureLocalServer()] : []), ...remote];
 };

@@ -16,6 +16,7 @@ import startWatchAlerts from '../cli/watchAlerts';
 import { loadPrefs, savePrefs } from '../cli/prefs';
 import { readHidden } from '../cli/screen';
 import { certificatesFile, needsRestartForCertificates } from '../shared/certificates';
+import { serverName, setServerName } from '../server/serverSettings';
 
 // Started again with the certificates in its environment, so every connection to a server trusts them; the terminal
 // is the new process's, so Ctrl+C reaches it and this one just waits
@@ -38,7 +39,8 @@ paude remove <name...>   take projects off the list (nothing on disk changes)
 paude web [url]          open a paude in the browser, already logged in (default: this machine's)
 paude login <url>        log in to a paude server (e.g. https://paude.example.com); --name <name> shows it by that name
 paude login <invite>     join with an invite link someone sent you
-paude name <url> <name>  show a server you're logged into by a name
+paude name <name>        what this machine's paude goes by, in tab titles and on other machines ("" for none)
+paude name <url> <name>  show a server you're logged into by a name of your own
 paude logout [url]       sign this machine out of a server and forget the login
 paude --url <url>        pick from that server only
 paude --url <url> -s <id>  attach straight to a session there
@@ -260,7 +262,13 @@ const flag = name => {
 
 try {
 	if (command === 'login') await login(target, flag('--name'));
-	else if (command === 'name') {
+	else if (command === 'name' && process.argv.length <= 4 && !/^https?:\/\//.test(target ?? '')) {
+		if (target !== undefined) await setServerName(target);
+
+		const name = await serverName();
+
+		console.log(name ? `This machine's paude goes by "${name}".` : "This machine's paude has no name; paude name <name> gives it one.");
+	} else if (command === 'name') {
 		const name = process.argv[4];
 
 		if (!target || !name) console.log('paude name <url> <name>');

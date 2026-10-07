@@ -3,6 +3,7 @@ import { Notify } from '@vanilla-bean/components';
 import watchChanges from '../shared/watchChanges';
 import { getRemotes, getWatching } from './api';
 import { showNotification } from './notify';
+import { setWaiting } from './tabTitle';
 
 const CHECK_MS = 15_000;
 // Other servers answer slower
@@ -42,9 +43,7 @@ export const startWatchAlerts = ({ local }) => {
 		checks += 1;
 
 		const all = [...here, ...remoteWatched];
-		const waiting = all.filter(session => session.status === 'waiting').length;
-
-		document.title = waiting ? `(${waiting}) paude` : 'paude';
+		setWaiting(all.filter(session => session.status === 'waiting').length);
 
 		const onScreen = session =>
 			!session.remote && window.location.hash === `#/sessions/${session.id}` && !document.hidden;

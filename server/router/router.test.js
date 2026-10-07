@@ -10,6 +10,7 @@ import { initNames } from '../names';
 import { initNotes } from '../notes';
 import { initProjects, setProjectsRoot } from '../projects';
 import { allRunning, setClaudePath, startSession } from '../sessions/running';
+import { setServerName } from '../serverSettings';
 import { readProgress } from '../../shared/progress';
 import router from './router';
 
@@ -112,6 +113,22 @@ test('a machine that shares its servers lists them for the owner password too, n
 		expect((await call('/api/remotes', { token: tokens.comment })).status).toBe(403);
 	} finally {
 		await rm(path.join(process.env.XDG_CONFIG_HOME, 'paude', 'server.json'));
+	}
+});
+
+test('a server tells anyone asking the name it goes by', async () => {
+	const settings = path.join(process.env.XDG_CONFIG_HOME, 'paude', 'server.json');
+
+	expect((await (await call('/api/auth')).json()).name).toBeNull();
+
+	await setServerName('  laptop  ');
+
+	try {
+		expect((await (await call('/api/auth')).json()).name).toBe('laptop');
+		await setServerName('');
+		expect(await Bun.file(settings).json()).toEqual({});
+	} finally {
+		await rm(settings, { force: true });
 	}
 });
 

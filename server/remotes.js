@@ -9,7 +9,7 @@ const remoteServers = async () => {
 	return Object.entries(await allTokens()).map(([url, token]) => ({
 		url,
 		token,
-		name: names[url] ?? new URL(url).host,
+		alias: names[url],
 	}));
 };
 
@@ -17,11 +17,15 @@ const remoteServers = async () => {
 export const listRemotes = async () => {
 	const remotes = await Promise.all(
 		(await remoteServers()).map(async server => {
-			const { serverId, watching, sessions, error } = await visitServer(server);
+			const { serverId, name, watching, sessions, error } = await visitServer(server);
 
 			if (serverId && serverId === getServerId()) return null;
 
-			return { url: server.url, name: server.name, ...(error ? { error } : { watching, sessions }) };
+			return {
+				url: server.url,
+				name: server.alias ?? name ?? new URL(server.url).host,
+				...(error ? { error } : { watching, sessions }),
+			};
 		}),
 	);
 
