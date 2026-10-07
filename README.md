@@ -27,6 +27,8 @@ paude                     # the picker: sessions and projects here and on every 
 
 Working on paude itself? `sh scripts/install.sh --dev` from your checkout runs that checkout as this machine's paude service (systemd, or launchd on macOS): it restarts itself as you save, rebuilds the web client and reloads open pages, and sessions carry on through it. Running the installer without `--dev` goes back to an installed copy.
 
+`bun test` runs the unit tests (the pre-commit hook does too). `bun run test:e2e` drives the web client in Chrome against a fake Claude that draws the way Claude Code does, in three browsers: xterm's DOM renderer, its GPU renderer, and a Mac. `bun run test:claude` does the same against the real Claude Code, at the cost of a few tokens. Both look for Chrome in the usual places, or `CHROME`.
+
 Locally there is no password: the server keeps an owner token in `~/.paude/local-token`, readable only by you, and the `paude` command uses it. `paude web` opens this machine's paude in a browser, already logged in. Folders under `~/Projects` are projects without being added. `paude add` takes several folders, or a pattern: `paude add '~/Projects/minecraft/*'` makes each folder in there a project of its own. `paude remove <name>...` takes projects off the list: an added folder is forgotten, one under `~/Projects` is hidden until you add it again. Nothing on disk changes either way, and the home page's project cards do the same. `paude stop` stops the background server (after pulling an update, say); the next `paude` starts it again. The first session in a folder Claude Code hasn't seen asks, in the session, whether you trust it.
 
 ## On a server

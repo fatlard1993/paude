@@ -38,7 +38,7 @@ module.exports = [
 	},
 	{
 		// Test files are full of fixture strings and shorthand identifiers that aren't words
-		files: ['**/*.test.js'],
+		files: ['**/*.test.js', 'e2e/**/*.js'],
 		rules: {
 			'spellcheck/spell-checker': 'off',
 		},
@@ -51,6 +51,7 @@ module.exports = [
 			'client/build.js',
 			'cli/**/*.js',
 			'bin/**/*.js',
+			'e2e/**/*.js',
 			'shared/writeJsonFile.js',
 			'shared/updateJsonFile*.js',
 			'shared/readJsonFile.js',
