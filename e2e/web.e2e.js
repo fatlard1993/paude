@@ -642,3 +642,40 @@ test(
 	},
 	TIMEOUT_MS,
 );
+
+test(
+	"on a phone the bar is back, the session's name and a menu holding the rest",
+	async () => {
+		const { browser, page } = await openBrowser('dom');
+
+		try {
+			await page.setViewport({ width: 390, height: 760, isMobile: true, hasTouch: true });
+			await page.goto(await servers.turns.loginLink(`/sessions/${await servers.turns.newSession()}`));
+			await page.waitForSelector('.xterm-screen');
+			await wait(1500);
+
+			const visible = await page.$$eval('.ghost', buttons =>
+				buttons.filter(button => button.offsetParent).map(button => button.title.split(':')[0]),
+			);
+
+			// Back says how many sessions wait for you, when any do
+			expect(visible.length).toBe(2);
+			expect(visible[0]).toStartWith('Back');
+			expect(visible[1]).toBe('Menu');
+
+			const menu = await centerOf(page, '.ghost.tools');
+
+			await page.touchscreen.tap(menu.x, menu.y);
+			await wait(400);
+
+			const chat = await centerOf(page, 'button', 'Chat and comments');
+
+			await page.touchscreen.tap(chat.x, chat.y);
+			await wait(600);
+			expect(await page.$eval('.notes', notes => notes.classList.contains('open'))).toBe(true);
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);

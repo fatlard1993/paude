@@ -188,12 +188,14 @@ export default class TerminalView extends View {
 			this.shellButton = ghostButton(header, {
 				icon: 'terminal',
 				title: 'Side terminal: a shell in this folder that ends when you close it',
+				className: 'tool',
 				onPress: () => this.toggleShell(),
 			});
 		}
 		this.watchButton = ghostButton(header, {
 			icon: 'eye',
 			title: 'Watch: count what changes here while you are away',
+			className: 'tool',
 			onPress: () => this.toggleWatching(),
 		});
 		this.sharesButton = ghostButton(header, {
@@ -208,6 +210,7 @@ export default class TerminalView extends View {
 		this.notesToggle = ghostButton(header, {
 			icon: 'comments',
 			title: 'Chat and comments',
+			className: 'tool',
 			onPress: () => this.toggleNotes(),
 		});
 		this.unread = Object.assign(document.createElement('span'), { className: 'count' });
@@ -221,13 +224,17 @@ export default class TerminalView extends View {
 				onPress: () => this.deleteThisSession(),
 			});
 		}
-		// A phone's bar has room for the everyday buttons; the rest are in a menu of their own
+		// A phone's bar has room for back and the session's name; everything else is in this menu
 		const tools = ghostButton(header, {
-			icon: 'ellipsis-vertical',
-			title: 'Files, activity, tasks, git, shared',
+			icon: 'bars',
+			title: 'Menu',
 			className: 'tools',
 			onPress: () => this.toggleToolsMenu(tools, header),
 		});
+
+		this.toolsCount = Object.assign(document.createElement('span'), { className: 'count' });
+		this.toolsCount.style.display = 'none';
+		tools.append(this.toolsCount);
 
 		const column = new Elem({ appendTo: body, addClass: 'terminal-column' });
 
@@ -352,6 +359,8 @@ export default class TerminalView extends View {
 			showUnread: count => {
 				this.unread.textContent = count;
 				this.unread.style.display = count ? '' : 'none';
+				this.toolsCount.textContent = count;
+				this.toolsCount.style.display = count ? '' : 'none';
 			},
 		});
 
@@ -772,14 +781,21 @@ export default class TerminalView extends View {
 		);
 	}
 
-	// The bar's tool buttons, as a menu: each item presses its button
+	// The bar's buttons, as a menu: each item presses its button, and says what its badge says and whether it's open
 	toggleToolsMenu(anchor, header) {
 		this.openMenu(
 			anchor,
-			[...header.elem.querySelectorAll('.ghost.tool')].map(tool => ({
-				label: tool.title.split(':')[0],
-				onPress: () => tool.click(),
-			})),
+			[...header.elem.querySelectorAll('.ghost.tool')].map(tool => {
+				const count = tool.querySelector('.count');
+
+				return {
+					label: tool.dataset.menuLabel ?? tool.title.split(':')[0],
+					detail: [count?.style.display !== 'none' && count?.textContent, tool.classList.contains('active') && 'open']
+						.filter(Boolean)
+						.join(' · '),
+					onPress: () => tool.click(),
+				};
+			}),
 		);
 	}
 
@@ -1230,6 +1246,7 @@ export default class TerminalView extends View {
 		this.watching = Boolean(watching);
 		this.watchButton.classList.toggle('active', this.watching);
 		this.watchButton.firstChild.className = `fa-solid fa-${this.watching ? 'eye' : 'eye-slash'}`;
+		this.watchButton.dataset.menuLabel = this.watching ? 'Stop watching' : 'Watch';
 		this.watchButton.title = this.watching
 			? 'Watching: what changes here is counted while you are away. Click to stop.'
 			: 'Not watching. Click to count what changes here while you are away.';

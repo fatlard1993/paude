@@ -129,10 +129,49 @@ export const writeProjectFile = async (cwd, path, text, hash) => {
 export class SearchError extends Error {}
 
 // Literal and case-insensitive unless the options say otherwise
+const READ_TOGETHER = 32;
+
+// A regular expression is JavaScript's, as in the page and in Replace: each listed text file is read and tested line
+// by line, stopping at the hits a page shows, or the time a search may take
+const searchWithExpression = async (cwd, query, options) => {
+	const pattern = searchPattern(query, options);
+
+	if (!pattern) throw new SearchError('That regular expression is not valid.');
+
+	const wanted = pathFilter(options);
+	const files = (await listFiles(cwd)).filter(path => wanted(path) && !isSecret(path));
+	const stopAt = Date.now() + SEARCH_TIMEOUT_MS;
+	const hits = [];
+
+	for (let start = 0; start < files.length && hits.length < MAX_HITS && Date.now() < stopAt; start += READ_TOGETHER) {
+		const batch = files.slice(start, start + READ_TOGETHER);
+		const texts = await Promise.all(
+			batch.map(async path => {
+				const file = Bun.file(resolve(cwd, path));
+
+				if (file.size > MAX_BYTES) return null;
+
+				const text = await file.text().catch(() => null);
+
+				return text?.includes('\0') ? null : text;
+			}),
+		);
+
+		batch.forEach((path, index) => {
+			texts[index]?.split('\n').forEach((text, line) => {
+				if (hits.length < MAX_HITS && pattern.test(text)) hits.push({ path, line: line + 1, text: text.slice(0, 300) });
+			});
+		});
+	}
+
+	return hits;
+};
+
 export const searchProject = async (cwd, query, { caseSensitive, wholeWord, regex, include, exclude } = {}) => {
 	if (typeof query !== 'string' || query.length < 2) return [];
+	if (regex) return searchWithExpression(cwd, query, { caseSensitive, wholeWord, regex, include, exclude });
 
-	const flags = ['-n', '-I', ...(caseSensitive ? [] : ['-i']), ...(wholeWord ? ['-w'] : []), regex ? '-E' : '-F'];
+	const flags = ['-n', '-I', ...(caseSensitive ? [] : ['-i']), ...(wholeWord ? ['-w'] : []), '-F'];
 	const files = await listFiles(cwd);
 	const git = await run(['git', 'grep', '--untracked', ...flags, '-e', query], cwd);
 	// Outside git, grep walks the folder itself (a file list as arguments overflows on a big project); its hits
@@ -140,8 +179,7 @@ export const searchProject = async (cwd, query, { caseSensitive, wholeWord, rege
 	const fallback =
 		git.code <= 1 ? null : await run(['grep', '-r', ...flags, ...SKIPPED_DIRECTORIES, '-e', query, '.'], cwd);
 
-	if (fallback && fallback.code > 1)
-		throw new SearchError(regex ? 'That regular expression is not valid.' : 'Search failed.');
+	if (fallback && fallback.code > 1) throw new SearchError('Search failed.');
 
 	const output = fallback ? fallback.out.replaceAll(/^\.\//gm, '') : git.out;
 	const listed = new Set(files);
