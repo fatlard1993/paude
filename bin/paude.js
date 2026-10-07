@@ -55,10 +55,24 @@ const parseTarget = target => {
 	return { url: normalizeUrl(base), inviteToken };
 };
 
+// Why a server couldn't be reached, as what to do about it
+const unreachable = (url, error) =>
+	/CERT|SELF_SIGNED|ALTNAME/.test(error?.code ?? '')
+		? `${url} answered, but with a certificate this machine doesn't trust (${error.message}). Put the authority that signed it in ${certificatesFile}: for Caddy's own, its pki/authorities/local/root.crt.`
+		: `Nothing answered at ${url}. Is the address right?`;
+
 const login = async (target, name) => {
 	if (!target) return console.log(USAGE);
 
 	const { url, inviteToken } = parseTarget(target);
+
+	// Reached before the password is asked for, so nobody types it only to learn the address was wrong
+	try {
+		await fetch(`${url}/api/auth`, { signal: AbortSignal.timeout(10_000) });
+	} catch (error) {
+		return console.error(unreachable(url, error));
+	}
+
 	const credentials = inviteToken ? { invite: inviteToken } : { password: await readHidden(`Password for ${url}: `) };
 	let response;
 
@@ -68,8 +82,8 @@ const login = async (target, name) => {
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ ...credentials, name: os.hostname() }),
 		});
-	} catch {
-		return console.error(`Nothing answered at ${url}. Is the address right?`);
+	} catch (error) {
+		return console.error(unreachable(url, error));
 	}
 
 	if (response.status === 401) return console.error('Wrong password.');
@@ -267,7 +281,11 @@ try {
 
 		const name = await serverName();
 
-		console.log(name ? `This machine's paude goes by "${name}".` : "This machine's paude has no name; paude name <name> gives it one.");
+		console.log(
+			name
+				? `This machine's paude goes by "${name}".`
+				: "This machine's paude has no name; paude name <name> gives it one.",
+		);
 	} else if (command === 'name') {
 		const name = process.argv[4];
 
