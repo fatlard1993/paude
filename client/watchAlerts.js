@@ -4,6 +4,7 @@ import watchChanges from '../shared/watchChanges';
 import { getRemotes, getWatching } from './api';
 import { showNotification } from './notify';
 import { updateTabTitle } from './tabTitle';
+import { setWaitingSessions } from './waiting';
 
 const CHECK_MS = 15_000;
 // Other servers answer slower
@@ -43,7 +44,10 @@ export const startWatchAlerts = ({ remotes }) => {
 		checks += 1;
 
 		const all = [...here, ...remoteWatched];
-		updateTabTitle({ waiting: all.filter(session => session.status === 'waiting').length });
+		const waiting = all.filter(session => session.status === 'waiting');
+
+		updateTabTitle({ waiting: waiting.length });
+		setWaitingSessions(waiting);
 
 		const onScreen = session =>
 			!session.remote && window.location.hash === `#/sessions/${session.id}` && !document.hidden;

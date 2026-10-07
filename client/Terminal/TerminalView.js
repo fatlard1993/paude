@@ -14,6 +14,7 @@ import { showNotification } from '../notify';
 import { recall, remember, savedName } from '../storage';
 import { button, dragHandle } from '../dom';
 import goBack from '../goBack';
+import { onWaitingChange } from '../waiting';
 import attach from './attach';
 import KeyBar from './KeyBar';
 import selectLinesByTap from './lineSelect';
@@ -96,11 +97,13 @@ export default class TerminalView extends View {
 		const header = new TopBar({ appendTo: this });
 
 		if (identity()?.owner) {
-			ghostButton(header, {
+			const back = ghostButton(header, {
 				icon: 'arrow-left',
 				title: 'Back',
 				onPress: () => goBack(this.project ? `#/projects/${this.project}` : '#/'),
 			});
+
+			this.showWaitingOn(back);
 		} else {
 			ghostButton(header, {
 				label: 'Leave',
@@ -536,6 +539,23 @@ export default class TerminalView extends View {
 		}
 
 		if (!this.notesOpen || this.notes.tab !== tab) new Notify({ type: 'info', content: what, timeout: 6000 });
+	}
+
+	// How many other watched sessions need you, on the way out
+	showWaitingOn(back) {
+		const count = Object.assign(document.createElement('span'), { className: 'count' });
+
+		back.append(count);
+		this.addCleanup(
+			'waitingCount',
+			onWaitingChange(sessions => {
+				const others = sessions.filter(session => session.remote || session.id !== this.options.id).length;
+
+				count.textContent = others;
+				count.style.display = others ? '' : 'none';
+				back.title = others ? `Back (${others} waiting for you)` : 'Back';
+			}),
+		);
 	}
 
 	async copySelection() {
