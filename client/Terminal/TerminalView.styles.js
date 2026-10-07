@@ -286,6 +286,21 @@ export const TopBar = styled(
 			color: ${colors.light(colors.red)};
 		}
 
+		/* On a phone the tool buttons fold into one menu */
+		.ghost.tools {
+			display: none;
+		}
+
+		@media ${NARROW} {
+			.ghost.tool {
+				display: none;
+			}
+
+			.ghost.tools {
+				display: inline-flex;
+			}
+		}
+
 		/* A task is running */
 		.ghost.busy i {
 			color: ${colors.light(colors.yellow)};

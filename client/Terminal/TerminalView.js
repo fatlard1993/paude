@@ -162,21 +162,25 @@ export default class TerminalView extends View {
 			this.filesButton = ghostButton(header, {
 				icon: 'folder-tree',
 				title: 'Project files',
+				className: 'tool',
 				onPress: () => this.toggleFiles(),
 			});
 			this.activityButton = ghostButton(header, {
 				icon: 'clock-rotate-left',
 				title: 'Activity: what Claude did, turn by turn',
+				className: 'tool',
 				onPress: () => this.toggleActivity(),
 			});
 			this.tasksButton = ghostButton(header, {
 				icon: 'list-check',
 				title: "Tasks: the project's checks and tests, problems, and what's running",
+				className: 'tool',
 				onPress: () => this.toggleTasks(),
 			});
 			this.gitButton = ghostButton(header, {
 				icon: 'code-branch',
 				title: 'Git: changes, history, branches',
+				className: 'tool',
 				onPress: () => this.toggleGit(),
 			});
 		}
@@ -195,6 +199,7 @@ export default class TerminalView extends View {
 		this.sharesButton = ghostButton(header, {
 			icon: 'share-nodes',
 			title: 'Shared: services this session runs, files and sites',
+			className: 'tool',
 			onPress: () => this.toggleShares(),
 		});
 		this.sharedCount = Object.assign(document.createElement('span'), { className: 'count' });
@@ -212,10 +217,18 @@ export default class TerminalView extends View {
 			ghostButton(header, {
 				icon: 'trash-can',
 				title: 'Delete this session',
-				className: 'danger',
+				className: 'tool danger',
 				onPress: () => this.deleteThisSession(),
 			});
 		}
+		// A phone's bar has room for the everyday buttons; the rest are in a menu of their own
+		const tools = ghostButton(header, {
+			icon: 'ellipsis-vertical',
+			title: 'Files, activity, tasks, git, shared',
+			className: 'tools',
+			onPress: () => this.toggleToolsMenu(tools, header),
+		});
+
 		const column = new Elem({ appendTo: body, addClass: 'terminal-column' });
 
 		this.screen = new Screen({ appendTo: column });
@@ -759,39 +772,65 @@ export default class TerminalView extends View {
 		);
 	}
 
+	// The bar's tool buttons, as a menu: each item presses its button
+	toggleToolsMenu(anchor, header) {
+		this.openMenu(
+			anchor,
+			[...header.elem.querySelectorAll('.ghost.tool')].map(tool => ({
+				label: tool.title.split(':')[0],
+				onPress: () => tool.click(),
+			})),
+		);
+	}
+
 	goBack() {
 		goBack(this.project ? `#/projects/${this.project}` : '#/');
 	}
 
 	// With sessions waiting for you, back offers them too: back where you came from, or straight to one of them
 	toggleBackMenu(back) {
+		this.openMenu(back, [
+			{ label: '← Back', onPress: () => this.goBack() },
+			{ heading: 'Waiting for you' },
+			...this.waitingOthers.map(session => ({
+				label: session.title || session.project,
+				detail: [session.project, session.remote?.name ?? serverName()].filter(Boolean).join(' · '),
+				onPress: () => this.openWaiting(session),
+			})),
+		]);
+	}
+
+	// A menu under a bar button: items ({ label, detail, onPress }) and headings; Esc or a press elsewhere closes it
+	openMenu(anchor, items) {
 		if (this.backMenu) return this.closeBackMenu();
 
 		const menu = new BackMenu({ appendTo: document.body });
-		const box = back.getBoundingClientRect();
-		const item = (label, detail, onPress) => {
+		const box = anchor.getBoundingClientRect();
+
+		for (const item of items) {
+			if (item.heading) {
+				menu.elem.append(element('div', 'heading', item.heading));
+				continue;
+			}
+
 			const row = button('', () => {
 				this.closeBackMenu();
-				onPress();
+				item.onPress();
 			});
 
-			row.append(element('span', 'label', label), ...(detail ? [element('span', 'detail', detail)] : []));
-			menu.elem.append(row);
-		};
-
-		Object.assign(menu.elem.style, { left: `${box.left}px`, top: `${box.bottom + 4}px` });
-		item('← Back', null, () => this.goBack());
-		menu.elem.append(element('div', 'heading', 'Waiting for you'));
-		for (const session of this.waitingOthers) {
-			item(
-				session.title || session.project,
-				[session.project, session.remote?.name ?? serverName()].filter(Boolean).join(' · '),
-				() => this.openWaiting(session),
+			row.append(
+				element('span', 'label', item.label),
+				...(item.detail ? [element('span', 'detail', item.detail)] : []),
 			);
+			menu.elem.append(row);
 		}
 
+		// Kept on the screen: under the button, moved left as far as it needs
+		Object.assign(menu.elem.style, { left: `${box.left}px`, top: `${box.bottom + 4}px` });
+		menu.elem.style.left = `${Math.max(8, Math.min(box.left, window.innerWidth - menu.elem.offsetWidth - 8))}px`;
+
 		const outside = event => {
-			if (!menu.elem.contains(event.target) && !back.contains(event.target)) this.closeBackMenu();
+			if (!menu.elem.contains(event.target) && !anchor.contains(event.target)) this.closeBackMenu();
 		};
 		const escape = event => event.key === 'Escape' && this.closeBackMenu();
 
