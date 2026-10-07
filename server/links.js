@@ -1,10 +1,14 @@
 import path from 'path';
+import { listSessions } from '@anthropic-ai/claude-agent-sdk';
 
 import readJsonFile from '../shared/readJsonFile';
 import { trimUrl } from '../shared/terminalLinks';
 import writeJsonFile from '../shared/writeJsonFile';
 import { getNotes } from './notes';
+import { projectOf } from './projects';
 import { promptText } from './sessions/history';
+import { titleOf } from './sessions/record';
+import { allRunning, runningSession } from './sessions/running';
 import { transcriptFile } from './sessions/transcript';
 
 // The links that came up in a session, gathered for its Links panel: from the conversation (what you wrote, what
@@ -225,3 +229,56 @@ export const sessionLinks = async (id, cwd, { withHidden = false } = {}) => {
 		.filter(link => withHidden || !link.hidden)
 		.sort((a, b) => b.pinned - a.pinned || String(b.lastAt ?? '').localeCompare(String(a.lastAt ?? '')));
 };
+
+const PROJECT_SESSIONS = 50;
+
+// The project's sessions to gather from, the latest first, the running ones whether saved yet or not
+const projectSessions = async (project, cwd) => {
+	const stored = (await listSessions({ dir: cwd })).filter(session => projectOf(session.cwd) === project);
+	const listed = new Set(stored.map(({ sessionId }) => sessionId));
+	const running = [...allRunning()]
+		.filter(session => projectOf(session.cwd) === project && !listed.has(session.id))
+		.map(session => ({ sessionId: session.id, cwd: session.cwd, lastModified: session.startedAt }));
+
+	return [...running, ...stored]
+		.sort((a, b) => (b.lastModified ?? 0) - (a.lastModified ?? 0))
+		.slice(0, PROJECT_SESSIONS);
+};
+
+// Every link the project's latest sessions brought up, as one list: counted across them, with the sessions each
+// came up in. What a session hid stays hidden; pinning and hiding here are the project's own.
+export const projectLinks = async (project, cwd, { withHidden = false } = {}) => {
+	const merged = new Map();
+
+	for (const session of await projectSessions(project, cwd)) {
+		const title = titleOf(session.sessionId, runningSession(session.sessionId), session);
+
+		for (const link of await sessionLinks(session.sessionId, session.cwd)) {
+			const known = merged.get(link.url);
+			const from = { id: session.sessionId, title };
+
+			if (!known) {
+				merged.set(link.url, { ...link, by: [...link.by], sessions: [from] });
+				continue;
+			}
+
+			known.count += link.count;
+			known.by = [...new Set([...known.by, ...link.by])];
+			if (link.firstAt && (!known.firstAt || link.firstAt < known.firstAt)) {
+				known.firstAt = link.firstAt;
+				known.context = link.context;
+			}
+			if (link.lastAt && (!known.lastAt || link.lastAt > known.lastAt)) known.lastAt = link.lastAt;
+			known.sessions.push(from);
+		}
+	}
+
+	const { pinned = [], hidden = [] } = marks[`project:${project}`] ?? {};
+
+	return [...merged.values()]
+		.map(link => ({ ...link, pinned: pinned.includes(link.url), hidden: hidden.includes(link.url) }))
+		.filter(link => withHidden || !link.hidden)
+		.sort((a, b) => b.pinned - a.pinned || String(b.lastAt ?? '').localeCompare(String(a.lastAt ?? '')));
+};
+
+export const markProjectLink = (project, url, change) => markLink(`project:${project}`, url, change);

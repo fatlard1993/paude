@@ -29,6 +29,7 @@ import {
 	releaseWorktree,
 	validWorktreeName,
 } from '../worktrees';
+import { markProjectLink, projectLinks } from '../links';
 import requestMatch from '../utils/requestMatch';
 
 const isFolder = async path =>
@@ -204,6 +205,26 @@ const sessionsRoutes = async (request, server) => {
 		if (!(await sessionRecord(match.id))) return new Response('Session not found', { status: 404 });
 
 		await setWatching(identity, match.id, Boolean((await request.json()).watching));
+
+		return new Response(null, { status: 204 });
+	}
+
+	// Every link the project's sessions brought up, as one list; pinned and hidden for the project
+	match = requestMatch('GET', '/api/projects/:project/links', request);
+	if (match) {
+		const cwd = projectPath(match.project);
+
+		if (!cwd) return new Response('Unknown project', { status: 404 });
+
+		return Response.json(await projectLinks(match.project, cwd, { withHidden: match.all === '1' }));
+	}
+
+	match = requestMatch('POST', '/api/projects/:project/links/mark', request);
+	if (match) {
+		const { url, pinned, hidden } = await request.json();
+
+		if (typeof url !== 'string') return new Response('Which link?', { status: 400 });
+		await markProjectLink(match.project, url, { pinned, hidden });
 
 		return new Response(null, { status: 204 });
 	}

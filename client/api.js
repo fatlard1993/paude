@@ -67,6 +67,13 @@ export const getSymbols = async (sessionId, searchParameters) =>
 export const getLinks = async sessionId =>
 	await GET('/api/sessions/:id/links', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 
+// Across a project's sessions, each link naming the sessions it came up in
+export const getProjectLinks = async project =>
+	await GET('/api/projects/:project/links', { urlParameters: { project }, invalidateAfter: 0 });
+
+export const markProjectLink = async (project, url, change) =>
+	await POST('/api/projects/:project/links/mark', { urlParameters: { project }, body: { url, ...change } });
+
 export const markLink = async (sessionId, url, change) =>
 	await POST('/api/sessions/:id/links/mark', { urlParameters: { id: sessionId }, body: { url, ...change } });
 

@@ -2,12 +2,20 @@ import { Button, Elem, Input, Notify, View, styled } from '@vanilla-bean/compone
 
 import { runningSummary } from '../shared/checkouts';
 import { readProgress, recentLines } from '../shared/progress';
-import { createSession, deleteSession, getCheckouts, getProjectSessions } from './api';
+import {
+	createSession,
+	deleteSession,
+	getCheckouts,
+	getProjectLinks,
+	getProjectSessions,
+	markProjectLink,
+} from './api';
 import { confirmDeleteSession } from './confirmDialog';
 import { element } from './dom';
 import goBack from './goBack';
 import sessionList from './SessionList';
 import { Header, Scroll, SectionTitle, sessionCard } from './Layout';
+import LinksPanel from './Terminal/LinksPanel';
 
 const Composer = styled(
 	Input,
@@ -152,6 +160,17 @@ export default class Project extends View {
 					remove: async () => (await confirmDeleteSession(session, deleteSession)) && this.load(),
 				}),
 		});
+
+		// Every link the project's sessions brought up: docs, tickets, repos, servers
+		this.links = new LinksPanel({
+			appendTo: scroll,
+			addClass: 'project-links',
+			style: { height: 'auto', padding: '0', marginTop: '16px' },
+			load: () => getProjectLinks(project),
+			mark: (url, change) => markProjectLink(project, url, change),
+		});
+		this.links.body.style.maxHeight = '70vh';
+		this.links.refresh();
 
 		this.load();
 		this.loadCheckouts();

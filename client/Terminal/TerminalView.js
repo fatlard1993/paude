@@ -8,8 +8,10 @@ import {
 	deleteSession,
 	forkSession,
 	getSession,
+	getLinks,
 	getTurns,
 	listFiles,
+	markLink,
 	nameSession,
 	openRemote,
 	setWatching,
@@ -336,7 +338,8 @@ export default class TerminalView extends View {
 			this.links = new LinksPanel({
 				appendTo: body,
 				addClass: 'links',
-				sessionId: this.options.id,
+				load: () => getLinks(this.options.id),
+				mark: (url, change) => markLink(this.options.id, url, change),
 				close: () => this.toggleLinks(false),
 			});
 			this.addResizeHandle(this.links.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });

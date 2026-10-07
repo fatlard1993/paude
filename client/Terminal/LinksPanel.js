@@ -1,6 +1,5 @@
 import { Notify } from '@vanilla-bean/components';
 
-import { getLinks, markLink } from '../api';
 import { button, closeButton, element, icon } from '../dom';
 import { canNote } from '../identity';
 import relativeTime from '../../shared/relativeTime';
@@ -19,9 +18,10 @@ const KIND_ICONS = { docs: 'book', ticket: 'ticket', repo: 'code-branch', server
 // A link as it reads best: its host and path, without the scheme or a trailing slash
 const shortened = url => url.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
-// The links that came up in the session, gathered: docs, tickets, repos, servers and other references, each with
-// the words around its first mention and who brought it up. Pinned ones stay on top; noise can be hidden. What only
-// a command printed is left out unless asked for.
+// The links that came up, gathered: docs, tickets, repos, servers and other references, each with the words around
+// its first mention and who brought it up. Pinned ones stay on top; noise can be hidden. What only a command printed
+// is left out unless asked for. A session's own, or a project's across its sessions (each link naming the sessions
+// it came up in): `load()` and `mark(url, change)` say whose, and `close` gives it a close button.
 export default class LinksPanel extends Panel {
 	// Set here rather than as class fields: VBC runs build() from its own constructor, before subclass fields exist
 	build() {
@@ -37,7 +37,7 @@ export default class LinksPanel extends Panel {
 		this.bar.append(
 			element('span', 'branch', 'Links'),
 			element('span', 'spacer'),
-			closeButton(() => this.options.close()),
+			...(this.options.close ? [closeButton(() => this.options.close())] : []),
 		);
 		this.elem.tabIndex = -1;
 		this.elem.append(this.bar, this.filters, this.search, this.body);
@@ -50,7 +50,7 @@ export default class LinksPanel extends Panel {
 	}
 
 	async refresh() {
-		const { body, response } = await getLinks(this.options.sessionId);
+		const { body, response } = await this.options.load();
 
 		if (!response?.ok) {
 			this.body.replaceChildren(element('div', 'empty', 'Could not gather the links.'));
@@ -144,6 +144,7 @@ export default class LinksPanel extends Panel {
 		row.append(
 			head,
 			...(link.context ? [element('div', 'link-context', link.context)] : []),
+			...(link.sessions ? [this.sessionsOf(link)] : []),
 			element(
 				'div',
 				'meta',
@@ -156,8 +157,23 @@ export default class LinksPanel extends Panel {
 		return row;
 	}
 
+	// Where in the project it came up: the sessions, to open
+	sessionsOf(link) {
+		const line = element('div', 'meta link-sessions', 'in ');
+
+		link.sessions.slice(0, 3).forEach((session, index) => {
+			const open = element('a', '', session.title || 'a session');
+
+			open.href = `#/sessions/${session.id}`;
+			line.append(...(index ? [', '] : []), open);
+		});
+		if (link.sessions.length > 3) line.append(` and ${link.sessions.length - 3} more`);
+
+		return line;
+	}
+
 	async mark(link, change) {
-		await markLink(this.options.sessionId, link.url, change);
+		await this.options.mark(link.url, change);
 		await this.refresh();
 	}
 }

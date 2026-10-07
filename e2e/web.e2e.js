@@ -738,3 +738,42 @@ test(
 	},
 	TIMEOUT_MS,
 );
+
+test(
+	"a project's page lists the links all its sessions brought up, each naming where",
+	async () => {
+		const server = await startServer();
+		const [first, second] = [await server.newSession(), await server.newSession()];
+		const said = (text, second) => ({
+			type: 'user',
+			timestamp: `2026-10-07T12:00:0${second}.000Z`,
+			message: { content: text },
+		});
+
+		await server.writeTranscript(first, [said('see https://github.com/acme/shop/issues/12', 1)]);
+		await server.writeTranscript(second, [
+			said('also https://github.com/acme/shop/issues/12 and https://docs.acme.dev/api', 2),
+		]);
+
+		const { browser, page } = await openBrowser('dom');
+
+		try {
+			await page.goto(await server.loginLink('/projects/demo'));
+			await page.waitForSelector('.project-links .link');
+
+			const links = Object.fromEntries(
+				await page.$$eval('.project-links .link', rows =>
+					rows.map(row => [row.querySelector('a').textContent, row.querySelectorAll('.link-sessions a').length]),
+				),
+			);
+
+			// The ticket came up in both sessions, the docs in one; each session named by what began it
+			expect(links).toEqual({ 'github.com/acme/shop/issues/12': 2, 'docs.acme.dev/api': 1 });
+			expect(await page.$eval('.project-links .link-sessions', line => line.textContent)).toContain('see https://');
+		} finally {
+			await browser.close();
+			await server.stop();
+		}
+	},
+	TIMEOUT_MS,
+);
