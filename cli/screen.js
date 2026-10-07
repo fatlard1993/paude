@@ -110,7 +110,9 @@ export const rawInput = onKey => {
 };
 
 export const readHidden = label =>
-	new Promise(resolve => {
+	new Promise((resolve, reject) => {
+		if (!process.stdin.isTTY) return reject(new Error("This asks for a password, so it has to run in a terminal you can type in."));
+
 		let value = '';
 
 		process.stdout.write(label);
