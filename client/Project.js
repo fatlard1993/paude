@@ -139,7 +139,7 @@ export default class Project extends View {
 			appendTo: scroll,
 			placeholder: `Find a session in ${project}`,
 			empty: 'No sessions in this project yet.',
-			firstPage: 30,
+			pageSize: 30,
 			fetchPage: async searchParameters => {
 				const { body, response } = await getProjectSessions(project, { searchParameters });
 

@@ -3,7 +3,6 @@ import { Elem, styled } from '@vanilla-bean/components';
 import { element } from './dom';
 import { Empty } from './Layout';
 
-const PAGE = 30;
 const SEARCH_DELAY_MS = 250;
 
 const Box = styled(
@@ -24,9 +23,18 @@ const Box = styled(
 			gap: 6px;
 		}
 
-		.more {
-			align-self: center;
+		.pager {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			gap: 12px;
 			margin-top: 4px;
+		}
+
+		.pager .where {
+			color: ${colors.light(colors.gray)};
+			font-size: 0.85em;
+			font-variant-numeric: tabular-nums;
 		}
 
 		.count {
@@ -36,67 +44,87 @@ const Box = styled(
 	`,
 );
 
-// Sessions to search and page through. With nothing typed it shows the newest `firstPage` (less any the page lists
-// elsewhere, `skip`); typing searches every session the list covers (title, first prompt, project, branch), and
-// Show more brings the next page. `fetchPage({ q, offset, limit })` answers { sessions, total }.
-const sessionList = ({ appendTo, fetchPage, renderCard, placeholder, firstPage = 8, empty }) => {
+// Sessions to search and page through, `pageSize` at a time: with nothing typed the newest (less any the page lists
+// elsewhere, `skip`); typing searches every session the list covers (title, first prompt, project, branch).
+// `fetchPage({ q, offset, limit })` answers { sessions, total }, in order: pages seen are kept, so going back asks
+// for nothing and going on asks only for what follows.
+const sessionList = ({ appendTo, fetchPage, renderCard, placeholder, pageSize = 8, empty }) => {
 	const box = new Box({ appendTo });
 	const search = Object.assign(element('input', 'search'), { type: 'search', placeholder });
 	const count = element('div', 'count');
 	const list = element('div', 'cards');
-	const more = element('button', 'more');
-	let shown = [];
+	const pager = element('div', 'pager');
+	const previous = element('button', 'previous', '‹ Prev');
+	const where = element('span', 'where');
+	const next = element('button', 'next', 'Next ›');
+	let loaded = [];
+	let fetched = 0;
 	let total = 0;
+	let page = 0;
 	let skip = new Set();
 	let timer;
 	let latest = 0;
 
-	box.elem.append(search, count, list, more);
+	pager.append(previous, where, next);
+	box.elem.append(search, count, list, pager);
 
 	const query = () => search.value.trim();
+	const wanted = session => query() || !skip.has(session.id);
+	// What the list holds once those listed elsewhere are left out
+	const listed = () => Math.max(query() ? total : total - skip.size, loaded.length);
 
 	const render = () => {
-		const visible = shown.filter(session => query() || !skip.has(session.id));
+		const first = page * pageSize;
+		const shown = loaded.slice(first, first + pageSize);
+		const all = listed();
 
 		list.replaceChildren();
-		if (!visible.length) new Empty({ appendTo: list, textContent: query() ? 'No sessions match.' : empty });
-		for (const session of visible) renderCard(session, list);
-
-		const left = total - shown.length;
+		if (!shown.length) new Empty({ appendTo: list, textContent: query() ? 'No sessions match.' : empty });
+		for (const session of shown) renderCard(session, list);
 
 		count.textContent = query() ? `${total} matching` : '';
-		more.style.display = left > 0 && (query() || shown.length >= firstPage) ? '' : 'none';
-		more.textContent = left <= PAGE ? `Show all ${left}` : `Show ${PAGE} more of ${left}`;
+		pager.style.display = all > pageSize ? '' : 'none';
+		where.textContent = `${first + 1}–${first + shown.length} of ${all}`;
+		previous.disabled = page === 0;
+		next.disabled = first + pageSize >= all;
 	};
 
-	// A newer search wins over an older one still on its way
-	const load = async ({ append = false } = {}) => {
+	// Pages fetched until `page` is full or there's no more; a newer search or page wins over an older one
+	const load = async (to, { fresh = false } = {}) => {
 		const ask = ++latest;
-		const offset = append ? shown.length : 0;
-		const { sessions, total: all } = await fetchPage({
-			q: query(),
-			offset,
-			limit: append || query() ? PAGE : firstPage,
-		});
 
-		if (ask !== latest) return;
+		if (fresh) {
+			loaded = [];
+			fetched = 0;
+			total = Infinity;
+		}
 
-		shown = append ? [...shown, ...sessions] : sessions;
-		total = all;
+		while (loaded.length < (to + 1) * pageSize && fetched < total) {
+			const { sessions, total: all } = await fetchPage({ q: query(), offset: fetched, limit: pageSize });
+
+			if (ask !== latest) return;
+
+			total = sessions.length ? all : fetched;
+			fetched += sessions.length;
+			loaded.push(...sessions.filter(wanted));
+		}
+
+		page = Math.min(to, Math.max(Math.ceil(loaded.length / pageSize) - 1, 0));
 		render();
 	};
 
 	search.addEventListener('input', () => {
 		clearTimeout(timer);
-		timer = setTimeout(() => load(), SEARCH_DELAY_MS);
+		timer = setTimeout(() => load(0, { fresh: true }), SEARCH_DELAY_MS);
 	});
-	more.addEventListener('click', () => load({ append: true }));
+	previous.addEventListener('click', () => load(page - 1));
+	next.addEventListener('click', () => load(page + 1));
 
 	return {
 		reload: ({ exclude } = {}) => {
 			skip = exclude ?? skip;
 
-			return load();
+			return load(0, { fresh: true });
 		},
 	};
 };
