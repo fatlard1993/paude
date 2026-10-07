@@ -218,13 +218,23 @@ install_launchd() {
 "
 	domain="gui/$(id -u)"
 
+	loaded=$(launchctl print "$domain/$LABEL" >/dev/null 2>&1 && echo yes || echo no)
+
+	# A changed agent is unloaded and loaded again; bootout returns before the service is gone, so it's waited out
 	if [ ! -f "$AGENT" ] || [ "$(cat "$AGENT")" != "$agent_text" ]; then
 		printf '%s' "$agent_text" >"$AGENT"
-		launchctl bootout "$domain/$LABEL" 2>/dev/null || true
-		changed=yes
+		if [ "$loaded" = yes ]; then
+			launchctl bootout "$domain/$LABEL" 2>/dev/null || true
+			gone=0
+			while launchctl print "$domain/$LABEL" >/dev/null 2>&1 && [ "$gone" -lt 20 ]; do
+				gone=$((gone + 1))
+				sleep 0.5
+			done
+		fi
+		loaded=no
 	fi
 
-	if ! launchctl print "$domain/$LABEL" >/dev/null 2>&1; then
+	if [ "$loaded" = no ]; then
 		say "Starting paude"
 		launchctl bootstrap "$domain" "$AGENT"
 	elif [ "$changed" = yes ]; then
