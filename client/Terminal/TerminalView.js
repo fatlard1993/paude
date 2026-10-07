@@ -31,7 +31,8 @@ const BACKGROUND = '#1b1b1b';
 const TAP_SLOP = 8;
 // How far above and below a row to look for the rest of a URL Claude broke across rows
 const URL_ROWS = 6;
-// Command with these does what a Mac terminal makes it do: clears the line back to its start, or goes to either end
+// Command with these does what a Mac terminal makes it do: clears the line back to its start, or goes to either end.
+// Option+Backspace deletes a word, sent here rather than left to the browser, which may take it for its own editing.
 const MAC_LINE_KEYS = { Backspace: '\x15', ArrowLeft: '\x01', ArrowRight: '\x05' };
 
 const ghostButton = (appendTo, { icon, label, title, onPress, className = '' }) => {
@@ -305,7 +306,9 @@ export default class TerminalView extends View {
 		});
 		// Ctrl+C copies what's selected, as in a Windows terminal; with nothing selected it still interrupts Claude
 		this.terminal.attachCustomKeyEventHandler(event => {
-			const lineKey = event.metaKey && !event.ctrlKey && !event.altKey && MAC_LINE_KEYS[event.key];
+			const lineKey =
+				(event.metaKey && !event.ctrlKey && !event.altKey && MAC_LINE_KEYS[event.key]) ||
+				(event.altKey && !event.ctrlKey && !event.metaKey && event.key === 'Backspace' && '\x1b\x7f');
 
 			if (lineKey) {
 				event.preventDefault();
@@ -689,7 +692,8 @@ export default class TerminalView extends View {
 
 	// The terminal cell under a point, 1-based, as mouse reports count them
 	cellAt({ clientX, clientY }) {
-		const bounds = this.terminal.element.getBoundingClientRect();
+		// The screen, not the terminal element: scaled down, the element keeps its full-size width and the screen spills out
+		const bounds = this.terminal.element.querySelector('.xterm-screen').getBoundingClientRect();
 		const clamp = (value, most) => Math.min(Math.max(Math.ceil(value), 1), most);
 
 		return {
