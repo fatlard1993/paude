@@ -96,6 +96,15 @@ const Card = styled(
 			color: ${colors.light(colors.blue)};
 		}
 
+		.server {
+			display: inline-block;
+			margin-right: 6px;
+			padding: 0 6px;
+			border-radius: 8px;
+			color: hsl(var(--server-hue) 70% 75%);
+			background: hsl(var(--server-hue) 60% 50% / 0.18);
+		}
+
 		.remove {
 			flex-shrink: 0;
 			border: none;
@@ -167,11 +176,15 @@ const Card = styled(
 	`,
 );
 
+// The same server keeps the same color wherever it shows
+const hueOf = name => [...name].reduce((hash, character) => (hash * 31 + character.codePointAt(0)) % 360, 7);
+
 export const LinkCard = ({
 	href,
 	title,
 	meta = [],
 	project,
+	server,
 	live,
 	busy,
 	waiting,
@@ -201,6 +214,12 @@ export const LinkCard = ({
 		);
 
 	const metaLine = new Elem({ appendTo: body, addClass: 'meta' });
+
+	if (server) {
+		const tag = new Elem({ tag: 'span', appendTo: metaLine, addClass: 'server', textContent: server });
+
+		tag.elem.style.setProperty('--server-hue', hueOf(server));
+	}
 
 	if (project) {
 		new Elem({ tag: 'span', appendTo: metaLine, addClass: 'project', textContent: project });
@@ -246,8 +265,8 @@ export const sessionCard = (session, { showProject = true, appendTo, remove, ser
 		href: `#/sessions/${session.id}`,
 		title: session.pinned ? `📌 ${session.title}` : session.title,
 		project: showProject ? session.project : null,
+		server,
 		meta: [
-			server,
 			relativeTime(session.lastModified ?? session.activeAt),
 			session.worktree && `⎇ ${session.worktree}`,
 			session.gitBranch !== 'HEAD' && session.gitBranch !== session.worktree && session.gitBranch,

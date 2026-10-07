@@ -1,5 +1,5 @@
 import { allTokens, serverNames } from '../shared/credentials';
-import { serverApi, visitServer } from '../shared/serverClient';
+import { serverApi, serverPage, visitServer } from '../shared/serverClient';
 import { getServerId } from './auth';
 
 // The tokens in the paude command's credentials file stay on this server; the browser only gets what they fetch
@@ -40,4 +40,16 @@ export const remoteLink = async (url, sessionId) => {
 	const { code } = await serverApi(server, '/api/handoff', { method: 'POST' });
 
 	return `${server.url}/#/handoff/${code}/sessions/${sessionId}`;
+};
+
+// A page of a server's sessions (newest first, searched by q), as its /api/sessions answers it; null for a server
+// this machine isn't logged into
+export const remoteSessions = async (url, { q, offset, limit }) => {
+	const server = (await remoteServers()).find(remote => remote.url === url);
+
+	if (!server) return null;
+
+	const query = new URLSearchParams(Object.entries({ q, offset, limit }).filter(([, value]) => value !== undefined));
+
+	return serverPage(server, `/api/sessions?${query}`);
 };

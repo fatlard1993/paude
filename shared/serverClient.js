@@ -3,7 +3,7 @@ import { byRecentActivity } from './projects';
 
 const TIMEOUT_MS = 8000;
 
-export const serverApi = async ({ url, token }, route, init = {}) => {
+const serverFetch = async ({ url, token }, route, init = {}) => {
 	const response = await fetch(`${url}${route}`, {
 		...init,
 		tls: trustedCertificates(),
@@ -14,7 +14,20 @@ export const serverApi = async ({ url, token }, route, init = {}) => {
 	if (response.status === 401) throw new Error(`the saved login has ended; run: paude login ${url}`);
 	if (!response.ok) throw new Error((await response.text()) || `${url}${route} answered ${response.status}`);
 
+	return response;
+};
+
+export const serverApi = async (server, route, init) => {
+	const response = await serverFetch(server, route, init);
+
 	return response.status === 204 ? null : response.json();
+};
+
+// A page of a listing and how many there are in all (x-total-count)
+export const serverPage = async (server, route) => {
+	const response = await serverFetch(server, route);
+
+	return { items: await response.json(), total: Number(response.headers.get('x-total-count') ?? 0) };
 };
 
 // What one server has for this person: an owner's watched and recent sessions and projects, a guest's one session

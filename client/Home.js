@@ -1,19 +1,21 @@
 import { Button, Elem, Notify, View, styled } from '@vanilla-bean/components';
 
 import { byRecentActivity, projectSummary } from '../shared/projects';
+import mergedPages from '../shared/mergedPages';
 import byUrgency from '../shared/urgency';
 import {
 	addFolder,
 	deleteSession,
 	getProjects,
 	getRecentSessions,
+	getRemoteSessions,
 	getRemotes,
 	getWatching,
 	openRemote,
 	removeFolder,
 } from './api';
 import confirmDialog, { confirmDeleteSession } from './confirmDialog';
-import { identity } from './identity';
+import { identity, serverName } from './identity';
 import sessionList from './SessionList';
 import { Empty, Header, LinkCard, Scroll, SectionTitle, sessionCard } from './Layout';
 
@@ -76,23 +78,15 @@ export default class Home extends View {
 		this.watching = new List({ appendTo: scroll });
 
 		new SectionTitle({ appendTo: scroll, textContent: 'Continue' });
+		this.unreachable = new List({ appendTo: scroll });
+		this.fetchRecent = this.recentFrom([]);
 		this.recent = sessionList({
 			appendTo: scroll,
 			placeholder: 'Find a session in any project',
 			empty: 'Nothing yet. Pick a project to start a session.',
-			fetchPage: async searchParameters => {
-				const { body, response } = await getRecentSessions({ searchParameters });
-
-				return { sessions: body ?? [], total: Number(response?.headers.get('x-total-count') ?? 0) };
-			},
-			renderCard: (session, appendTo) =>
-				sessionCard(session, {
-					appendTo,
-					remove: async () => (await confirmDeleteSession(session, deleteSession)) && this.load(),
-				}),
+			fetchPage: searchParameters => this.fetchRecent(searchParameters),
+			renderCard: (session, appendTo) => this.card(session, appendTo),
 		});
-
-		this.remotes = new Elem({ appendTo: scroll });
 
 		new SectionTitle({ appendTo: scroll, textContent: 'Projects' });
 		this.projects = new Grid({ appendTo: scroll });
@@ -141,23 +135,39 @@ export default class Home extends View {
 		};
 	}
 
-	renderRemotes(remotes, watchedIds) {
-		this.remotes.empty();
+	// Every card names its server, this one's too, so sessions from several read as one list
+	card(session, appendTo) {
+		return sessionCard(session, {
+			appendTo,
+			...(session.remote
+				? this.remoteCard(session)
+				: {
+						server: serverName() ?? 'this machine',
+						remove: async () => (await confirmDeleteSession(session, deleteSession)) && this.load(),
+					}),
+		});
+	}
 
-		for (const remote of remotes) {
-			const recent = remote.error ? [] : remote.sessions.filter(({ id }) => !watchedIds.has(id));
+	// This server's sessions and those of the other servers that answered, newest first; one that stops answering
+	// partway is left out rather than failing the page
+	recentFrom(remotes) {
+		const here = async searchParameters => {
+			const { body, response } = await getRecentSessions({ searchParameters });
 
-			// A server whose sessions are all under Watching has nothing more to show
-			if (!remote.error && !recent.length) continue;
+			return { sessions: body ?? [], total: Number(response?.headers.get('x-total-count') ?? 0) };
+		};
+		const there = remote => async searchParameters => {
+			const { body, response } = await getRemoteSessions(remote.url, { searchParameters });
 
-			new SectionTitle({ appendTo: this.remotes, textContent: `On ${remote.name}` });
+			if (!response?.ok) return { sessions: [], total: 0 };
 
-			const list = new List({ appendTo: this.remotes });
+			return {
+				sessions: body.map(session => ({ ...session, remote })),
+				total: Number(response.headers.get('x-total-count') ?? 0),
+			};
+		};
 
-			if (remote.error) new Empty({ appendTo: list, textContent: `Could not load: ${remote.error}` });
-			for (const session of recent)
-				sessionCard(session, { appendTo: list, ...this.remoteCard({ ...session, remote }) });
-		}
+		return mergedPages([here, ...remotes.map(there)]);
 	}
 
 	async logout() {
@@ -175,20 +185,17 @@ export default class Home extends View {
 		const remoteWatched = reachable.flatMap(remote => remote.watching.map(session => ({ ...session, remote })));
 		const watched = [...(watching ?? []), ...remoteWatched].sort(byUrgency);
 		const watchedIds = new Set(watched.map(({ id }) => id));
-		const remove = session => async () => (await confirmDeleteSession(session, deleteSession)) && this.load();
 
 		this.watching.empty();
 		this.watchingTitle.elem.style.display = watched.length ? '' : 'none';
-		for (const session of watched) {
-			sessionCard(session, {
-				appendTo: this.watching,
-				...(session.remote ? this.remoteCard(session) : { remove: remove(session) }),
-			});
-		}
+		for (const session of watched) this.card(session, this.watching);
 
-		this.renderRemotes(remotes ?? [], new Set(remoteWatched.map(({ id }) => id)));
+		this.unreachable.empty();
+		for (const remote of (remotes ?? []).filter(({ error }) => error))
+			new Empty({ appendTo: this.unreachable, textContent: `${remote.name}: ${remote.error}` });
 
 		// What's under Watching isn't listed again, unless a search asks for it
+		this.fetchRecent = this.recentFrom(reachable.map(({ url, name }) => ({ url, name })));
 		this.recent.reload({ exclude: watchedIds });
 
 		this.projects.empty();

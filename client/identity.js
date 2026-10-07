@@ -9,6 +9,15 @@ export const setIdentity = identity => {
 
 export const identity = () => current;
 
+// What this server goes by (paude name), or null
+let name = null;
+
+export const setServerName = given => {
+	name = given;
+};
+
+export const serverName = () => name;
+
 // The same key the server keeps reactions and authorship under
 export const identityKey = () => (current?.owner ? 'owner' : current?.inviteId && `invite:${current.inviteId}`);
 

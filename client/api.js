@@ -98,4 +98,7 @@ export const removeFolder = async name => await DELETE('/api/projects/:name', { 
 
 export const getRemotes = async () => await GET('/api/remotes', { invalidateAfter: 0 });
 
+export const getRemoteSessions = async (url, { searchParameters: page }) =>
+	await GET('/api/remotes/sessions', { invalidateAfter: 0, searchParameters: { url, ...page } });
+
 export const openRemote = async (url, sessionId) => await POST('/api/remotes/open', { body: { url, sessionId } });

@@ -1,16 +1,8 @@
-let serverName = null;
+import { serverName } from './identity';
+
 let waiting = 0;
 
-const render = () => {
-	document.title = `${waiting ? `(${waiting}) ` : ''}${serverName ? `${serverName} · ` : ''}paude`;
-};
-
-export const setServerName = name => {
-	serverName = name;
-	render();
-};
-
-export const setWaiting = count => {
+export const updateTabTitle = ({ waiting: count = waiting } = {}) => {
 	waiting = count;
-	render();
+	document.title = `${waiting ? `(${waiting}) ` : ''}${serverName() ? `${serverName()} · ` : ''}paude`;
 };

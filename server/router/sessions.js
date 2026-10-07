@@ -5,7 +5,7 @@ import { credentialOf, identityOf, revokeInvitesFor } from '../auth';
 import { matchesQuery } from '../../shared/sessionSearch';
 import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
-import { listRemotes, remoteLink } from '../remotes';
+import { listRemotes, remoteLink, remoteSessions } from '../remotes';
 import { mayListRemotes } from '../serverSettings';
 import { deleteNotes } from '../notes';
 import { sessionTurns } from '../sessions/history';
@@ -167,6 +167,19 @@ const sessionsRoutes = async (request, server) => {
 		const link = await remoteLink(url, sessionId);
 
 		return link ? Response.json({ link }) : new Response('Not one of your servers', { status: 404 });
+	}
+
+	match = requestMatch('GET', '/api/remotes/sessions', request);
+	if (match) {
+		try {
+			const page = await remoteSessions(match.url, match);
+
+			if (!page) return new Response('Not one of your servers', { status: 404 });
+
+			return Response.json(page.items, { headers: { 'x-total-count': String(page.total) } });
+		} catch (error) {
+			return new Response(error.message, { status: 502 });
+		}
 	}
 
 	match = requestMatch('GET', '/api/sessions', request);

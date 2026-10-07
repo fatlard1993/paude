@@ -1,13 +1,13 @@
 import { Page, Router } from '@vanilla-bean/components';
 
 import Home from './Home';
-import { setIdentity } from './identity';
+import { setIdentity, setServerName } from './identity';
 import Login from './Login';
 import { recall, remember } from './storage';
 import { registerNotificationWorker } from './notify';
 import Project from './Project';
 import TerminalView from './Terminal/TerminalView';
-import { setServerName } from './tabTitle';
+import { updateTabTitle } from './tabTitle';
 import { startWatchAlerts } from './watchAlerts';
 import fitToKeyboard from './viewport';
 
@@ -63,6 +63,7 @@ const { authenticated, passwordSet, identity, name } = await (await fetch('/api/
 
 setIdentity(identity);
 setServerName(name);
+updateTabTitle();
 
 if (authenticated) {
 	registerNotificationWorker();
