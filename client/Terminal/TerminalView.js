@@ -31,6 +31,8 @@ const BACKGROUND = '#1b1b1b';
 const TAP_SLOP = 8;
 // How far above and below a row to look for the rest of a URL Claude broke across rows
 const URL_ROWS = 6;
+// Between the selection and its buttons, and the buttons and the edges
+const GAP = 6;
 // Command with these does what a Mac terminal makes it do: clears the line back to its start, or goes to either end.
 // Option with these deletes a word or jumps one, sent here rather than left to the browser, which may take them for
 // its own editing.
@@ -304,9 +306,8 @@ export default class TerminalView extends View {
 		if (canBrowse()) this.linkFilePaths();
 		this.terminal.onData(data => this.sendInput(data));
 		this.scrollClaudeWithWheel();
-		this.terminal.onSelectionChange(() => {
-			this.selectionActions.elem.style.display = this.terminal.hasSelection() ? '' : 'none';
-		});
+		this.terminal.onSelectionChange(() => this.placeSelectionActions());
+		this.terminal.onScroll(() => this.placeSelectionActions());
 		// Ctrl+C copies what's selected, as in a Windows terminal; with nothing selected it still interrupts Claude
 		this.terminal.attachCustomKeyEventHandler(event => {
 			const lineKey =
@@ -837,6 +838,29 @@ export default class TerminalView extends View {
 				callback(links.length ? links : undefined);
 			},
 		});
+	}
+
+	// Beside the selection rather than in a corner, which a panel can cover: below its last row, or above its first
+	// when there's no room below
+	placeSelectionActions() {
+		const actions = this.selectionActions.elem;
+		const position = this.terminal.hasSelection() && this.terminal.getSelectionPosition();
+
+		actions.style.display = position ? '' : 'none';
+		if (!position) return;
+
+		const screen = this.terminal.element.querySelector('.xterm-screen').getBoundingClientRect();
+		const column = actions.parentElement.getBoundingClientRect();
+		const cellWidth = screen.width / this.terminal.cols;
+		const cellHeight = screen.height / this.terminal.rows;
+		const rowTop = row => screen.top - column.top + (row - this.terminal.buffer.active.viewportY) * cellHeight;
+		const clamp = (value, room) => Math.min(Math.max(value, GAP), room - GAP);
+		let top = rowTop(position.end.y + 1) + GAP;
+
+		if (top + actions.offsetHeight > column.height - GAP) top = rowTop(position.start.y) - actions.offsetHeight - GAP;
+
+		actions.style.top = `${clamp(top, column.height - actions.offsetHeight)}px`;
+		actions.style.left = `${clamp(screen.left - column.left + position.start.x * cellWidth, column.width - actions.offsetWidth)}px`;
 	}
 
 	// A row's text and, for each character of it, the 1-based column it's drawn in (a wide character takes two)
