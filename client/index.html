@@ -9,7 +9,7 @@
 		<meta name="author" content="justfatlard" />
 		<meta name="description" content="Long-lived Claude sessions, reachable from anywhere" />
 
-		<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=5.0" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=5.0, interactive-widget=resizes-content" />
 		<meta name="HandheldFriendly" content="true" />
 		<meta name="MobileOptimized" content="320" />
 
@@ -29,6 +29,12 @@
 		<style>
 			:root {
 				color-scheme: dark;
+			}
+
+			/* The theme gives buttons touch-action: none, so a swipe that starts on one scrolls nothing: not the key
+			bar, not a list of sessions */
+			button {
+				touch-action: manipulation !important;
 			}
 		</style>
 

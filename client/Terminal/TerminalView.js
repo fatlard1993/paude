@@ -23,6 +23,8 @@ import SideShell from './SideShell';
 import { Body, CommentButton, NARROW, Presence, SelectHint, TopBar } from './TerminalView.styles';
 
 const BACKGROUND = '#1b1b1b';
+// How far a finger can wander and still be tapping rather than scrolling
+const TAP_SLOP = 8;
 
 const ghostButton = (appendTo, { icon, label, title, onPress, className = '' }) => {
 	const node = button(label, onPress, { icon, title: title ?? '', className: `ghost ${className}` });
@@ -521,40 +523,84 @@ export default class TerminalView extends View {
 	}
 
 	// Claude scrolls its transcript itself, redrawing in place on whichever screen it uses, so the browser's own
-	// scrollback has nothing in it. Mouse reporting is withheld from the browser, so the wheel goes to Claude as a
-	// wheel whenever Claude has asked for one; left to xterm on the alternate screen, it would become arrow keys,
-	// which Claude reads as walking through past prompts.
+	// scrollback has nothing in it. Mouse reporting is withheld from the browser, so the wheel, and a finger dragged
+	// across the terminal, go to Claude as a wheel whenever Claude has asked for one; left to xterm on the alternate
+	// screen, the wheel would become arrow keys, which Claude reads as walking through past prompts.
 	scrollClaudeWithWheel() {
 		this.pointerModes = new Set();
 		this.trackPointerMode = (mode, on) => (on ? this.pointerModes.add(mode) : this.pointerModes.delete(mode));
 
-		this.terminal.attachCustomWheelEventHandler(event => {
-			const tracking = ['1000', '1002', '1003'].some(mode => this.pointerModes.has(mode));
+		const tracking = () => ['1000', '1002', '1003'].some(mode => this.pointerModes.has(mode));
 
+		this.terminal.attachCustomWheelEventHandler(event => {
 			// Not asked for: xterm scrolls its own scrollback, which the alternate screen doesn't have
-			if (!tracking) return this.terminal.buffer.active.type !== 'alternate';
+			if (!tracking()) return this.terminal.buffer.active.type !== 'alternate';
 			if (!canType() || !event.deltaY) return false;
 
-			const bounds = this.terminal.element.getBoundingClientRect();
-			const column = Math.min(
-				Math.max(Math.ceil(((event.clientX - bounds.left) / bounds.width) * this.terminal.cols), 1),
-				this.terminal.cols,
-			);
-			const row = Math.min(
-				Math.max(Math.ceil(((event.clientY - bounds.top) / bounds.height) * this.terminal.rows), 1),
-				this.terminal.rows,
-			);
-			const button = event.deltaY < 0 ? 64 : 65;
-			const report = this.pointerModes.has('1006')
-				? `\x1b[<${button};${column};${row}M`
-				: `\x1b[M${String.fromCharCode(32 + button, 32 + column, 32 + row)}`;
 			// A touchpad sends many small deltas; a notch of a wheel is about 100
-			const notches = Math.max(1, Math.round(Math.abs(event.deltaY) / 100));
-
-			this.sendInput(report.repeat(notches));
+			this.sendWheel(event.deltaY < 0, event, Math.max(1, Math.round(Math.abs(event.deltaY) / 100)));
 
 			return false;
 		});
+
+		this.scrollClaudeWithTouch(tracking);
+	}
+
+	// xterm would scroll its own empty scrollback under the finger; every two rows dragged is a notch of the wheel
+	// instead, down to see earlier. Taps pass through, so a tap still brings up the keyboard.
+	scrollClaudeWithTouch(tracking) {
+		const screen = this.screen.elem;
+		let start = null;
+		let last = null;
+
+		screen.addEventListener('touchstart', event => {
+			start = last = event.touches.length === 1 ? event.touches[0].clientY : null;
+		});
+		screen.addEventListener(
+			'touchmove',
+			event => {
+				if (last === null || this.endLineSelect) return;
+
+				const touch = event.touches[0];
+
+				if (Math.abs(touch.clientY - start) < TAP_SLOP) return;
+
+				const step = (this.terminal.element.getBoundingClientRect().height / this.terminal.rows) * 2;
+				const notches = Math.trunc((touch.clientY - last) / step);
+
+				event.preventDefault();
+				event.stopPropagation();
+				if (!notches) return;
+
+				last += notches * step;
+				if (!tracking()) {
+					if (this.terminal.buffer.active.type !== 'alternate') this.terminal.scrollLines(-notches * 2);
+				} else if (canType()) this.sendWheel(notches > 0, touch, Math.abs(notches));
+			},
+			{ capture: true, passive: false },
+		);
+		screen.addEventListener('touchend', () => {
+			last = null;
+		});
+	}
+
+	// Wheel notches up or down at a point on the terminal, as the mouse report Claude asked for
+	sendWheel(up, { clientX, clientY }, notches) {
+		const bounds = this.terminal.element.getBoundingClientRect();
+		const column = Math.min(
+			Math.max(Math.ceil(((clientX - bounds.left) / bounds.width) * this.terminal.cols), 1),
+			this.terminal.cols,
+		);
+		const row = Math.min(
+			Math.max(Math.ceil(((clientY - bounds.top) / bounds.height) * this.terminal.rows), 1),
+			this.terminal.rows,
+		);
+		const button = up ? 64 : 65;
+		const report = this.pointerModes.has('1006')
+			? `\x1b[<${button};${column};${row}M`
+			: `\x1b[M${String.fromCharCode(32 + button, 32 + column, 32 + row)}`;
+
+		this.sendInput(report.repeat(notches));
 	}
 
 	// Every "done" line Claude prints after a turn becomes a link that starts a new session from that point

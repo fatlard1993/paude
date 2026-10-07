@@ -8,6 +8,7 @@ import { registerNotificationWorker } from './notify';
 import Project from './Project';
 import TerminalView from './Terminal/TerminalView';
 import { startWatchAlerts } from './watchAlerts';
+import fitToKeyboard from './viewport';
 
 import './hotReload';
 
@@ -80,4 +81,5 @@ const content = () => {
 	});
 };
 
+fitToKeyboard();
 new Page({ appendTo: document.body, append: content() });
