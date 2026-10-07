@@ -12,6 +12,7 @@ import {
 	getChanges,
 	getDiffSet,
 	getGit,
+	getSymbols,
 	getTurnChanges,
 	listFiles,
 	rawFileUrl,
@@ -288,6 +289,7 @@ const projectPathFrom = (file, reference) => {
 
 export default class FilesPanel extends Panel {
 	build() {
+		document.addEventListener('selectionchange', () => this.offerNameActions());
 		this.paths = [];
 		this.changes = null;
 		this.expanded = new Set();
@@ -314,6 +316,9 @@ export default class FilesPanel extends Panel {
 		this.modeButtons = {
 			names: button('Names', () => this.setMode('names')),
 			contents: button('Contents', () => this.setMode('contents')),
+			symbols: button('Symbols', () => this.setMode('symbols'), {
+				title: 'Where functions, classes and types are defined',
+			}),
 			changes: button('Changes', () => this.setMode('changes'), { title: 'What changed since the last commit' }),
 		};
 		this.changeCount = element('span', 'count');
@@ -324,6 +329,7 @@ export default class FilesPanel extends Panel {
 			search,
 			this.modeButtons.names,
 			this.modeButtons.contents,
+			this.modeButtons.symbols,
 			this.modeButtons.changes,
 			this.filtersButton,
 			this.fullscreenButton,
@@ -485,9 +491,12 @@ export default class FilesPanel extends Panel {
 
 	setMode(mode) {
 		this.mode = mode;
-		this.query.placeholder = { names: 'Find a file', contents: 'Search file contents', changes: 'Find a changed file' }[
-			mode
-		];
+		this.query.placeholder = {
+			names: 'Find a file',
+			contents: 'Search file contents',
+			symbols: 'Find a function, class or type',
+			changes: 'Find a changed file',
+		}[mode];
 
 		for (const [key, node] of Object.entries(this.modeButtons)) node.classList.toggle('active', key === mode);
 
@@ -508,6 +517,17 @@ export default class FilesPanel extends Panel {
 
 		if (this.mode === 'contents') {
 			this.searchTimer = setTimeout(() => this.searchContents(query), SEARCH_DELAY_MS);
+
+			return;
+		}
+
+		if (this.mode === 'symbols') {
+			this.searchTimer = setTimeout(async () => {
+				const { body } = await getSymbols(this.options.sessionId, { q: query });
+
+				if (this.query.value.trim() === query && this.mode === 'symbols')
+					this.showSymbols(body ?? [], body?.length ? null : 'No definitions match.');
+			}, SEARCH_DELAY_MS);
 
 			return;
 		}
@@ -578,6 +598,102 @@ export default class FilesPanel extends Panel {
 		entry.addEventListener('click', () => this.openDiffSet({ source: 'turn', turn: turn.id }));
 
 		return entry;
+	}
+
+	// Symbols as entries: their kind and name, where they are; one opens its file at the line
+	showSymbols(symbols, empty, heading) {
+		this.list.replaceChildren(
+			...(heading ? [element('div', 'list-heading', heading)] : []),
+			...(symbols.length
+				? symbols.map(symbol => {
+						const entry = this.fileEntry(symbol.name, symbol.file, symbol.line);
+
+						entry.prepend(element('span', `symbol-kind ${symbol.kind}`, symbol.kind[0]));
+						entry.append(element('span', 'where', `${symbol.file}:${symbol.line}`));
+
+						return entry;
+					})
+				: [element('div', 'empty', empty)]),
+		);
+	}
+
+	// Where a name is defined: straight there when there's one place, a list to choose from when there are more
+	async goToDefinition(name) {
+		const { body } = await getSymbols(this.options.sessionId, { name, from: this.current ?? '' });
+
+		if (!body?.length)
+			return new Notify({ type: 'warning', content: `No definition of ${name} found.`, timeout: 2500 });
+		if (body.length === 1) return this.open(body[0].file, body[0].line);
+
+		this.showSymbols(body, '', `${body.length} definitions of ${name}`);
+	}
+
+	// Everywhere the name is used, as a whole word
+	async findReferences(name) {
+		const options = { caseSensitive: true, wholeWord: true };
+		const { body, response } = await searchFiles(this.options.sessionId, name, options);
+
+		if (!response?.ok) return;
+
+		const hits = JSON.parse(body);
+
+		this.list.replaceChildren(
+			element('div', 'list-heading', `${hits.length}${hits.length >= 200 ? '+' : ''} uses of ${name}`),
+			...hits.map(hit => {
+				const entry = this.fileEntry(`${hit.path}:${hit.line}`, hit.path, hit.line);
+
+				entry.append(this.highlighted(hit.text.trim(), name, options));
+
+				return entry;
+			}),
+		);
+	}
+
+	// The open file's own symbols, in order, in the list beside it
+	async showOutline() {
+		const path = this.current;
+		const { body } = await getSymbols(this.options.sessionId, { file: path });
+
+		if (this.current !== path) return;
+		this.showSymbols(body ?? [], 'No functions, classes or types found in it.', `Outline of ${path.split('/').at(-1)}`);
+	}
+
+	// A name selected in the code (by a double-click, or a long press on a phone) offers both, beside the file's name
+	offerNameActions() {
+		if (!this.nameActions?.isConnected) return;
+
+		const selection = window.getSelection();
+		const name = selection.toString().trim();
+		const inCode = selection.anchorNode && this.body?.querySelector('code')?.contains(selection.anchorNode);
+
+		if (!inCode || !/^[A-Za-z_$][\w$]*$/.test(name)) return this.nameActions.replaceChildren();
+
+		this.nameActions.replaceChildren(
+			button('Definition', () => this.goToDefinition(name), { title: `Where ${name} is defined` }),
+			button('Uses', () => this.findReferences(name), { title: `Everywhere ${name} is used` }),
+		);
+	}
+
+	// The name at a point in the code, for Ctrl/Cmd+click
+	nameAt(x, y) {
+		// The standard one where there is one (Firefox), WebKit's own elsewhere
+		// eslint-disable-next-line compat/compat
+		const caret = document.caretPositionFromPoint?.(x, y) ?? document.caretRangeFromPoint?.(x, y);
+		const node = caret?.offsetNode ?? caret?.startContainer;
+		const offset = caret?.offset ?? caret?.startOffset;
+
+		if (!node || node.nodeType !== Node.TEXT_NODE) return null;
+
+		const text = node.textContent;
+		let start = offset;
+		let end = offset;
+
+		while (start > 0 && /[\w$]/.test(text[start - 1])) start -= 1;
+		while (end < text.length && /[\w$]/.test(text[end])) end += 1;
+
+		const name = text.slice(start, end);
+
+		return /^[A-Za-z_$][\w$]*$/.test(name) ? name : null;
 	}
 
 	async searchContents(query) {
@@ -890,7 +1006,10 @@ export default class FilesPanel extends Panel {
 
 		if (change) head.append(button('Changes', () => this.openDiff(this.current), { title: 'What changed in it' }));
 		if (this.lines && this.showingSource) {
+			this.nameActions = element('span', 'name-actions');
 			head.append(
+				button('Outline', () => this.showOutline(), { title: 'Its functions, classes and types, in the list' }),
+				this.nameActions,
 				button(this.fileHistory ? 'Text' : 'History', () => this.toggleHistory(), {
 					title: 'The commits that changed it',
 				}),
@@ -1264,6 +1383,18 @@ export default class FilesPanel extends Panel {
 		}
 
 		pre.append(code);
+		// Ctrl/Cmd+click a name: where it's defined; with Shift, everywhere it's used
+		code.addEventListener('click', event => {
+			if (!(event.ctrlKey || event.metaKey)) return;
+
+			const name = this.nameAt(event.clientX, event.clientY);
+
+			if (!name) return;
+			event.preventDefault();
+			if (event.shiftKey) this.findReferences(name);
+			else this.goToDefinition(name);
+		});
+		code.title = 'Ctrl+click a name to go to where it is defined (with Shift, to where it is used)';
 		wrapper.append(...(this.blame ? [this.blameColumn()] : []), gutter, pre);
 
 		return wrapper;

@@ -226,6 +226,44 @@ const Panel = styled(
 			display: block;
 		}
 
+		/* Symbols in the list: their kind, and where they are */
+		.list-heading {
+			padding: 6px 8px 4px;
+			color: ${colors.light(colors.gray)};
+			font-size: 0.8em;
+			text-transform: uppercase;
+			letter-spacing: 0.05em;
+		}
+
+		.symbol-kind {
+			flex-shrink: 0;
+			width: 1.4em;
+			text-align: center;
+			border-radius: 3px;
+			font-size: 0.75em;
+			font-weight: bold;
+			text-transform: uppercase;
+			background: ${colors.alpha(colors.white, 0.08)};
+		}
+
+		.symbol-kind.function, .symbol-kind.method { color: ${colors.light(colors.blue)}; }
+		.symbol-kind.class, .symbol-kind.type { color: ${colors.light(colors.yellow)}; }
+		.symbol-kind.value { color: ${colors.light(colors.green)}; }
+
+		.entry .where {
+			margin-left: auto;
+			padding-left: 8px;
+			color: ${colors.light(colors.gray)};
+			font-size: 0.8em;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.name-actions {
+			display: contents;
+		}
+
 		/* Who last changed each run of lines, beside the line numbers */
 		.blame {
 			flex-shrink: 0;

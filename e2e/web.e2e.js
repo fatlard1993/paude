@@ -454,3 +454,86 @@ test(
 	},
 	TIMEOUT_MS,
 );
+
+test(
+	'code navigation: symbols search, an outline, Ctrl+click to a definition, and its uses',
+	async () => {
+		const server = servers.turns;
+
+		await Bun.write(
+			`${server.project}/lib/math.js`,
+			'export const add = (a, b) => a + b;\n\nexport class Totals {\n\tsum(list) {\n\t\treturn list.reduce(add, 0);\n\t}\n}\n',
+		);
+		await Bun.write(`${server.project}/lib/use.js`, "import { add } from './math';\n\nconsole.log(add(1, 2));\n");
+		Bun.spawnSync(['git', 'add', 'lib'], { cwd: server.project });
+
+		const { browser, page } = await openSession('dom', server);
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+
+		try {
+			await press('[title="Project files"]');
+			await press('.files .bar button', 'Symbols');
+			await page.type('.files .bar input', 'Tot');
+			await wait(1000);
+			expect(await page.$eval('.files .list', list => list.textContent)).toContain('lib/math.js:3');
+
+			await page.$eval('.files .bar input', input => (input.value = ''));
+			await press('.files .bar button', 'Names');
+			await page.type('.files .bar input', 'use.js');
+			await wait(500);
+			await press('.files .entry', 'use.js');
+
+			// Ctrl+click on "add" in the last line
+			const where = await page.evaluate(() => {
+				const code = document.querySelector('.files .source code');
+				const text = code.firstChild;
+				const at = text.textContent.lastIndexOf('add(');
+				const range = document.createRange();
+
+				range.setStart(text, at + 1);
+				range.setEnd(text, at + 2);
+
+				const box = range.getBoundingClientRect();
+
+				return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+			});
+
+			await page.keyboard.down('Control');
+			await page.mouse.click(where.x, where.y);
+			await page.keyboard.up('Control');
+			await wait(1000);
+			expect(await page.$eval('.files .viewer .path', path => path.textContent)).toBe('lib/math.js');
+
+			await press('.files .head button', 'Outline');
+			expect(await page.$eval('.files .list', list => list.textContent)).toContain('Totals');
+
+			// Selecting a name (a double-click here, a long press on a phone) offers where it's used
+			const name = await page.evaluate(() => {
+				const text = document.querySelector('.files .source code').firstChild;
+				const at = text.textContent.indexOf('add');
+				const range = document.createRange();
+
+				range.setStart(text, at + 1);
+				range.setEnd(text, at + 2);
+
+				const box = range.getBoundingClientRect();
+
+				return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+			});
+
+			await page.mouse.click(name.x, name.y, { count: 2, clickCount: 2 });
+			await wait(300);
+			await press('.files .name-actions button', 'Uses');
+			expect(await page.$eval('.files .list', list => list.textContent)).toContain('uses of add');
+			expect(await page.$eval('.files .list', list => list.textContent)).toContain('lib/use.js:3');
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);

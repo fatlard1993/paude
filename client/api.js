@@ -59,6 +59,10 @@ export const runGit = async (sessionId, action, body = {}) =>
 export const getTimeline = async sessionId =>
 	await GET('/api/sessions/:id/timeline', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 
+// Symbols: { q } names matching, { name, from } where one is defined, { file } a file's outline
+export const getSymbols = async (sessionId, searchParameters) =>
+	await GET('/api/sessions/:id/symbols', { urlParameters: { id: sessionId }, searchParameters, invalidateAfter: 0 });
+
 // The Tasks panel: { tasks, runs, processes }
 export const getTasks = async sessionId =>
 	await GET('/api/sessions/:id/tasks', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
