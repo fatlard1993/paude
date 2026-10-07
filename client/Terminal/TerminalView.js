@@ -1,4 +1,4 @@
-import { Elem, Notify, View, styled } from '@vanilla-bean/components';
+import { Button, Elem, Notify, View, styled } from '@vanilla-bean/components';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
@@ -20,7 +20,7 @@ import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from './xtermOpti
 import FilesPanel from './FilesPanel';
 import NotesPanel from './NotesPanel';
 import SideShell from './SideShell';
-import { Body, CommentButton, NARROW, Presence, SelectHint, TopBar } from './TerminalView.styles';
+import { Body, NARROW, Presence, SelectHint, SelectionActions, TopBar } from './TerminalView.styles';
 
 const BACKGROUND = '#1b1b1b';
 // How far a finger can wander and still be tapping rather than scrolling
@@ -165,15 +165,25 @@ export default class TerminalView extends View {
 
 		this.screen = new Screen({ appendTo: column });
 		this.selectHint = new SelectHint({ appendTo: column, style: { display: 'none' } });
-		this.commentButton = new CommentButton({
-			appendTo: column,
-			textContent: '💬 Comment',
-			style: { display: 'none' },
+		// Pressed, not clicked, and kept from taking focus, so the selection is still there to act on
+		this.selectionActions = new SelectionActions({ appendTo: column, style: { display: 'none' } });
+		new Button({
+			appendTo: this.selectionActions,
+			textContent: '📋 Copy',
 			onPointerPress: event => {
 				event.preventDefault();
-				this.commentOnSelection();
+				this.copySelection();
 			},
 		});
+		if (canNote())
+			new Button({
+				appendTo: this.selectionActions,
+				textContent: '💬 Comment',
+				onPointerPress: event => {
+					event.preventDefault();
+					this.commentOnSelection();
+				},
+			});
 		if (canNote()) {
 			new KeyBar({
 				appendTo: column,
@@ -268,7 +278,24 @@ export default class TerminalView extends View {
 		this.terminal.onData(data => this.sendInput(data));
 		this.scrollClaudeWithWheel();
 		this.terminal.onSelectionChange(() => {
-			this.commentButton.elem.style.display = canNote() && this.terminal.hasSelection() ? '' : 'none';
+			this.selectionActions.elem.style.display = this.terminal.hasSelection() ? '' : 'none';
+		});
+		// Ctrl+C copies what's selected, as in a Windows terminal; with nothing selected it still interrupts Claude
+		this.terminal.attachCustomKeyEventHandler(event => {
+			const copy =
+				event.type === 'keydown' &&
+				event.ctrlKey &&
+				!event.altKey &&
+				!event.metaKey &&
+				event.key.toLowerCase() === 'c' &&
+				this.terminal.hasSelection();
+
+			if (copy) {
+				event.preventDefault();
+				this.copySelection();
+			}
+
+			return !copy;
 		});
 
 		this.connection = attach(this.options.id, {
@@ -499,6 +526,20 @@ export default class TerminalView extends View {
 		if (!this.notesOpen || this.notes.tab !== tab) new Notify({ type: 'info', content: what, timeout: 6000 });
 	}
 
+	async copySelection() {
+		const text = this.terminal.getSelection();
+
+		if (!text) return;
+
+		try {
+			await navigator.clipboard.writeText(text);
+			this.terminal.clearSelection();
+			new Notify({ type: 'success', content: 'Copied', timeout: 1500 });
+		} catch {
+			new Notify({ type: 'error', content: "The browser wouldn't let paude copy; its own Copy still works." });
+		}
+	}
+
 	commentOnSelection() {
 		const quote = this.terminal.getSelection().trim();
 
@@ -515,7 +556,7 @@ export default class TerminalView extends View {
 			terminal: this.terminal,
 			screen: this.screen.elem,
 			hint: text => this.lineSelectHint(text),
-			purpose: 'comment on',
+			purpose: 'copy or comment on',
 			onEnd: () => {
 				this.endLineSelect = null;
 			},

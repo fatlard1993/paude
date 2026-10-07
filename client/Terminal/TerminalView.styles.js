@@ -1,4 +1,4 @@
-import { Button, Elem, styled } from '@vanilla-bean/components';
+import { Elem, styled } from '@vanilla-bean/components';
 
 import { Header } from '../Layout';
 
@@ -280,15 +280,14 @@ export const SelectHint = styled(
 	`,
 );
 
-export const CommentButton = styled(
-	Button,
-	() => `
-		position: absolute;
-		right: 12px;
-		bottom: 12px;
-		z-index: 1;
-	`,
-);
+export const SelectionActions = styled.Component`
+	position: absolute;
+	right: 12px;
+	bottom: 12px;
+	z-index: 1;
+	display: flex;
+	gap: 6px;
+`;
 
 export const Presence = styled(
 	Elem,
