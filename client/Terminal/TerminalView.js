@@ -779,7 +779,7 @@ export default class TerminalView extends View {
 				scannedFrom = baseY;
 			});
 		});
-		// Resizing rewraps every row, so they're all checked again
+		// Resizing wraps every row afresh, so they're all checked again
 		this.terminal.onResize(() => (scannedFrom = 0));
 	}
 

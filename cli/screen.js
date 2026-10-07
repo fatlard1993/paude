@@ -9,6 +9,8 @@ export const SHOW_CURSOR = `${ESC}[?25h`;
 // arrive as keys. Snapshots carry Claude's modes, so returning to it restores reporting.
 export const MOUSE_OFF = `${ESC}[?1000l${ESC}[?1002l${ESC}[?1003l${ESC}[?1006l`;
 export const CLEAR_SCROLLBACK = `${ESC}[3J`;
+// What opens paude's box, as a Mac or anything else would press it
+export const OVERLAY_KEY = process.platform === 'darwin' ? 'Cmd+]' : 'Ctrl+]';
 // Claude Code switches on the kitty keyboard protocol, under which Esc arrives as an escape sequence rather than a
 // bare ESC. The overlay pushes plain keys onto the terminal's keyboard-mode stack and pops back to Claude's on close.
 export const PLAIN_KEYS = `${ESC}[>0u`;
@@ -111,7 +113,8 @@ export const rawInput = onKey => {
 
 export const readHidden = label =>
 	new Promise((resolve, reject) => {
-		if (!process.stdin.isTTY) return reject(new Error("This asks for a password, so it has to run in a terminal you can type in."));
+		if (!process.stdin.isTTY)
+			return reject(new Error('This asks for a password, so it has to run in a terminal you can type in.'));
 
 		let value = '';
 

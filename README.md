@@ -118,7 +118,7 @@ Revoking an invite, or changing the password with `bun run set-password` (a runn
 
 ## In the terminal
 
-Inside a session everything goes to Claude except **Ctrl+]**, which floats the box over Claude's screen. Claude keeps working behind it.
+Inside a session everything goes to Claude except **Ctrl+]** (**Cmd+]** on a Mac, in a terminal that passes it on, such as kitty), which floats the box over Claude's screen. Claude keeps working behind it. A terminal that keeps Cmd+] for itself (iTerm2, Ghostty) can be set to send Ctrl+] (the byte `0x1d`) for it instead.
 
 ![The box over a session: who's here, the chat, an open comment](docs/terminal-box.png)
 

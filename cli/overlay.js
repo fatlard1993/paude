@@ -3,7 +3,19 @@ import { REACTION_PALETTE } from '../shared/reactions';
 import { roleAllows } from '../shared/roles';
 import relativeTime from '../shared/relativeTime';
 import { browserKey, browserKeys, browserView } from './fileBrowser';
-import { bold, dim, fit, heading, keyCap, onBackground, orange, printable, visibleLength, wrap } from './screen';
+import {
+	OVERLAY_KEY,
+	bold,
+	dim,
+	fit,
+	heading,
+	keyCap,
+	onBackground,
+	orange,
+	printable,
+	visibleLength,
+	wrap,
+} from './screen';
 
 const KIND_LABELS = { terminal: 'terminal', web: 'browser' };
 const CHAT_LINES = 8;
@@ -301,7 +313,7 @@ const shellKey = (state, key, readSelection) => {
 
 	state.hint = readSelection.unavailable
 		? "paude can't read your selection here: install wl-clipboard (Wayland) or xclip (X11)."
-		: 'Nothing selected. Shift+drag over the output first (on macOS, copy it), then Ctrl+] and a.';
+		: `Nothing selected. Shift+drag over the output first (on macOS, copy it), then ${OVERLAY_KEY} and a.`;
 
 	return { type: 'redraw' };
 };
@@ -357,7 +369,8 @@ export const overlayKey = (state, rawKey, { readSelection = () => null } = {}) =
 		if (quote) state.draft = { kind: 'comment', text: '', quote };
 		else if (readSelection.unavailable)
 			state.hint = "paude can't read your selection here: install wl-clipboard (Wayland) or xclip (X11).";
-		else state.hint = "Nothing selected. Shift+drag over Claude's output first (on macOS, copy it), then Ctrl+] and m.";
+		else
+			state.hint = `Nothing selected. Shift+drag over Claude's output first (on macOS, copy it), then ${OVERLAY_KEY} and m.`;
 
 		return { type: 'redraw' };
 	}

@@ -2,7 +2,7 @@ module.exports = {
 	skipWords: [
 		'tls',
 		'pem',
-		'urls',
+		'urls', 'cmd',
 		'umask',
 		'worktree',
 		'minecraft',

@@ -26,10 +26,23 @@ import {
 	rawInput,
 	size,
 	write,
+	OVERLAY_KEY,
 } from './screen';
 
-// Ctrl+] arrives as a plain byte, or as a CSI u sequence once Claude Code has switched on the kitty keyboard protocol
-const OVERLAY_KEYS = ['\x1d', '\x1b[93;5u', '\x1b[93;5:1u', '\x1b[27;5;93~'];
+// Ctrl+] arrives as a plain byte, or as a CSI u sequence once Claude Code has switched on the kitty keyboard protocol;
+// Cmd+] (super) only as the sequence, from a terminal that passes it on rather than keeping it for itself
+const OVERLAY_KEYS = [
+	'\x1d',
+	'\x1b[93;5u',
+	'\x1b[93;5:1u',
+	'\x1b[27;5;93~',
+	'\x1b[93;9u',
+	'\x1b[93;9:1u',
+	'\x1b[27;9;93~',
+];
+
+// Cmd+] needs a terminal that passes it on; Ctrl+] works in any
+const OVERLAY_KEY_HINT = OVERLAY_KEY === 'Ctrl+]' ? OVERLAY_KEY : `${OVERLAY_KEY} (or Ctrl+])`;
 
 const NOTE_ACTIONS = ['chat', 'comment', 'reply', 'resolve', 'react'];
 const FRAME_MS = 33;
@@ -380,7 +393,8 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 		};
 
 		// The one key that matters shows for a moment before Claude's screen takes over
-		if (showKeyHint) write(`\r\n  \x1b[2mCtrl+] opens paude's box: chat, comments, files, switch or detach\x1b[0m\r\n`);
+		if (showKeyHint)
+			write(`\r\n  \x1b[2m${OVERLAY_KEY_HINT} opens paude's box: chat, comments, files, switch or detach\x1b[0m\r\n`);
 
 		// A dropped connection (laptop sleep, network change) reconnects; the fresh snapshot redraws the screen
 		const connection = sessionSocket({
