@@ -6,6 +6,7 @@ import { setPeerAddress } from '../auth';
 import authRoutes, { guard } from './auth';
 import filesRoutes from './files';
 import gitRoutes from './git';
+import sharesRoutes from './shares';
 import hooksRoutes from './hooks';
 import sessionsRoutes from './sessions';
 import staticRoutes from './static';
@@ -64,6 +65,9 @@ const router = async (request, server) => {
 		if (response) return response;
 
 		response = await gitRoutes(request);
+		if (response) return response;
+
+		response = await sharesRoutes(request);
 		if (response) return response;
 
 		response = await sessionsRoutes(request, server);

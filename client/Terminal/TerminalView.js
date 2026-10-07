@@ -23,6 +23,7 @@ import selectLinesByTap from './lineSelect';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from './xtermOptions';
 import FilesPanel from './FilesPanel';
 import GitPanel from './GitPanel';
+import SharesPanel from './SharesPanel';
 import NotesPanel from './NotesPanel';
 import SideShell from './SideShell';
 import { Body, NARROW, Presence, SelectHint, SelectionActions, TopBar } from './TerminalView.styles';
@@ -170,6 +171,14 @@ export default class TerminalView extends View {
 			title: 'Watch: count what changes here while you are away',
 			onPress: () => this.toggleWatching(),
 		});
+		this.sharesButton = ghostButton(header, {
+			icon: 'share-nodes',
+			title: 'Shared: services this session runs, files and sites',
+			onPress: () => this.toggleShares(),
+		});
+		this.sharedCount = Object.assign(document.createElement('span'), { className: 'count' });
+		this.sharedCount.style.display = 'none';
+		this.sharesButton.append(this.sharedCount);
 		this.notesToggle = ghostButton(header, {
 			icon: 'comments',
 			title: 'Chat and comments',
@@ -245,6 +254,13 @@ export default class TerminalView extends View {
 			});
 			this.addResizeHandle(this.git.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
 		}
+		this.shares = new SharesPanel({
+			appendTo: body,
+			addClass: 'shares',
+			sessionId: this.options.id,
+			close: () => this.toggleShares(false),
+		});
+		this.addResizeHandle(this.shares.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
 		if (canType()) {
 			this.shell = new SideShell({
 				appendTo: body,
@@ -441,6 +457,8 @@ export default class TerminalView extends View {
 			this.fitScale();
 		} else if (message.type === 'presence') {
 			this.renderPresence(message);
+		} else if (message.type === 'shares') {
+			this.showShares(message.shares);
 		} else if (message.type === 'notice') {
 			new Notify({ type: 'warning', content: message.text });
 		} else if (NOTE_TYPES.includes(message.type)) {
@@ -495,7 +513,7 @@ export default class TerminalView extends View {
 	}
 
 	toggleNotes(open = !this.notes.elem.classList.contains('open'), { focus = true } = {}) {
-		if (open && this.git?.elem.classList.contains('open')) this.toggleGit(false);
+		if (open) this.closeOthersOnTheRight('notes');
 		this.notes.elem.classList.toggle('open', open);
 		this.notesToggle.classList.toggle('active', open);
 		remember(NOTES_OPEN_KEY, open ? 'yes' : '');
@@ -557,9 +575,42 @@ export default class TerminalView extends View {
 		this.focusPanel(this.files.elem, open);
 	}
 
-	// On the right, where the chat is: one of the two at a time
+	// The chat, Git and Shared panels sit on the right: one at a time
+	closeOthersOnTheRight(keep) {
+		if (keep !== 'notes' && this.notes.elem.classList.contains('open')) this.toggleNotes(false);
+		if (keep !== 'git' && this.git?.elem.classList.contains('open')) this.toggleGit(false);
+		if (keep !== 'shares' && this.shares.elem.classList.contains('open')) this.toggleShares(false);
+	}
+
+	toggleShares(open = !this.shares.elem.classList.contains('open')) {
+		if (open) this.closeOthersOnTheRight('shares');
+		this.shares.elem.classList.toggle('open', open);
+		this.sharesButton.classList.toggle('active', open);
+		if (open) this.shares.refresh();
+		this.focusPanel(this.shares.elem, open);
+	}
+
+	// How many things the session shares, on the button; a service seen for the first time says so once
+	showShares(shares) {
+		const ports = shares.filter(share => share.kind === 'port' && share.auto);
+
+		this.seenPorts ??= new Set(ports.map(share => share.port));
+		for (const share of ports) {
+			if (this.seenPorts.has(share.port)) continue;
+			this.seenPorts.add(share.port);
+			new Notify({
+				type: 'info',
+				content: `Sharing port ${share.port} (${share.command}): open it from Shared`,
+				timeout: 5000,
+			});
+		}
+		this.sharedCount.textContent = shares.length;
+		this.sharedCount.style.display = shares.length ? '' : 'none';
+		if (this.shares.elem.classList.contains('open')) this.shares.refresh();
+	}
+
 	toggleGit(open = !this.git.elem.classList.contains('open')) {
-		if (open && this.notes.elem.classList.contains('open')) this.toggleNotes(false);
+		if (open) this.closeOthersOnTheRight('git');
 		this.git.elem.classList.toggle('open', open);
 		this.gitButton?.classList.toggle('active', open);
 		if (open) this.git.refresh();

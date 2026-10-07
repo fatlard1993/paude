@@ -14,7 +14,10 @@ import { initProjects, setProjectsRoot } from './projects';
 import { sweepCredentials } from './sessions/attachSocket';
 import { sweepSideShells } from './sessions/sideShell';
 import { setHolderFolder } from './sessions/holder';
-import { adoptHeldSessions, setClaudePath } from './sessions/running';
+import { adoptHeldSessions, runningSession, setClaudePath } from './sessions/running';
+import { startPreview } from './preview';
+import { initShares, onSharesChange, watchShares } from './shares';
+import { setPreviewPort } from './router/shares';
 import server, { spawnBuild } from './server';
 
 import './exit';
@@ -47,6 +50,10 @@ const { options } = new Argi({
 			alias: 'p',
 			defaultValue: 8044,
 		},
+		'preview-port': {
+			type: 'number',
+			description: 'Where shared services and files are served, a separate origin from paude (default: --port + 1)',
+		},
 	},
 });
 
@@ -77,6 +84,15 @@ setHolderFolder(path.join(options.data, 'held'));
 await adoptHeldSessions();
 
 server.init({ host: options.host, port: options.port, data: options.data });
+
+const previewPort = options['preview-port'] ?? options.port + 1;
+
+await initShares(options.data, { reserved: [options.port, previewPort] });
+setPreviewPort(previewPort);
+startPreview({ host: options.host, port: previewPort });
+watchShares();
+// A session's shares changing reaches whoever has it open
+onSharesChange((sessionId, shares) => runningSession(sessionId)?.broadcast({ type: 'shares', shares }));
 setInterval(() => {
 	sweepCredentials();
 	sweepSideShells();

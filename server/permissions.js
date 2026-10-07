@@ -42,6 +42,9 @@ export const guestMayRequest = (identity, method, pathname) => {
 			(pathname === '/api/auth' || pathname === own || OWN_SESSION_ROUTES.some(route => pathname === own + route))) ||
 		// The Git panel's reads and actions; the route checks which the role allows
 		(['GET', 'POST'].includes(method) && pathname.startsWith(`${own}/git/`)) ||
+		// What the session shares; the route checks who may add or stop one
+		(['GET', 'POST', 'DELETE'].includes(method) &&
+			(pathname === `${own}/shares` || pathname.startsWith(`${own}/shares/`))) ||
 		(method === 'GET' && pathname === '/api/watching') ||
 		(method === 'POST' && pathname === '/api/handoff') ||
 		(method === 'PUT' && (pathname === `${own}/watch` || pathname === `${own}/file`)) ||

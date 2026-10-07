@@ -42,12 +42,13 @@ cd ~/.paude-server && bun run set-password
 
 That installs to `~/.paude-server` and runs a user service (a launchd agent on macOS, which also links the `paude` command) on `127.0.0.1:8044`, serving the folders in `~/Projects`; running it again updates it. Elsewhere, run it yourself: `bun install`, `NODE_ENV=production bun run build`, `bun run set-password`, then `bun start -- --projects ~/Projects`.
 
-| Option             | Default              |                                       |
-| ------------------ | -------------------- | ------------------------------------- |
-| `--projects`       | `~/Projects`         | each subfolder is a project           |
-| `--host`, `--port` | `127.0.0.1`, `8044`  | where paude listens                   |
-| `--data`           | `~/.paude`           | logins, chat, comments, added folders |
-| `--claude`         | `claude` on the PATH | the Claude Code executable            |
+| Option             | Default              |                                            |
+| ------------------ | -------------------- | ------------------------------------------ |
+| `--projects`       | `~/Projects`         | each subfolder is a project                |
+| `--host`, `--port` | `127.0.0.1`, `8044`  | where paude listens                        |
+| `--data`           | `~/.paude`           | logins, chat, comments, added folders      |
+| `--claude`         | `claude` on the PATH | the Claude Code executable                 |
+| `--preview-port`   | `--port` + 1         | where shared services and files are served |
 
 Logins need HTTPS: the login cookie is `Secure`, which browsers accept only over https or on localhost. Put a TLS proxy in front instead of exposing the port. With Caddy and no domain name, Let's Encrypt can certify the server's IP address:
 
@@ -60,7 +61,18 @@ Logins need HTTPS: the login cookie is `Secure`, which browsers accept only over
 	}
 	reverse_proxy 127.0.0.1:8044
 }
+
+203.0.113.7:8444 {
+	tls {
+		issuer acme {
+			profile shortlived
+		}
+	}
+	reverse_proxy 127.0.0.1:8045
+}
 ```
+
+The second site is where sessions share their services and files (see [Sharing](#sharing)): port 8444 in front of paude's preview port. It's a separate origin on purpose, so an app shown there can't act as you on paude. Another port in front of it goes in `~/.config/paude/server.json` as `{ "previewPort": 9444 }`.
 
 For a phone on the same network instead, Caddy can sign for the machine's own name with its own certificate authority, which the phone then trusts once (on an iPhone: install the profile, then turn it on under Settings → General → About → Certificate Trust Settings). Caddy keeps that authority's certificate in its data folder as `pki/authorities/local/root.crt`:
 
@@ -73,11 +85,26 @@ workbook.local {
 	tls internal
 	reverse_proxy 127.0.0.1:8044
 }
+
+workbook.local:8444 {
+	tls internal
+	reverse_proxy 127.0.0.1:8045
+}
 ```
 
 Then, from any machine: `paude login https://203.0.113.7 --name vps` (the name is how the picker shows it; `paude name <url> <name>` renames a login you have). A server can name itself too: `paude name vps` on the server puts the name in its browser tab title and is what other machines show it as, unless they gave it a name of their own. A session nobody is attached to exits after an hour (later if Claude is still working); opening it again resumes it. With [dtach](https://github.com/crigler/dtach) installed (`paude doctor` checks), sessions keep running through a server restart or update, and the new server takes them back.
 
 A paude on your own network behind Caddy's `tls internal` has a certificate from that Caddy's own authority, which nothing trusts yet. Put the authority's root certificate (`root.crt`, under Caddy's `pki/authorities/local`) in `~/.config/paude/certificates.pem` on the machine logging in. That file can hold several, one after another. The paude command and this machine's server then trust them, and a browser needs the same certificate trusted on its own.
+
+## Sharing
+
+What a session runs and makes can be opened from any device logged in to paude, at its own address on the preview port (8444 behind Caddy): `https://<host>:8444/s/<name>/`. The share button in a session's bar lists them, with links to open or copy and a button to stop each.
+
+- **Services.** A server the session starts (a dev server Claude runs, or one from the side terminal) is found once it listens and shared while it does. Any other port on the machine can be forwarded by hand. An app's own absolute paths (`/assets/app.js`) and WebSockets (a dev server's live reload) work without telling it about the `/s/<name>/` prefix.
+- **Files.** A file in the project to download, or a folder as a zip.
+- **Sites.** A folder served as a website, a built `dist/` say, with no server running.
+
+Only people logged in who can see the session open them: the owner, and that session's invitees. Sharing something new takes the drive role. The preview port is another origin, so a shared app's code can't reach paude's API as whoever is looking at it, and paude's login cookie is never passed on to the app.
 
 ## Worktrees
 

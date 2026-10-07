@@ -194,6 +194,21 @@ const Panel = styled(
 			text-overflow: ellipsis;
 		}
 
+		.share a {
+			color: inherit;
+			text-decoration: none;
+		}
+
+		.share a:hover {
+			text-decoration: underline;
+		}
+
+		.share > i {
+			width: 1.2em;
+			text-align: center;
+			opacity: 0.7;
+		}
+
 		.branch-row.current .name {
 			font-weight: bold;
 		}

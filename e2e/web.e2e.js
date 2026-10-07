@@ -150,3 +150,113 @@ test(
 	},
 	TIMEOUT_MS,
 );
+
+// A dev server as the session would start one (marked with its PAUDE_SESSION), resolving to its port once it listens
+const startDevServer = async (server, sessionId) => {
+	const dev = Bun.spawn(['bun', `${import.meta.dir}/fixtures/devServer.js`], {
+		env: { ...process.env, PAUDE_SESSION: sessionId },
+		stdout: 'pipe',
+	});
+	const port = Number(new TextDecoder().decode((await dev.stdout.getReader().read()).value).trim());
+
+	return { dev, port };
+};
+
+const sharesOf = async (server, id, until) => {
+	for (let tries = 0; tries < 30; tries++) {
+		const { shares } = await (await server.api(`/api/sessions/${id}/shares`)).json();
+
+		if (until(shares)) return shares;
+		await wait(500);
+	}
+
+	throw new Error('The shares never showed up');
+};
+
+test(
+	"shares: a session's dev server is found and served, its absolute paths and WebSocket too, out of paude's reach and only to a login",
+	async () => {
+		const server = servers.turns;
+		const id = await server.newSession();
+		const { dev, port } = await startDevServer(server, id);
+		const { browser, page } = await openBrowser('dom');
+		const stranger = await openBrowser('dom');
+
+		try {
+			const [share] = await sharesOf(server, id, shares => shares.some(found => found.port === port));
+			const link = share.url.replace(/^https?:\/\/[^/]+/, server.previewUrl);
+
+			await page.goto(await server.loginLink(`/sessions/${id}`));
+			await page.waitForSelector('.xterm-screen');
+			await page.goto(link);
+			await wait(1500);
+			expect(await page.title()).toBe('app loaded');
+			expect(await page.evaluate(() => document.body.dataset.echo)).toBe('echo ping');
+
+			const reachedPaude = await page.evaluate(async origin => {
+				try {
+					await fetch(`${origin}/api/auth`, { credentials: 'include' });
+
+					return true;
+				} catch {
+					return false;
+				}
+			}, server.url);
+
+			expect(reachedPaude).toBe(false);
+
+			await stranger.page.goto(link);
+			expect(await stranger.page.title()).toBe('Log in to paude first');
+		} finally {
+			dev.kill();
+			await Promise.all([browser.close(), stranger.browser.close()]);
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	'shares panel: a file to download and a folder as a site, listed with their links',
+	async () => {
+		const server = servers.turns;
+
+		await Bun.write(`${server.project}/site/index.html`, '<title>the site</title><p>hello');
+
+		const { browser, page } = await openSession('dom', server);
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+
+		try {
+			await press('[title^="Shared"]');
+			await page.type('.shares form:last-of-type input', 'server/app.js');
+			await press('.shares form:last-of-type button', 'Download');
+			await page.type('.shares form:last-of-type input', 'site');
+			await press('.shares form:last-of-type button', 'Site');
+
+			const links = await page.$$eval('.shares .share a', anchors =>
+				anchors.map(anchor => [anchor.textContent, anchor.href]),
+			);
+
+			expect(links.map(([label]) => label)).toEqual(['server/app.js', 'site, as a site']);
+
+			const sitePage = await browser.newPage();
+
+			await sitePage.goto(links[1][1].replace(/^https?:\/\/[^/]+/, server.previewUrl));
+			expect(await sitePage.title()).toBe('the site');
+
+			const download = await sitePage.evaluate(
+				async url => (await fetch(url)).headers.get('content-disposition'),
+				links[0][1].replace(/^https?:\/\/[^/]+/, server.previewUrl),
+			);
+
+			expect(download).toContain("attachment; filename*=UTF-8''app.js");
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);

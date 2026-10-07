@@ -53,6 +53,7 @@ export const Body = styled.Component`
 	/* Floats over the terminal rather than taking a column, so opening it never changes the session's size */
 	.notes,
 	.git,
+	.shares,
 	.files,
 	.shell {
 		position: absolute;
@@ -76,6 +77,7 @@ export const Body = styled.Component`
 
 	.notes.open,
 	.git.open,
+	.shares.open,
 	.files.open,
 	.shell.open {
 		opacity: 1;
@@ -84,7 +86,8 @@ export const Body = styled.Component`
 	}
 
 	.notes,
-	.git {
+	.git,
+	.shares {
 		right: 8px;
 		width: min(var(--notes-width, 360px), calc(100% - 16px));
 		transform: translateX(12px);
@@ -119,7 +122,8 @@ export const Body = styled.Component`
 	}
 
 	.notes .resize,
-	.git .resize {
+	.git .resize,
+	.shares .resize {
 		left: 0;
 	}
 
@@ -152,7 +156,8 @@ export const Body = styled.Component`
 
 	@media ${NARROW} {
 		.notes,
-		.git {
+		.git,
+		.shares {
 			inset: 0;
 			width: auto;
 			border-radius: 0;

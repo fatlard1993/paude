@@ -55,6 +55,17 @@ export const getGit = async (sessionId, what, searchParameters = {}) =>
 export const runGit = async (sessionId, action, body = {}) =>
 	await POST('/api/sessions/:id/git/:action', { urlParameters: { id: sessionId, action }, body });
 
+// { shares: [{ id, name, kind, port, path, auto, url }], origin }
+export const getShares = async sessionId =>
+	await GET('/api/sessions/:id/shares', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
+
+// `share` is { kind: 'port', port } or { kind: 'download' | 'site', path }
+export const addShare = async (sessionId, share) =>
+	await POST('/api/sessions/:id/shares', { urlParameters: { id: sessionId }, body: share });
+
+export const stopShare = async (sessionId, shareId) =>
+	await DELETE('/api/sessions/:id/shares/:share', { urlParameters: { id: sessionId, share: shareId } });
+
 export const getDiffSet = async (sessionId, source) =>
 	await GET('/api/sessions/:id/diffs', {
 		urlParameters: { id: sessionId },

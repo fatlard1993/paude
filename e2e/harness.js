@@ -31,6 +31,7 @@ export const startServer = async ({ claude = FAKE_CLAUDE, fake = 'turns' } = {})
 	const dir = await mkdtemp(path.join(os.tmpdir(), 'paude-e2e-'));
 	const project = path.join(dir, 'projects', 'demo');
 	const port = freePort();
+	const previewPort = freePort();
 
 	await mkdir(path.join(project, 'server'), { recursive: true });
 	await writeFile(
@@ -56,6 +57,8 @@ export const startServer = async ({ claude = FAKE_CLAUDE, fake = 'turns' } = {})
 			path.join(dir, 'data'),
 			'--claude',
 			claude,
+			'--preview-port',
+			String(previewPort),
 		],
 		{
 			cwd: ROOT,
@@ -80,7 +83,9 @@ export const startServer = async ({ claude = FAKE_CLAUDE, fake = 'turns' } = {})
 
 	return {
 		url,
+		previewUrl: `http://127.0.0.1:${previewPort}`,
 		project,
+		api,
 		newSession: async () =>
 			(await (await api('/api/projects/demo/sessions', { method: 'POST', body: '{}' })).json()).id,
 		// A link that logs a browser in as the owner and lands on `to`
