@@ -260,3 +260,102 @@ test(
 	},
 	TIMEOUT_MS,
 );
+
+test(
+	'back offers the sessions waiting for you, and opens one',
+	async () => {
+		const server = servers.turns;
+		const waiting = await server.newSession();
+
+		await server.api(`/api/sessions/${waiting}/watch`, { method: 'PUT', body: JSON.stringify({ watching: true }) });
+		await server.hook(waiting, { hook_event_name: 'Notification', notification_type: 'permission_prompt' });
+
+		const { browser, page } = await openSession('dom', server);
+
+		try {
+			await page.waitForFunction(() => document.querySelector('[title^="Back, or one of"]'), { timeout: 20_000 });
+
+			const back = await centerOf(page, '[title^="Back, or one of"]');
+
+			await page.mouse.click(back.x, back.y);
+			await wait(400);
+
+			const rows = await page.$$eval('button', buttons =>
+				buttons.filter(row => row.querySelector('.detail')).map(row => row.textContent),
+			);
+
+			expect(rows.length).toBe(1);
+			await page.click('button:has(.detail)');
+			await wait(800);
+			expect(await page.evaluate(() => window.location.hash)).toBe(`#/sessions/${waiting}`);
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	"the files viewer shows a file's history and blame; Claude drafts the commit message",
+	async () => {
+		const server = servers.turns;
+		const { browser, page } = await openSession('dom', server);
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+
+		try {
+			await Bun.write(`${server.project}/notes.txt`, 'one\ntwo\n');
+			Bun.spawnSync(['git', 'add', 'notes.txt'], { cwd: server.project });
+			await press('[title^="Git"]');
+			await press('.git button', 'Claude, write it');
+			expect(await page.$eval('.git .commit-box textarea', box => box.value)).toBe('describe the staged change');
+			await press('.git .commit-box button', 'Commit');
+
+			await press('[title="Project files"]');
+			await page.type('.files .bar input', 'notes.txt');
+			await wait(500);
+			await press('.files .entry', 'notes.txt');
+			await press('.files .head button', 'Blame');
+			expect(await page.$eval('.files .blame', column => column.textContent)).toContain('Tester');
+			await press('.files .head button', 'History');
+			expect(await page.$eval('.files .file-history', list => list.textContent)).toContain(
+				'describe the staged change',
+			);
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	'a found service is named for its project and port, and can be renamed',
+	async () => {
+		const server = servers.turns;
+		const id = await server.newSession();
+		const { dev, port } = await startDevServer(server, id);
+
+		try {
+			const [share] = await sharesOf(server, id, shares => shares.some(found => found.port === port));
+
+			expect(share.name).toBe(`demo-${port}`);
+
+			const renamed = await (
+				await server.api(`/api/sessions/${id}/shares/${share.id}`, {
+					method: 'PATCH',
+					body: JSON.stringify({ name: 'My Shop' }),
+				})
+			).json();
+
+			expect(renamed.url).toEndWith('/s/my-shop/');
+			expect((await (await server.api(`/api/sessions/${id}/shares`)).json()).shares[0].name).toBe('my-shop');
+		} finally {
+			dev.kill();
+		}
+	},
+	TIMEOUT_MS,
+);

@@ -1,6 +1,7 @@
 import { Notify } from '@vanilla-bean/components';
 
-import { addShare, getShares, stopShare } from '../api';
+import { addShare, getShares, renameShare, stopShare } from '../api';
+import { nameDialog } from '../confirmDialog';
 import { button, closeButton, element, icon } from '../dom';
 import { canType } from '../identity';
 import Panel from './GitPanel.styles';
@@ -82,6 +83,24 @@ export default class SharesPanel extends Panel {
 		row.append(icon(KIND_ICONS[share.kind]), open, copy);
 		if (canType())
 			row.append(
+				button(
+					'',
+					async () => {
+						const name = await nameDialog({
+							current: share.name,
+							header: 'Name this share',
+							placeholder: 'Its address: /s/<name>/',
+						});
+
+						if (!name || name === share.name) return;
+
+						const { body, response } = await renameShare(this.options.sessionId, share.id, name);
+
+						if (!response?.ok) this.say(typeof body === 'string' ? body : 'Could not rename it.');
+						await this.refresh();
+					},
+					{ icon: 'pen', title: `Rename it (now /s/${share.name}/)`, className: 'icon-only' },
+				),
 				button(
 					'',
 					async () => {

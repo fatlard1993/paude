@@ -63,7 +63,7 @@ export const confirmDeleteSession = async (session, deleteSession) => {
 };
 
 // Resolves to the new name, '' to go back to the automatic one, or null when left as it was
-export const nameDialog = ({ current, pinned }) =>
+export const nameDialog = ({ current, pinned, header = 'Name this session', placeholder = 'Session name' }) =>
 	new Promise(resolve => {
 		const input = document.createElement('input');
 		const AUTOMATIC = 'Use automatic name';
@@ -73,7 +73,7 @@ export const nameDialog = ({ current, pinned }) =>
 		};
 
 		input.value = current ?? '';
-		input.placeholder = 'Session name';
+		input.placeholder = placeholder;
 		input.style.width = '100%';
 		input.addEventListener('keydown', event => {
 			if (event.key === 'Enter') finish(input.value.trim() || '');
@@ -81,7 +81,7 @@ export const nameDialog = ({ current, pinned }) =>
 
 		const dialog = new Dialog({
 			size: 'small',
-			header: 'Name this session',
+			header,
 			body: input,
 			buttons: ['Cancel', ...(pinned ? [AUTOMATIC] : []), 'Save'],
 			onButtonPress: ({ button }) => {

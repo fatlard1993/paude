@@ -81,8 +81,16 @@ export const startServer = async ({ claude = FAKE_CLAUDE, fake = 'turns' } = {})
 			headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...init.headers },
 		});
 
+	// What Claude Code's hooks would post about a session: { hook_event_name, notification_type, ... }
+	const hook = async (sessionId, payload) => {
+		const secret = (await Bun.file(path.join(dir, 'data', 'hook-secret')).text()).trim();
+
+		await fetch(`${url}/api/hooks/${secret}/${sessionId}`, { method: 'POST', body: JSON.stringify(payload) });
+	};
+
 	return {
 		url,
+		hook,
 		previewUrl: `http://127.0.0.1:${previewPort}`,
 		project,
 		api,

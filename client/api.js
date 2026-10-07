@@ -1,4 +1,4 @@
-import { DELETE, GET, POST, PUT } from '@vanilla-bean/hypertether';
+import { DELETE, GET, PATCH, POST, PUT } from '@vanilla-bean/hypertether';
 
 import { searchParameters } from '../shared/searchQuery';
 
@@ -62,6 +62,9 @@ export const getShares = async sessionId =>
 // `share` is { kind: 'port', port } or { kind: 'download' | 'site', path }
 export const addShare = async (sessionId, share) =>
 	await POST('/api/sessions/:id/shares', { urlParameters: { id: sessionId }, body: share });
+
+export const renameShare = async (sessionId, shareId, name) =>
+	await PATCH('/api/sessions/:id/shares/:share', { urlParameters: { id: sessionId, share: shareId }, body: { name } });
 
 export const stopShare = async (sessionId, shareId) =>
 	await DELETE('/api/sessions/:id/shares/:share', { urlParameters: { id: sessionId, share: shareId } });

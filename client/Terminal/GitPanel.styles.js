@@ -239,6 +239,7 @@ const Panel = styled(
 		}
 
 		.amend {
+			flex: 1;
 			font-size: 0.85em;
 		}
 

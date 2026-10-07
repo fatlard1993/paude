@@ -8,7 +8,17 @@ import relativeTime from '../../shared/relativeTime';
 import { diffLines } from '../../shared/diff';
 import { extensionOf, kindOf, matchNames } from '../../shared/projectFiles';
 import searchPattern from '../../shared/searchPattern';
-import { getChanges, getDiffSet, getTurnChanges, listFiles, rawFileUrl, readFile, saveFile, searchFiles } from '../api';
+import {
+	getChanges,
+	getDiffSet,
+	getGit,
+	getTurnChanges,
+	listFiles,
+	rawFileUrl,
+	readFile,
+	saveFile,
+	searchFiles,
+} from '../api';
 import { canType } from '../identity';
 import { recall, remember } from '../storage';
 import confirmDialog from '../confirmDialog';
@@ -745,6 +755,8 @@ export default class FilesPanel extends Panel {
 		this.view = 'file';
 		this.kind = kindOf(path);
 		this.selection = line ? { anchor: line, from: line, to: lastLine } : null;
+		this.fileHistory = null;
+		this.blame = null;
 		this.lines = null;
 		this.conflict = null;
 		this.panes.classList.add('reading');
@@ -770,6 +782,80 @@ export default class FilesPanel extends Panel {
 		this.renderViewer();
 
 		if (line) this.body.scrollTop = (line - 1) * LINE_HEIGHT - this.body.clientHeight / 2;
+	}
+
+	async toggleHistory() {
+		if (this.fileHistory) {
+			this.fileHistory = null;
+
+			return this.renderViewer();
+		}
+
+		const path = this.current;
+		const { body, response } = await getGit(this.options.sessionId, 'log', { path });
+
+		if (this.current !== path) return;
+		if (!response?.ok) return new Notify({ type: 'warning', content: 'No git history here.' });
+
+		this.fileHistory = body;
+		this.renderViewer();
+	}
+
+	historyList() {
+		if (!this.fileHistory.length) return element('div', 'empty', 'Not committed yet.');
+
+		const list = element('div', 'file-history');
+
+		for (const commit of this.fileHistory) {
+			const row = element('button', 'history-item');
+
+			row.append(
+				element('div', 'subject', commit.subject),
+				element('div', 'meta', `${commit.short} · ${commit.author} · ${relativeTime(Date.parse(commit.date))}`),
+			);
+			row.title = 'Show this commit';
+			row.addEventListener('click', () => this.openDiffSet({ source: 'commit', ref: commit.hash }));
+			list.append(row);
+		}
+
+		return list;
+	}
+
+	async toggleBlame() {
+		if (this.blame) {
+			this.blame = null;
+
+			return this.renderViewer();
+		}
+
+		const path = this.current;
+		const { body, response } = await getGit(this.options.sessionId, 'blame', { path });
+
+		if (this.current !== path) return;
+		if (!response?.ok)
+			return new Notify({ type: 'warning', content: typeof body === 'string' ? body : 'No blame for this file.' });
+
+		this.blame = new Map(body.map(line => [line.line, line]));
+		this.renderViewer();
+	}
+
+	// Beside the line numbers: who last changed each run of lines, the commit's subject on hover, the commit on click
+	blameColumn() {
+		const column = element('div', 'blame');
+
+		this.lines.forEach((_, index) => {
+			const line = this.blame.get(index + 1);
+			const startsRun = line && this.blame.get(index)?.hash !== line.hash;
+			const cell = element('div', '', startsRun ? `${line.short} ${line.author ?? ''}` : '');
+
+			if (line) {
+				cell.title = `${line.summary ?? ''} · ${line.author ?? ''} · ${line.date ? relativeTime(Date.parse(line.date)) : ''}`;
+				cell.addEventListener('click', () => this.openDiffSet({ source: 'commit', ref: line.hash }));
+			}
+			column.append(cell);
+		});
+
+		return column;
 	}
 
 	get showingSource() {
@@ -803,6 +889,16 @@ export default class FilesPanel extends Panel {
 		}
 
 		if (change) head.append(button('Changes', () => this.openDiff(this.current), { title: 'What changed in it' }));
+		if (this.lines && this.showingSource) {
+			head.append(
+				button(this.fileHistory ? 'Text' : 'History', () => this.toggleHistory(), {
+					title: 'The commits that changed it',
+				}),
+				button(this.blame ? 'No blame' : 'Blame', () => this.toggleBlame(), {
+					title: 'Who last changed each line, and in which commit',
+				}),
+			);
+		}
 		if (this.lines)
 			head.append(button('Compare...', () => this.startComparing(), { title: 'Compare it with another file' }));
 
@@ -899,6 +995,8 @@ export default class FilesPanel extends Panel {
 			this.body.append(this.editor());
 		} else if (this.kind === 'image' || this.kind === 'video' || this.kind === 'audio' || this.kind === 'pdf') {
 			this.body.append(this.media());
+		} else if (this.fileHistory) {
+			this.body.append(this.historyList());
 		} else if (this.kind === 'markdown' && this.markdownView === 'rendered') {
 			this.body.append(this.renderedMarkdown());
 		} else {
@@ -1166,7 +1264,7 @@ export default class FilesPanel extends Panel {
 		}
 
 		pre.append(code);
-		wrapper.append(gutter, pre);
+		wrapper.append(...(this.blame ? [this.blameColumn()] : []), gutter, pre);
 
 		return wrapper;
 	}

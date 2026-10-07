@@ -4,9 +4,18 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 
-import { deleteSession, forkSession, getSession, getTurns, listFiles, nameSession, setWatching } from '../api';
+import {
+	deleteSession,
+	forkSession,
+	getSession,
+	getTurns,
+	listFiles,
+	nameSession,
+	openRemote,
+	setWatching,
+} from '../api';
 import confirmDialog, { confirmDeleteSession, nameDialog } from '../confirmDialog';
-import { canBrowse, canNote, canType, identity } from '../identity';
+import { canBrowse, canNote, canType, identity, serverName } from '../identity';
 import DONE_MARKER from '../../shared/doneMarker';
 import findFilePaths, { pathResolver } from '../../shared/filePaths';
 import findUrls from '../../shared/terminalLinks';
@@ -26,7 +35,7 @@ import GitPanel from './GitPanel';
 import SharesPanel from './SharesPanel';
 import NotesPanel from './NotesPanel';
 import SideShell from './SideShell';
-import { Body, NARROW, Presence, SelectHint, SelectionActions, TopBar } from './TerminalView.styles';
+import { BackMenu, Body, NARROW, Presence, SelectHint, SelectionActions, TopBar } from './TerminalView.styles';
 
 const BACKGROUND = '#1b1b1b';
 // How far a finger can wander and still be tapping rather than scrolling
@@ -117,7 +126,7 @@ export default class TerminalView extends View {
 			const back = ghostButton(header, {
 				icon: 'arrow-left',
 				title: 'Back',
-				onPress: () => goBack(this.project ? `#/projects/${this.project}` : '#/'),
+				onPress: () => (this.waitingOthers?.length ? this.toggleBackMenu(back) : this.goBack()),
 			});
 
 			this.showWaitingOn(back);
@@ -665,13 +674,83 @@ export default class TerminalView extends View {
 		this.addCleanup(
 			'waitingCount',
 			onWaitingChange(sessions => {
-				const others = sessions.filter(session => session.remote || session.id !== this.options.id).length;
+				this.waitingOthers = sessions.filter(session => session.remote || session.id !== this.options.id);
+
+				const others = this.waitingOthers.length;
 
 				count.textContent = others;
 				count.style.display = others ? '' : 'none';
-				back.title = others ? `Back (${others} waiting for you)` : 'Back';
+				back.title = others ? `Back, or one of the ${others} waiting for you` : 'Back';
 			}),
 		);
+	}
+
+	goBack() {
+		goBack(this.project ? `#/projects/${this.project}` : '#/');
+	}
+
+	// With sessions waiting for you, back offers them too: back where you came from, or straight to one of them
+	toggleBackMenu(back) {
+		if (this.backMenu) return this.closeBackMenu();
+
+		const menu = new BackMenu({ appendTo: document.body });
+		const box = back.getBoundingClientRect();
+		const item = (label, detail, onPress) => {
+			const row = button('', () => {
+				this.closeBackMenu();
+				onPress();
+			});
+
+			row.append(element('span', 'label', label), ...(detail ? [element('span', 'detail', detail)] : []));
+			menu.elem.append(row);
+		};
+
+		Object.assign(menu.elem.style, { left: `${box.left}px`, top: `${box.bottom + 4}px` });
+		item('← Back', null, () => this.goBack());
+		menu.elem.append(element('div', 'heading', 'Waiting for you'));
+		for (const session of this.waitingOthers) {
+			item(
+				session.title || session.project,
+				[session.project, session.remote?.name ?? serverName()].filter(Boolean).join(' · '),
+				() => this.openWaiting(session),
+			);
+		}
+
+		const outside = event => {
+			if (!menu.elem.contains(event.target) && !back.contains(event.target)) this.closeBackMenu();
+		};
+		const escape = event => event.key === 'Escape' && this.closeBackMenu();
+
+		document.addEventListener('pointerdown', outside, true);
+		document.addEventListener('keydown', escape);
+		this.backMenu = {
+			menu,
+			stop: () => {
+				document.removeEventListener('pointerdown', outside, true);
+				document.removeEventListener('keydown', escape);
+			},
+		};
+		this.addCleanup('backMenu', () => this.closeBackMenu());
+	}
+
+	closeBackMenu() {
+		this.backMenu?.stop();
+		this.backMenu?.menu.elem.remove();
+		this.backMenu = null;
+	}
+
+	// One here opens here; one on another server, through a link that logs this browser in there
+	async openWaiting(session) {
+		if (!session.remote) {
+			window.location.hash = `#/sessions/${session.id}`;
+
+			return;
+		}
+
+		const { body, response } = await openRemote(session.remote.url, { sessionId: session.id });
+
+		if (response?.ok) window.location.href = body.link;
+		else new Notify({ type: 'error', content: `Could not reach ${session.remote.name}.` });
 	}
 
 	async copySelection() {

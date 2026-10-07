@@ -12,6 +12,8 @@ export const setClaudePath = path => {
 	claudePath = path;
 };
 
+export const claudeCommand = () => claudePath;
+
 export const runningSession = id => running.get(id);
 
 export const allRunning = () => running.values();

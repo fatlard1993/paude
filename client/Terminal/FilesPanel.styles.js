@@ -226,6 +226,57 @@ const Panel = styled(
 			display: block;
 		}
 
+		/* Who last changed each run of lines, beside the line numbers */
+		.blame {
+			flex-shrink: 0;
+			width: 18ch;
+			padding-right: 8px;
+			color: ${colors.light(colors.gray)};
+			font-size: 0.8em;
+			line-height: ${LINE_HEIGHT}px;
+			white-space: pre;
+			overflow: hidden;
+			position: relative;
+			z-index: 1;
+		}
+
+		.blame div {
+			height: ${LINE_HEIGHT}px;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			cursor: pointer;
+		}
+
+		.blame div:hover {
+			color: ${colors.white};
+		}
+
+		.file-history {
+			display: flex;
+			flex-direction: column;
+			padding: 6px;
+		}
+
+		.file-history .history-item {
+			display: flex;
+			flex-direction: column;
+			align-items: stretch;
+			gap: 2px;
+			padding: 6px;
+			text-align: left;
+			background: transparent;
+			white-space: normal;
+		}
+
+		.file-history .history-item:hover {
+			background: ${colors.alpha(colors.white, 0.05)};
+		}
+
+		.file-history .meta {
+			color: ${colors.light(colors.gray)};
+			font-size: 0.85em;
+		}
+
 		.source code.plain {
 			font-family: ui-monospace, monospace;
 			color: ${colors.white};

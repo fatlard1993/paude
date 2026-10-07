@@ -2,6 +2,14 @@
 // Stands in for Claude Code in the browser tests, drawing the way it does now: on the alternate screen, with done
 // lines, a URL, a file path, and a prompt box. PAUDE_E2E_FAKE=busy keeps printing too, as Claude does mid-turn.
 const write = text => process.stdout.write(text);
+
+// claude -p: reads its prompt, answers once (a commit message, as the Git panel asks for)
+if (process.argv.includes('-p')) {
+	await Bun.stdin.text();
+	write('describe the staged change\n');
+	process.exit(0);
+}
+
 const busy = process.env.PAUDE_E2E_FAKE === 'busy';
 
 const screen = () =>

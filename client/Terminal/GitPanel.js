@@ -251,7 +251,28 @@ export default class GitPanel extends Panel {
 		amend.hidden = !this.status.hasCommits;
 		commit.classList.add('primary');
 		commit.disabled = !this.status.staged.length && !this.status.hasCommits;
-		options.append(amend, commit);
+		// Claude reads what's staged and writes the message in the repository's style; it's only filled in, to edit
+		const write = button(
+			'Claude, write it',
+			async () => {
+				write.disabled = true;
+				write.textContent = 'Writing…';
+
+				const { body } = await runGit(this.options.sessionId, 'message');
+
+				write.disabled = false;
+				write.textContent = 'Claude, write it';
+				if (!body?.ok) return this.say(body?.output ?? 'Claude could not write one.', { error: true });
+
+				message.value = body.message;
+				this.draft = body.message;
+				message.focus();
+			},
+			{ title: 'Claude reads the staged changes and writes a message for you to edit' },
+		);
+
+		write.disabled = !this.status.staged.length;
+		options.append(amend, write, commit);
 		box.append(message, options);
 
 		return box;

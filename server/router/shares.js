@@ -6,7 +6,7 @@ import { isSecret } from '../files';
 import { may } from '../permissions';
 import { serverSettings } from '../serverSettings';
 import { sessionRecord } from '../sessions/record';
-import { ShareError, addShare, removeShare, sharesOf } from '../shares';
+import { ShareError, addShare, removeShare, renameShare, sharesOf } from '../shares';
 import requestMatch from '../utils/requestMatch';
 
 // Behind Caddy, the preview listener's public port; Caddy's paude site is on 443, its preview site on this
@@ -63,7 +63,8 @@ const sharesRoutes = async request => {
 	const listing = requestMatch('GET', '/api/sessions/:id/shares', request);
 	const adding = requestMatch('POST', '/api/sessions/:id/shares', request);
 	const removing = requestMatch('DELETE', '/api/sessions/:id/shares/:share', request);
-	const match = listing || adding || removing;
+	const renaming = requestMatch('PATCH', '/api/sessions/:id/shares/:share', request);
+	const match = listing || adding || removing || renaming;
 
 	if (!match) return null;
 
@@ -87,6 +88,12 @@ const sharesRoutes = async request => {
 			: new Response('No such share', { status: 404 });
 
 	try {
+		if (renaming) {
+			const renamed = await renameShare(match.id, match.share, (await request.json()).name);
+
+			return Response.json(withLinks([renamed], origin)[0]);
+		}
+
 		const { kind: asked, port, path: wanted } = await request.json();
 		// A download is the file itself, or a folder zipped
 		const kind = asked === 'download' ? await downloadKind(record.cwd, wanted) : asked;

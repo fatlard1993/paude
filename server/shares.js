@@ -3,6 +3,8 @@ import path from 'path';
 import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
 import { sessionListeners } from './ports';
+import { projectOf } from './projects';
+import { runningSession } from './sessions/running';
 
 // What sessions share through the preview listener, each at /s/<name>/ there:
 // - a port a session's processes listen on, found on its own and shared while it listens (auto)
@@ -14,6 +16,8 @@ const MAX_NAME = 40;
 
 let file;
 let made = [];
+// Names given to found ports, kept for when they listen again: `${sessionId}:${port}` → name
+let portNames = {};
 let found = new Map();
 // Found ports someone stopped sharing, until they stop listening: `${sessionId}:${port}`
 const stopped = new Set();
@@ -24,11 +28,16 @@ export const KINDS = ['port', 'file', 'folder', 'site'];
 
 export const initShares = async (dataDir, { reserved = [] } = {}) => {
 	file = path.join(dataDir, 'shares.json');
-	made = await readJsonFile(file, []);
+
+	const saved = await readJsonFile(file, {});
+
+	// Once a list of what was made by hand
+	made = Array.isArray(saved) ? saved : (saved.made ?? []);
+	portNames = Array.isArray(saved) ? {} : (saved.portNames ?? {});
 	reservedPorts = new Set(reserved);
 };
 
-const save = () => writeJsonFile(file, () => made);
+const save = () => writeJsonFile(file, () => ({ made, portNames }));
 
 const slug = text =>
 	String(text)
@@ -37,12 +46,34 @@ const slug = text =>
 		.replace(/^-|-$/g, '')
 		.slice(0, MAX_NAME) || 'share';
 
+// A found port's name: the one given it, or its project's name and the port (shop-5173), told apart from another
+// session's by that session's id where both would have it
+const projectSlug = sessionId => slug(projectOf(runningSession(sessionId)?.cwd) ?? 'session');
+
+const foundName = (sessionId, port) => {
+	const given = portNames[`${sessionId}:${port}`];
+
+	if (given) return given;
+
+	const plain = `${projectSlug(sessionId)}-${port}`;
+	const clash =
+		made.some(share => share.name === plain) ||
+		[...found.keys()].some(
+			other =>
+				other !== sessionId &&
+				(found.get(other) ?? []).some(listener => listener.port === port) &&
+				projectSlug(other) === projectSlug(sessionId),
+		);
+
+	return clash ? `${plain}-${sessionId.slice(0, 4)}` : plain;
+};
+
 const foundShares = sessionId =>
 	(found.get(sessionId) ?? [])
 		.filter(({ port }) => !stopped.has(`${sessionId}:${port}`) && !reservedPorts.has(port))
 		.map(({ port, host, command }) => ({
 			id: `found-${sessionId}-${port}`,
-			name: `${port}-${sessionId.slice(0, 6)}`,
+			name: foundName(sessionId, port),
 			sessionId,
 			kind: 'port',
 			port,
@@ -62,7 +93,7 @@ export const shareNamed = name =>
 	null;
 
 const nameFor = (sessionId, wanted) => {
-	const base = `${slug(wanted)}-${sessionId.slice(0, 6)}`;
+	const base = slug(wanted);
 	const taken = name => Boolean(shareNamed(name));
 	let name = base;
 
@@ -85,7 +116,7 @@ export const addShare = async (sessionId, { kind, port, path: sharedPath }) => {
 
 		if (!Number.isInteger(number) || number < 1 || number > 65535) throw new ShareError('That is not a port');
 		if (reservedPorts.has(number)) throw new ShareError("That's paude's own port");
-		share = { kind, port: number, host: '127.0.0.1', name: nameFor(sessionId, String(number)) };
+		share = { kind, port: number, host: '127.0.0.1', name: nameFor(sessionId, `${projectSlug(sessionId)}-${number}`) };
 	} else {
 		if (typeof sharedPath !== 'string' || !sharedPath) throw new ShareError('Name what to share');
 		share = { kind, path: sharedPath, name: nameFor(sessionId, path.basename(sharedPath) || 'project') };
@@ -98,6 +129,22 @@ export const addShare = async (sessionId, { kind, port, path: sharedPath }) => {
 	announce(sessionId);
 
 	return added;
+};
+
+// A name of one's choosing, the address it's at: lowercase letters, digits and dashes, unused by any other share
+export const renameShare = async (sessionId, id, wanted) => {
+	const name = slug(wanted);
+	const share = sharesOf(sessionId).find(found => found.id === id);
+
+	if (!share) throw new ShareError('No such share');
+	if (name !== share.name && shareNamed(name)) throw new ShareError(`${name} is taken`);
+
+	if (share.auto) portNames[`${sessionId}:${share.port}`] = name;
+	else made.find(found => found.id === id).name = name;
+	await save();
+	announce(sessionId);
+
+	return { ...share, name };
 };
 
 export const removeShare = async (sessionId, id) => {
