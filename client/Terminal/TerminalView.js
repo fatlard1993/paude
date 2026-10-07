@@ -32,8 +32,10 @@ const TAP_SLOP = 8;
 // How far above and below a row to look for the rest of a URL Claude broke across rows
 const URL_ROWS = 6;
 // Command with these does what a Mac terminal makes it do: clears the line back to its start, or goes to either end.
-// Option+Backspace deletes a word, sent here rather than left to the browser, which may take it for its own editing.
+// Option with these deletes a word or jumps one, sent here rather than left to the browser, which may take them for
+// its own editing.
 const MAC_LINE_KEYS = { Backspace: '\x15', ArrowLeft: '\x01', ArrowRight: '\x05' };
+const MAC_WORD_KEYS = { Backspace: '\x1b\x7f', ArrowLeft: '\x1bb', ArrowRight: '\x1bf' };
 
 const ghostButton = (appendTo, { icon, label, title, onPress, className = '' }) => {
 	const node = button(label, onPress, { icon, title: title ?? '', className: `ghost ${className}` });
@@ -308,7 +310,7 @@ export default class TerminalView extends View {
 		this.terminal.attachCustomKeyEventHandler(event => {
 			const lineKey =
 				(event.metaKey && !event.ctrlKey && !event.altKey && MAC_LINE_KEYS[event.key]) ||
-				(event.altKey && !event.ctrlKey && !event.metaKey && event.key === 'Backspace' && '\x1b\x7f');
+				(event.altKey && !event.ctrlKey && !event.metaKey && MAC_WORD_KEYS[event.key]);
 
 			if (lineKey) {
 				event.preventDefault();
