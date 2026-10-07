@@ -175,6 +175,17 @@ export default class TerminalView extends View {
 				this.copySelection();
 			},
 		});
+		if (canType())
+			new Button({
+				appendTo: this.selectionActions,
+				icon: 'terminal',
+				textContent: 'Terminal',
+				attributes: { title: 'Put it on the side terminal\'s command line' },
+				onPointerPress: event => {
+					event.preventDefault();
+					this.sendSelectionToShell();
+				},
+			});
 		if (canNote())
 			new Button({
 				appendTo: this.selectionActions,
@@ -538,6 +549,16 @@ export default class TerminalView extends View {
 		} catch {
 			new Notify({ type: 'error', content: "The browser wouldn't let paude copy; its own Copy still works." });
 		}
+	}
+
+	sendSelectionToShell() {
+		const text = this.terminal.getSelection().replace(/\s+$/, '');
+
+		if (!text) return;
+
+		this.toggleShell(true);
+		this.shell.paste(text);
+		this.terminal.clearSelection();
 	}
 
 	commentOnSelection() {

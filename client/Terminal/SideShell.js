@@ -10,6 +10,8 @@ import Panel from './SideShell.styles';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from './xtermOptions';
 
 // Why it ended, when the person didn't end it themselves
+const PASTE_WAIT_MS = 3000;
+
 const endedBecause = ({ code, reason }, opened) => {
 	if (code === CLOSED.unauthorized) return 'Your login no longer allows a terminal here.';
 	if (code === CLOSED.ended) return reason === 'Shell exited' ? null : reason;
@@ -102,7 +104,7 @@ export default class SideShell extends Panel {
 			const text = this.decoder.decode(data, { stream: true });
 
 			loadSymbolsFor(text);
-			this.terminal.write(text);
+			this.terminal.write(text, () => this.pastePending());
 		});
 		socket.addEventListener('close', event => {
 			if (this.socket !== socket) return;
@@ -113,10 +115,35 @@ export default class SideShell extends Panel {
 		this.socket = socket;
 	}
 
+	// Onto the command line, not run: held until the shell turns on bracketed paste (or gives up waiting for it), so
+	// a line break in the text can't press Enter
+	paste(text) {
+		this.pending = text;
+		this.pasteAnyway = false;
+		clearTimeout(this.pasteTimer);
+		this.pasteTimer = setTimeout(() => {
+			this.pasteAnyway = true;
+			this.pastePending();
+		}, PASTE_WAIT_MS);
+		this.pastePending();
+	}
+
+	pastePending() {
+		if (this.pending === undefined || !this.terminal || this.socket?.readyState !== WebSocket.OPEN) return;
+		if (!this.pasteAnyway && !this.terminal.modes.bracketedPasteMode) return;
+
+		clearTimeout(this.pasteTimer);
+		this.terminal.paste(this.pending);
+		this.pending = undefined;
+		this.terminal.focus();
+	}
+
 	stop() {
 		const { socket } = this;
 
 		this.socket = null;
+		this.pending = undefined;
+		clearTimeout(this.pasteTimer);
 		socket?.close();
 		this.endLineSelect?.();
 		this.sizeWatcher?.disconnect();
