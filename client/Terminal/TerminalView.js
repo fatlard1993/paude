@@ -31,6 +31,8 @@ const BACKGROUND = '#1b1b1b';
 const TAP_SLOP = 8;
 // How far above and below a row to look for the rest of a URL Claude broke across rows
 const URL_ROWS = 6;
+// Command with these does what a Mac terminal makes it do: clears the line back to its start, or goes to either end
+const MAC_LINE_KEYS = { Backspace: '\x15', ArrowLeft: '\x01', ArrowRight: '\x05' };
 
 const ghostButton = (appendTo, { icon, label, title, onPress, className = '' }) => {
 	const node = button(label, onPress, { icon, title: title ?? '', className: `ghost ${className}` });
@@ -303,6 +305,15 @@ export default class TerminalView extends View {
 		});
 		// Ctrl+C copies what's selected, as in a Windows terminal; with nothing selected it still interrupts Claude
 		this.terminal.attachCustomKeyEventHandler(event => {
+			const lineKey = event.metaKey && !event.ctrlKey && !event.altKey && MAC_LINE_KEYS[event.key];
+
+			if (lineKey) {
+				event.preventDefault();
+				if (event.type === 'keydown' && canType()) this.sendInput(lineKey);
+
+				return false;
+			}
+
 			const copy =
 				event.type === 'keydown' &&
 				event.ctrlKey &&
