@@ -606,6 +606,7 @@ export default class TerminalView extends View {
 		});
 
 		this.scrollClaudeWithTouch(tracking);
+		this.clickClaude(tracking);
 	}
 
 	// xterm would scroll its own empty scrollback under the finger; every two rows dragged is a notch of the wheel
@@ -646,23 +647,39 @@ export default class TerminalView extends View {
 		});
 	}
 
-	// Wheel notches up or down at a point on the terminal, as the mouse report Claude asked for
-	sendWheel(up, { clientX, clientY }, notches) {
+	// The terminal cell under a point, 1-based, as mouse reports count them
+	cellAt({ clientX, clientY }) {
 		const bounds = this.terminal.element.getBoundingClientRect();
-		const column = Math.min(
-			Math.max(Math.ceil(((clientX - bounds.left) / bounds.width) * this.terminal.cols), 1),
-			this.terminal.cols,
-		);
-		const row = Math.min(
-			Math.max(Math.ceil(((clientY - bounds.top) / bounds.height) * this.terminal.rows), 1),
-			this.terminal.rows,
-		);
-		const button = up ? 64 : 65;
-		const report = this.pointerModes.has('1006')
-			? `\x1b[<${button};${column};${row}M`
-			: `\x1b[M${String.fromCharCode(32 + button, 32 + column, 32 + row)}`;
+		const clamp = (value, most) => Math.min(Math.max(Math.ceil(value), 1), most);
 
-		this.sendInput(report.repeat(notches));
+		return {
+			column: clamp(((clientX - bounds.left) / bounds.width) * this.terminal.cols, this.terminal.cols),
+			row: clamp(((clientY - bounds.top) / bounds.height) * this.terminal.rows, this.terminal.rows),
+		};
+	}
+
+	// A mouse report in the encoding Claude asked for; the legacy one has no button for a release, only 3
+	mouseReport(button, point, { release = false } = {}) {
+		const { column, row } = this.cellAt(point);
+
+		if (this.pointerModes.has('1006')) return `\x1b[<${button};${column};${row}${release ? 'm' : 'M'}`;
+
+		return `\x1b[M${String.fromCharCode(32 + (release ? 3 : button), 32 + column, 32 + row)}`;
+	}
+
+	// Wheel notches up or down at a point on the terminal
+	sendWheel(up, point, notches) {
+		this.sendInput(this.mouseReport(up ? 64 : 65, point).repeat(notches));
+	}
+
+	// A click or tap that selected nothing goes to Claude, which moves its cursor there; a drag still selects
+	clickClaude(tracking) {
+		this.screen.elem.addEventListener('click', event => {
+			if (event.button !== 0 || !tracking() || !canType() || this.endLineSelect || this.terminal.hasSelection())
+				return;
+
+			this.sendInput(this.mouseReport(0, event) + this.mouseReport(0, event, { release: true }));
+		});
 	}
 
 	// Every "done" line Claude prints after a turn becomes a link that starts a new session from that point
