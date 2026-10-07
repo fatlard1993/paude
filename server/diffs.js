@@ -3,7 +3,7 @@ import os from 'os';
 import { basename, isAbsolute, join, relative, sep } from 'path';
 
 import { diffOf, listChanges } from './changes';
-import { GitError, gitCommit, repoRoot } from './git';
+import { GitError, gitCommit, gitCompare, repoRoot } from './git';
 import { isSecret, readProjectFile } from './files';
 import { promptText } from './sessions/history';
 import { claudeHome, transcriptLines } from './sessions/transcript';
@@ -235,8 +235,24 @@ const commitDiff = async (cwd, ref) => {
 	}
 };
 
+// What this branch changes since it parted from the base (origin's default branch, unless named)
+const compareDiff = async (cwd, base) => {
+	const root = await repoRoot(cwd);
+
+	if (!root) throw new DiffError('Not a git repository');
+
+	try {
+		const { base: against, commits, files } = await gitCompare(root, { base });
+
+		return { title: `${commits.length} commit${commits.length === 1 ? '' : 's'} beyond ${against}`, files };
+	} catch (error) {
+		if (error instanceof GitError) throw new DiffError(error.message);
+		throw error;
+	}
+};
+
 // Every kind of diff paude shows, in one shape: { title, files: [{ path, status, diff, from, note }] }
-export const diffSet = async (id, cwd, { source, path, turn, a, b, ref }) => {
+export const diffSet = async (id, cwd, { source, path, turn, a, b, ref, base }) => {
 	if (source === 'changes') {
 		const change = (await listChanges(cwd))?.find(found => found.path === path);
 
@@ -249,6 +265,7 @@ export const diffSet = async (id, cwd, { source, path, turn, a, b, ref }) => {
 	if (source === 'proposal') return proposalDiff(id, cwd);
 	if (source === 'files') return filesDiff(cwd, a, b);
 	if (source === 'commit') return commitDiff(cwd, ref);
+	if (source === 'compare') return compareDiff(cwd, base);
 
 	throw new DiffError('Unknown kind of diff');
 };

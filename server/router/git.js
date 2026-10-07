@@ -1,8 +1,20 @@
 import path from 'path';
 
 import { credentialOf, identityOf } from '../auth';
-import { GitError, gitAction, gitBlame, gitBranches, gitCommit, gitLog, gitStashes, gitStatus, repoRoot } from '../git';
+import {
+	GitError,
+	gitAction,
+	gitBlame,
+	gitBranches,
+	gitCommit,
+	gitCompare,
+	gitLog,
+	gitStashes,
+	gitStatus,
+	repoRoot,
+} from '../git';
 import { draftCommitMessage } from '../commitMessage';
+import { draftPullRequest, openPullRequest, pullRequest } from '../pullRequests';
 import { may } from '../permissions';
 import { sessionRecord } from '../sessions/record';
 import requestMatch from '../utils/requestMatch';
@@ -17,6 +29,8 @@ const READS = {
 	branches: root => gitBranches(root),
 	stashes: root => gitStashes(root),
 	blame: (root, query, cwd) => gitBlame(root, fromRoot(root, cwd, query.path)),
+	compare: (root, { base }) => gitCompare(root, { base }),
+	pr: root => pullRequest(root),
 };
 
 // The Git panel's routes. Reading the history is reading the project ('files'); anything that changes the checkout or
@@ -51,6 +65,8 @@ const gitRoutes = async request => {
 		}
 
 		if (match.what === 'message') return Response.json({ ok: true, message: await draftCommitMessage(root) });
+		if (match.what === 'pr-draft') return Response.json({ ok: true, ...(await draftPullRequest(root)) });
+		if (match.what === 'pr') return Response.json({ ok: true, ...(await openPullRequest(root, await request.json())) });
 
 		return Response.json(await gitAction(root, match.what, await request.json().catch(() => ({}))));
 	} catch (error) {

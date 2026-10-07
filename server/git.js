@@ -300,6 +300,31 @@ export const gitBlame = async (root, path) => {
 	return lines.map(({ line, commit }) => ({ line, ...commit }));
 };
 
+// The branch work is compared with: the remote's default (origin/HEAD), else a main or master that exists
+export const defaultBase = async root => {
+	const remoteHead = await run(['symbolic-ref', '--short', '-q', 'refs/remotes/origin/HEAD'], root);
+
+	if (remoteHead.code === 0 && remoteHead.out.trim()) return remoteHead.out.trim();
+
+	for (const candidate of ['origin/main', 'origin/master', 'main', 'master'])
+		if ((await run(['rev-parse', '--verify', '-q', candidate], root)).code === 0) return candidate;
+
+	return null;
+};
+
+// What this branch adds to the base: its commits, and its changes as the diff view's files (since they parted)
+export const gitCompare = async (root, { base } = {}) => {
+	const against = base || (await defaultBase(root));
+
+	if (!against || against.startsWith('-')) throw new GitError('There is no branch to compare with');
+
+	let patch = await must(['diff', '--no-color', '--find-renames', `${against}...HEAD`], root);
+
+	if (patch.length > MAX_PATCH_BYTES) patch = patch.slice(0, MAX_PATCH_BYTES);
+
+	return { base: against, commits: await gitLog(root, { ref: `${against}..HEAD` }), files: splitPatch(patch) };
+};
+
 // Paths an action names: each a string inside the repository, never an option
 const cleanPaths = paths => {
 	if (!Array.isArray(paths) || !paths.length) throw new GitError('Name the files');
@@ -368,6 +393,30 @@ const ACTIONS = {
 		(await hasUpstream(root))
 			? act(['push'], root, { timeout: NETWORK_TIMEOUT_MS })
 			: act(['push', '--set-upstream', 'origin', 'HEAD'], root, { timeout: NETWORK_TIMEOUT_MS }),
+	// A conflicted file settled with one side's version, and marked resolved
+	resolve: async (root, { path, side }) => {
+		const [file] = cleanPaths([path]);
+
+		if (!['ours', 'theirs'].includes(side)) throw new GitError('Keep ours or theirs');
+		await act(['checkout', `--${side}`, '--', file], root);
+
+		return act(['add', '--', file], root);
+	},
+	// The merge, rebase or cherry-pick half done: carried on (its conflicts resolved) or given up
+	continue: async root => {
+		const doing = await operationInProgress(root);
+
+		if (!doing) throw new GitError('Nothing is half done');
+
+		return act([{ merging: 'merge', rebasing: 'rebase', 'cherry-picking': 'cherry-pick' }[doing], '--continue'], root);
+	},
+	abort: async root => {
+		const doing = await operationInProgress(root);
+
+		if (!doing) throw new GitError('Nothing is half done');
+
+		return act([{ merging: 'merge', rebasing: 'rebase', 'cherry-picking': 'cherry-pick' }[doing], '--abort'], root);
+	},
 	stash: (root, { message }) =>
 		act(['stash', 'push', '--include-untracked', ...(message ? ['-m', String(message)] : [])], root),
 	unstash: (root, { ref }) => act(['stash', 'pop', ...(ref ? [cleanName(ref)] : [])], root),

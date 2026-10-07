@@ -8,6 +8,7 @@ import {
 	gitBlame,
 	gitBranches,
 	gitCommit,
+	gitCompare,
 	gitLog,
 	gitStashes,
 	gitStatus,
@@ -247,4 +248,49 @@ test('push sets the upstream the first time; pull only fast-forwards', async () 
 	expect((await gitStatus(repo)).behind).toBe(1);
 	expect((await gitAction(repo, 'pull')).ok).toBe(true);
 	expect(git('log', '-1', '--format=%s')).toBe('theirs');
+});
+
+describe('reviewing a branch, and conflicts', () => {
+	test('a branch compared with main: its own commits and changes', async () => {
+		await firstCommit();
+		git('switch', '-q', '-c', 'idea');
+		await write('b.txt', 'new\n');
+		git('add', '-A');
+		git('commit', '-q', '-m', 'add b');
+
+		const compared = await gitCompare(repo, {});
+
+		expect(compared.base).toBe('main');
+		expect(compared.commits.map(({ subject }) => subject)).toEqual(['add b']);
+		expect(compared.files).toMatchObject([{ path: 'b.txt', status: 'added' }]);
+	});
+
+	const conflicted = async () => {
+		await firstCommit();
+		git('switch', '-q', '-c', 'theirs');
+		await write('a.txt', 'theirs\n');
+		git('commit', '-qam', 'theirs');
+		git('switch', '-q', 'main');
+		await write('a.txt', 'ours\n');
+		git('commit', '-qam', 'ours');
+		Bun.spawnSync(['git', 'merge', 'theirs'], { cwd: repo, env });
+	};
+
+	test('a conflict settled with one side, then the merge carried on', async () => {
+		await conflicted();
+		expect((await gitStatus(repo)).inProgress).toBe('merging');
+		expect((await gitStatus(repo)).conflicted).toEqual([{ path: 'a.txt' }]);
+
+		expect((await gitAction(repo, 'resolve', { path: 'a.txt', side: 'theirs' })).ok).toBe(true);
+		expect(await Bun.file(path.join(repo, 'a.txt')).text()).toBe('theirs\n');
+		expect((await gitAction(repo, 'continue')).ok).toBe(true);
+		expect((await gitStatus(repo)).inProgress).toBeNull();
+	});
+
+	test('a half-done merge given up', async () => {
+		await conflicted();
+		expect((await gitAction(repo, 'abort')).ok).toBe(true);
+		expect(await Bun.file(path.join(repo, 'a.txt')).text()).toBe('ours\n');
+		expect((await gitAction(repo, 'abort')).output).toBe('Nothing is half done');
+	});
 });

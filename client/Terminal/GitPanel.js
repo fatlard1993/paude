@@ -2,7 +2,7 @@ import { Notify } from '@vanilla-bean/components';
 
 import { getGit, runGit } from '../api';
 import confirmDialog from '../confirmDialog';
-import { button, closeButton, element } from '../dom';
+import { button, closeButton, element, icon } from '../dom';
 import { canType } from '../identity';
 import relativeTime from '../../shared/relativeTime';
 import Panel from './GitPanel.styles';
@@ -11,6 +11,7 @@ const STATUS_LETTERS = { modified: 'M', added: 'A', deleted: 'D', renamed: 'R', 
 const TABS = [
 	['changes', 'Changes'],
 	['history', 'History'],
+	['review', 'Review'],
 	['branches', 'Branches'],
 	['stashes', 'Stashes'],
 ];
@@ -112,7 +113,14 @@ export default class GitPanel extends Panel {
 		this.tabButtons.changes.textContent = `Changes${this.changeCount() ? ` ${this.changeCount()}` : ''}`;
 		this.tabButtons.stashes.textContent = `Stashes${this.status.stashes ? ` ${this.status.stashes}` : ''}`;
 		this.output.classList.toggle('shown', Boolean(inProgress));
-		if (inProgress) this.say(`${IN_PROGRESS[inProgress]} Finish or abort it in the side terminal.`, { error: true });
+		if (inProgress) {
+			this.say(`${IN_PROGRESS[inProgress]} Settle the conflicts below, then carry on; or give it up.`, { error: true });
+			if (canType())
+				this.output.querySelector('pre').after(
+					button('Continue', () => this.act('continue', {}, { done: 'Carried on' })),
+					button('Abort', () => this.act('abort', {}, { done: 'Given up' }), { className: 'danger' }),
+				);
+		}
 	}
 
 	changeCount() {
@@ -129,6 +137,7 @@ export default class GitPanel extends Panel {
 		if (tab === 'changes') return this.renderChanges();
 		if (tab === 'history') return this.renderHistory();
 		if (tab === 'branches') return this.renderBranches();
+		if (tab === 'review') return this.renderReview();
 
 		return this.renderStashes();
 	}
@@ -200,7 +209,21 @@ export default class GitPanel extends Panel {
 		const nodes = [
 			...this.section('Conflicts', conflicted, {
 				each: file => [
-					iconButton('plus', 'Mark it resolved (stage it)', () => this.act('stage', { paths: [file.path] })),
+					button(
+						'Mine',
+						() => this.act('resolve', { path: file.path, side: 'ours' }, { done: `Kept yours of ${file.path}` }),
+						{
+							title: "Keep this branch's version",
+						},
+					),
+					button(
+						'Theirs',
+						() => this.act('resolve', { path: file.path, side: 'theirs' }, { done: `Kept theirs of ${file.path}` }),
+						{ title: 'Keep the incoming version' },
+					),
+					iconButton('plus', 'Mark it resolved as it is now (after editing it)', () =>
+						this.act('stage', { paths: [file.path] }),
+					),
 				],
 			}),
 			...this.section('Staged', staged, {
@@ -304,6 +327,129 @@ export default class GitPanel extends Panel {
 		if (body?.length === 50)
 			rows.push(button('Older commits', () => this.renderHistory({ more: true }), { className: 'more' }));
 		this.body.replaceChildren(...rows);
+	}
+
+	// What this branch adds to the main line, and its pull request: opened here, its checks watched here
+	async renderReview() {
+		const [compare, pr] = await Promise.all([
+			getGit(this.options.sessionId, 'compare'),
+			getGit(this.options.sessionId, 'pr'),
+		]);
+
+		if (this.tab !== 'review') return;
+
+		const nodes = [];
+
+		if (compare.response?.ok) {
+			const { base, commits } = compare.body;
+			const head = element(
+				'div',
+				'section-head',
+				`${commits.length} commit${commits.length === 1 ? '' : 's'} beyond ${base}`,
+			);
+
+			if (commits.length) head.append(button('Show the changes', () => this.options.openDiff({ source: 'compare' })));
+			nodes.push(
+				head,
+				...commits.map(commit => element('div', 'meta review-commit', `${commit.short} ${commit.subject}`)),
+			);
+		} else
+			nodes.push(element('div', 'empty', typeof compare.body === 'string' ? compare.body : 'Nothing to compare with.'));
+
+		nodes.push(
+			element('div', 'section-head', 'Pull request'),
+			...this.pullRequestNodes(pr.body, compare.body?.commits?.length),
+		);
+		this.body.replaceChildren(...nodes);
+	}
+
+	checkLine(check) {
+		const passed = ['success', 'neutral', 'skipped'].includes(check.state);
+		const failed = ['failure', 'error', 'cancelled', 'timed_out', 'action_required'].includes(check.state);
+		const state = (passed && 'ok') || (failed && 'failed') || 'running';
+		const line = element('div', 'branch-row check');
+
+		line.append(
+			icon({ ok: 'circle-check', failed: 'circle-xmark', running: 'circle-dot' }[state]),
+			element('span', `name outcome ${state}`, check.name),
+		);
+		if (check.url) line.addEventListener('click', () => window.open(check.url, '_blank', 'noopener'));
+
+		return line;
+	}
+
+	pullRequestNodes(pr, ahead) {
+		if (pr?.unavailable) return [element('div', 'empty', pr.unavailable)];
+
+		if (pr) {
+			const row = element('div', 'branch-row share');
+			const link = element('a', 'name', `#${pr.number} ${pr.title}`);
+			const state = pr.isDraft ? 'draft' : pr.state.toLowerCase();
+
+			Object.assign(link, { href: pr.url, target: '_blank', rel: 'noopener' });
+			row.append(link, element('span', `meta outcome ${state === 'open' ? 'ok' : ''}`, state));
+
+			return [
+				row,
+				...(pr.checks.length
+					? pr.checks.map(check => this.checkLine(check))
+					: [element('div', 'empty', 'No checks reported.')]),
+				button('Refresh', () => this.renderReview(), { className: 'more' }),
+			];
+		}
+
+		if (!ahead) return [element('div', 'empty', 'Nothing on this branch to propose yet.')];
+		if (!canType()) return [element('div', 'empty', 'None open for this branch.')];
+
+		return [this.pullRequestForm()];
+	}
+
+	pullRequestForm() {
+		const form = element('div', 'commit-box');
+		const title = element('input');
+		const body = element('textarea');
+		const draft = element('label', 'amend');
+		const drafting = element('input');
+		const options = element('div', 'commit-options');
+		const write = button('Claude, write it', async () => {
+			write.disabled = true;
+			write.textContent = 'Writing…';
+
+			const { body: written } = await runGit(this.options.sessionId, 'pr-draft');
+
+			write.disabled = false;
+			write.textContent = 'Claude, write it';
+			if (!written?.ok) return this.say(written?.output ?? 'Claude could not write one.', { error: true });
+			title.value = written.title;
+			body.value = written.body;
+		});
+		const open = button(
+			'Open it',
+			async () => {
+				open.disabled = true;
+
+				const { body: opened } = await runGit(this.options.sessionId, 'pr', {
+					title: title.value,
+					body: body.value,
+					draft: drafting.checked,
+				});
+
+				open.disabled = false;
+				if (!opened?.ok) return this.say(opened?.output ?? 'Could not open it.', { error: true });
+				this.renderReview();
+			},
+			{ className: 'primary' },
+		);
+
+		title.placeholder = 'Title';
+		body.placeholder = 'What it changes, and why';
+		body.rows = 6;
+		drafting.type = 'checkbox';
+		draft.append(drafting, ' As a draft');
+		options.append(draft, write, open);
+		form.append(title, body, options);
+
+		return form;
 	}
 
 	async renderBranches() {

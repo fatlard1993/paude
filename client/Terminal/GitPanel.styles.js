@@ -225,7 +225,18 @@ const Panel = styled(
 			margin-top: 10px;
 		}
 
-		.commit-box textarea, .new-branch input {
+		.review-commit {
+			padding: 2px 6px;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
+		.check {
+			cursor: pointer;
+		}
+
+		.commit-box input, .commit-box textarea, .new-branch input {
 			box-sizing: border-box;
 			width: 100%;
 			font: inherit;

@@ -537,3 +537,49 @@ test(
 	},
 	TIMEOUT_MS,
 );
+
+test(
+	'git review: what a branch adds, with its diff; a conflict settled with one side and the merge carried on',
+	async () => {
+		const server = await startServer();
+		const git = (...args) => Bun.spawnSync(['git', ...args], { cwd: server.project });
+
+		git('commit', '-qm', 'first');
+		git('switch', '-q', '-c', 'theirs');
+		await Bun.write(`${server.project}/server/app.js`, 'theirs\n');
+		git('commit', '-qam', 'their change');
+		git('switch', '-q', 'main');
+		git('switch', '-q', '-c', 'feature');
+		await Bun.write(`${server.project}/server/app.js`, 'mine\n');
+		git('commit', '-qam', 'my change');
+
+		const { browser, page } = await openSession('dom', server);
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(1000);
+		};
+
+		try {
+			await press('[title^="Git"]');
+			await press('.git .tabs button', 'Review');
+			expect(await page.$eval('.git .body', body => body.textContent)).toContain('1 commit beyond main');
+			expect(await page.$eval('.git .body', body => body.textContent)).toContain('my change');
+			await press('.git .body button', 'Show the changes');
+			expect(await page.$eval('.files .viewer', viewer => viewer.textContent)).toContain('1 commit beyond main');
+
+			git('merge', 'theirs');
+			await press('.git .tabs button', 'Changes');
+			expect(await page.$eval('.git .output', output => output.textContent)).toContain('A merge is half done');
+			await press('.git .file button', 'Theirs');
+			await press('.git .output button', 'Continue');
+			expect(await Bun.file(`${server.project}/server/app.js`).text()).toBe('theirs\n');
+			expect(git('log', '-1', '--format=%s').stdout.toString()).toContain('Merge');
+		} finally {
+			await browser.close();
+			await server.stop();
+		}
+	},
+	TIMEOUT_MS,
+);
