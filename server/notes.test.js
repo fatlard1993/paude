@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { beforeEach, describe, expect, test } from 'bun:test';
 
-import { addChat, addComment, addReply, getNotes, initNotes, setResolved } from './notes';
+import { addChat, addComment, addReply, deleteComment, getNotes, initNotes, setResolved } from './notes';
 
 let sessionId;
 
@@ -45,6 +45,26 @@ describe('comments', () => {
 
 		expect(replied.comment.replies).toMatchObject([{ author: 'ben', text: 'yes, regenerate it' }]);
 		expect((await setResolved(sessionId, { commentId: comment.id, resolved: true })).comment.resolved).toBe(true);
+	});
+
+	test('delete a reply, or a comment with its replies, when allowed', async () => {
+		const { comment } = await addComment(sessionId, 'ana', { quote: 'some output', text: 'odd' }, 'invite:ana');
+		const { comment: replied } = await addReply(
+			sessionId,
+			'ben',
+			{ commentId: comment.id, text: 'agreed' },
+			'invite:ben',
+		);
+		const [reply] = replied.replies;
+		const byAna = note => note.authorId === 'invite:ana';
+
+		expect(await deleteComment(sessionId, { commentId: comment.id, replyId: reply.id, allowed: byAna })).toBeNull();
+		expect((await deleteComment(sessionId, { commentId: comment.id, replyId: reply.id })).comment.replies).toEqual([]);
+		expect(await deleteComment(sessionId, { commentId: comment.id, allowed: byAna })).toEqual({
+			type: 'commentDeleted',
+			commentId: comment.id,
+		});
+		expect((await getNotes(sessionId)).comments.some(({ id }) => id === comment.id)).toBe(false);
 	});
 
 	test('a reply to a missing comment changes nothing', async () => {

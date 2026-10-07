@@ -1,8 +1,9 @@
 import inputKind from '../../shared/inputKind';
 import { identityKey, markSeen, onActivity, recordChange, watchIfNew } from '../activity';
 import { credentialValid, identityOf } from '../auth';
-import { addChat, addComment, addReply, getNotes, react, setResolved } from '../notes';
-import { may, mayResolve } from '../permissions';
+import { addChat, addComment, addReply, deleteComment, getNotes, react, setResolved } from '../notes';
+import { may, mayManage } from '../permissions';
+import { ownerName } from '../serverSettings';
 import { CLOSED } from '../../shared/protocol';
 import { allRunning, runningSession } from './running';
 
@@ -68,20 +69,18 @@ const handlers = {
 		const { identity } = socket.data;
 
 		socket.data.session = session;
-		// A guest is the name on their invite, not whatever their client says
+		// A guest is the name on their invite, not whatever their client says; the owner is the name their client gives
+		// (the paude command's user), or this server's for them
 		socket.data.client = session.attach(socket, {
 			kind,
 			label,
-			name: identity.owner ? name : identity.name,
+			name: identity.owner ? (typeof name === 'string' && name.trim()) || (await ownerName()) : identity.name,
 			role: identity.owner ? 'owner' : identity.role,
 			cols,
 			rows,
 		});
 		socket.send(JSON.stringify({ type: 'notes', ...(await getNotes(session.id)) }));
 		await markSeen(identity, session.id);
-	},
-	rename(socket, { name }) {
-		if (socket.data.identity.owner) socket.data.session?.rename(socket.data.client, name);
 	},
 	chat: (socket, { text }) => shareChange(socket, (id, author) => addChat(id, author, text)),
 	comment: (socket, { quote, text }) =>
@@ -105,8 +104,22 @@ const handlers = {
 	},
 	resolve: (socket, { commentId, resolved }) =>
 		shareChange(socket, id =>
-			setResolved(id, { commentId, resolved, allowed: comment => mayResolve(socket.data.identity, comment) }),
+			setResolved(id, { commentId, resolved, allowed: comment => mayManage(socket.data.identity, comment) }),
 		),
+	// Like a reaction, a deletion isn't news
+	async delete(socket, { commentId, replyId }) {
+		const { session } = socket.data;
+
+		if (!session || !allowed(socket, 'note')) return;
+
+		const update = await deleteComment(session.id, {
+			commentId,
+			replyId,
+			allowed: note => mayManage(socket.data.identity, note),
+		});
+
+		if (update) session.broadcast(update);
+	},
 	input(socket, { data }) {
 		if (typeof data !== 'string' || !allowed(socket, 'type') || !socket.data.session) return;
 

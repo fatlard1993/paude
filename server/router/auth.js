@@ -1,5 +1,5 @@
 import { watchIfNew } from '../activity';
-import { mayListRemotes, serverName } from '../serverSettings';
+import { mayListRemotes, ownerName, serverName } from '../serverSettings';
 import {
 	checkPassword,
 	createHandoff,
@@ -56,7 +56,11 @@ const authRoutes = async request => {
 		return Response.json({
 			authenticated: Boolean(identity),
 			passwordSet: passwordIsSet(),
-			identity: identity && { ...identity, ...((await mayListRemotes(identity)) && { remotes: true }) },
+			identity: identity && {
+				...identity,
+				...(identity.owner && { name: await ownerName() }),
+				...((await mayListRemotes(identity)) && { remotes: true }),
+			},
 			serverId: getServerId(),
 			name: await serverName(),
 		});

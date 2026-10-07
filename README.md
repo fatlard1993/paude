@@ -114,6 +114,8 @@ A Drive invite can type into Claude, which runs commands as the server's user: g
 
 Other servers this machine is logged into (with `paude login`) show on the home page only for this machine's own logins: the paude command and `paude web`. A password login from elsewhere doesn't get them, so one server's password doesn't open the rest. On a machine only your own network reaches (a laptop serving your phone), `{ "shareRemotes": true }` in `~/.config/paude/server.json` lists them for the password too. Invites never get them.
 
+In chat and comments the owner goes by this machine's user name, or by `ownerName` in that same file (`{ "ownerName": "Alice" }`) where the user is a service account. The paude command goes by your own user name, or `PAUDE_NAME`. A guest goes by the name on their invite.
+
 Revoking an invite, or changing the password with `bun run set-password` (a running server picks it up), signs those people out everywhere at once.
 
 ## In the terminal
@@ -126,7 +128,7 @@ Inside a session everything goes to Claude except **Ctrl+]** (**Cmd+]** on a Mac
 | --- | --- |
 | **c** | chat |
 | **m** | comment on your selection (Shift+drag over Claude's output first; on macOS, copy it) |
-| **1**-**9** | open a comment's thread; there, **r** replies, **x** resolves (or reopens), **+** then a number reacts |
+| **1**-**9** | open a comment's thread; there, **r** replies, **x** resolves (or reopens), **+** then a number reacts, **D** twice deletes it |
 | **f** | the project's files |
 | **t** | a side terminal: a shell in the session's folder, for a few quick commands. Ctrl+] brings the box back over it: **a** quotes your selection in Claude's prompt, **k** ends it, **Esc** returns to it. It ends when you go back to Claude |
 | **s**, **d** | switch session, detach |
@@ -157,7 +159,7 @@ Open the server's address and log in, or follow an invite link.
 
 - **Size.** A session has one size, set by whoever typed last; everyone else sees it scaled to fit.
 - **Scrolling.** The wheel scrolls Claude's transcript, for everyone, since there is one screen.
-- **Comments.** Drag over the terminal to select (on a phone, **Select** on the key bar, then tap the first and last line) and press **Comment**. Clicking a comment's quote finds it in the terminal. Reactions work on chat, comments and replies; click one to add or take back yours.
+- **Comments.** Drag over the terminal to select (on a phone, **Select** on the key bar, then tap the first and last line) and press **Comment**. Clicking a comment's quote finds it in the terminal. Reactions work on chat, comments and replies; click one to add or take back yours. Whoever wrote a comment or reply can delete it (a comment takes its replies with it), and the owner can delete any.
 - **Files.** The reader, from the folder button in the bar: search by name or contents with the same options as the terminal, and read highlighted code, rendered markdown, images, audio, video and PDFs. Click a line number and Shift+click another (on a phone, tap another) to attach those lines.
 - **Changes.** The reader's **Changes** lists what Claude proposes while it waits on a permission prompt, what changed since the last commit (staged or not, and marked in the tree), and what each of Claude's turns changed. **Compare...** on a file you're reading diffs it against another. Every diff reads the same way, side by side where there's room (**Unified** switches, and the choice is remembered): attach a hunk, the lines you pick, or all of it. A turn shows what Claude's own edit tools changed; changes made by commands it ran (`sed`, `rm`) aren't recorded by Claude Code, so they show only against the last commit.
 - **Editing.** **Edit** on a file you're reading; Ctrl+S saves. If the file changed since you opened it (Claude saved it, most likely), saving stops and asks whether to save yours anyway or load theirs.

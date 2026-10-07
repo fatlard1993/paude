@@ -12,8 +12,9 @@ export const may = (identity, action, sessionId) => {
 	return roleAllows(identity.role, action);
 };
 
-// The author is who wrote it, not their name: two invites can carry the same one
-export const mayResolve = (identity, comment) =>
+// Resolving or deleting a comment is its author's, or the owner's. The author is who wrote it, not their name: two
+// invites can carry the same one.
+export const mayManage = (identity, comment) =>
 	Boolean(
 		identity?.owner ||
 		(identity && (comment.authorId ? comment.authorId === identityKey(identity) : comment.author === identity.name)),

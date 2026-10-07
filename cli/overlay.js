@@ -66,6 +66,10 @@ const canTypeIn = state => roleAllows(state.role ?? 'owner', 'type');
 
 const threadComment = state => state.notes.comments.find(({ id }) => id === state.thread);
 
+// The owner may delete any comment, anyone else their own (the server checks who, not just the name)
+const mayDelete = (state, comment) =>
+	state.role === 'owner' || comment.author === state.presence.clients?.[state.presence.you]?.name;
+
 const DRAFT_PROMPTS = {
 	chat: () => 'Message:',
 	comment: draft => `Comment on "${firstLine(draft.quote)}":`,
@@ -150,6 +154,7 @@ const keysFor = (state, canNote) => {
 			canNote && comment && `${keyCap('r')} reply`,
 			canNote && comment && `${keyCap('+')} react`,
 			canNote && comment && `${keyCap('x')} ${comment.resolved ? 'reopen' : 'resolve'}`,
+			canNote && comment && mayDelete(state, comment) && `${keyCap('D')} delete`,
 			`${keyCap('esc')} back`,
 		].filter(Boolean);
 	}
@@ -275,6 +280,24 @@ const threadKey = (state, key, canNote) => {
 	}
 
 	if (!canNote || !comment) return { type: 'ignore' };
+
+	// Pressed twice, as it takes the replies too
+	const confirming = state.deleting === comment.id;
+
+	state.deleting = null;
+	if (key === 'D' && mayDelete(state, comment)) {
+		if (!confirming) {
+			state.deleting = comment.id;
+			state.hint = `Press D again to delete this comment${comment.replies.length ? ' and its replies' : ''}.`;
+
+			return { type: 'redraw' };
+		}
+
+		state.thread = null;
+		state.hint = null;
+
+		return { type: 'delete', commentId: comment.id };
+	}
 
 	if (key === 'r') {
 		state.draft = { kind: 'reply', text: '', commentId: comment.id, author: comment.author };

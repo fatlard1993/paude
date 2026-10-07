@@ -180,11 +180,6 @@ export default class PtySession {
 		});
 	}
 
-	rename(client, name) {
-		client.name = clientName(name, client.label);
-		this.broadcastPresence();
-	}
-
 	broadcast(message) {
 		for (const { socket } of this.clients) send(socket, message);
 	}

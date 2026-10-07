@@ -13,7 +13,7 @@ import findUrls from '../../shared/terminalLinks';
 import withoutPointerReporting from '../../shared/pointerReporting';
 import { NOTE_TYPES } from '../../shared/protocol';
 import { showNotification } from '../notify';
-import { recall, remember, savedName } from '../storage';
+import { recall, remember } from '../storage';
 import { button, dragHandle, element } from '../dom';
 import goBack from '../goBack';
 import { onWaitingChange } from '../waiting';
@@ -338,7 +338,6 @@ export default class TerminalView extends View {
 			hello: () => ({
 				kind: 'web',
 				label: /Mobi|Android/.test(navigator.userAgent) ? 'phone' : 'browser',
-				name: savedName(),
 				...this.naturalSize(),
 			}),
 			onOutput: data => {

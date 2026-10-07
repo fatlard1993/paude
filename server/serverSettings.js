@@ -9,9 +9,10 @@ const MAX_NAME = 40;
 // This machine's paude settings live in ~/.config/paude, beside the paude command's own
 export const configFile = name => join(process.env.XDG_CONFIG_HOME ?? join(os.homedir(), '.config'), 'paude', name);
 
-// { "name": "laptop", "shareRemotes": true }. `name` is what browsers and other machines call this server unless they
-// name it themselves; `shareRemotes` lets a password login see the other servers this machine is logged into, not
-// just this machine's own logins. Read each time, so a change needs no restart.
+// { "name": "laptop", "shareRemotes": true, "ownerName": "Alice" }. `name` is what browsers and other machines call this
+// server unless they name it themselves; `shareRemotes` lets a password login see the other servers this machine is
+// logged into, not just this machine's own logins; `ownerName` is what the owner goes by in chat and comments (this
+// machine's user name otherwise). Read each time, so a change needs no restart.
 export const serverSettings = () => readJsonFile(configFile('server.json'), {}).catch(() => ({}));
 
 // This machine's own token, or the owner password where this machine shares them
@@ -21,6 +22,8 @@ export const mayListRemotes = async identity =>
 export const cleanServerName = name => (typeof name === 'string' ? name.trim().slice(0, MAX_NAME) : '') || null;
 
 export const serverName = async () => cleanServerName((await serverSettings()).name);
+
+export const ownerName = async () => cleanServerName((await serverSettings()).ownerName) ?? os.userInfo().username;
 
 // An empty name goes back to none
 export const setServerName = name =>

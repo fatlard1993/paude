@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { guestMayRequest, may, mayResolve } from './permissions';
+import { guestMayRequest, may, mayManage } from './permissions';
 
 const owner = { owner: true, name: 'chase' };
 const guest = role => ({ owner: false, name: 'ana', role, sessionId: 's1' });
@@ -20,9 +20,9 @@ describe('may', () => {
 });
 
 test('comments are resolved by their author or the owner', () => {
-	expect(mayResolve(guest('comment'), { author: 'ana' })).toBe(true);
-	expect(mayResolve(guest('comment'), { author: 'ben' })).toBe(false);
-	expect(mayResolve(owner, { author: 'ben' })).toBe(true);
+	expect(mayManage(guest('comment'), { author: 'ana' })).toBe(true);
+	expect(mayManage(guest('comment'), { author: 'ben' })).toBe(false);
+	expect(mayManage(owner, { author: 'ben' })).toBe(true);
 });
 
 describe('guestMayRequest', () => {
@@ -41,14 +41,14 @@ describe('guestMayRequest', () => {
 });
 
 test('a comment is resolvable by whoever wrote it, not by someone sharing their name', async () => {
-	const { mayResolve } = await import('./permissions');
+	const { mayManage } = await import('./permissions');
 	const sam = { owner: false, inviteId: 'a', name: 'Sam', role: 'comment', sessionId: 's' };
 	const otherSam = { owner: false, inviteId: 'b', name: 'Sam', role: 'comment', sessionId: 's' };
 	const comment = { author: 'Sam', authorId: 'invite:a' };
 
-	expect(mayResolve(sam, comment)).toBe(true);
-	expect(mayResolve(otherSam, comment)).toBe(false);
-	expect(mayResolve({ owner: true }, comment)).toBe(true);
+	expect(mayManage(sam, comment)).toBe(true);
+	expect(mayManage(otherSam, comment)).toBe(false);
+	expect(mayManage({ owner: true }, comment)).toBe(true);
 });
 
 test('files are part of comment and drive, not view', async () => {

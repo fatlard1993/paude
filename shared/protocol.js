@@ -1,7 +1,7 @@
 // The attach socket's vocabulary, shared by the server and both clients. Binary frames carry terminal output;
 // text frames carry JSON whose `type` is one of these.
 
-export const NOTE_TYPES = ['notes', 'chat', 'chatUpdate', 'comment'];
+export const NOTE_TYPES = ['notes', 'chat', 'chatUpdate', 'comment', 'commentDeleted'];
 
 // Close codes a client acts on instead of reconnecting
 export const CLOSED = {
@@ -29,6 +29,12 @@ export const applyNote = (notes, message) => {
 		const index = notes.chat.findIndex(({ id }) => id === message.message.id);
 
 		if (index !== -1) notes.chat[index] = message.message;
+
+		return null;
+	}
+
+	if (message.type === 'commentDeleted') {
+		notes.comments = notes.comments.filter(({ id }) => id !== message.commentId);
 
 		return null;
 	}

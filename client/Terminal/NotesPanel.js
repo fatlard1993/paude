@@ -1,6 +1,7 @@
 import { Notify } from '@vanilla-bean/components';
 
-import { DESKTOP_KEY, NAME_KEY, desktopNotificationsOn, remember, savedName } from '../storage';
+import { DESKTOP_KEY, desktopNotificationsOn, remember } from '../storage';
+import confirmDialog from '../confirmDialog';
 
 import { applyNote } from '../../shared/protocol';
 import { REACTION_PALETTE } from '../../shared/reactions';
@@ -11,6 +12,10 @@ import renderPeople from './People';
 import Panel from './NotesPanel.styles';
 
 const meta = ({ author, at }) => element('div', 'meta', `${author} · ${relativeTime(at)}`);
+
+// Yours to resolve or delete: written by you (by who you are, not your name, where the note knows), or you're the owner
+const yours = note =>
+	Boolean(identity()?.owner || (note.authorId ? note.authorId === identityKey() : note.author === identity()?.name));
 
 // Enter sends; Shift+Enter makes a new line. A draft map keeps half-typed text across re-renders.
 const composer = ({ placeholder, label, onSend, drafts, draftKey }) => {
@@ -62,7 +67,7 @@ export default class NotesPanel extends Panel {
 		const who = element('div', 'who');
 
 		who.append(
-			identity()?.owner ? this.nameInput() : this.guestName(),
+			this.whoYouAre(),
 			this.bellButton(),
 			closeButton(() => this.options.close()),
 		);
@@ -104,20 +109,8 @@ export default class NotesPanel extends Panel {
 	}
 
 	// Desktop notifications for when this tab is in the background; asking permission needs a click, so it's here
-	nameInput() {
-		const name = element('input');
-
-		name.placeholder = 'Your name';
-		name.value = savedName();
-		name.addEventListener('change', () => {
-			remember(NAME_KEY, name.value.trim());
-			this.options.send({ type: 'rename', name: name.value.trim() });
-		});
-
-		return name;
-	}
-
-	guestName() {
+	// The owner goes by the server's name for them, a guest by their invite's
+	whoYouAre() {
 		const label = element('div', 'guest-name');
 
 		label.append(element('span', 'as', 'You are'), element('strong', '', identity()?.name ?? 'a guest'));
@@ -245,7 +238,7 @@ export default class NotesPanel extends Panel {
 			resolve.addEventListener('click', () =>
 				this.options.send({ type: 'resolve', commentId: comment.id, resolved: !comment.resolved }),
 			);
-			if (identity()?.owner || comment.author === identity()?.name) actions.append(resolve);
+			if (yours(comment)) actions.append(resolve, this.deleteButton(comment, { commentId: comment.id }));
 
 			node.append(
 				quote,
@@ -262,6 +255,12 @@ export default class NotesPanel extends Panel {
 					element('div', 'text', reply.text),
 					this.reactions(reply, { commentId: comment.id, replyId: reply.id }),
 				);
+				if (yours(reply)) {
+					const replyActions = element('div', 'actions');
+
+					replyActions.append(this.deleteButton(reply, { commentId: comment.id, replyId: reply.id }));
+					replyNode.append(replyActions);
+				}
 				node.append(replyNode);
 			}
 
@@ -281,6 +280,26 @@ export default class NotesPanel extends Panel {
 
 			return node;
 		});
+	}
+
+	// Asked first: a comment goes with its replies, other people's among them
+	deleteButton(note, target) {
+		const remove = element('button', 'delete', 'Delete');
+		const replies = target.replyId ? 0 : note.replies.length;
+
+		remove.addEventListener('click', async () => {
+			const confirmed = await confirmDialog({
+				header: target.replyId ? 'Delete this reply?' : 'Delete this comment?',
+				body: replies
+					? `Its ${replies === 1 ? 'reply goes' : `${replies} replies go`} with it.`
+					: 'It goes for everyone.',
+				confirmLabel: 'Delete',
+			});
+
+			if (confirmed) this.options.send({ type: 'delete', ...target });
+		});
+
+		return remove;
 	}
 
 	reactions(item, target) {

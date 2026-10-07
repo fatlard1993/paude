@@ -149,6 +149,30 @@ export const react = async (sessionId, author, { chatId, commentId, replyId, emo
 	});
 };
 
+// A comment (its replies with it) or one reply, gone; `allowed` decides for the one deleted
+export const deleteComment = async (sessionId, { commentId, replyId, allowed = () => true }) => {
+	const notes = await getNotes(sessionId);
+	const comment = notes.comments.find(({ id }) => id === commentId);
+
+	if (!comment) return null;
+
+	if (replyId) {
+		const reply = comment.replies.find(({ id }) => id === replyId);
+
+		if (!reply || !allowed(reply)) return null;
+		comment.replies = comment.replies.filter(other => other !== reply);
+		await save(sessionId);
+
+		return { type: 'comment', comment };
+	}
+
+	if (!allowed(comment)) return null;
+	notes.comments = notes.comments.filter(other => other !== comment);
+	await save(sessionId);
+
+	return { type: 'commentDeleted', commentId };
+};
+
 export const deleteNotes = async sessionId => {
 	loaded.delete(sessionId);
 	await rm(fileFor(sessionId), { force: true });
