@@ -25,7 +25,7 @@ const alert = async (session, what) => {
 		new Notify({ type: 'info', content: `${session.title || 'A session'}${what}`, timeout: 8000 });
 };
 
-export const startWatchAlerts = ({ local }) => {
+export const startWatchAlerts = ({ remotes }) => {
 	let previous = null;
 	let checks = 0;
 	let remoteWatched = [];
@@ -33,7 +33,7 @@ export const startWatchAlerts = ({ local }) => {
 	const check = async () => {
 		const here = (await getWatching()).body ?? [];
 
-		if (local && checks % REMOTE_EVERY === 0) {
+		if (remotes && checks % REMOTE_EVERY === 0) {
 			const remotes = (await getRemotes()).body ?? [];
 
 			remoteWatched = remotes

@@ -14,6 +14,10 @@ export const configFile = name => join(process.env.XDG_CONFIG_HOME ?? join(os.ho
 // just this machine's own logins. Read each time, so a change needs no restart.
 export const serverSettings = () => readJsonFile(configFile('server.json'), {}).catch(() => ({}));
 
+// This machine's own token, or the owner password where this machine shares them
+export const mayListRemotes = async identity =>
+	Boolean(identity?.local || (identity?.owner && (await serverSettings()).shareRemotes));
+
 export const cleanServerName = name => (typeof name === 'string' ? name.trim().slice(0, MAX_NAME) : '') || null;
 
 export const serverName = async () => cleanServerName((await serverSettings()).name);

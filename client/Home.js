@@ -169,7 +169,7 @@ export default class Home extends View {
 		const [{ body: projects }, { body: watching }, { body: remotes }] = await Promise.all([
 			getProjects(),
 			getWatching(),
-			identity()?.local ? getRemotes() : { body: [] },
+			identity()?.remotes ? getRemotes() : { body: [] },
 		]);
 		const reachable = (remotes ?? []).filter(remote => !remote.error);
 		const remoteWatched = reachable.flatMap(remote => remote.watching.map(session => ({ ...session, remote })));

@@ -111,6 +111,8 @@ test('a machine that shares its servers lists them for the owner password too, n
 	try {
 		expect((await call('/api/remotes', { token: tokens.owner })).status).toBe(200);
 		expect((await call('/api/remotes', { token: tokens.comment })).status).toBe(403);
+		expect((await (await call('/api/auth', { token: tokens.owner })).json()).identity.remotes).toBe(true);
+		expect((await (await call('/api/auth', { token: tokens.comment })).json()).identity.remotes).toBeUndefined();
 	} finally {
 		await rm(path.join(process.env.XDG_CONFIG_HOME, 'paude', 'server.json'));
 	}
