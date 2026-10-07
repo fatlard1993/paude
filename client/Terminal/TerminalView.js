@@ -4,10 +4,11 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 
-import { deleteSession, forkSession, getSession, getTurns, nameSession, setWatching } from '../api';
+import { deleteSession, forkSession, getSession, getTurns, listFiles, nameSession, setWatching } from '../api';
 import confirmDialog, { confirmDeleteSession, nameDialog } from '../confirmDialog';
 import { canBrowse, canNote, canType, identity } from '../identity';
 import DONE_MARKER from '../../shared/doneMarker';
+import findFilePaths, { pathResolver } from '../../shared/filePaths';
 import findUrls from '../../shared/terminalLinks';
 import withoutPointerReporting from '../../shared/pointerReporting';
 import { NOTE_TYPES } from '../../shared/protocol';
@@ -187,7 +188,7 @@ export default class TerminalView extends View {
 				appendTo: this.selectionActions,
 				icon: 'terminal',
 				textContent: 'Terminal',
-				attributes: { title: 'Put it on the side terminal\'s command line' },
+				attributes: { title: "Put it on the side terminal's command line" },
 				onPointerPress: event => {
 					event.preventDefault();
 					this.sendSelectionToShell();
@@ -294,6 +295,7 @@ export default class TerminalView extends View {
 		redrawWhenSymbolsLoad(this.terminal);
 		if (identity()?.owner) this.linkDoneMarkers();
 		this.linkUrls();
+		if (canBrowse()) this.linkFilePaths();
 		this.terminal.onData(data => this.sendInput(data));
 		this.scrollClaudeWithWheel();
 		this.terminal.onSelectionChange(() => {
@@ -412,9 +414,11 @@ export default class TerminalView extends View {
 	renderPresence(presence) {
 		const { busy, waiting, title, clients, you } = presence;
 
-		// Claude waiting, or done, is when a proposal appears or a turn's changes land
-		if (this.lastPresence && (waiting !== this.lastPresence.waiting || busy !== this.lastPresence.busy))
+		// Claude waiting, or done, is when a proposal appears or a turn's changes (and new files) land
+		if (this.lastPresence && (waiting !== this.lastPresence.waiting || busy !== this.lastPresence.busy)) {
 			this.files?.changesMayHaveChanged();
+			this.resolvePath = null;
+		}
 		const offline = this.connectionState === 'reconnecting' || this.connectionState === 'ended';
 
 		this.lastPresence = presence;
@@ -776,6 +780,32 @@ export default class TerminalView extends View {
 							activate: () => window.open(url, '_blank', 'noopener,noreferrer'),
 						};
 					});
+
+				callback(links.length ? links : undefined);
+			},
+		});
+	}
+
+	// The project's files Claude names open in the files panel, at the lines named
+	linkFilePaths() {
+		this.terminal.registerLinkProvider({
+			provideLinks: async (lineNumber, callback) => {
+				this.resolvePath ??= listFiles(this.options.id).then(({ body, response }) =>
+					pathResolver(response?.ok ? body : []),
+				);
+
+				const { text, columns } = this.bufferCells(lineNumber - 1);
+				const links = findFilePaths(text, await this.resolvePath).map(({ path, line, lastLine, from, to }) => ({
+					range: { start: { x: columns[from], y: lineNumber }, end: { x: columns[to - 1], y: lineNumber } },
+					text: path,
+					decorations: { pointerCursor: true, underline: true },
+					hover: () => (this.overLink = true),
+					leave: () => (this.overLink = false),
+					activate: () => {
+						this.toggleFiles(true);
+						this.files.open(path, line, lastLine);
+					},
+				}));
 
 				callback(links.length ? links : undefined);
 			},

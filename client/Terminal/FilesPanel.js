@@ -737,13 +737,13 @@ export default class FilesPanel extends Panel {
 			.forEach(entry => entry.classList.toggle('current', entry.dataset.path === path));
 	}
 
-	async open(path, line) {
+	async open(path, line, lastLine = line) {
 		if (!(await this.leaveEditing())) return;
 
 		this.current = path;
 		this.view = 'file';
 		this.kind = kindOf(path);
-		this.selection = line ? { anchor: line, from: line, to: line } : null;
+		this.selection = line ? { anchor: line, from: line, to: lastLine } : null;
 		this.lines = null;
 		this.conflict = null;
 		this.panes.classList.add('reading');
