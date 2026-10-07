@@ -55,6 +55,8 @@ const Screen = styled.Component`
 	overflow: hidden;
 	padding: 0 4px;
 	background: ${BACKGROUND};
+	/* xterm's own layers (the GPU renderer's link canvas among them) stack in here, under the buttons over the screen */
+	isolation: isolate;
 
 	.xterm {
 		transform-origin: top left;
@@ -321,7 +323,10 @@ export default class TerminalView extends View {
 		this.terminal.onData(data => this.sendInput(data));
 		this.scrollClaudeWithWheel();
 		this.terminal.onSelectionChange(() => this.placeSelectionActions());
-		this.terminal.onScroll(() => this.placeSelectionActions());
+		// Output scrolls the selection, and the buttons with it, except from under a pointer reaching for them
+		this.terminal.onScroll(() => {
+			if (!this.selectionActions.elem.matches(':hover')) this.placeSelectionActions();
+		});
 		// Ctrl+C copies what's selected, as in a Windows terminal; with nothing selected it still interrupts Claude
 		this.terminal.attachCustomKeyEventHandler(event => {
 			const lineKey =
