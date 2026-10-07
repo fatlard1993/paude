@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp } from 'fs/promises';
+import { mkdir, mkdtemp, rm } from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
@@ -102,6 +102,17 @@ test('guests reach their own session only, and what their role allows', async ()
 test("other servers are listed only for this machine's own logins", async () => {
 	expect((await call('/api/remotes', { token: tokens.owner })).status).toBe(403);
 	expect((await call('/api/remotes', { token: tokens.local })).status).toBe(200);
+});
+
+test('a machine that shares its servers lists them for the owner password too, never for an invite', async () => {
+	await Bun.write(path.join(process.env.XDG_CONFIG_HOME, 'paude', 'server.json'), '{ "shareRemotes": true }');
+
+	try {
+		expect((await call('/api/remotes', { token: tokens.owner })).status).toBe(200);
+		expect((await call('/api/remotes', { token: tokens.comment })).status).toBe(403);
+	} finally {
+		await rm(path.join(process.env.XDG_CONFIG_HOME, 'paude', 'server.json'));
+	}
 });
 
 test('hooks need the secret, and report on the session in their address', async () => {

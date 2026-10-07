@@ -6,6 +6,7 @@ import { matchesQuery } from '../../shared/sessionSearch';
 import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
 import { listRemotes, remoteLink } from '../remotes';
+import { serverSettings } from '../serverSettings';
 import { deleteNotes } from '../notes';
 import { sessionTurns } from '../sessions/history';
 import {
@@ -155,8 +156,12 @@ const sessionsRoutes = async (request, server) => {
 	}
 
 	// Only from this machine's own token: the owner password of a server reached from elsewhere doesn't open the
-	// other servers this machine happens to be logged into
-	if (pathname.startsWith('/api/remotes') && !identity?.local)
+	// other servers this machine happens to be logged into, unless this machine says it may (shareRemotes)
+	if (
+		pathname.startsWith('/api/remotes') &&
+		!identity?.local &&
+		!(identity?.owner && (await serverSettings()).shareRemotes)
+	)
 		return new Response('Only from this machine: the paude command, or paude web', { status: 403 });
 
 	if (requestMatch('GET', '/api/remotes', request)) return Response.json(await listRemotes());

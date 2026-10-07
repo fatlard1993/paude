@@ -1,9 +1,9 @@
 import { mkdir, readFile, realpath, writeFile } from 'fs/promises';
-import os from 'os';
 import { basename, dirname, join, relative, sep } from 'path';
 
 import readJsonFile from '../shared/readJsonFile';
 import { claimWorktree, forgetWorktree, worktreeClaim } from './projects';
+import { configFile } from './serverSettings';
 import gitEnvironment from './utils/gitEnvironment';
 
 // paude's own worktrees, when the repo has no command of its own: inside the project, and outside .claude/worktrees,
@@ -35,8 +35,7 @@ const contains = (folder, path) => {
 	return within === '' || (!within.startsWith('..') && !within.startsWith(sep));
 };
 
-const settingsFile = () =>
-	join(process.env.XDG_CONFIG_HOME ?? join(os.homedir(), '.config'), 'paude', 'worktrees.json');
+const settingsFile = () => configFile('worktrees.json');
 
 // git@github.com:org/repo.git, https://github.com/org/repo, ssh://git@github.com/org/repo.git: github.com/org/repo
 export const normalizeRemote = url =>

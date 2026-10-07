@@ -110,6 +110,8 @@ A Drive invite can type into Claude, which runs commands as the server's user: g
 | Comment | chat, comment, read the project's files                                  |
 | View    | see the terminal                                                         |
 
+Other servers this machine is logged into (with `paude login`) show on the home page only for this machine's own logins: the paude command and `paude web`. A password login from elsewhere doesn't get them, so one server's password doesn't open the rest. On a machine only your own network reaches (a laptop serving your phone), `{ "shareRemotes": true }` in `~/.config/paude/server.json` lists them for the password too. Invites never get them.
+
 Revoking an invite, or changing the password with `bun run set-password` (a running server picks it up), signs those people out everywhere at once.
 
 ## In the terminal
