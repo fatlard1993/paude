@@ -13,6 +13,7 @@ import {
 	getDiffSet,
 	getGit,
 	getSymbols,
+	replaceInFiles,
 	getTurnChanges,
 	listFiles,
 	rawFileUrl,
@@ -350,7 +351,8 @@ export default class FilesPanel extends Panel {
 		new ResizeObserver(() => {
 			if (this.view === 'diff' && this.diffSet && this.renderedLayout !== this.diffLayout) this.renderViewer();
 		}).observe(this.viewer);
-		this.elem.append(bar, this.filters, this.panes);
+		this.replaceRow = this.replaceControls();
+		this.elem.append(bar, this.filters, this.replaceRow, this.panes);
 		this.elem.tabIndex = -1;
 
 		// Esc steps back out of full screen first, then closes the panel
@@ -491,6 +493,7 @@ export default class FilesPanel extends Panel {
 
 	setMode(mode) {
 		this.mode = mode;
+		this.replaceRow.classList.toggle('shown', mode === 'contents' && canType());
 		this.query.placeholder = {
 			names: 'Find a file',
 			contents: 'Search file contents',
@@ -513,6 +516,7 @@ export default class FilesPanel extends Panel {
 		clearTimeout(this.searchTimer);
 
 		if (this.mode === 'changes') return this.renderChanges(query);
+		if (!query && this.mode === 'contents') return this.list.replaceChildren(this.todoOffer());
 		if (!query) return this.list.replaceChildren(...this.comparingNotice(), ...this.treeEntries(buildTree(paths), 0));
 
 		if (this.mode === 'contents') {
@@ -598,6 +602,88 @@ export default class FilesPanel extends Panel {
 		entry.addEventListener('click', () => this.openDiffSet({ source: 'turn', turn: turn.id }));
 
 		return entry;
+	}
+
+	// Under the contents search: what to put in place of every match, across the project
+	replaceControls() {
+		const row = element('form', 'replace');
+		const replacement = element('input');
+
+		replacement.placeholder = 'Replace every match with…';
+		row.append(
+			replacement,
+			button('Replace all', () => {}, { className: 'primary' }),
+		);
+		row.addEventListener('submit', async event => {
+			event.preventDefault();
+
+			const query = this.query.value.trim();
+
+			if (query.length < 2)
+				return new Notify({ type: 'warning', content: 'Search for something first.', timeout: 2500 });
+
+			const shown = this.list.querySelectorAll('.entry').length;
+			const confirmed = await confirmDialog({
+				header: `Replace every match of ${query}?`,
+				body: `With "${replacement.value}", in every file it's in: ${shown} match${shown === 1 ? '' : 'es'} are listed, and any beyond the list too. Git's Changes shows what it did.`,
+				confirmLabel: 'Replace all',
+			});
+
+			if (!confirmed) return;
+
+			const { body, response } = await replaceInFiles(
+				this.options.sessionId,
+				query,
+				this.searchOptions,
+				replacement.value,
+			);
+
+			if (!response?.ok)
+				return new Notify({ type: 'error', content: typeof body === 'string' ? body : 'Could not replace.' });
+
+			new Notify({
+				type: 'success',
+				content: `Replaced ${body.replacements} in ${body.files} file${body.files === 1 ? '' : 's'}`,
+				timeout: 3000,
+			});
+			this.changesMayHaveChanged();
+			this.renderList();
+		});
+
+		return row;
+	}
+
+	// The project's to-dos (TODO, FIXME, HACK, XXX), on offer when the contents search is empty
+	todoOffer() {
+		const offer = element('div', 'empty');
+
+		offer.append(
+			'Search the files, or ',
+			button('list the to-dos', async () => {
+				const options = { regex: true, wholeWord: true, caseSensitive: true };
+				const { body, response } = await searchFiles(this.options.sessionId, 'TODO|FIXME|HACK|XXX', options);
+
+				if (!response?.ok) return;
+
+				const hits = JSON.parse(body);
+
+				this.list.replaceChildren(
+					element('div', 'list-heading', `${hits.length}${hits.length >= 300 ? '+' : ''} to-dos`),
+					...(hits.length
+						? hits.map(hit => {
+								const entry = this.fileEntry(`${hit.path}:${hit.line}`, hit.path, hit.line);
+
+								entry.append(element('span', 'snippet', hit.text.trim()));
+
+								return entry;
+							})
+						: [element('div', 'empty', 'None. Tidy.')]),
+				);
+			}),
+			' (TODO, FIXME, HACK, XXX).',
+		);
+
+		return offer;
 	}
 
 	// Symbols as entries: their kind and name, where they are; one opens its file at the line

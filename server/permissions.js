@@ -52,6 +52,8 @@ export const guestMayRequest = (identity, method, pathname) => {
 			(pathname === `${own}/shares` || pathname.startsWith(`${own}/shares/`))) ||
 		(method === 'GET' && pathname === '/api/watching') ||
 		(method === 'POST' && pathname === '/api/handoff') ||
+		(method === 'POST' && pathname === `${own}/replace`) ||
+		(method === 'GET' && pathname === `${own}/environment`) ||
 		(method === 'PUT' && (pathname === `${own}/watch` || pathname === `${own}/file`)) ||
 		(method === 'POST' && pathname === '/api/logout') ||
 		(method === 'DELETE' && pathname === '/api/tokens/current')

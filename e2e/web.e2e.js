@@ -583,3 +583,62 @@ test(
 	},
 	TIMEOUT_MS,
 );
+
+test(
+	'replace across the project after asking, the to-dos, and the environment with its secrets masked',
+	async () => {
+		const server = await startServer();
+
+		await Bun.write(`${server.project}/lib/a.js`, '// TODO: rename\nconst oldName = 1;\nexport default oldName;\n');
+		await Bun.write(`${server.project}/.env`, 'API_TOKEN=supersecret\n');
+		Bun.spawnSync(['git', 'add', '-A'], { cwd: server.project });
+
+		const { browser, page } = await openSession('dom', server);
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(900);
+		};
+
+		try {
+			await press('[title="Project files"]');
+			await press('.files .bar button', 'Contents');
+			await press('.files .list button', 'list the to-dos');
+			expect(await page.$eval('.files .list', list => list.textContent)).toContain('lib/a.js:1');
+
+			await page.type('.files .bar input', 'oldName');
+			await wait(800);
+			await page.type('.files .replace input', 'newName');
+			await press('.files .replace button', 'Replace all');
+
+			// The confirmation's button, the last on the page
+			const confirm = await page.evaluate(() => {
+				const box = [...document.querySelectorAll('button')]
+					.filter(found => found.textContent.trim() === 'Replace all')
+					.at(-1)
+					.getBoundingClientRect();
+
+				return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+			});
+
+			await page.mouse.click(confirm.x, confirm.y);
+			await wait(1000);
+			expect(await Bun.file(`${server.project}/lib/a.js`).text()).toBe(
+				'// TODO: rename\nconst newName = 1;\nexport default newName;\n',
+			);
+
+			await press('[title^="Tasks"]');
+			await press('.tasks .section-head button', 'Show');
+
+			const shown = await page.$eval('.tasks .body', body => body.textContent);
+
+			expect(shown).toContain('API_TOKEN');
+			expect(shown).not.toContain('supersecret');
+		} finally {
+			await browser.close();
+			await server.stop();
+		}
+	},
+	TIMEOUT_MS,
+);

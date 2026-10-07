@@ -226,6 +226,30 @@ const Panel = styled(
 			display: block;
 		}
 
+		.replace {
+			display: none;
+			gap: 6px;
+		}
+
+		.replace.shown {
+			display: flex;
+		}
+
+		.replace input {
+			flex: 1;
+			min-width: 0;
+			font: inherit;
+		}
+
+		.entry .snippet {
+			margin-left: 8px;
+			color: ${colors.light(colors.gray)};
+			font-size: 0.85em;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
 		/* Symbols in the list: their kind, and where they are */
 		.list-heading {
 			padding: 6px 8px 4px;

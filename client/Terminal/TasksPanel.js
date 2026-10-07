@@ -1,4 +1,4 @@
-import { getRun, getTasks, runTask, setAfterTurn, stopProcess, stopRun } from '../api';
+import { getEnvironment, getRun, getTasks, runTask, setAfterTurn, stopProcess, stopRun } from '../api';
 import { button, closeButton, element, icon } from '../dom';
 import { canType } from '../identity';
 import relativeTime from '../../shared/relativeTime';
@@ -169,7 +169,40 @@ export default class TasksPanel extends Panel {
 			nodes.push(row);
 		}
 
+		if (canType()) nodes.push(...this.environmentNodes());
+
 		this.body.replaceChildren(...nodes);
+	}
+
+	// What the session's processes see, and the project's .env files: shown on asking, secret values masked
+	environmentNodes() {
+		const head = element('div', 'section-head', 'Environment');
+
+		head.append(
+			button(this.environment ? 'Hide' : 'Show', async () => {
+				this.environment = this.environment ? null : (await getEnvironment(this.options.sessionId)).body;
+				this.renderTasks();
+			}),
+		);
+		if (!this.environment) return [head];
+
+		const variable = ({ name, value }) => {
+			const row = element('div', 'variable');
+
+			row.append(element('span', 'where', name), element('span', 'message', value));
+
+			return row;
+		};
+
+		return [
+			head,
+			...this.environment.files.flatMap(({ file, variables }) => [
+				element('div', 'meta', file),
+				...variables.map(variable),
+			]),
+			element('div', 'meta', 'The session'),
+			...this.environment.variables.map(variable),
+		];
 	}
 
 	taskRow(task, run) {

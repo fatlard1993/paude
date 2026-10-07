@@ -123,6 +123,17 @@ export const readFile = async (sessionId, path) =>
 		invalidateAfter: 0,
 	});
 
+// Every match of a search across the project replaced: { files, replacements }
+export const replaceInFiles = async (sessionId, query, options, replacement) =>
+	await POST('/api/sessions/:id/replace', {
+		urlParameters: { id: sessionId },
+		body: { ...searchParameters(query, options), replacement },
+	});
+
+// What the session's processes see, and the project's .env files, secrets masked: { variables, files }
+export const getEnvironment = async sessionId =>
+	await GET('/api/sessions/:id/environment', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
+
 export const searchFiles = async (sessionId, query, options) =>
 	await GET('/api/sessions/:id/search', {
 		urlParameters: { id: sessionId },

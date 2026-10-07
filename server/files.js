@@ -1,6 +1,7 @@
 import { realpath } from 'fs/promises';
 import { resolve, sep } from 'path';
 
+import searchPattern from '../shared/searchPattern';
 import { pathFilter } from '../shared/globs';
 import gitEnvironment from './utils/gitEnvironment';
 
@@ -157,4 +158,67 @@ export const searchProject = async (cwd, query, { caseSensitive, wholeWord, rege
 	}
 
 	return hits;
+};
+
+// Every listed file a search matches, however many: [path]
+const matchingFiles = async (cwd, query, { caseSensitive, wholeWord, regex, include, exclude } = {}) => {
+	const flags = ['-l', '-I', ...(caseSensitive ? [] : ['-i']), ...(wholeWord ? ['-w'] : []), regex ? '-E' : '-F'];
+	const git = await run(['git', 'grep', '--untracked', ...flags, '-e', query], cwd);
+	const found =
+		git.code <= 1 ? git.out : (await run(['grep', '-r', ...flags, ...SKIPPED_DIRECTORIES, '-e', query, '.'], cwd)).out;
+	const listed = new Set(await listFiles(cwd));
+
+	const wanted = pathFilter({ include, exclude });
+
+	return found
+		.split('\n')
+		.map(path => path.replace(/^\.\//, ''))
+		.filter(path => listed.has(path) && !isSecret(path) && wanted(path));
+};
+
+// A search's every match, across the project, replaced: { files, replacements }. A literal search replaces
+// literally; a regular expression's replacement can use its groups ($1).
+export const replaceInProject = async (cwd, query, replacement, options = {}) => {
+	if (typeof query !== 'string' || query.length < 2) throw new SearchError('Search for two characters or more.');
+	if (typeof replacement !== 'string') throw new SearchError('Say what to replace it with.');
+
+	const pattern = searchPattern(query, options, 'g');
+
+	if (!pattern) throw new SearchError('That regular expression is not valid.');
+
+	let files = 0;
+	let replacements = 0;
+
+	// grep speaks POSIX expressions, not JavaScript's: for an expression every file is checked with the very pattern
+	// that replaces, so what matches is what changes
+	const candidates = options.regex
+		? (await listFiles(cwd)).filter(path => !isSecret(path) && pathFilter(options)(path))
+		: await matchingFiles(cwd, query, options);
+
+	for (const path of candidates) {
+		const file = Bun.file(resolve(cwd, path));
+
+		if (file.size > MAX_BYTES) continue;
+
+		const text = await file.text();
+
+		if (text.includes('\0')) continue;
+
+		let count = 0;
+		const replaced = text.replace(pattern, (...match) => {
+			count += 1;
+
+			// $1, $2 and $& from a regular expression's groups; anything else as typed
+			return options.regex
+				? replacement.replace(/\$(\d+|&)/g, (_, group) => (group === '&' ? match[0] : (match[Number(group)] ?? '')))
+				: replacement;
+		});
+
+		if (!count) continue;
+		await Bun.write(file, replaced);
+		files += 1;
+		replacements += count;
+	}
+
+	return { files, replacements };
 };

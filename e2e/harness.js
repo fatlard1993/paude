@@ -181,6 +181,10 @@ export const centerOf = async (page, selector, text) =>
 	page.evaluate(
 		({ selector, text }) => {
 			const found = [...document.querySelectorAll(selector)].find(node => !text || node.textContent.includes(text));
+
+			// Scrolled to first, as a person would, when it's down a panel's list
+			found?.scrollIntoView({ block: 'center' });
+
 			const box = found?.getBoundingClientRect();
 
 			return box && { x: box.x + box.width / 2, y: box.y + box.height / 2 };

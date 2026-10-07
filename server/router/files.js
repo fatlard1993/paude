@@ -3,7 +3,16 @@ import { listChanges } from '../changes';
 import { DiffError, diffSet, turnsWithChanges } from '../diffs';
 import { definitions, outline, searchSymbols } from '../symbols';
 import { sessionTimeline } from '../timeline';
-import { SearchError, listFiles, rawProjectFile, readProjectFile, searchProject, writeProjectFile } from '../files';
+import { sessionEnvironmentView } from '../environment';
+import {
+	SearchError,
+	listFiles,
+	rawProjectFile,
+	readProjectFile,
+	replaceInProject,
+	searchProject,
+	writeProjectFile,
+} from '../files';
 import { searchOptionsFrom } from '../../shared/searchQuery';
 import { may } from '../permissions';
 import { sessionRecord } from '../sessions/record';
@@ -69,11 +78,48 @@ const save = async (request, id) => {
 	return Response.json({ hash: saved.hash });
 };
 
+// Replacing across the project is writing it, so it takes the role that may type into Claude
+const replace = async (request, id) => {
+	if (!may(identityOf(credentialOf(request)), 'type', id))
+		return new Response('Your invite does not include editing', { status: 403 });
+
+	const cwd = await sessionFolder(id);
+
+	if (!cwd) return new Response('Session not found', { status: 404 });
+
+	const { q, replacement, ...options } = await request.json();
+
+	try {
+		return Response.json(await replaceInProject(cwd, q, replacement, searchOptionsFrom(options)));
+	} catch (error) {
+		if (error instanceof SearchError) return new Response(error.message, { status: 400 });
+		throw error;
+	}
+};
+
+// Even masked, a machine's environment says a lot: it takes the same trust as typing into Claude
+const showEnvironment = async (request, id) => {
+	if (!may(identityOf(credentialOf(request)), 'type', id))
+		return new Response('Not part of your invite', { status: 403 });
+
+	const cwd = await sessionFolder(id);
+
+	return cwd ? Response.json(await sessionEnvironmentView(cwd)) : new Response('Session not found', { status: 404 });
+};
+
 // Reading a session's project needs at least the comment role; watchers see only the terminal
 const filesRoutes = async request => {
 	const saving = requestMatch('PUT', '/api/sessions/:id/file', request);
 
 	if (saving) return save(request, saving.id);
+
+	const replacing = requestMatch('POST', '/api/sessions/:id/replace', request);
+
+	if (replacing) return replace(request, replacing.id);
+
+	const environment = requestMatch('GET', '/api/sessions/:id/environment', request);
+
+	if (environment) return showEnvironment(request, environment.id);
 
 	const match =
 		requestMatch('GET', '/api/sessions/:id/changes', request) ||

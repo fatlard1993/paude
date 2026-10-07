@@ -341,6 +341,25 @@ const Panel = styled(
 			text-overflow: ellipsis;
 		}
 
+		.variable {
+			display: flex;
+			gap: 8px;
+			padding: 1px 6px;
+			font-size: 0.85em;
+		}
+
+		.variable .where {
+			flex-shrink: 0;
+			color: ${colors.light(colors.blue)};
+		}
+
+		.variable .message {
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
 		.run-head {
 			display: flex;
 			align-items: center;
