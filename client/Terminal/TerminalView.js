@@ -31,6 +31,8 @@ const BACKGROUND = '#1b1b1b';
 const TAP_SLOP = 8;
 // How far above and below a row to look for the rest of a URL Claude broke across rows
 const URL_ROWS = 6;
+// The new-session button after a done line, in cells
+const DONE_BUTTON_WIDTH = 24;
 // Between the selection and its buttons, and the buttons and the edges
 const GAP = 6;
 // Command with these does what a Mac terminal makes it do: clears the line back to its start, or goes to either end.
@@ -61,6 +63,28 @@ const Screen = styled.Component`
 	&.selecting {
 		outline: 2px dashed hsl(29, 55%, 62%);
 		outline-offset: -2px;
+	}
+
+	/* A button, not a link in the text: plain to see, and only pressed on purpose */
+	.fork-here {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		height: 100%;
+		padding: 0 7px;
+		border: 1px solid hsl(210, 60%, 60%, 0.6);
+		border-radius: 4px;
+		background: hsl(210, 60%, 45%, 0.25);
+		color: hsl(210, 80%, 85%);
+		font: inherit;
+		font-size: 0.85em;
+		white-space: nowrap;
+		cursor: pointer;
+		pointer-events: auto;
+	}
+
+	.fork-here:hover {
+		background: hsl(210, 60%, 45%, 0.45);
 	}
 `;
 
@@ -180,36 +204,26 @@ export default class TerminalView extends View {
 
 		this.screen = new Screen({ appendTo: column });
 		this.selectHint = new SelectHint({ appendTo: column, style: { display: 'none' } });
-		// Pressed, not clicked, and kept from taking focus, so the selection is still there to act on
+		// Kept from taking focus, so the selection is still there to act on; acting on the click rather than the press, so
+		// the release can't land on whatever was under the buttons once they hide
 		this.selectionActions = new SelectionActions({ appendTo: column, style: { display: 'none' } });
-		new Button({
-			appendTo: this.selectionActions,
-			textContent: '📋 Copy',
-			onPointerPress: event => {
-				event.preventDefault();
-				this.copySelection();
-			},
-		});
+		this.selectionActions.elem.addEventListener('pointerdown', event => event.preventDefault());
+		this.selectionActions.elem.addEventListener('mousedown', event => event.preventDefault());
+
+		const selectionButton = (options, onPress) =>
+			new Button({ appendTo: this.selectionActions, ...options }).elem.addEventListener('click', onPress);
+
+		selectionButton({ textContent: '📋 Copy' }, () => this.copySelection());
 		if (canType())
-			new Button({
-				appendTo: this.selectionActions,
-				icon: 'terminal',
-				textContent: 'Terminal',
-				attributes: { title: "Put it on the side terminal's command line" },
-				onPointerPress: event => {
-					event.preventDefault();
-					this.sendSelectionToShell();
+			selectionButton(
+				{
+					icon: 'terminal',
+					textContent: 'Terminal',
+					attributes: { title: "Put it on the side terminal's command line" },
 				},
-			});
-		if (canNote())
-			new Button({
-				appendTo: this.selectionActions,
-				textContent: '💬 Comment',
-				onPointerPress: event => {
-					event.preventDefault();
-					this.commentOnSelection();
-				},
-			});
+				() => this.sendSelectionToShell(),
+			);
+		if (canNote()) selectionButton({ textContent: '💬 Comment' }, () => this.commentOnSelection());
 		if (canNote()) {
 			new KeyBar({
 				appendTo: column,
@@ -301,7 +315,7 @@ export default class TerminalView extends View {
 		this.terminal.open(this.screen.elem);
 		this.useGpuRenderer();
 		redrawWhenSymbolsLoad(this.terminal);
-		if (identity()?.owner) this.linkDoneMarkers();
+		if (identity()?.owner) this.markDoneLines();
 		this.linkUrls();
 		if (canBrowse()) this.linkFilePaths();
 		this.terminal.onData(data => this.sendInput(data));
@@ -746,36 +760,65 @@ export default class TerminalView extends View {
 		});
 	}
 
-	// Every "done" line Claude prints after a turn becomes a link that starts a new session from that point
-	linkDoneMarkers() {
-		this.terminal.registerLinkProvider({
-			provideLinks: (lineNumber, callback) => {
-				const text = this.bufferLine(lineNumber - 1);
-				const found = DONE_MARKER.exec(text);
+	// Every "done" line Claude prints after a turn gets a button after it that starts a new session from that point.
+	// Rows are checked as output lands: the screen's, which Claude redraws, and those that scrolled off it since.
+	markDoneLines() {
+		let scannedFrom = 0;
+		let pending = false;
 
-				if (!found) return callback(undefined);
+		this.doneButtons = [];
+		this.terminal.onWriteParsed(() => {
+			if (pending) return;
+			pending = true;
+			requestAnimationFrame(() => {
+				const { baseY } = this.terminal.buffer.active;
 
-				callback([
-					{
-						range: {
-							start: { x: found.index + 1, y: lineNumber },
-							end: { x: found.index + found[0].length, y: lineNumber },
-						},
-						text: found[0],
-						decorations: { pointerCursor: true, underline: true },
-						hover: () => {
-							this.overLink = true;
-							this.lineSelectHint('Click to start a new session from here');
-						},
-						leave: () => {
-							this.overLink = false;
-							this.lineSelectHint(null);
-						},
-						activate: () => this.forkFromMarker(lineNumber - 1),
-					},
-				]);
-			},
+				pending = false;
+				for (let index = Math.min(scannedFrom, baseY); index < baseY + this.terminal.rows; index++)
+					this.markDoneLine(index);
+				scannedFrom = baseY;
+			});
 		});
+		// Resizing rewraps every row, so they're all checked again
+		this.terminal.onResize(() => (scannedFrom = 0));
+	}
+
+	markDoneLine(index) {
+		const { text, columns } = this.bufferCells(index);
+		const found = DONE_MARKER.exec(text);
+		const after = found && columns[found.index + found[0].length - 1] + 1;
+		const existing = this.doneButtons.find(({ marker }) => marker.line === index);
+
+		if (existing?.after === after) return;
+		if (existing) {
+			existing.decoration.dispose();
+			this.doneButtons = this.doneButtons.filter(button => button !== existing);
+		}
+		if (!found) return;
+
+		const buffer = this.terminal.buffer.active;
+		const marker = this.terminal.registerMarker(index - buffer.baseY - buffer.cursorY);
+		const x = Math.min(after, this.terminal.cols - DONE_BUTTON_WIDTH);
+		const decoration = marker && x >= 0 && this.terminal.registerDecoration({ marker, x, width: DONE_BUTTON_WIDTH });
+
+		if (!decoration) return marker?.dispose();
+
+		decoration.onRender(element => {
+			if (element.firstChild) return;
+
+			const fork = button('New session from here', () => this.forkFromMarker(marker.line), {
+				icon: 'code-branch',
+				title: 'Start a new session holding the conversation up to this turn',
+				className: 'fork-here',
+			});
+
+			// Its own press and click: not a selection, nor a click on Claude's screen
+			for (const type of ['pointerdown', 'mousedown', 'click'])
+				fork.addEventListener(type, event => event.stopPropagation());
+			element.append(fork);
+		});
+		marker.onDispose(() => (this.doneButtons = this.doneButtons.filter(button => button.marker !== marker)));
+		this.doneButtons.push({ marker, decoration, after });
 	}
 
 	// Plain URLs open in a new tab, one Claude broke across rows included; the rows around each one are searched so a
@@ -840,8 +883,8 @@ export default class TerminalView extends View {
 		});
 	}
 
-	// Beside the selection rather than in a corner, which a panel can cover: below its last row, or above its first
-	// when there's no room below
+	// Beside the selection rather than in a corner, which a panel can cover: above its first row, clear of the text,
+	// or below its last when there's no room above
 	placeSelectionActions() {
 		const actions = this.selectionActions.elem;
 		const position = this.terminal.hasSelection() && this.terminal.getSelectionPosition();
@@ -855,9 +898,9 @@ export default class TerminalView extends View {
 		const cellHeight = screen.height / this.terminal.rows;
 		const rowTop = row => screen.top - column.top + (row - this.terminal.buffer.active.viewportY) * cellHeight;
 		const clamp = (value, room) => Math.min(Math.max(value, GAP), room - GAP);
-		let top = rowTop(position.end.y + 1) + GAP;
+		let top = rowTop(position.start.y) - actions.offsetHeight - GAP;
 
-		if (top + actions.offsetHeight > column.height - GAP) top = rowTop(position.start.y) - actions.offsetHeight - GAP;
+		if (top < GAP) top = rowTop(position.end.y + 1) + GAP;
 
 		actions.style.top = `${clamp(top, column.height - actions.offsetHeight)}px`;
 		actions.style.left = `${clamp(screen.left - column.left + position.start.x * cellWidth, column.width - actions.offsetWidth)}px`;
@@ -891,8 +934,6 @@ export default class TerminalView extends View {
 	// is the nth completed turn from the end, which holds even when older scrollback is gone. The confirmation
 	// shows that turn's prompt, so a mismatch is visible before anything is created.
 	async forkFromMarker(markerLine) {
-		this.lineSelectHint(null);
-
 		let markersBelow = 0;
 
 		for (let index = markerLine + 1; index < this.terminal.buffer.active.length; index++) {
