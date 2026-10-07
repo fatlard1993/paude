@@ -26,9 +26,12 @@ if [ "$DEV" = yes ]; then
 	APP="$(cd "$(dirname "$0")/.." && pwd)"
 	MODE=development
 	WATCH="--watch "
+	AGENT_WATCH="
+		<string>--watch</string>"
 else
 	MODE=production
 	WATCH=""
+	AGENT_WATCH=""
 fi
 
 say() { printf '> %s\n' "$*"; }
@@ -95,6 +98,10 @@ else
 	git clone --quiet --depth=1 "$REPO" "$APP"
 	changed=yes
 fi
+
+# A run that pulled and then failed left the server on the old code; the commit last started says so
+STARTED="$DATA/installed-commit"
+if [ "$DEV" = no ] && [ "$(cat "$STARTED" 2>/dev/null)" != "$(git -C "$APP" rev-parse HEAD)" ]; then changed=yes; fi
 
 cd "$APP"
 if [ "$DEV" = yes ]; then
@@ -173,7 +180,7 @@ install_launchd() {
 	<string>$LABEL</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>$BUN</string>$([ "$DEV" = yes ] && printf '\n\t\t<string>--watch</string>')
+		<string>$BUN</string>$AGENT_WATCH
 		<string>server/index.js</string>
 		<string>--projects</string>
 		<string>$PROJECTS</string>
@@ -234,6 +241,9 @@ install_launchd() {
 }
 
 if [ "$PLATFORM" = macos ]; then install_launchd; else install_systemd; fi
+
+mkdir -p "$DATA"
+if [ "$DEV" = no ]; then git -C "$APP" rev-parse HEAD >"$STARTED"; fi
 
 waited=0
 until curl -sf "http://127.0.0.1:$PORT/api/auth" >/dev/null 2>&1; do
