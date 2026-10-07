@@ -12,7 +12,7 @@ import { getChanges, getDiffSet, getTurnChanges, listFiles, rawFileUrl, readFile
 import { canType } from '../identity';
 import { recall, remember } from '../storage';
 import confirmDialog from '../confirmDialog';
-import { button, dragHandle, element } from '../dom';
+import { button, closeButton, dragHandle, element } from '../dom';
 import renderDiffSet from './DiffView';
 import Panel, { LINE_HEIGHT } from './FilesPanel.styles';
 
@@ -317,7 +317,7 @@ export default class FilesPanel extends Panel {
 			this.modeButtons.changes,
 			this.filtersButton,
 			this.fullscreenButton,
-			iconButton('xmark', 'Close', () => this.options.close()),
+			closeButton(() => this.options.close()),
 		);
 
 		this.filters = element('div', 'filters');
@@ -335,6 +335,7 @@ export default class FilesPanel extends Panel {
 			if (this.view === 'diff' && this.diffSet && this.renderedLayout !== this.diffLayout) this.renderViewer();
 		}).observe(this.viewer);
 		this.elem.append(bar, this.filters, this.panes);
+		this.elem.tabIndex = -1;
 
 		// Esc steps back out of full screen first, then closes the panel
 		this.elem.addEventListener('keydown', event => {

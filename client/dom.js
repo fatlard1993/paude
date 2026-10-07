@@ -21,6 +21,10 @@ export const button = (label, onPress, { icon: name, title, className = '' } = {
 	return node;
 };
 
+// The same close button on every panel
+export const closeButton = onPress =>
+	button('', onPress, { icon: 'xmark', title: 'Close (Esc)', className: 'icon-only close' });
+
 // A handle dragged with any pointer: each move and the release report the pointer's event
 export const dragHandle = (handle, { onStart, onMove, onDone }) => {
 	handle.addEventListener('pointerdown', start => {

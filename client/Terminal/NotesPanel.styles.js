@@ -8,6 +8,11 @@ const Panel = styled(
 		min-height: 0;
 		height: 100%;
 
+		/* Focused so Esc closes it; nothing to show for that */
+		&:focus {
+			outline: none;
+		}
+
 		.tabs, .who, .composer {
 			display: flex;
 			gap: 6px;
@@ -82,6 +87,16 @@ const Panel = styled(
 			overflow: hidden;
 			text-overflow: ellipsis;
 			white-space: nowrap;
+		}
+
+		/* Matches the files panel's */
+		.who button.close {
+			padding: 4px 8px;
+			border: none;
+			border-radius: 4px;
+			background: ${colors.alpha(colors.white, 0.1)};
+			color: inherit;
+			cursor: pointer;
 		}
 
 		.who .bell {

@@ -12,6 +12,11 @@ const Panel = styled(
 		gap: 8px;
 		padding: 8px;
 
+		/* Focused so Esc closes it; nothing to show for that */
+		&:focus {
+			outline: none;
+		}
+
 		.bar, .filters, .list, .viewer {
 			background: ${LAYER};
 			border-radius: 6px;

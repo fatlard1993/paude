@@ -245,7 +245,8 @@ export default class TerminalView extends View {
 			sessionId: this.options.id,
 			send: message => Boolean(this.connection?.send(message)),
 			jump: quote => this.jumpTo(quote),
-			reveal: () => this.toggleNotes(true),
+			reveal: () => this.toggleNotes(true, { focus: false }),
+			close: () => this.toggleNotes(false),
 			announce: arrived => this.announce(arrived),
 			showUnread: count => {
 				this.unread.textContent = count;
@@ -258,7 +259,7 @@ export default class TerminalView extends View {
 		if (this.shell) {
 			this.addResizeHandle(this.shell.elem, { variable: '--shell-height', key: SHELL_HEIGHT_KEY, edge: 'top' });
 		}
-		if (recall(NOTES_OPEN_KEY)) this.toggleNotes(true);
+		if (recall(NOTES_OPEN_KEY)) this.toggleNotes(true, { focus: false });
 
 		this.loadInfo();
 	}
@@ -472,11 +473,19 @@ export default class TerminalView extends View {
 		});
 	}
 
-	toggleNotes(open = !this.notes.elem.classList.contains('open')) {
+	toggleNotes(open = !this.notes.elem.classList.contains('open'), { focus = true } = {}) {
 		this.notes.elem.classList.toggle('open', open);
 		this.notesToggle.classList.toggle('active', open);
 		remember(NOTES_OPEN_KEY, open ? 'yes' : '');
 		if (open) this.notes.showTab(this.notes.tab);
+		this.focusPanel(this.notes.elem, open && focus);
+	}
+
+	// An opened panel takes the keyboard, so Esc closes it rather than reaching Claude; closed, the keyboard goes back
+	// to the terminal if the panel had it
+	focusPanel(panel, open) {
+		if (open && !panel.contains(document.activeElement)) panel.focus({ preventScroll: true });
+		else if (!open && panel.contains(document.activeElement)) this.terminal?.focus();
 	}
 
 	// A side panel's inner edge drags its width; the side terminal's top edge drags its height
@@ -523,6 +532,7 @@ export default class TerminalView extends View {
 		this.files.elem.classList.toggle('open', open);
 		this.filesButton?.classList.toggle('active', open);
 		if (open) this.files.refresh();
+		this.focusPanel(this.files.elem, open);
 	}
 
 	toggleShell(open = !this.shell.running) {

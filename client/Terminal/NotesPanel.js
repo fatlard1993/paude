@@ -6,7 +6,7 @@ import { applyNote } from '../../shared/protocol';
 import { REACTION_PALETTE } from '../../shared/reactions';
 import { canNote, identity, identityKey } from '../identity';
 import relativeTime from '../../shared/relativeTime';
-import { element } from '../dom';
+import { closeButton, element } from '../dom';
 import renderPeople from './People';
 import Panel from './NotesPanel.styles';
 
@@ -61,7 +61,11 @@ export default class NotesPanel extends Panel {
 
 		const who = element('div', 'who');
 
-		who.append(identity()?.owner ? this.nameInput() : this.guestName(), this.bellButton());
+		who.append(
+			identity()?.owner ? this.nameInput() : this.guestName(),
+			this.bellButton(),
+			closeButton(() => this.options.close()),
+		);
 
 		this.tabButtons = {};
 
@@ -89,6 +93,13 @@ export default class NotesPanel extends Panel {
 		});
 
 		this.elem.append(who, tabs, this.list, this.draft, this.chatComposer);
+		this.elem.tabIndex = -1;
+		this.elem.addEventListener('keydown', event => {
+			if (event.key !== 'Escape') return;
+
+			event.stopPropagation();
+			this.options.close();
+		});
 		this.showTab('chat');
 	}
 
