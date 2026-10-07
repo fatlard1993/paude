@@ -679,3 +679,62 @@ test(
 	},
 	TIMEOUT_MS,
 );
+
+test(
+	"links: what came up, by kind, with commands' own on asking; pinned to the top",
+	async () => {
+		const server = servers.turns;
+		const id = await server.newSession();
+
+		await server.writeTranscript(id, [
+			{
+				type: 'user',
+				timestamp: '2026-10-07T12:00:00.000Z',
+				message: { content: 'fix https://github.com/acme/shop/issues/12 please' },
+			},
+			{
+				type: 'assistant',
+				timestamp: '2026-10-07T12:00:05.000Z',
+				message: { content: [{ type: 'text', text: 'Per https://docs.acme.dev/api the call changed.' }] },
+			},
+			{
+				type: 'user',
+				timestamp: '2026-10-07T12:00:09.000Z',
+				message: {
+					content: [{ type: 'tool_result', tool_use_id: 'b', content: 'fetched https://registry.acme.dev/x' }],
+				},
+			},
+		]);
+
+		const { browser, page } = await openBrowser('dom');
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(700);
+		};
+		const shown = () => page.$$eval('.links .link a', anchors => anchors.map(anchor => anchor.textContent));
+
+		try {
+			await page.goto(await server.loginLink(`/sessions/${id}`));
+			await page.waitForSelector('.xterm-screen');
+			await press('[title^="Links"]');
+			expect(await shown()).toEqual(['docs.acme.dev/api', 'github.com/acme/shop/issues/12']);
+
+			await press('.links .body button', 'Include what only commands printed');
+			expect((await shown()).length).toBe(3);
+
+			await press('.links .tabs button', 'Tickets');
+			expect(await shown()).toEqual(['github.com/acme/shop/issues/12']);
+
+			// Newest first, until the oldest is pinned
+			await press('.links .tabs button', 'All');
+			expect((await shown()).at(-1)).toBe('github.com/acme/shop/issues/12');
+			await press('.links .link:last-of-type [title="Pin it to the top"]');
+			expect((await shown())[0]).toBe('github.com/acme/shop/issues/12');
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);

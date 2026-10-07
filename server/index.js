@@ -18,6 +18,7 @@ import { adoptHeldSessions, runningSession, setClaudePath } from './sessions/run
 import { startPreview } from './preview';
 import { initShares, onSharesChange, watchShares } from './shares';
 import { initTasks, onRunsChange } from './tasks';
+import { initLinks } from './links';
 import { setPreviewPort } from './router/shares';
 import server, { spawnBuild } from './server';
 
@@ -90,6 +91,7 @@ const previewPort = options['preview-port'] ?? options.port + 1;
 
 await initShares(options.data, { reserved: [options.port, previewPort] });
 await initTasks(options.data);
+await initLinks(options.data);
 onRunsChange((sessionId, runs) => runningSession(sessionId)?.broadcast({ type: 'runs', runs }));
 setPreviewPort(previewPort);
 startPreview({ host: options.host, port: previewPort });

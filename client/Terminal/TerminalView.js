@@ -35,6 +35,7 @@ import GitPanel from './GitPanel';
 import SharesPanel from './SharesPanel';
 import ActivityPanel from './ActivityPanel';
 import TasksPanel from './TasksPanel';
+import LinksPanel from './LinksPanel';
 import NotesPanel from './NotesPanel';
 import SideShell from './SideShell';
 import { BackMenu, Body, NARROW, Presence, SelectHint, SelectionActions, TopBar } from './TerminalView.styles';
@@ -176,6 +177,12 @@ export default class TerminalView extends View {
 				title: "Tasks: the project's checks and tests, problems, and what's running",
 				className: 'tool',
 				onPress: () => this.toggleTasks(),
+			});
+			this.linksButton = ghostButton(header, {
+				icon: 'link',
+				title: 'Links: the docs, tickets, repos and servers that came up',
+				className: 'tool',
+				onPress: () => this.toggleLinks(),
 			});
 			this.gitButton = ghostButton(header, {
 				icon: 'code-branch',
@@ -326,6 +333,13 @@ export default class TerminalView extends View {
 				attach: text => this.attachToPrompt(text),
 			});
 			this.addResizeHandle(this.tasks.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
+			this.links = new LinksPanel({
+				appendTo: body,
+				addClass: 'links',
+				sessionId: this.options.id,
+				close: () => this.toggleLinks(false),
+			});
+			this.addResizeHandle(this.links.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
 		}
 		this.shares = new SharesPanel({
 			appendTo: body,
@@ -660,6 +674,15 @@ export default class TerminalView extends View {
 		if (keep !== 'shares' && this.shares.elem.classList.contains('open')) this.toggleShares(false);
 		if (keep !== 'activity' && this.activity?.elem.classList.contains('open')) this.toggleActivity(false);
 		if (keep !== 'tasks' && this.tasks?.elem.classList.contains('open')) this.toggleTasks(false);
+		if (keep !== 'links' && this.links?.elem.classList.contains('open')) this.toggleLinks(false);
+	}
+
+	toggleLinks(open = !this.links.elem.classList.contains('open')) {
+		if (open) this.closeOthersOnTheRight('links');
+		this.links.elem.classList.toggle('open', open);
+		this.linksButton?.classList.toggle('active', open);
+		if (open) this.links.refresh();
+		this.focusPanel(this.links.elem, open);
 	}
 
 	toggleTasks(open = !this.tasks.elem.classList.contains('open')) {

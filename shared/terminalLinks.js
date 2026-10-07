@@ -7,7 +7,7 @@ const EDGE = 1;
 const TRAILING = /[.,;:!?'"]$/;
 const CLOSERS = { ')': '(', ']': '[', '}': '{' };
 
-const trimUrl = url => {
+export const trimUrl = url => {
 	let end = url.length;
 
 	for (;;) {

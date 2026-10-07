@@ -63,6 +63,13 @@ export const getTimeline = async sessionId =>
 export const getSymbols = async (sessionId, searchParameters) =>
 	await GET('/api/sessions/:id/symbols', { urlParameters: { id: sessionId }, searchParameters, invalidateAfter: 0 });
 
+// The links that came up in the session, newest first: [{ url, kind, context, by, count, firstAt, pinned }]
+export const getLinks = async sessionId =>
+	await GET('/api/sessions/:id/links', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
+
+export const markLink = async (sessionId, url, change) =>
+	await POST('/api/sessions/:id/links/mark', { urlParameters: { id: sessionId }, body: { url, ...change } });
+
 // The Tasks panel: { tasks, runs, processes }
 export const getTasks = async sessionId =>
 	await GET('/api/sessions/:id/tasks', { urlParameters: { id: sessionId }, invalidateAfter: 0 });

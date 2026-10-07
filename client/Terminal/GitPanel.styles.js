@@ -293,6 +293,72 @@ const Panel = styled(
 			margin-top: 6px;
 		}
 
+		/* The Links panel */
+		.links-filters {
+			flex-wrap: wrap;
+		}
+
+		.links-filters button {
+			flex: 0 0 auto;
+		}
+
+		.link-search {
+			box-sizing: border-box;
+			width: 100%;
+			font: inherit;
+		}
+
+		.link {
+			display: flex;
+			flex-direction: column;
+			gap: 2px;
+			padding: 6px;
+			border-radius: 4px;
+		}
+
+		.link:hover {
+			background: ${colors.alpha(colors.white, 0.04)};
+		}
+
+		.link.pinned {
+			box-shadow: inset 3px 0 ${colors.light(colors.yellow)};
+		}
+
+		.link-head {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+		}
+
+		.link-head i {
+			width: 1.2em;
+			text-align: center;
+			opacity: 0.7;
+		}
+
+		.link-head a {
+			flex: 1;
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			color: ${colors.light(colors.blue)};
+			text-decoration: none;
+		}
+
+		.link-head a:hover {
+			text-decoration: underline;
+		}
+
+		.link-context {
+			color: ${colors.light(colors.gray)};
+			font-size: 0.8em;
+			overflow: hidden;
+			display: -webkit-box;
+			-webkit-line-clamp: 2;
+			-webkit-box-orient: vertical;
+		}
+
 		/* The Tasks panel */
 		.task-name {
 			flex: 1;

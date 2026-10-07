@@ -1,0 +1,163 @@
+import { Notify } from '@vanilla-bean/components';
+
+import { getLinks, markLink } from '../api';
+import { button, closeButton, element, icon } from '../dom';
+import { canNote } from '../identity';
+import relativeTime from '../../shared/relativeTime';
+import Panel from './GitPanel.styles';
+
+const KINDS = [
+	['all', 'All'],
+	['docs', 'Docs'],
+	['ticket', 'Tickets'],
+	['repo', 'Repos'],
+	['server', 'Servers'],
+	['reference', 'Other'],
+];
+const KIND_ICONS = { docs: 'book', ticket: 'ticket', repo: 'code-branch', server: 'server', reference: 'globe' };
+
+// A link as it reads best: its host and path, without the scheme or a trailing slash
+const shortened = url => url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+
+// The links that came up in the session, gathered: docs, tickets, repos, servers and other references, each with
+// the words around its first mention and who brought it up. Pinned ones stay on top; noise can be hidden. What only
+// a command printed is left out unless asked for.
+export default class LinksPanel extends Panel {
+	// Set here rather than as class fields: VBC runs build() from its own constructor, before subclass fields exist
+	build() {
+		this.kind = 'all';
+		this.withOutput = false;
+		this.links = [];
+		this.bar = element('div', 'bar');
+		this.filters = element('div', 'tabs links-filters');
+		this.search = element('input', 'link-search');
+		this.body = element('div', 'body');
+		this.search.placeholder = 'Find a link';
+		this.search.addEventListener('input', () => this.renderLinks());
+		this.bar.append(
+			element('span', 'branch', 'Links'),
+			element('span', 'spacer'),
+			closeButton(() => this.options.close()),
+		);
+		this.elem.tabIndex = -1;
+		this.elem.append(this.bar, this.filters, this.search, this.body);
+		this.elem.addEventListener('keydown', event => {
+			if (event.key !== 'Escape' || event.target === this.search) return;
+
+			event.stopPropagation();
+			this.options.close();
+		});
+	}
+
+	async refresh() {
+		const { body, response } = await getLinks(this.options.sessionId);
+
+		if (!response?.ok) {
+			this.body.replaceChildren(element('div', 'empty', 'Could not gather the links.'));
+
+			return;
+		}
+
+		this.links = body;
+		this.renderLinks();
+	}
+
+	// Mentioned by someone (you, Claude, the chat) or fetched, rather than only printed by a command
+	mentioned(link) {
+		return this.withOutput || link.pinned || link.by.some(by => by !== 'output');
+	}
+
+	renderLinks() {
+		const query = this.search.value.trim().toLowerCase();
+		const shown = this.links.filter(link => this.mentioned(link));
+		const counts = Object.fromEntries(
+			KINDS.map(([kind]) => [kind, shown.filter(link => kind === 'all' || link.kind === kind).length]),
+		);
+		const outputOnly =
+			this.links.length - this.links.filter(link => link.pinned || link.by.some(by => by !== 'output')).length;
+
+		this.filters.replaceChildren(
+			...KINDS.filter(([kind]) => kind === 'all' || counts[kind]).map(([kind, label]) => {
+				const filter = button(`${label} ${counts[kind]}`, () => {
+					this.kind = kind;
+					this.renderLinks();
+				});
+
+				filter.classList.toggle('active', kind === this.kind);
+
+				return filter;
+			}),
+		);
+
+		const list = shown.filter(
+			link =>
+				(this.kind === 'all' || link.kind === this.kind) &&
+				(!query || link.url.toLowerCase().includes(query) || link.context?.toLowerCase().includes(query)),
+		);
+		const toggle = button(
+			this.withOutput ? 'Leave out what only commands printed' : `Include what only commands printed (${outputOnly})`,
+			() => {
+				this.withOutput = !this.withOutput;
+				this.renderLinks();
+			},
+			{ className: 'more' },
+		);
+
+		this.body.replaceChildren(
+			...(list.length ? list.map(link => this.row(link)) : [element('div', 'empty', 'No links yet.')]),
+			...(outputOnly ? [toggle] : []),
+		);
+	}
+
+	row(link) {
+		const row = element('div', `link${link.pinned ? ' pinned' : ''}`);
+		const head = element('div', 'link-head');
+		const anchor = element('a', 'name', shortened(link.url));
+		const who = [...new Set(link.by.map(by => (by === 'output' ? 'a command' : by)))].join(', ');
+
+		Object.assign(anchor, { href: link.url, target: '_blank', rel: 'noopener noreferrer', title: link.url });
+		head.append(icon(KIND_ICONS[link.kind]), anchor);
+		head.append(
+			button(
+				'',
+				async () => {
+					await navigator.clipboard.writeText(link.url).catch(() => null);
+					new Notify({ type: 'success', content: 'Link copied', timeout: 1500 });
+				},
+				{ icon: 'copy', title: 'Copy it', className: 'icon-only' },
+			),
+		);
+		if (canNote())
+			head.append(
+				button('', () => this.mark(link, { pinned: !link.pinned }), {
+					icon: 'thumbtack',
+					title: link.pinned ? 'Unpin it' : 'Pin it to the top',
+					className: `icon-only${link.pinned ? ' on' : ''}`,
+				}),
+				button('', () => this.mark(link, { hidden: true }), {
+					icon: 'eye-slash',
+					title: 'Hide it: noise',
+					className: 'icon-only',
+				}),
+			);
+
+		row.append(
+			head,
+			...(link.context ? [element('div', 'link-context', link.context)] : []),
+			element(
+				'div',
+				'meta',
+				[who, link.count > 1 && `${link.count}×`, link.firstAt && relativeTime(Date.parse(link.firstAt))]
+					.filter(Boolean)
+					.join(' · '),
+			),
+		);
+
+		return row;
+	}
+
+	async mark(link, change) {
+		await markLink(this.options.sessionId, link.url, change);
+		await this.refresh();
+	}
+}

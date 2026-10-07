@@ -34,6 +34,7 @@ const OWN_SESSION_ROUTES = [
 	'/turn-changes',
 	'/timeline',
 	'/symbols',
+	'/links',
 ];
 
 export const guestMayRequest = (identity, method, pathname) => {
@@ -53,6 +54,7 @@ export const guestMayRequest = (identity, method, pathname) => {
 		(method === 'GET' && pathname === '/api/watching') ||
 		(method === 'POST' && pathname === '/api/handoff') ||
 		(method === 'POST' && pathname === `${own}/replace`) ||
+		(method === 'POST' && pathname === `${own}/links/mark`) ||
 		(method === 'GET' && pathname === `${own}/environment`) ||
 		(method === 'PUT' && (pathname === `${own}/watch` || pathname === `${own}/file`)) ||
 		(method === 'POST' && pathname === '/api/logout') ||

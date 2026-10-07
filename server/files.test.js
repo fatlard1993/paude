@@ -65,7 +65,9 @@ test('search options: case, whole word, regex, and files to include or exclude',
 	expect((await searchProject(project, 'th', { exclude: 'src' })).map(hit => hit.path)).toEqual(['notes.md']);
 	expect(searchProject(project, '(unclosed', { regex: true })).rejects.toBeInstanceOf(SearchError);
 	// JavaScript's expressions, which grep's don't take: lookahead
-	expect((await searchProject(project, 'greet(?=ing =)', { regex: true })).map(hit => hit.path)).toEqual(['src/app.js']);
+	expect((await searchProject(project, 'greet(?=ing =)', { regex: true })).map(hit => hit.path)).toEqual([
+		'src/app.js',
+	]);
 	expect(await searchProject(project, 'const (?!\\w)', { regex: true })).toEqual([]);
 });
 

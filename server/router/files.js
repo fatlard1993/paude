@@ -1,6 +1,7 @@
 import { credentialOf, identityOf } from '../auth';
 import { listChanges } from '../changes';
 import { DiffError, diffSet, turnsWithChanges } from '../diffs';
+import { markLink, sessionLinks } from '../links';
 import { definitions, outline, searchSymbols } from '../symbols';
 import { sessionTimeline } from '../timeline';
 import { sessionEnvironmentView } from '../environment';
@@ -117,6 +118,20 @@ const filesRoutes = async request => {
 
 	if (replacing) return replace(request, replacing.id);
 
+	const marking = requestMatch('POST', '/api/sessions/:id/links/mark', request);
+
+	if (marking) {
+		if (!may(identityOf(credentialOf(request)), 'note', marking.id))
+			return new Response('Not part of your invite', { status: 403 });
+
+		const { url, pinned, hidden } = await request.json();
+
+		if (typeof url !== 'string') return new Response('Which link?', { status: 400 });
+		await markLink(marking.id, url, { pinned, hidden });
+
+		return new Response(null, { status: 204 });
+	}
+
 	const environment = requestMatch('GET', '/api/sessions/:id/environment', request);
 
 	if (environment) return showEnvironment(request, environment.id);
@@ -127,6 +142,7 @@ const filesRoutes = async request => {
 		requestMatch('GET', '/api/sessions/:id/turn-changes', request) ||
 		requestMatch('GET', '/api/sessions/:id/timeline', request) ||
 		requestMatch('GET', '/api/sessions/:id/symbols', request) ||
+		requestMatch('GET', '/api/sessions/:id/links', request) ||
 		requestMatch('GET', '/api/sessions/:id/files', request) ||
 		requestMatch('GET', '/api/sessions/:id/file', request) ||
 		requestMatch('GET', '/api/sessions/:id/search', request) ||
@@ -146,6 +162,8 @@ const filesRoutes = async request => {
 	if (pathname.endsWith('/changes')) return Response.json(await listChanges(cwd));
 	if (pathname.endsWith('/turn-changes')) return Response.json(await turnsWithChanges(match.id, cwd));
 	if (pathname.endsWith('/timeline')) return Response.json(await sessionTimeline(match.id, cwd));
+	if (pathname.endsWith('/links'))
+		return Response.json(await sessionLinks(match.id, cwd, { withHidden: match.all === '1' }));
 	// A file's outline, where a name is defined, or the names matching what's typed
 	if (pathname.endsWith('/symbols')) {
 		if (match.file) return Response.json(await outline(cwd, match.file));

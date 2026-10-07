@@ -56,6 +56,7 @@ export const Body = styled.Component`
 	.shares,
 	.activity,
 	.tasks,
+	.links,
 	.files,
 	.shell {
 		position: absolute;
@@ -82,6 +83,7 @@ export const Body = styled.Component`
 	.shares.open,
 	.activity.open,
 	.tasks.open,
+	.links.open,
 	.files.open,
 	.shell.open {
 		opacity: 1;
@@ -93,7 +95,8 @@ export const Body = styled.Component`
 	.git,
 	.shares,
 	.activity,
-	.tasks {
+	.tasks,
+	.links {
 		right: 8px;
 		width: min(var(--notes-width, 360px), calc(100% - 16px));
 		transform: translateX(12px);
@@ -131,7 +134,8 @@ export const Body = styled.Component`
 	.git .resize,
 	.shares .resize,
 	.activity .resize,
-	.tasks .resize {
+	.tasks .resize,
+	.links .resize {
 		left: 0;
 	}
 
@@ -167,7 +171,8 @@ export const Body = styled.Component`
 		.git,
 		.shares,
 		.activity,
-		.tasks {
+		.tasks,
+		.links {
 			inset: 0;
 			width: auto;
 			border-radius: 0;
