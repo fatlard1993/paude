@@ -8,6 +8,7 @@ import { deleteSession, forkSession, getSession, getTurns, nameSession, setWatch
 import confirmDialog, { confirmDeleteSession, nameDialog } from '../confirmDialog';
 import { canBrowse, canNote, canType, identity } from '../identity';
 import DONE_MARKER from '../../shared/doneMarker';
+import findUrls from '../../shared/terminalLinks';
 import withoutPointerReporting from '../../shared/pointerReporting';
 import { NOTE_TYPES } from '../../shared/protocol';
 import { showNotification } from '../notify';
@@ -27,6 +28,8 @@ import { Body, NARROW, Presence, SelectHint, SelectionActions, TopBar } from './
 const BACKGROUND = '#1b1b1b';
 // How far a finger can wander and still be tapping rather than scrolling
 const TAP_SLOP = 8;
+// How far above and below a row to look for the rest of a URL Claude broke across rows
+const URL_ROWS = 6;
 
 const ghostButton = (appendTo, { icon, label, title, onPress, className = '' }) => {
 	const node = button(label, onPress, { icon, title: title ?? '', className: `ghost ${className}` });
@@ -290,6 +293,7 @@ export default class TerminalView extends View {
 		this.useGpuRenderer();
 		redrawWhenSymbolsLoad(this.terminal);
 		if (identity()?.owner) this.linkDoneMarkers();
+		this.linkUrls();
 		this.terminal.onData(data => this.sendInput(data));
 		this.scrollClaudeWithWheel();
 		this.terminal.onSelectionChange(() => {
@@ -696,7 +700,14 @@ export default class TerminalView extends View {
 	// A click or tap that selected nothing goes to Claude, which moves its cursor there; a drag still selects
 	clickClaude(tracking) {
 		this.screen.elem.addEventListener('click', event => {
-			if (event.button !== 0 || !tracking() || !canType() || this.endLineSelect || this.terminal.hasSelection())
+			if (
+				event.button !== 0 ||
+				!tracking() ||
+				!canType() ||
+				this.endLineSelect ||
+				this.overLink ||
+				this.terminal.hasSelection()
+			)
 				return;
 
 			this.sendInput(this.mouseReport(0, event) + this.mouseReport(0, event, { release: true }));
@@ -720,13 +731,75 @@ export default class TerminalView extends View {
 						},
 						text: found[0],
 						decorations: { pointerCursor: true, underline: true },
-						hover: () => this.lineSelectHint('Click to start a new session from here'),
-						leave: () => this.lineSelectHint(null),
+						hover: () => {
+							this.overLink = true;
+							this.lineSelectHint('Click to start a new session from here');
+						},
+						leave: () => {
+							this.overLink = false;
+							this.lineSelectHint(null);
+						},
 						activate: () => this.forkFromMarker(lineNumber - 1),
 					},
 				]);
 			},
 		});
+	}
+
+	// Plain URLs open in a new tab, one Claude broke across rows included; the rows around each one are searched so a
+	// broken URL is the same link from any of its rows
+	linkUrls() {
+		this.terminal.registerLinkProvider({
+			provideLinks: (lineNumber, callback) => {
+				const first = Math.max(lineNumber - 1 - URL_ROWS, 0);
+				const rows = [];
+
+				for (let index = first; index <= lineNumber - 1 + URL_ROWS; index++) rows.push(this.bufferCells(index));
+
+				const links = findUrls(
+					rows.map(({ text }) => text),
+					this.terminal.cols,
+				)
+					.filter(({ parts }) => parts.some(({ row }) => first + row === lineNumber - 1))
+					.map(({ url, parts }) => {
+						const [start, end] = [parts[0], parts.at(-1)];
+
+						return {
+							range: {
+								start: { x: rows[start.row].columns[start.from], y: first + start.row + 1 },
+								end: { x: rows[end.row].columns[end.to - 1], y: first + end.row + 1 },
+							},
+							text: url,
+							decorations: { pointerCursor: true, underline: true },
+							hover: () => (this.overLink = true),
+							leave: () => (this.overLink = false),
+							activate: () => window.open(url, '_blank', 'noopener,noreferrer'),
+						};
+					});
+
+				callback(links.length ? links : undefined);
+			},
+		});
+	}
+
+	// A row's text and, for each character of it, the 1-based column it's drawn in (a wide character takes two)
+	bufferCells(index) {
+		const line = this.terminal.buffer.active.getLine(index);
+		const columns = [];
+		let text = '';
+
+		for (let x = 0; line && x < this.terminal.cols; x++) {
+			const cell = line.getCell(x);
+
+			if (!cell || cell.getWidth() === 0) continue;
+
+			const chars = cell.getChars() || ' ';
+
+			text += chars;
+			for (let unit = 0; unit < chars.length; unit++) columns.push(x + 1);
+		}
+
+		return { text: text.trimEnd(), columns };
 	}
 
 	bufferLine(index) {
