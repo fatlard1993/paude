@@ -216,6 +216,11 @@ const Panel = styled(
 			z-index: 1;
 		}
 
+		/* A block of its own: inline in the pre, the two fonts' line boxes together outgrow the gutter's lines */
+		.source code {
+			display: block;
+		}
+
 		.source code.plain {
 			font-family: ui-monospace, monospace;
 			color: ${colors.white};
