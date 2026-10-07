@@ -13,6 +13,11 @@ test("matches Claude's done lines in either clock, with or without a day", () =>
 	])
 		expect(DONE_MARKER.test(line)).toBe(true);
 
-	for (const line of ['✻ Cooked for 2s · 3 tasks', 'done 2:48 PM', 'Cooked for 2s'])
+	for (const line of [
+		'✻ Cooked for 2s · 3 tasks',
+		'done 2:48 PM',
+		'Cooked for 2s',
+		'● The done line is there ("✻ Churned for 26s · done 11:43 AM"), and a button',
+	])
 		expect(DONE_MARKER.test(line)).toBe(false);
 });

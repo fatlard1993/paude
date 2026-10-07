@@ -19,6 +19,37 @@ export const Body = styled.Component`
 		position: relative;
 	}
 
+	/* Over the terminal, holding only the buttons beside Claude's done lines */
+	.fork-layer {
+		position: absolute;
+		inset: 0;
+		z-index: 1;
+		overflow: hidden;
+		pointer-events: none;
+	}
+
+	/* A button, not a link in the text: plain to see, and only pressed on purpose */
+	.fork-here {
+		position: absolute;
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		box-sizing: border-box;
+		padding: 0 7px;
+		border: 1px solid hsl(210, 60%, 60%, 0.6);
+		border-radius: 4px;
+		background: hsl(210, 60%, 45%, 0.25);
+		color: hsl(210, 80%, 85%);
+		font-family: inherit;
+		white-space: nowrap;
+		cursor: pointer;
+		pointer-events: auto;
+	}
+
+	.fork-here:hover {
+		background: hsl(210, 60%, 45%, 0.45);
+	}
+
 	/* Floats over the terminal rather than taking a column, so opening it never changes the session's size */
 	.notes,
 	.files,

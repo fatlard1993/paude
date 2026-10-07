@@ -14,7 +14,7 @@ import withoutPointerReporting from '../../shared/pointerReporting';
 import { NOTE_TYPES } from '../../shared/protocol';
 import { showNotification } from '../notify';
 import { recall, remember, savedName } from '../storage';
-import { button, dragHandle } from '../dom';
+import { button, dragHandle, element } from '../dom';
 import goBack from '../goBack';
 import { onWaitingChange } from '../waiting';
 import attach from './attach';
@@ -31,7 +31,7 @@ const BACKGROUND = '#1b1b1b';
 const TAP_SLOP = 8;
 // How far above and below a row to look for the rest of a URL Claude broke across rows
 const URL_ROWS = 6;
-// The new-session button after a done line, in cells
+// Room kept for the new-session button after a done line, in cells
 const DONE_BUTTON_WIDTH = 24;
 // Between the selection and its buttons, and the buttons and the edges
 const GAP = 6;
@@ -65,28 +65,6 @@ const Screen = styled.Component`
 	&.selecting {
 		outline: 2px dashed hsl(29, 55%, 62%);
 		outline-offset: -2px;
-	}
-
-	/* A button, not a link in the text: plain to see, and only pressed on purpose */
-	.fork-here {
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		height: 100%;
-		padding: 0 7px;
-		border: 1px solid hsl(210, 60%, 60%, 0.6);
-		border-radius: 4px;
-		background: hsl(210, 60%, 45%, 0.25);
-		color: hsl(210, 80%, 85%);
-		font: inherit;
-		font-size: 0.85em;
-		white-space: nowrap;
-		cursor: pointer;
-		pointer-events: auto;
-	}
-
-	.fork-here:hover {
-		background: hsl(210, 60%, 45%, 0.45);
 	}
 `;
 
@@ -766,64 +744,66 @@ export default class TerminalView extends View {
 	}
 
 	// Every "done" line Claude prints after a turn gets a button after it that starts a new session from that point.
-	// Rows are checked as output lands: the screen's, which Claude redraws, and those that scrolled off it since.
+	// Drawn by paude over the rows on screen, redrawn with them: xterm's own decorations hide on the alternate screen,
+	// which Claude draws on.
 	markDoneLines() {
-		let scannedFrom = 0;
 		let pending = false;
-
-		this.doneButtons = [];
-		this.terminal.onWriteParsed(() => {
+		const queue = () => {
 			if (pending) return;
 			pending = true;
 			requestAnimationFrame(() => {
-				const { baseY } = this.terminal.buffer.active;
-
 				pending = false;
-				for (let index = Math.min(scannedFrom, baseY); index < baseY + this.terminal.rows; index++)
-					this.markDoneLine(index);
-				scannedFrom = baseY;
+				this.placeForkButtons();
 			});
-		});
-		// Resizing wraps every row afresh, so they're all checked again
-		this.terminal.onResize(() => (scannedFrom = 0));
+		};
+
+		this.forkLayer = element('div', 'fork-layer');
+		this.screen.elem.after(this.forkLayer);
+		this.terminal.onRender(queue);
+		this.terminal.onScroll(queue);
 	}
 
-	markDoneLine(index) {
-		const { text, columns } = this.bufferCells(index);
-		const found = DONE_MARKER.exec(text);
-		const after = found && columns[found.index + found[0].length - 1] + 1;
-		const existing = this.doneButtons.find(({ marker }) => marker.line === index);
-
-		if (existing?.after === after) return;
-		if (existing) {
-			existing.decoration.dispose();
-			this.doneButtons = this.doneButtons.filter(button => button !== existing);
-		}
-		if (!found) return;
-
+	placeForkButtons() {
+		const { rows, cols } = this.terminal;
 		const buffer = this.terminal.buffer.active;
-		const marker = this.terminal.registerMarker(index - buffer.baseY - buffer.cursorY);
-		const x = Math.min(after, this.terminal.cols - DONE_BUTTON_WIDTH);
-		const decoration = marker && x >= 0 && this.terminal.registerDecoration({ marker, x, width: DONE_BUTTON_WIDTH });
+		const screen = this.terminal.element.querySelector('.xterm-screen').getBoundingClientRect();
+		const column = this.forkLayer.parentElement.getBoundingClientRect();
+		const cellWidth = screen.width / cols;
+		const cellHeight = screen.height / rows;
+		const spare = [...this.forkLayer.children];
+		let used = 0;
 
-		if (!decoration) return marker?.dispose();
+		for (let row = 0; row < rows; row++) {
+			const { text, columns } = this.bufferCells(buffer.viewportY + row);
+			const found = DONE_MARKER.exec(text);
 
-		decoration.onRender(element => {
-			if (element.firstChild) return;
+			if (!found) continue;
 
-			const fork = button('New session from here', () => this.forkFromMarker(marker.line), {
-				icon: 'code-branch',
-				title: 'Start a new session holding the conversation up to this turn',
-				className: 'fork-here',
+			const fork = spare[used++] ?? this.forkButton();
+			const x = Math.min(columns[found.index + found[0].length - 1] + 1, cols - DONE_BUTTON_WIDTH);
+
+			fork.dataset.line = buffer.viewportY + row;
+			Object.assign(fork.style, {
+				left: `${screen.left - column.left + x * cellWidth}px`,
+				top: `${screen.top - column.top + row * cellHeight}px`,
+				height: `${cellHeight}px`,
+				fontSize: `${cellHeight * 0.65}px`,
 			});
+		}
 
-			// Its own press and click: not a selection, nor a click on Claude's screen
-			for (const type of ['pointerdown', 'mousedown', 'click'])
-				fork.addEventListener(type, event => event.stopPropagation());
-			element.append(fork);
+		spare.slice(used).forEach(fork => fork.remove());
+	}
+
+	forkButton() {
+		const fork = button('New session from here', () => this.forkFromMarker(Number(fork.dataset.line)), {
+			icon: 'code-branch',
+			title: 'Start a new session holding the conversation up to this turn',
+			className: 'fork-here',
 		});
-		marker.onDispose(() => (this.doneButtons = this.doneButtons.filter(button => button.marker !== marker)));
-		this.doneButtons.push({ marker, decoration, after });
+
+		this.forkLayer.append(fork);
+
+		return fork;
 	}
 
 	// Plain URLs open in a new tab, one Claude broke across rows included; the rows around each one are searched so a
