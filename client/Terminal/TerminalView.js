@@ -13,6 +13,7 @@ import { NOTE_TYPES } from '../../shared/protocol';
 import { showNotification } from '../notify';
 import { recall, remember, savedName } from '../storage';
 import { button, dragHandle } from '../dom';
+import goBack from '../goBack';
 import attach from './attach';
 import KeyBar from './KeyBar';
 import selectLinesByTap from './lineSelect';
@@ -98,7 +99,7 @@ export default class TerminalView extends View {
 			ghostButton(header, {
 				icon: 'arrow-left',
 				title: 'Back',
-				onPress: () => (window.location.hash = this.project ? `#/projects/${this.project}` : '#/'),
+				onPress: () => goBack(this.project ? `#/projects/${this.project}` : '#/'),
 			});
 		} else {
 			ghostButton(header, {
