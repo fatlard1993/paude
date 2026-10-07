@@ -2,7 +2,7 @@ module.exports = {
 	skipWords: [
 		'tls',
 		'pem',
-		'urls', 'cmd', 'pki', 'crt', 'nums',
+		'urls', 'cmd', 'pki', 'crt', 'nums', 'passphrase', 'unstaged', 'unstage', 'unstash', 'stashes', 'upstream', 'rebase', 'rebasing', 'refname', 'nobracket', 'committerdate', 'gd', 'unstaging',
 		'umask',
 		'worktree',
 		'minecraft',

@@ -40,6 +40,8 @@ export const guestMayRequest = (identity, method, pathname) => {
 	return (
 		(method === 'GET' &&
 			(pathname === '/api/auth' || pathname === own || OWN_SESSION_ROUTES.some(route => pathname === own + route))) ||
+		// The Git panel's reads and actions; the route checks which the role allows
+		(['GET', 'POST'].includes(method) && pathname.startsWith(`${own}/git/`)) ||
 		(method === 'GET' && pathname === '/api/watching') ||
 		(method === 'POST' && pathname === '/api/handoff') ||
 		(method === 'PUT' && (pathname === `${own}/watch` || pathname === `${own}/file`)) ||

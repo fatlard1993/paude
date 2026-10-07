@@ -103,3 +103,50 @@ describe.each(VARIANTS)('%s', variant => {
 		TIMEOUT_MS,
 	);
 });
+
+// Plain page elements, so one browser does: the Git panel commits, shows the history and a commit's diff, branches,
+// and discards an edit after asking
+test(
+	'git: commit, history, a commit in the diff view, a branch, and a discard',
+	async () => {
+		const { browser, page } = await openSession('dom', servers.turns);
+		const git = selector => page.$eval(`.git ${selector}`, node => node.textContent);
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+
+		try {
+			await press('[title^="Git"]');
+			expect(await page.$eval('.git', panel => panel.classList.contains('open'))).toBe(true);
+			expect(await git('.body')).toContain('server/app.js');
+
+			await page.type('.git .commit-box textarea', 'first from the panel');
+			await press('.git .commit-box button', 'Commit');
+			expect(await git('.body')).toContain('Nothing changed since the last commit');
+
+			await press('.git .tabs button', 'History');
+			expect(await git('.body')).toContain('first from the panel');
+
+			await press('.git .history-item');
+			expect(await page.$eval('.files', panel => panel.classList.contains('open'))).toBe(true);
+			expect(await page.$eval('.files .viewer', viewer => viewer.textContent)).toContain('first from the panel');
+
+			await press('.git .tabs button', 'Branches');
+			await page.type('.git .new-branch input', 'idea');
+			await press('.git .new-branch button', 'Create');
+			expect(await git('.bar .branch')).toBe('idea');
+
+			await Bun.write(`${servers.turns.project}/server/app.js`, 'edited\n');
+			await press('.git .tabs button', 'Changes');
+			await press('.git .file [title="Discard"]');
+			await press('button', 'Discard');
+			expect(await Bun.file(`${servers.turns.project}/server/app.js`).text()).toStartWith('line 1');
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);

@@ -3,6 +3,7 @@ import os from 'os';
 import { basename, isAbsolute, join, relative, sep } from 'path';
 
 import { diffOf, listChanges } from './changes';
+import { GitError, gitCommit, repoRoot } from './git';
 import { isSecret, readProjectFile } from './files';
 import { promptText } from './sessions/history';
 import { claudeHome, transcriptLines } from './sessions/transcript';
@@ -218,8 +219,24 @@ const filesDiff = async (cwd, first, second) => {
 	};
 };
 
+// One commit's changes, titled with its subject
+const commitDiff = async (cwd, ref) => {
+	const root = await repoRoot(cwd);
+
+	if (!root) throw new DiffError('Not a git repository');
+
+	try {
+		const { short, title, files } = await gitCommit(root, ref);
+
+		return { title: `${short} ${title}`, files };
+	} catch (error) {
+		if (error instanceof GitError) throw new DiffError(error.message);
+		throw error;
+	}
+};
+
 // Every kind of diff paude shows, in one shape: { title, files: [{ path, status, diff, from, note }] }
-export const diffSet = async (id, cwd, { source, path, turn, a, b }) => {
+export const diffSet = async (id, cwd, { source, path, turn, a, b, ref }) => {
 	if (source === 'changes') {
 		const change = (await listChanges(cwd))?.find(found => found.path === path);
 
@@ -231,6 +248,7 @@ export const diffSet = async (id, cwd, { source, path, turn, a, b }) => {
 	if (source === 'turn') return turnDiff(id, cwd, turn);
 	if (source === 'proposal') return proposalDiff(id, cwd);
 	if (source === 'files') return filesDiff(cwd, a, b);
+	if (source === 'commit') return commitDiff(cwd, ref);
 
 	throw new DiffError('Unknown kind of diff');
 };

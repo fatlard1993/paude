@@ -1,0 +1,276 @@
+import { Component, styled } from '@vanilla-bean/components';
+
+const LAYER = 'rgba(18, 18, 21, 0.5)';
+
+const Panel = styled(
+	Component,
+	({ colors }) => `
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		height: 100%;
+		min-height: 0;
+		padding: 8px;
+		box-sizing: border-box;
+
+		/* Focused so Esc closes it; nothing to show for that */
+		&:focus {
+			outline: none;
+		}
+
+		&.busy {
+			cursor: progress;
+		}
+
+		&.busy button {
+			pointer-events: none;
+			opacity: 0.6;
+		}
+
+		.bar, .tabs, .body, .output {
+			border-radius: 6px;
+			background: ${LAYER};
+		}
+
+		.bar {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			padding: 6px;
+		}
+
+		.spacer {
+			flex: 1;
+		}
+
+		button {
+			padding: 4px 10px;
+			border: none;
+			border-radius: 4px;
+			background: ${colors.alpha(colors.white, 0.1)};
+			color: inherit;
+			font: inherit;
+			cursor: pointer;
+			white-space: nowrap;
+		}
+
+		button.icon-only {
+			padding: 4px 8px;
+		}
+
+		button.primary {
+			background: ${colors.alpha(colors.blue, 0.45)};
+		}
+
+		button.danger:hover {
+			background: ${colors.alpha(colors.red, 0.45)};
+		}
+
+		button:disabled {
+			opacity: 0.4;
+			cursor: default;
+		}
+
+		.branch {
+			font-weight: bold;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.tracking, .meta {
+			color: ${colors.light(colors.gray)};
+			font-size: 0.85em;
+			font-variant-numeric: tabular-nums;
+		}
+
+		/* What git said, kept until dismissed when it refused */
+		.output {
+			display: none;
+			align-items: flex-start;
+			gap: 6px;
+			padding: 6px 8px;
+		}
+
+		.output.shown {
+			display: flex;
+		}
+
+		.output.error {
+			box-shadow: inset 3px 0 ${colors.light(colors.red)};
+		}
+
+		.output pre {
+			flex: 1;
+			margin: 0;
+			max-height: 10em;
+			overflow: auto;
+			white-space: pre-wrap;
+			font-size: 0.85em;
+		}
+
+		.tabs {
+			display: flex;
+			gap: 4px;
+			padding: 4px;
+		}
+
+		.tabs button {
+			flex: 1 1 auto;
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			padding: 4px 6px;
+			font-size: 0.9em;
+			background: transparent;
+			opacity: 0.7;
+		}
+
+		.tabs button.active {
+			background: ${colors.alpha(colors.white, 0.08)};
+			opacity: 1;
+		}
+
+		.body {
+			flex: 1;
+			min-height: 0;
+			overflow-y: auto;
+			padding: 6px;
+			display: flex;
+			flex-direction: column;
+			gap: 2px;
+		}
+
+		.section-head {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			margin: 8px 2px 4px;
+			color: ${colors.light(colors.gray)};
+			font-size: 0.8em;
+			text-transform: uppercase;
+			letter-spacing: 0.05em;
+		}
+
+		.section-head:first-child {
+			margin-top: 2px;
+		}
+
+		.file, .branch-row {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			padding: 2px;
+			border-radius: 4px;
+		}
+
+		.file:hover, .branch-row:hover {
+			background: ${colors.alpha(colors.white, 0.05)};
+		}
+
+		.file .path {
+			flex: 1;
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			text-align: left;
+			background: transparent;
+			padding: 2px 4px;
+		}
+
+		.status {
+			width: 1.2em;
+			text-align: center;
+			font-weight: bold;
+		}
+
+		.status.modified, .status.renamed, .status.copied { color: ${colors.light(colors.yellow)}; }
+		.status.added, .status.untracked { color: ${colors.light(colors.green)}; }
+		.status.deleted { color: ${colors.light(colors.red)}; }
+
+		.branch-row .name {
+			flex: 1;
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.branch-row.current .name {
+			font-weight: bold;
+		}
+
+		.branch-row.current .name::before {
+			content: '● ';
+			color: ${colors.light(colors.green)};
+		}
+
+		.commit-box {
+			display: flex;
+			flex-direction: column;
+			gap: 6px;
+			margin-top: 10px;
+		}
+
+		.commit-box textarea, .new-branch input {
+			box-sizing: border-box;
+			width: 100%;
+			font: inherit;
+		}
+
+		.commit-options {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 6px;
+		}
+
+		.amend {
+			font-size: 0.85em;
+		}
+
+		.new-branch {
+			display: flex;
+			gap: 6px;
+			margin-bottom: 6px;
+		}
+
+		.history-item {
+			display: flex;
+			flex-direction: column;
+			align-items: stretch;
+			gap: 2px;
+			padding: 6px;
+			text-align: left;
+			background: transparent;
+			white-space: normal;
+		}
+
+		.history-item:hover {
+			background: ${colors.alpha(colors.white, 0.05)};
+		}
+
+		.refs {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 4px;
+		}
+
+		.ref {
+			padding: 0 6px;
+			border-radius: 8px;
+			font-size: 0.75em;
+			background: ${colors.alpha(colors.blue, 0.3)};
+		}
+
+		.more {
+			align-self: center;
+			margin-top: 6px;
+		}
+
+		.empty {
+			padding: 12px;
+			color: ${colors.light(colors.gray)};
+		}
+	`,
+);
+
+export default Panel;

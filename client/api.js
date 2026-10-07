@@ -43,6 +43,18 @@ export const getChanges = async sessionId =>
 	await GET('/api/sessions/:id/changes', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 
 // `source` is { source: 'changes', path }, { source: 'turn', turn }, { source: 'files', a, b } or { source: 'proposal' }
+// The Git panel: `what` is status, log, commit, branches, stashes or blame
+export const getGit = async (sessionId, what, searchParameters = {}) =>
+	await GET('/api/sessions/:id/git/:what', {
+		urlParameters: { id: sessionId, what },
+		searchParameters,
+		invalidateAfter: 0,
+	});
+
+// Resolves to { ok, output }: git's own words, for the panel to show
+export const runGit = async (sessionId, action, body = {}) =>
+	await POST('/api/sessions/:id/git/:action', { urlParameters: { id: sessionId, action }, body });
+
 export const getDiffSet = async (sessionId, source) =>
 	await GET('/api/sessions/:id/diffs', {
 		urlParameters: { id: sessionId },

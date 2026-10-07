@@ -69,6 +69,18 @@ test('the api needs a login; the owner gets in', async () => {
 	expect(projects.map(({ name }) => name)).toEqual(['app']);
 });
 
+test("git: reading takes the files role, changing takes the typing role, and a guest's own session only", async () => {
+	const status = `/api/sessions/${session.id}/git/status`;
+	const stage = { method: 'POST', body: { all: true } };
+
+	// The project isn't a repository, so getting past the roles ends at 404
+	expect((await call(status, { token: tokens.comment })).status).toBe(404);
+	expect((await call(status, { token: tokens.watch })).status).toBe(403);
+	expect((await call(`/api/sessions/${other.id}/git/status`, { token: tokens.comment })).status).toBe(403);
+	expect((await call(`/api/sessions/${session.id}/git/stage`, { token: tokens.comment, ...stage })).status).toBe(403);
+	expect((await call(`/api/sessions/${session.id}/git/stage`, { token: tokens.owner, ...stage })).status).toBe(404);
+});
+
 test('a write from another site is refused', async () => {
 	const response = await call('/api/projects', {
 		token: tokens.owner,

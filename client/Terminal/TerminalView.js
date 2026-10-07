@@ -22,6 +22,7 @@ import KeyBar from './KeyBar';
 import selectLinesByTap from './lineSelect';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from './xtermOptions';
 import FilesPanel from './FilesPanel';
+import GitPanel from './GitPanel';
 import NotesPanel from './NotesPanel';
 import SideShell from './SideShell';
 import { Body, NARROW, Presence, SelectHint, SelectionActions, TopBar } from './TerminalView.styles';
@@ -151,6 +152,11 @@ export default class TerminalView extends View {
 				title: 'Project files',
 				onPress: () => this.toggleFiles(),
 			});
+			this.gitButton = ghostButton(header, {
+				icon: 'code-branch',
+				title: 'Git: changes, history, branches',
+				onPress: () => this.toggleGit(),
+			});
 		}
 		if (canType()) {
 			this.shellButton = ghostButton(header, {
@@ -222,6 +228,23 @@ export default class TerminalView extends View {
 				if (this.attachToPrompt(text)) this.toggleFiles(false);
 			},
 		});
+		if (canBrowse()) {
+			this.git = new GitPanel({
+				appendTo: body,
+				addClass: 'git',
+				sessionId: this.options.id,
+				close: () => this.toggleGit(false),
+				// A file's change or a whole commit, in the files panel's diff view
+				openDiff: source => {
+					// A phone has room for one panel, and the diff is what was asked for
+					if (window.matchMedia(NARROW).matches) this.toggleGit(false);
+					this.toggleFiles(true);
+					this.files.openDiffSet(source);
+				},
+				changed: () => this.files.changesMayHaveChanged(),
+			});
+			this.addResizeHandle(this.git.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
+		}
 		if (canType()) {
 			this.shell = new SideShell({
 				appendTo: body,
@@ -431,6 +454,7 @@ export default class TerminalView extends View {
 		// Claude waiting, or done, is when a proposal appears or a turn's changes (and new files) land
 		if (this.lastPresence && (waiting !== this.lastPresence.waiting || busy !== this.lastPresence.busy)) {
 			this.files?.changesMayHaveChanged();
+			if (this.git?.elem.classList.contains('open')) this.git.refresh();
 			this.resolvePath = null;
 		}
 		const offline = this.connectionState === 'reconnecting' || this.connectionState === 'ended';
@@ -471,6 +495,7 @@ export default class TerminalView extends View {
 	}
 
 	toggleNotes(open = !this.notes.elem.classList.contains('open'), { focus = true } = {}) {
+		if (open && this.git?.elem.classList.contains('open')) this.toggleGit(false);
 		this.notes.elem.classList.toggle('open', open);
 		this.notesToggle.classList.toggle('active', open);
 		remember(NOTES_OPEN_KEY, open ? 'yes' : '');
@@ -530,6 +555,15 @@ export default class TerminalView extends View {
 		this.filesButton?.classList.toggle('active', open);
 		if (open) this.files.refresh();
 		this.focusPanel(this.files.elem, open);
+	}
+
+	// On the right, where the chat is: one of the two at a time
+	toggleGit(open = !this.git.elem.classList.contains('open')) {
+		if (open && this.notes.elem.classList.contains('open')) this.toggleNotes(false);
+		this.git.elem.classList.toggle('open', open);
+		this.gitButton?.classList.toggle('active', open);
+		if (open) this.git.refresh();
+		this.focusPanel(this.git.elem, open);
 	}
 
 	toggleShell(open = !this.shell.running) {

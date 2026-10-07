@@ -37,7 +37,10 @@ export const startServer = async ({ claude = FAKE_CLAUDE, fake = 'turns' } = {})
 		path.join(project, 'server', 'app.js'),
 		Array.from({ length: 20 }, (_, n) => `line ${n + 1}`).join('\n'),
 	);
-	Bun.spawnSync(['git', 'init', '-q'], { cwd: project });
+	Bun.spawnSync(['git', 'init', '-q', '-b', 'main'], { cwd: project });
+	Bun.spawnSync(['git', 'config', 'user.name', 'Tester'], { cwd: project });
+	Bun.spawnSync(['git', 'config', 'user.email', 'tester@example.com'], { cwd: project });
+	Bun.spawnSync(['git', 'config', 'commit.gpgsign', 'false'], { cwd: project });
 	Bun.spawnSync(['git', 'add', '-A'], { cwd: project });
 
 	const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !CLAUDE_ENVIRONMENT.test(key)));
