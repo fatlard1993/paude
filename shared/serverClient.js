@@ -1,3 +1,4 @@
+import { trustedCertificates } from './certificates';
 import { byRecentActivity } from './projects';
 
 const TIMEOUT_MS = 8000;
@@ -5,6 +6,7 @@ const TIMEOUT_MS = 8000;
 export const serverApi = async ({ url, token }, route, init = {}) => {
 	const response = await fetch(`${url}${route}`, {
 		...init,
+		tls: trustedCertificates(),
 		signal: init.signal ?? AbortSignal.timeout(TIMEOUT_MS),
 		headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...init.headers },
 	});

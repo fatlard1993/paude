@@ -1,5 +1,7 @@
 module.exports = {
 	skipWords: [
+		'tls',
+		'pem',
 		'umask',
 		'worktree',
 		'minecraft',

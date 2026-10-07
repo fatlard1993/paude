@@ -15,6 +15,20 @@ import pickSession from '../cli/picker';
 import startWatchAlerts from '../cli/watchAlerts';
 import { loadPrefs, savePrefs } from '../cli/prefs';
 import { readHidden } from '../cli/screen';
+import { certificatesFile, needsRestartForCertificates } from '../shared/certificates';
+
+// Started again with the certificates in its environment, so every connection to a server trusts them; the terminal
+// is the new process's, so Ctrl+C reaches it and this one just waits
+if (needsRestartForCertificates()) {
+	const child = Bun.spawn(process.argv, {
+		env: { ...process.env, NODE_EXTRA_CA_CERTS: certificatesFile },
+		stdio: ['inherit', 'inherit', 'inherit'],
+	});
+
+	process.on('SIGINT', () => {});
+	for (const signal of ['SIGTERM', 'SIGHUP']) process.on(signal, () => child.kill(signal));
+	process.exit(await child.exited);
+}
 
 const KEY_HINTS = 3;
 
