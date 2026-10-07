@@ -5,23 +5,29 @@ import confirmDialog from '../confirmDialog';
 
 import { applyNote } from '../../shared/protocol';
 import { REACTION_PALETTE } from '../../shared/reactions';
-import { canNote, identity, identityKey } from '../identity';
+import { canNote, canType, identity, identityKey } from '../identity';
 import relativeTime from '../../shared/relativeTime';
 import { closeButton, element } from '../dom';
 import renderPeople from './People';
 import Panel from './NotesPanel.styles';
 
-const meta = ({ author, at }) => element('div', 'meta', `${author} · ${relativeTime(at)}`);
+const meta = ({ author, at, toClaude }) =>
+	element('div', 'meta', `${author}${toClaude ? ' → Claude' : ''} · ${relativeTime(at)}`);
+
+// Claude's answers stand apart from what people say
+const noteClass = (base, note) => `${base}${note.fromClaude ? ' from-claude' : ''}`;
 
 // Yours to resolve or delete: written by you (by who you are, not your name, where the note knows), or you're the owner
 const yours = note =>
 	Boolean(identity()?.owner || (note.authorId ? note.authorId === identityKey() : note.author === identity()?.name));
 
-// Enter sends; Shift+Enter makes a new line. A draft map keeps half-typed text across re-renders.
-const composer = ({ placeholder, label, onSend, drafts, draftKey }) => {
+// Enter sends; Shift+Enter makes a new line. A draft map keeps half-typed text across re-renders. With `onAsk`, an
+// Ask Claude button (or Ctrl/Cmd+Enter) sends it to Claude too, for those who may type into Claude.
+const composer = ({ placeholder, label, onSend, onAsk, drafts, draftKey }) => {
 	const row = element('div', 'composer');
 	const input = element('textarea');
 	const button = element('button', '', label);
+	const ask = onAsk && canType() && element('button', 'ask', 'Ask Claude');
 
 	input.placeholder = placeholder;
 	input.rows = 1;
@@ -29,13 +35,13 @@ const composer = ({ placeholder, label, onSend, drafts, draftKey }) => {
 	if (draftKey) input.dataset.draftKey = draftKey;
 	input.addEventListener('input', () => drafts?.set(draftKey, input.value));
 
-	const send = () => {
+	const send = (handler = onSend) => {
 		const text = input.value.trim();
 
 		if (!text) return;
 
 		// While reconnecting nothing can go out; the text stays for another try
-		if (onSend(text) === false) {
+		if (handler(text) === false) {
 			new Notify({ type: 'warning', content: 'Not sent: reconnecting. Try again in a moment.' });
 
 			return;
@@ -47,11 +53,16 @@ const composer = ({ placeholder, label, onSend, drafts, draftKey }) => {
 	input.addEventListener('keydown', event => {
 		if (event.key === 'Enter' && !event.shiftKey) {
 			event.preventDefault();
-			send();
+			send(ask && (event.ctrlKey || event.metaKey) ? onAsk : onSend);
 		}
 	});
-	button.addEventListener('click', send);
+	button.addEventListener('click', () => send());
 	row.append(input, button);
+	if (ask) {
+		ask.title = 'Send it to Claude as a prompt too (Ctrl+Enter); its answer comes back here';
+		ask.addEventListener('click', () => send(onAsk));
+		row.append(ask);
+	}
 
 	return row;
 };
@@ -92,9 +103,10 @@ export default class NotesPanel extends Panel {
 		this.draft = element('div', 'draft');
 		this.draft.style.display = 'none';
 		this.chatComposer = composer({
-			placeholder: 'Message collaborators (not Claude)',
+			placeholder: canType() ? 'Message the people here, or ask Claude' : 'Message the people here',
 			label: 'Send',
 			onSend: text => this.options.send({ type: 'chat', text }),
+			onAsk: text => this.options.send({ type: 'ask', kind: 'chat', text }),
 		});
 
 		this.elem.append(who, tabs, this.list, this.draft, this.chatComposer);
@@ -203,10 +215,10 @@ export default class NotesPanel extends Panel {
 
 	renderChat() {
 		if (!this.notes.chat.length)
-			return [element('div', 'empty', 'No messages yet. Chat here stays between people; Claude never sees it.')];
+			return [element('div', 'empty', 'No messages yet. Claude only sees what goes to it with Ask Claude.')];
 
 		return this.notes.chat.map(message => {
-			const node = element('div', 'message');
+			const node = element('div', noteClass('message', message));
 
 			node.append(meta(message), element('div', 'text', message.text), this.reactions(message, { chatId: message.id }));
 
@@ -228,7 +240,7 @@ export default class NotesPanel extends Panel {
 		const ordered = [...this.notes.comments].sort((a, b) => a.resolved - b.resolved || b.at - a.at);
 
 		return ordered.map(comment => {
-			const node = element('div', `comment${comment.resolved ? ' resolved' : ''}`);
+			const node = element('div', noteClass(`comment${comment.resolved ? ' resolved' : ''}`, comment));
 			const quote = element('pre', 'quote', comment.quote);
 			const actions = element('div', 'actions');
 			const resolve = element('button', '', comment.resolved ? 'Reopen' : 'Resolve');
@@ -248,7 +260,7 @@ export default class NotesPanel extends Panel {
 			);
 
 			for (const reply of comment.replies) {
-				const replyNode = element('div', 'reply');
+				const replyNode = element('div', noteClass('reply', reply));
 
 				replyNode.append(
 					meta(reply),
@@ -272,6 +284,7 @@ export default class NotesPanel extends Panel {
 						drafts: this.drafts,
 						draftKey: comment.id,
 						onSend: text => this.options.send({ type: 'reply', commentId: comment.id, text }),
+						onAsk: text => this.options.send({ type: 'ask', kind: 'reply', commentId: comment.id, text }),
 					}),
 				);
 			}
@@ -368,6 +381,13 @@ export default class NotesPanel extends Panel {
 			label: 'Comment',
 			onSend: text => {
 				const sent = this.options.send({ type: 'comment', quote, text });
+
+				if (sent) close();
+
+				return sent;
+			},
+			onAsk: text => {
+				const sent = this.options.send({ type: 'ask', kind: 'comment', quote, text });
 
 				if (sent) close();
 

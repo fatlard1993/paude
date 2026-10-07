@@ -71,9 +71,9 @@ const mayDelete = (state, comment) =>
 	state.role === 'owner' || comment.author === state.presence.clients?.[state.presence.you]?.name;
 
 const DRAFT_PROMPTS = {
-	chat: () => 'Message:',
+	chat: draft => (draft.ask ? 'Ask Claude:' : 'Message:'),
 	comment: draft => `Comment on "${firstLine(draft.quote)}":`,
-	reply: draft => `Reply to ${printable(draft.author)}:`,
+	reply: draft => (draft.ask ? 'Ask Claude in this thread:' : `Reply to ${printable(draft.author)}:`),
 };
 
 const listView = state => {
@@ -152,6 +152,7 @@ const keysFor = (state, canNote) => {
 
 		return [
 			canNote && comment && `${keyCap('r')} reply`,
+			canNote && comment && canTypeIn(state) && `${keyCap('A')} ask Claude`,
 			canNote && comment && `${keyCap('+')} react`,
 			canNote && comment && `${keyCap('x')} ${comment.resolved ? 'reopen' : 'resolve'}`,
 			canNote && comment && mayDelete(state, comment) && `${keyCap('D')} delete`,
@@ -161,6 +162,7 @@ const keysFor = (state, canNote) => {
 
 	return [
 		canNote && `${keyCap('c')} chat`,
+		canTypeIn(state) && `${keyCap('C')} ask Claude`,
 		canNote && `${keyCap('m')} comment on selection`,
 		canNote && `${keyCap('f')} files`,
 		canTypeIn(state) && `${keyCap('t')} side terminal`,
@@ -248,6 +250,8 @@ const send = draft => {
 	const text = draft.text.trim();
 
 	if (!text) return { type: 'redraw' };
+	// Typed into Claude too; its answer comes back to the chat or the thread
+	if (draft.ask) return { type: 'ask', kind: draft.kind, text, commentId: draft.commentId };
 	if (draft.kind === 'comment') return { type: 'comment', quote: draft.quote, text };
 	if (draft.kind === 'reply') return { type: 'reply', commentId: draft.commentId, text };
 
@@ -299,8 +303,8 @@ const threadKey = (state, key, canNote) => {
 		return { type: 'delete', commentId: comment.id };
 	}
 
-	if (key === 'r') {
-		state.draft = { kind: 'reply', text: '', commentId: comment.id, author: comment.author };
+	if (key === 'r' || (key === 'A' && canTypeIn(state))) {
+		state.draft = { kind: 'reply', text: '', commentId: comment.id, author: comment.author, ask: key === 'A' };
 
 		return { type: 'redraw' };
 	}
@@ -379,6 +383,12 @@ export const overlayKey = (state, rawKey, { readSelection = () => null } = {}) =
 
 	if (canNote && key === 'c') {
 		state.draft = { kind: 'chat', text: '' };
+
+		return { type: 'redraw' };
+	}
+
+	if (canTypeIn(state) && key === 'C') {
+		state.draft = { kind: 'chat', text: '', ask: true };
 
 		return { type: 'redraw' };
 	}

@@ -5,7 +5,7 @@ Claude Code sessions you can reach from anywhere and work in together: the real 
 ![A session in the browser: Claude's finished change, and a comment thread beside it](docs/web-session.png)
 
 - **One session, many screens.** Every session is `claude` in a pseudo-terminal. Everyone attached sees the same screen, from a terminal (the `paude` command) or a browser, phones included. Walk away from one device and pick up on another; the session keeps running.
-- **Company.** Invite people by link as drivers, commenters or viewers. They get a chat, comments on selected output, and emoji reactions, none of which Claude ever sees.
+- **Company.** Invite people by link as drivers, commenters or viewers. They get a chat, comments on selected output, and emoji reactions, all between people unless someone presses **Ask Claude**: then it's typed into Claude, and Claude's answer comes back to the chat or the comment's thread.
 - **The project at hand.** Browse, search and read the session's files, with syntax highlighting and rendered markdown, and attach a file or a few lines to the prompt.
 - **What needs you.** Watched sessions show whether Claude is working, waiting on you, or ready, and how much happened since you last looked, across every paude you use.
 
@@ -128,7 +128,8 @@ Inside a session everything goes to Claude except **Ctrl+]** (**Cmd+]** on a Mac
 | --- | --- |
 | **c** | chat |
 | **m** | comment on your selection (Shift+drag over Claude's output first; on macOS, copy it) |
-| **1**-**9** | open a comment's thread; there, **r** replies, **x** resolves (or reopens), **+** then a number reacts, **D** twice deletes it |
+| **C** | ask Claude: typed into Claude as a prompt, its answer posted back in the chat |
+| **1**-**9** | open a comment's thread; there, **r** replies, **A** asks Claude (its answer lands in the thread), **x** resolves (or reopens), **+** then a number reacts, **D** twice deletes it |
 | **f** | the project's files |
 | **t** | a side terminal: a shell in the session's folder, for a few quick commands. Ctrl+] brings the box back over it: **a** quotes your selection in Claude's prompt, **k** ends it, **Esc** returns to it. It ends when you go back to Claude |
 | **s**, **d** | switch session, detach |
@@ -159,7 +160,7 @@ Open the server's address and log in, or follow an invite link.
 
 - **Size.** A session has one size, set by whoever typed last; everyone else sees it scaled to fit.
 - **Scrolling.** The wheel scrolls Claude's transcript, for everyone, since there is one screen.
-- **Comments.** Drag over the terminal to select (on a phone, **Select** on the key bar, then tap the first and last line) and press **Comment**. Clicking a comment's quote finds it in the terminal. Reactions work on chat, comments and replies; click one to add or take back yours. Whoever wrote a comment or reply can delete it (a comment takes its replies with it), and the owner can delete any.
+- **Comments.** Drag over the terminal to select (on a phone, **Select** on the key bar, then tap the first and last line) and press **Comment**. Clicking a comment's quote finds it in the terminal. Reactions work on chat, comments and replies; click one to add or take back yours. **Ask Claude** beside Send (or Ctrl+Enter) sends a chat message, comment or reply to Claude as well, once its prompt box is empty and it isn't asking anything; a comment brings its quoted output along. Only those who may type into Claude see it. Whoever wrote a comment or reply can delete it (a comment takes its replies with it), and the owner can delete any.
 - **Files.** The reader, from the folder button in the bar: search by name or contents with the same options as the terminal, and read highlighted code, rendered markdown, images, audio, video and PDFs. Click a line number and Shift+click another (on a phone, tap another) to attach those lines.
 - **Changes.** The reader's **Changes** lists what Claude proposes while it waits on a permission prompt, what changed since the last commit (staged or not, and marked in the tree), and what each of Claude's turns changed. **Compare...** on a file you're reading diffs it against another. Every diff reads the same way, side by side where there's room (**Unified** switches, and the choice is remembered): attach a hunk, the lines you pick, or all of it. A turn shows what Claude's own edit tools changed; changes made by commands it ran (`sed`, `rm`) aren't recorded by Claude Code, so they show only against the last commit.
 - **Editing.** **Edit** on a file you're reading; Ctrl+S saves. If the file changed since you opened it (Claude saved it, most likely), saving stops and asks whether to save yours anyway or load theirs.

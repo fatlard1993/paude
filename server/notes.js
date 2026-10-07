@@ -38,17 +38,20 @@ const save = sessionId => writeJsonFile(fileFor(sessionId), () => loaded.get(ses
 
 const clean = (value, limit) => (typeof value === 'string' ? value.trim().slice(0, limit) : '');
 
-const entry = (author, text, authorId) => ({
+// `toClaude` marks one also sent to Claude as a prompt; `fromClaude`, Claude's answer to one
+const entry = (author, text, authorId, { toClaude, fromClaude } = {}) => ({
 	id: crypto.randomUUID(),
 	author: clean(author, MAX_AUTHOR) || 'someone',
 	...(authorId && { authorId }),
 	text: clean(text, MAX_TEXT),
 	at: Date.now(),
+	...(toClaude && { toClaude: true }),
+	...(fromClaude && { fromClaude: true }),
 });
 
 // Each change resolves to what the clients need to update: { type, ... } or null when the input was empty or unknown
-export const addChat = async (sessionId, author, text) => {
-	const message = entry(author, text);
+export const addChat = async (sessionId, author, text, { authorId, ...flags } = {}) => {
+	const message = entry(author, text, authorId, flags);
 
 	if (!message.text) return null;
 
@@ -61,8 +64,13 @@ export const addChat = async (sessionId, author, text) => {
 	return { type: 'chat', message };
 };
 
-export const addComment = async (sessionId, author, { quote, text }, authorId) => {
-	const comment = { ...entry(author, text, authorId), quote: clean(quote, MAX_QUOTE), replies: [], resolved: false };
+export const addComment = async (sessionId, author, { quote, text }, authorId, flags) => {
+	const comment = {
+		...entry(author, text, authorId, flags),
+		quote: clean(quote, MAX_QUOTE),
+		replies: [],
+		resolved: false,
+	};
 
 	const { comments } = await getNotes(sessionId);
 
@@ -84,9 +92,9 @@ const updateComment = async (sessionId, commentId, change) => {
 	return { type: 'comment', comment };
 };
 
-export const addReply = (sessionId, author, { commentId, text }, authorId) =>
+export const addReply = (sessionId, author, { commentId, text }, authorId, flags) =>
 	updateComment(sessionId, commentId, comment => {
-		const reply = entry(author, text, authorId);
+		const reply = entry(author, text, authorId, flags);
 
 		if (!reply.text || comment.replies.length >= MAX_COMMENTS) return false;
 

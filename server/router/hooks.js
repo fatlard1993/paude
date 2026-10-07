@@ -1,4 +1,5 @@
 import { recordChange, setStatus } from '../activity';
+import { turnEnded } from '../claudeInbox';
 import { HOOK_EVENTS, hookSecret } from '../hookSettings';
 import { trackProposals } from '../sessions/proposals';
 import { runningSession } from '../sessions/running';
@@ -20,6 +21,9 @@ const hooksRoutes = async request => {
 	trackProposals(id, payload);
 	if (status) await setStatus(id, status);
 	if (payload.hook_event_name === 'Stop') await recordChange(id);
+	// Not waited for: Claude waits on its hook, and the answer can take a few seconds to reach the transcript
+	if (['Stop', 'StopFailure'].includes(payload.hook_event_name))
+		turnEnded(id).catch(error => console.error('Answering from Claude failed:', error));
 
 	return new Response(null, { status: 204 });
 };

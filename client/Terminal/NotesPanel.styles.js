@@ -226,6 +226,20 @@ const Panel = styled(
 			margin-left: 12px;
 		}
 
+		/* Claude's answers, set apart from what people say */
+		.from-claude {
+			border-left: 2px solid hsl(20, 70%, 60%);
+			padding-left: 8px;
+		}
+
+		.from-claude > .meta {
+			color: hsl(20, 70%, 70%);
+		}
+
+		.composer button.ask {
+			background: hsl(20, 60%, 45%, 0.35);
+		}
+
 		.actions {
 			display: flex;
 			gap: 6px;

@@ -1,6 +1,7 @@
 import inputKind from '../../shared/inputKind';
 import { identityKey, markSeen, onActivity, recordChange, watchIfNew } from '../activity';
 import { credentialValid, identityOf } from '../auth';
+import { askClaude } from '../claudeInbox';
 import { addChat, addComment, addReply, deleteComment, getNotes, react, setResolved } from '../notes';
 import { may, mayManage } from '../permissions';
 import { ownerName } from '../serverSettings';
@@ -44,6 +45,60 @@ const shareChange = async (socket, change) => {
 	session.broadcast(update);
 	await watchIfNew(socket.data.identity, session.id);
 	await recordChange(session.id);
+};
+
+// A message to Claude, as the prompt it gets: who it's from and where, and for a comment the output it's about
+const QUOTE_LINES = 40;
+
+const promptFor = ({ kind, author, text, quote }) => {
+	if (kind === 'chat') return `[paude chat · ${author}] ${text}`;
+
+	const quoted = String(quote)
+		.split('\n')
+		.slice(0, QUOTE_LINES)
+		.map(line => `> ${line}`)
+		.join('\n');
+
+	return `[paude comment · ${author}] On this output:\n${quoted}\n\n${text}`;
+};
+
+// Said in the chat or a comment thread, and typed into Claude; its answer comes back to the same place as Claude's.
+// It's typing into Claude, so it takes the role that may.
+const askFromNotes = async (socket, { kind, text, quote, commentId }) => {
+	const { session, client, identity } = socket.data;
+
+	if (!session || !['chat', 'comment', 'reply'].includes(kind) || !allowed(socket, 'type')) return;
+
+	const author = client.name;
+	const authorId = identityKey(identity);
+	const said = {
+		chat: () => addChat(session.id, author, text, { authorId, toClaude: true }),
+		comment: () => addComment(session.id, author, { quote, text }, authorId, { toClaude: true }),
+		reply: () => addReply(session.id, author, { commentId, text }, authorId, { toClaude: true }),
+	};
+	const update = await said[kind]();
+
+	if (!update) return;
+
+	session.broadcast(update);
+	await watchIfNew(identity, session.id);
+	await recordChange(session.id);
+
+	const thread = update.comment;
+	const answerAs = async answer => {
+		const answered = thread
+			? await addReply(session.id, 'Claude', { commentId: thread.id, text: answer }, 'claude', { fromClaude: true })
+			: await addChat(session.id, 'Claude', answer, { authorId: 'claude', fromClaude: true });
+
+		if (!answered) return;
+		runningSession(session.id)?.broadcast(answered);
+		await recordChange(session.id);
+	};
+
+	askClaude(session.id, {
+		prompt: promptFor({ kind: kind === 'reply' ? 'comment' : kind, author, text, quote: thread?.quote ?? quote }),
+		answer: answerAs,
+	});
 };
 
 // Whoever is attached sees each change as it happens, so it never counts as unseen for them; a status change
@@ -106,6 +161,7 @@ const handlers = {
 		shareChange(socket, id =>
 			setResolved(id, { commentId, resolved, allowed: comment => mayManage(socket.data.identity, comment) }),
 		),
+	ask: askFromNotes,
 	// Like a reaction, a deletion isn't news
 	async delete(socket, { commentId, replyId }) {
 		const { session } = socket.data;

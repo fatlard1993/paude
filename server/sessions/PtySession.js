@@ -6,6 +6,7 @@ import { setStatus, statusOf } from '../activity';
 import { hookSettings } from '../hookSettings';
 import { pinnedName } from '../names';
 import parseTitle from './claudeTitle';
+import readPromptDraft from './promptBox';
 import { endHeld, heldCommand, releaseHeld } from './holder';
 
 const { Terminal } = xtermHeadless;
@@ -213,6 +214,16 @@ export default class PtySession {
 		if (kind === 'typing' && statusOf(this.id) === 'waiting') setStatus(this.id, 'working');
 
 		this.process.terminal.write(data);
+	}
+
+	// Typed in by paude itself (a message from chat or comments), not by anyone attached
+	typeIn(data) {
+		this.process.terminal.write(data);
+	}
+
+	// What's typed in Claude's prompt box now, from the screen paude keeps ('' for nothing, null for no box)
+	promptDraft() {
+		return readPromptDraft(this.mirror.buffer.active);
 	}
 
 	resize(client, cols, rows) {

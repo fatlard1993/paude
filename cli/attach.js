@@ -44,7 +44,7 @@ const OVERLAY_KEYS = [
 // Cmd+] needs a terminal that passes it on; Ctrl+] works in any
 const OVERLAY_KEY_HINT = OVERLAY_KEY === 'Ctrl+]' ? OVERLAY_KEY : `${OVERLAY_KEY} (or Ctrl+])`;
 
-const NOTE_ACTIONS = ['chat', 'comment', 'reply', 'resolve', 'react', 'delete'];
+const NOTE_ACTIONS = ['chat', 'comment', 'reply', 'resolve', 'react', 'delete', 'ask'];
 const FRAME_MS = 33;
 
 const displayName = () => process.env.PAUDE_NAME || os.userInfo().username;
