@@ -54,6 +54,7 @@ export const Body = styled.Component`
 	.notes,
 	.git,
 	.shares,
+	.activity,
 	.files,
 	.shell {
 		position: absolute;
@@ -78,6 +79,7 @@ export const Body = styled.Component`
 	.notes.open,
 	.git.open,
 	.shares.open,
+	.activity.open,
 	.files.open,
 	.shell.open {
 		opacity: 1;
@@ -87,7 +89,8 @@ export const Body = styled.Component`
 
 	.notes,
 	.git,
-	.shares {
+	.shares,
+	.activity {
 		right: 8px;
 		width: min(var(--notes-width, 360px), calc(100% - 16px));
 		transform: translateX(12px);
@@ -123,7 +126,8 @@ export const Body = styled.Component`
 
 	.notes .resize,
 	.git .resize,
-	.shares .resize {
+	.shares .resize,
+	.activity .resize {
 		left: 0;
 	}
 
@@ -157,7 +161,8 @@ export const Body = styled.Component`
 	@media ${NARROW} {
 		.notes,
 		.git,
-		.shares {
+		.shares,
+		.activity {
 			inset: 0;
 			width: auto;
 			border-radius: 0;

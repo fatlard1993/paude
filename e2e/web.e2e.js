@@ -359,3 +359,55 @@ test(
 	},
 	TIMEOUT_MS,
 );
+
+test(
+	"activity: the turns, their steps, a command's output and the context in use",
+	async () => {
+		const server = servers.turns;
+		const id = await server.newSession();
+		const at = second => `2026-10-07T12:00:${String(second).padStart(2, '0')}.000Z`;
+
+		await server.writeTranscript(id, [
+			{ type: 'user', uuid: 'p1', timestamp: at(0), message: { content: 'run the tests' } },
+			{
+				type: 'assistant',
+				timestamp: at(2),
+				message: {
+					model: 'claude-opus-5-5',
+					usage: { input_tokens: 10, cache_read_input_tokens: 41_990, output_tokens: 5 },
+					content: [
+						{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'bun test', description: 'Run the tests' } },
+					],
+				},
+			},
+			{
+				type: 'user',
+				timestamp: at(7),
+				message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: '3 pass\n1 fail', is_error: true }] },
+			},
+		]);
+
+		const { browser, page } = await openBrowser('dom');
+
+		try {
+			await page.goto(await server.loginLink(`/sessions/${id}`));
+			await page.waitForSelector('.xterm-screen');
+
+			const open = await centerOf(page, '[title^="Activity"]');
+
+			await page.mouse.click(open.x, open.y);
+			await wait(800);
+			expect(await page.$eval('.activity .bar', bar => bar.textContent)).toContain('context 42k tokens');
+			expect(await page.$eval('.activity .turn-head', head => head.textContent)).toContain('1 failed');
+
+			const step = await centerOf(page, '.activity .step-line');
+
+			await page.mouse.click(step.x, step.y);
+			await wait(300);
+			expect(await page.$eval('.activity .step-output', output => output.textContent)).toBe('3 pass\n1 fail');
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);

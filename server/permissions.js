@@ -32,6 +32,7 @@ const OWN_SESSION_ROUTES = [
 	'/changes',
 	'/diffs',
 	'/turn-changes',
+	'/timeline',
 ];
 
 export const guestMayRequest = (identity, method, pathname) => {

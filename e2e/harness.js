@@ -62,7 +62,14 @@ export const startServer = async ({ claude = FAKE_CLAUDE, fake = 'turns' } = {})
 		],
 		{
 			cwd: ROOT,
-			env: { ...env, NODE_ENV: 'production', XDG_CONFIG_HOME: path.join(dir, 'config'), PAUDE_E2E_FAKE: fake },
+			env: {
+				...env,
+				NODE_ENV: 'production',
+				XDG_CONFIG_HOME: path.join(dir, 'config'),
+				PAUDE_E2E_FAKE: fake,
+				// The fake writes no transcript; a test writes one here. The real Claude keeps its own (its login is there).
+				...(claude === FAKE_CLAUDE && { CLAUDE_CONFIG_DIR: path.join(dir, 'claude') }),
+			},
 			stdout: 'ignore',
 			stderr: 'ignore',
 		},
@@ -88,9 +95,17 @@ export const startServer = async ({ claude = FAKE_CLAUDE, fake = 'turns' } = {})
 		await fetch(`${url}/api/hooks/${secret}/${sessionId}`, { method: 'POST', body: JSON.stringify(payload) });
 	};
 
+	// A transcript as Claude Code keeps one, for a session the fake runs
+	const writeTranscript = (sessionId, lines) =>
+		Bun.write(
+			path.join(dir, 'claude', 'projects', project.replace(/[^a-zA-Z0-9]/g, '-'), `${sessionId}.jsonl`),
+			lines.map(line => JSON.stringify(line)).join('\n'),
+		);
+
 	return {
 		url,
 		hook,
+		writeTranscript,
 		previewUrl: `http://127.0.0.1:${previewPort}`,
 		project,
 		api,

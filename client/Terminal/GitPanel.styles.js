@@ -282,6 +282,96 @@ const Panel = styled(
 			margin-top: 6px;
 		}
 
+		/* The Activity panel's turns and their steps */
+		.turn {
+			display: flex;
+			flex-direction: column;
+			border-radius: 4px;
+		}
+
+		.turn-head {
+			display: flex;
+			flex-direction: column;
+			align-items: stretch;
+			gap: 2px;
+			padding: 6px;
+			text-align: left;
+			background: transparent;
+			white-space: normal;
+		}
+
+		.turn-head:hover {
+			background: ${colors.alpha(colors.white, 0.05)};
+		}
+
+		.turn-head .subject {
+			overflow: hidden;
+			display: -webkit-box;
+			-webkit-line-clamp: 2;
+			-webkit-box-orient: vertical;
+		}
+
+		.steps {
+			display: flex;
+			flex-direction: column;
+			gap: 1px;
+			margin: 0 0 8px 10px;
+			padding-left: 6px;
+			border-left: 1px solid ${colors.alpha(colors.white, 0.12)};
+		}
+
+		.step-line {
+			display: flex;
+			align-items: baseline;
+			gap: 6px;
+			width: 100%;
+			padding: 2px 4px;
+			text-align: left;
+			background: transparent;
+			font-size: 0.9em;
+		}
+
+		.step-line:hover {
+			background: ${colors.alpha(colors.white, 0.05)};
+		}
+
+		.step-line i {
+			width: 1.2em;
+			text-align: center;
+			opacity: 0.6;
+		}
+
+		.step-line .tool {
+			color: ${colors.light(colors.gray)};
+		}
+
+		.step-line .what {
+			flex: 1;
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.step.failed .tool, .step.failed i {
+			color: ${colors.light(colors.red)};
+			opacity: 1;
+		}
+
+		.step.running .what::after {
+			content: ' …';
+		}
+
+		.step-output {
+			margin: 2px 0 6px 24px;
+			padding: 6px;
+			max-height: 16em;
+			overflow: auto;
+			white-space: pre-wrap;
+			font-size: 0.8em;
+			border-radius: 4px;
+			background: rgba(0, 0, 0, 0.35);
+		}
+
 		.empty {
 			padding: 12px;
 			color: ${colors.light(colors.gray)};

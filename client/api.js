@@ -55,6 +55,10 @@ export const getGit = async (sessionId, what, searchParameters = {}) =>
 export const runGit = async (sessionId, action, body = {}) =>
 	await POST('/api/sessions/:id/git/:action', { urlParameters: { id: sessionId, action }, body });
 
+// { turns: [{ id, prompt, at, endedAt, steps: [{ tool, summary, file, ok, output }] }], context: { tokens, model } }
+export const getTimeline = async sessionId =>
+	await GET('/api/sessions/:id/timeline', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
+
 // { shares: [{ id, name, kind, port, path, auto, url }], origin }
 export const getShares = async sessionId =>
 	await GET('/api/sessions/:id/shares', { urlParameters: { id: sessionId }, invalidateAfter: 0 });

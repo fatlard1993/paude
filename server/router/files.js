@@ -1,6 +1,7 @@
 import { credentialOf, identityOf } from '../auth';
 import { listChanges } from '../changes';
 import { DiffError, diffSet, turnsWithChanges } from '../diffs';
+import { sessionTimeline } from '../timeline';
 import { SearchError, listFiles, rawProjectFile, readProjectFile, searchProject, writeProjectFile } from '../files';
 import { searchOptionsFrom } from '../../shared/searchQuery';
 import { may } from '../permissions';
@@ -77,6 +78,7 @@ const filesRoutes = async request => {
 		requestMatch('GET', '/api/sessions/:id/changes', request) ||
 		requestMatch('GET', '/api/sessions/:id/diffs', request) ||
 		requestMatch('GET', '/api/sessions/:id/turn-changes', request) ||
+		requestMatch('GET', '/api/sessions/:id/timeline', request) ||
 		requestMatch('GET', '/api/sessions/:id/files', request) ||
 		requestMatch('GET', '/api/sessions/:id/file', request) ||
 		requestMatch('GET', '/api/sessions/:id/search', request) ||
@@ -95,6 +97,7 @@ const filesRoutes = async request => {
 	if (pathname.endsWith('/files')) return Response.json(await listFiles(cwd));
 	if (pathname.endsWith('/changes')) return Response.json(await listChanges(cwd));
 	if (pathname.endsWith('/turn-changes')) return Response.json(await turnsWithChanges(match.id, cwd));
+	if (pathname.endsWith('/timeline')) return Response.json(await sessionTimeline(match.id, cwd));
 	if (pathname.endsWith('/diffs')) {
 		try {
 			return Response.json(await diffSet(match.id, cwd, match));

@@ -33,6 +33,7 @@ import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from './xtermOpti
 import FilesPanel from './FilesPanel';
 import GitPanel from './GitPanel';
 import SharesPanel from './SharesPanel';
+import ActivityPanel from './ActivityPanel';
 import NotesPanel from './NotesPanel';
 import SideShell from './SideShell';
 import { BackMenu, Body, NARROW, Presence, SelectHint, SelectionActions, TopBar } from './TerminalView.styles';
@@ -162,6 +163,11 @@ export default class TerminalView extends View {
 				title: 'Project files',
 				onPress: () => this.toggleFiles(),
 			});
+			this.activityButton = ghostButton(header, {
+				icon: 'clock-rotate-left',
+				title: 'Activity: what Claude did, turn by turn',
+				onPress: () => this.toggleActivity(),
+			});
 			this.gitButton = ghostButton(header, {
 				icon: 'code-branch',
 				title: 'Git: changes, history, branches',
@@ -262,6 +268,25 @@ export default class TerminalView extends View {
 				changed: () => this.files.changesMayHaveChanged(),
 			});
 			this.addResizeHandle(this.git.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
+		}
+		if (canBrowse()) {
+			this.activity = new ActivityPanel({
+				appendTo: body,
+				addClass: 'activity',
+				sessionId: this.options.id,
+				close: () => this.toggleActivity(false),
+				openDiff: source => {
+					if (window.matchMedia(NARROW).matches) this.toggleActivity(false);
+					this.toggleFiles(true);
+					this.files.openDiffSet(source);
+				},
+				openFile: (path, line) => {
+					if (window.matchMedia(NARROW).matches) this.toggleActivity(false);
+					this.toggleFiles(true);
+					this.files.open(path, line);
+				},
+			});
+			this.addResizeHandle(this.activity.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
 		}
 		this.shares = new SharesPanel({
 			appendTo: body,
@@ -482,6 +507,7 @@ export default class TerminalView extends View {
 		if (this.lastPresence && (waiting !== this.lastPresence.waiting || busy !== this.lastPresence.busy)) {
 			this.files?.changesMayHaveChanged();
 			if (this.git?.elem.classList.contains('open')) this.git.refresh();
+			this.activity?.busy(busy);
 			this.resolvePath = null;
 		}
 		const offline = this.connectionState === 'reconnecting' || this.connectionState === 'ended';
@@ -589,6 +615,15 @@ export default class TerminalView extends View {
 		if (keep !== 'notes' && this.notes.elem.classList.contains('open')) this.toggleNotes(false);
 		if (keep !== 'git' && this.git?.elem.classList.contains('open')) this.toggleGit(false);
 		if (keep !== 'shares' && this.shares.elem.classList.contains('open')) this.toggleShares(false);
+		if (keep !== 'activity' && this.activity?.elem.classList.contains('open')) this.toggleActivity(false);
+	}
+
+	toggleActivity(open = !this.activity.elem.classList.contains('open')) {
+		if (open) this.closeOthersOnTheRight('activity');
+		this.activity.elem.classList.toggle('open', open);
+		this.activityButton?.classList.toggle('active', open);
+		if (open) this.activity.refresh();
+		this.focusPanel(this.activity.elem, open);
 	}
 
 	toggleShares(open = !this.shares.elem.classList.contains('open')) {
