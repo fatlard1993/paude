@@ -46,7 +46,7 @@ if (joinToken) {
 	} else joinFailed = true;
 }
 
-const [, handoffCode, handoffTo] = window.location.hash.match(/^#\/handoff\/([^/]+)(\/sessions\/[^/]+)?$/) ?? [];
+const [, handoffCode, handoffTo] = window.location.hash.match(/^#\/handoff\/([^/]+)(\/(?:sessions|projects)\/[^/]+)?$/) ?? [];
 
 if (handoffCode) {
 	// An expired code leaves the login page showing

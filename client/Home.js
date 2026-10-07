@@ -51,6 +51,8 @@ const List = styled.Component`
 	gap: 6px;
 `;
 
+const hereName = () => serverName() ?? 'this machine';
+
 export default class Home extends View {
 	constructor(options) {
 		const refresh = () => this.load();
@@ -123,16 +125,16 @@ export default class Home extends View {
 		});
 	}
 
-	remoteCard(session) {
-		return {
-			server: session.remote.name,
-			onOpen: async () => {
-				const { body, response } = await openRemote(session.remote.url, session.id);
+	// Logs this browser in on that server and goes there: { sessionId } or { project }
+	async openThere(remote, to) {
+		const { body, response } = await openRemote(remote.url, to);
 
-				if (response?.ok) window.location.href = body.link;
-				else new Notify({ type: 'error', content: `Could not reach ${session.remote.name}.` });
-			},
-		};
+		if (response?.ok) window.location.href = body.link;
+		else new Notify({ type: 'error', content: `Could not reach ${remote.name}.` });
+	}
+
+	remoteCard(session) {
+		return { server: session.remote.name, onOpen: () => this.openThere(session.remote, { sessionId: session.id }) };
 	}
 
 	// Every card names its server, this one's too, so sessions from several read as one list
@@ -142,7 +144,7 @@ export default class Home extends View {
 			...(session.remote
 				? this.remoteCard(session)
 				: {
-						server: serverName() ?? 'this machine',
+						server: hereName(),
 						remove: async () => (await confirmDeleteSession(session, deleteSession)) && this.load(),
 					}),
 		});
@@ -200,13 +202,30 @@ export default class Home extends View {
 
 		this.projects.empty();
 
-		const ordered = [...(projects ?? [])].sort(byRecentActivity);
+		const remoteProjects = reachable.flatMap(remote =>
+			(remote.projects ?? []).map(project => ({ ...project, remote })),
+		);
+		const ordered = [...(projects ?? []), ...remoteProjects].sort(byRecentActivity);
 
 		for (const project of ordered) {
+			if (project.remote) {
+				LinkCard({
+					appendTo: this.projects,
+					href: '#/',
+					title: project.name,
+					server: project.remote.name,
+					meta: [projectSummary(project)],
+					live: project.liveCount > 0,
+					onOpen: () => this.openThere(project.remote, { project: project.name }),
+				});
+				continue;
+			}
+
 			LinkCard({
 				appendTo: this.projects,
 				href: `#/projects/${project.name}`,
 				title: project.name,
+				server: hereName(),
 				meta: [projectSummary(project)],
 				live: project.liveCount > 0,
 				removeLabel: project.registered

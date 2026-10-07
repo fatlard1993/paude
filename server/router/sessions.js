@@ -163,8 +163,8 @@ const sessionsRoutes = async (request, server) => {
 	if (requestMatch('GET', '/api/remotes', request)) return Response.json(await listRemotes());
 
 	if (requestMatch('POST', '/api/remotes/open', request)) {
-		const { url, sessionId } = await request.json();
-		const link = await remoteLink(url, sessionId);
+		const { url, sessionId, project } = await request.json();
+		const link = await remoteLink(url, { sessionId, project });
 
 		return link ? Response.json({ link }) : new Response('Not one of your servers', { status: 404 });
 	}

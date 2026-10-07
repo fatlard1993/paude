@@ -17,14 +17,14 @@ const remoteServers = async () => {
 export const listRemotes = async () => {
 	const remotes = await Promise.all(
 		(await remoteServers()).map(async server => {
-			const { serverId, name, watching, sessions, error } = await visitServer(server);
+			const { serverId, name, watching, sessions, projects, error } = await visitServer(server);
 
 			if (serverId && serverId === getServerId()) return null;
 
 			return {
 				url: server.url,
 				name: server.alias ?? name ?? new URL(server.url).host,
-				...(error ? { error } : { watching, sessions }),
+				...(error ? { error } : { watching, sessions, projects }),
 			};
 		}),
 	);
@@ -32,14 +32,18 @@ export const listRemotes = async () => {
 	return remotes.filter(Boolean);
 };
 
-export const remoteLink = async (url, sessionId) => {
+// A link that logs this browser in there and opens a session, or a project page
+export const remoteLink = async (url, { sessionId, project }) => {
 	const server = (await remoteServers()).find(remote => remote.url === url);
+	const to =
+		(typeof sessionId === 'string' && /^[\w-]+$/.test(sessionId) && `/sessions/${sessionId}`) ||
+		(typeof project === 'string' && project && !project.includes('/') && `/projects/${encodeURIComponent(project)}`);
 
-	if (!server || typeof sessionId !== 'string' || !/^[\w-]+$/.test(sessionId)) return null;
+	if (!server || !to) return null;
 
 	const { code } = await serverApi(server, '/api/handoff', { method: 'POST' });
 
-	return `${server.url}/#/handoff/${code}/sessions/${sessionId}`;
+	return `${server.url}/#/handoff/${code}${to}`;
 };
 
 // A page of a server's sessions (newest first, searched by q), as its /api/sessions answers it; null for a server
