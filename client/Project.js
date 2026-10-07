@@ -102,7 +102,10 @@ export default class Project extends View {
 		const { project } = this.options;
 		const header = new Header({ appendTo: this });
 
-		new Button({ appendTo: header, icon: 'arrow-left', onClick: () => (window.location.hash = '#/') });
+		const back = new Button({ appendTo: header, icon: 'arrow-left', attributes: { title: 'Home' } });
+
+		// On click, not press: navigating on press leaves the click to land on whatever card is now under the finger
+		back.elem.addEventListener('click', () => (window.location.hash = '#/'));
 		new Elem({ addClass: 'title', appendTo: header, textContent: project });
 
 		const scroll = new Scroll({ appendTo: this });
