@@ -62,9 +62,11 @@ const sessionList = ({ appendTo, fetchPage, renderCard, placeholder, firstPage =
 		if (!visible.length) new Empty({ appendTo: list, textContent: query() ? 'No sessions match.' : empty });
 		for (const session of visible) renderCard(session, list);
 
+		const left = total - shown.length;
+
 		count.textContent = query() ? `${total} matching` : '';
-		more.style.display = shown.length < total && (query() || shown.length >= firstPage) ? '' : 'none';
-		more.textContent = `Show ${Math.min(PAGE, total - shown.length)} more of ${total - shown.length}`;
+		more.style.display = left > 0 && (query() || shown.length >= firstPage) ? '' : 'none';
+		more.textContent = left <= PAGE ? `Show all ${left}` : `Show ${PAGE} more of ${left}`;
 	};
 
 	// A newer search wins over an older one still on its way
