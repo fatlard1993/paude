@@ -1,5 +1,21 @@
 import { Dialog, Notify } from '@vanilla-bean/components';
 
+const LEFTOVER_CLICK_MS = 700;
+
+// The dialog's buttons act on the press, so the click that follows when the finger or button lifts lands on whatever
+// the answer put under it (a session card on the page a delete goes back to); that one click is dropped
+const swallowLeftoverClick = () => {
+	const swallow = event => {
+		event.preventDefault();
+		event.stopPropagation();
+		stop();
+	};
+	const stop = () => document.removeEventListener('click', swallow, true);
+
+	document.addEventListener('click', swallow, true);
+	setTimeout(stop, LEFTOVER_CLICK_MS);
+};
+
 // Resolves to whether the confirming button was pressed. Confirm is second because the dialog focuses its first
 // button, so a reflexive Enter keeps things as they are; any other way out (backdrop, Escape) is a no.
 const confirmDialog = ({ header, body, cancelLabel = 'Cancel', confirmLabel }) =>
@@ -10,6 +26,7 @@ const confirmDialog = ({ header, body, cancelLabel = 'Cancel', confirmLabel }) =
 			body,
 			buttons: [cancelLabel, confirmLabel],
 			onButtonPress: ({ button, closeDialog }) => {
+				swallowLeftoverClick();
 				resolve(button === confirmLabel);
 				closeDialog();
 			},
@@ -68,6 +85,7 @@ export const nameDialog = ({ current, pinned }) =>
 			body: input,
 			buttons: ['Cancel', ...(pinned ? [AUTOMATIC] : []), 'Save'],
 			onButtonPress: ({ button }) => {
+				swallowLeftoverClick();
 				if (button === 'Save') finish(input.value.trim());
 				else if (button === AUTOMATIC) finish('');
 				else finish(null);
