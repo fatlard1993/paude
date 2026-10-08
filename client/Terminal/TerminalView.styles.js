@@ -46,6 +46,10 @@ export const Body = styled.Component`
 		pointer-events: auto;
 	}
 
+	.fork-here.compact .words {
+		display: none;
+	}
+
 	.fork-here:hover {
 		background: hsl(210, 60%, 45%, 0.45);
 	}
@@ -303,6 +307,8 @@ export const TopBar = styled(
 
 			.ghost.tools {
 				display: inline-flex;
+				align-items: center;
+				justify-content: center;
 			}
 		}
 

@@ -48,7 +48,6 @@ const TAP_SLOP = 8;
 // How far above and below a row to look for the rest of a URL Claude broke across rows
 const URL_ROWS = 6;
 // Room kept for the new-session button after a done line, in cells
-const DONE_BUTTON_WIDTH = 24;
 // Between the selection and its buttons, and the buttons and the edges
 const GAP = 6;
 // Command with these does what a Mac terminal makes it do: clears the line back to its start, or goes to either end.
@@ -1098,14 +1097,19 @@ export default class TerminalView extends View {
 			if (!found) continue;
 
 			const fork = spare[used++] ?? this.forkButton();
-			const x = Math.min(columns[found.index + found[0].length - 1] + 1, cols - DONE_BUTTON_WIDTH);
+			const after = columns[found.index + found[0].length - 1] + 1;
 
 			fork.dataset.line = buffer.viewportY + row;
+			Object.assign(fork.style, { height: `${cellHeight}px`, fontSize: `${cellHeight * 0.65}px` });
+			// Its words when they fit after the line, its icon alone when they'd cover it (a phone's narrow rows)
+			fork.classList.remove('compact');
+			fork.classList.toggle('compact', fork.offsetWidth > (cols - after) * cellWidth);
+
+			const x = Math.min(after, cols - Math.ceil(fork.offsetWidth / cellWidth));
+
 			Object.assign(fork.style, {
 				left: `${screen.left - column.left + x * cellWidth}px`,
 				top: `${screen.top - column.top + row * cellHeight}px`,
-				height: `${cellHeight}px`,
-				fontSize: `${cellHeight * 0.65}px`,
 			});
 		}
 
@@ -1113,12 +1117,14 @@ export default class TerminalView extends View {
 	}
 
 	forkButton() {
-		const fork = button('New session from here', () => this.forkFromMarker(Number(fork.dataset.line)), {
+		const fork = button('', () => this.forkFromMarker(Number(fork.dataset.line)), {
 			icon: 'code-branch',
 			title: 'Start a new session holding the conversation up to this turn',
 			className: 'fork-here',
 		});
 
+		fork.append(element('span', 'words', 'New session from here'));
+		fork.setAttribute('aria-label', 'New session from here');
 		this.forkLayer.append(fork);
 
 		return fork;
