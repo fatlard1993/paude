@@ -350,7 +350,25 @@ const Panel = styled(
 			text-decoration: underline;
 		}
 
+		.link-address {
+			padding-left: calc(1.2em + 6px);
+			color: ${colors.gray};
+			font-size: 0.75em;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
+		.link > .meta {
+			padding-left: calc(1.2em + 6px);
+		}
+
+				.link-context .said-by {
+			opacity: 0.7;
+		}
+
 		.link-context {
+			padding-left: calc(1.2em + 6px);
 			color: ${colors.light(colors.gray)};
 			font-size: 0.8em;
 			overflow: hidden;

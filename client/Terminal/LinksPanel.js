@@ -92,7 +92,7 @@ export default class LinksPanel extends Panel {
 		const list = shown.filter(
 			link =>
 				(this.kind === 'all' || link.kind === this.kind) &&
-				(!query || link.url.toLowerCase().includes(query) || link.context?.toLowerCase().includes(query)),
+				(!query || [link.url, link.title, link.context].some(text => text?.toLowerCase().includes(query))),
 		);
 		const toggle = button(
 			this.withOutput ? 'Leave out what only commands printed' : `Include what only commands printed (${outputOnly})`,
@@ -112,7 +112,7 @@ export default class LinksPanel extends Panel {
 	row(link) {
 		const row = element('div', `link${link.pinned ? ' pinned' : ''}`);
 		const head = element('div', 'link-head');
-		const anchor = element('a', 'name', shortened(link.url));
+		const anchor = element('a', 'name', link.title || shortened(link.url));
 		const who = [...new Set(link.by.map(by => (by === 'output' ? 'a command' : by)))].join(', ');
 
 		Object.assign(anchor, { href: link.url, target: '_blank', rel: 'noopener noreferrer', title: link.url });
@@ -143,7 +143,8 @@ export default class LinksPanel extends Panel {
 
 		row.append(
 			head,
-			...(link.context ? [element('div', 'link-context', link.context)] : []),
+			...(link.title ? [element('div', 'link-address', shortened(link.url))] : []),
+			...(link.context ? [this.contextOf(link)] : []),
 			...(link.sessions ? [this.sessionsOf(link)] : []),
 			element(
 				'div',
@@ -155,6 +156,16 @@ export default class LinksPanel extends Panel {
 		);
 
 		return row;
+	}
+
+	// The clearest thing said about it, and who said it
+	contextOf(link) {
+		const line = element('div', 'link-context');
+		const said = { you: 'You', fetched: 'Read for' }[link.contextBy] ?? link.contextBy;
+
+		line.append(element('span', 'said-by', `${said}: `), link.context);
+
+		return line;
 	}
 
 	// Where in the project it came up: the sessions, to open

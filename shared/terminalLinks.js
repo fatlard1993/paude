@@ -3,8 +3,9 @@ const URL_CHARACTER = /[^\s<>"'`]/;
 // Claude breaks a long URL at the last column or the one before, and starts the rest of it on the next line, indented;
 // words wrap sooner, so a line that ends a column or more earlier ended its URL too
 const EDGE = 1;
-// A sentence's punctuation after a URL isn't part of it; a closing bracket is, when the URL opened one
-const TRAILING = /[.,;:!?'"]$/;
+// A sentence's punctuation after a URL isn't part of it, nor markdown's emphasis; a closing bracket is, when the URL
+// opened one
+const TRAILING = /[.,;:!?'"*]$/;
 const CLOSERS = { ')': '(', ']': '[', '}': '{' };
 
 export const trimUrl = url => {

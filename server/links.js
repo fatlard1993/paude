@@ -15,7 +15,7 @@ import { transcriptFile } from './sessions/transcript';
 // Claude wrote, pages it fetched or searched, what its commands printed; not the files it read, which are noise), the
 // chat and comments. Each sorted into a kind, with where it first came up. (What the session shares has its own panel.)
 const URL = /https?:\/\/[^\s<>"'`\\|]+/g;
-const CONTEXT = 90;
+const CONTEXT = 160;
 const MAX_LINKS = 1000;
 // Read but never mined: a file's contents, and the like
 const QUIET_TOOLS = new Set(['Read', 'Glob', 'Grep', 'NotebookRead', 'TodoWrite']);
@@ -70,18 +70,94 @@ export const kindOf = address => {
 	return 'reference';
 };
 
-// The URLs in a piece of text, each with a little of what surrounds it
-export const urlsIn = text =>
-	[...String(text).matchAll(URL)]
+// Whose words say best what a link is: a person's, then Claude's, then why Claude fetched it. What a command printed
+// is never quoted (a log line, a wrapped terminal row, a search tool's JSON), though it can still name the link.
+const SAYS_BEST = { Claude: 1, fetched: 2, output: 3 };
+
+export const saysBetter = (by, than) => (SAYS_BEST[by] ?? 0) < (SAYS_BEST[than] ?? 0);
+
+// A link as it reads best: its host and path, without the scheme or a trailing slash
+const shortened = url => url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+
+const hostOf = url => {
+	try {
+		return new globalThis.URL(url).hostname.replace(/^www\./, '');
+	} catch {
+		return '';
+	}
+};
+
+// Cut to about `length` characters at a word, marked where it was cut
+export const clip = (text, length = CONTEXT) => {
+	if (text.length <= length) return text;
+
+	const cut = text.slice(0, length);
+
+	return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), length / 2)).replace(/[\s,;:]+$/, '')}…`;
+};
+
+const MARKDOWN_LINK = /\[([^\]\n]*)\]\(([^)\s]*)\)/g;
+const HERE = '\u0000';
+
+// What the text calls the link: a markdown link's words, or a search result's title. Not just its host again.
+const titleBefore = (text, at, url) => {
+	const before = text.slice(Math.max(0, at - 300), at);
+	const title = (/\[([^\]\n]{2,200})\]\($/.exec(before) ?? /"title":"((?:[^"\\]|\\.){2,200})","url":"$/.exec(before))?.[1]
+		?.replace(/\\(.)/g, '$1')
+		.trim();
+	const host = hostOf(url);
+
+	return title && title.replace(/^www\./, '') !== host && !/^https?:\/\//.test(title) ? title : '';
+};
+
+const squashed = text => text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+
+// The sentence the link is in, as read: no markdown, the link as its words or shortened. Nothing when the link stands
+// alone or sits in a code block (a command, a config: what Claude wrote out, not what it said).
+const sentenceAround = (text, at, url, title) => {
+	const lineStart = text.lastIndexOf('\n', at) + 1;
+	const lineEnd = text.indexOf('\n', at + url.length);
+
+	if ((text.slice(0, lineStart).match(/^\s*```/gm)?.length ?? 0) % 2) return '';
+
+	const markdown = new RegExp(`\\[[^\\]\\n]*\\]\\(${RegExp.escape(url)}\\)`).exec(text.slice(lineStart, at + url.length + 1));
+	const from = markdown ? lineStart + markdown.index : at;
+	const to = markdown ? from + markdown[0].length : at + url.length;
+	// The link marked, the rest of the line's links as their words, so neither is split as a sentence
+	const line = `${text.slice(lineStart, from)}${HERE}${text.slice(to, lineEnd < 0 ? text.length : lineEnd)}`.replace(
+		MARKDOWN_LINK,
+		'$1',
+	);
+	const where = line.indexOf(HERE);
+	const starts = [...line.slice(0, where).matchAll(/[.!?]\s+(?=\S)/g)].map(found => found.index + found[0].length);
+	const ends = /[.!?](\s|$)/.exec(line.slice(where));
+	const sentence = line
+		.slice(starts.at(-1) ?? 0, ends ? where + ends.index + 1 : line.length)
+		.replace(URL, other => shortened(other))
+		.replace(HERE, title || shortened(url))
+		.replace(/^\s*(#+|[-*>]|\d+\.)\s+/, '')
+		.replace(/\*\*|__|`/g, '')
+		.replace(/\s+/g, ' ')
+		.trim();
+	// Words besides the link's own name: "Cursor guide (DeployHQ)" says nothing its title doesn't
+	const besides = squashed(sentence).replace(squashed(title || shortened(url)), '');
+
+	return besides.length < 12 ? '' : clip(sentence);
+};
+
+// The URLs in a piece of text, each with the sentence it's in and what the text calls it
+export const urlsIn = text => {
+	const source = String(text);
+
+	return [...source.matchAll(URL)]
 		.map(found => ({ url: trimUrl(found[0]), at: found.index }))
 		.filter(({ url }) => url.length > 'https://x.y'.length && !NOT_LINKS.some(pattern => pattern.test(url)))
-		.map(({ url, at }) => ({
-			url,
-			context: String(text)
-				.slice(Math.max(0, at - CONTEXT), at + url.length + CONTEXT)
-				.replace(/\s+/g, ' ')
-				.trim(),
-		}));
+		.map(({ url, at }) => {
+			const title = titleBefore(source, at, url);
+
+			return { url, title, context: sentenceAround(source, at, url, title) };
+		});
+};
 
 const blockText = block => {
 	if (typeof block === 'string') return block;
@@ -94,9 +170,13 @@ const blockText = block => {
 
 // Every link a transcript line brings up, with who brought it up: [{ url, context, by }]
 export const linksOfLine = (line, quietToolIds) => {
+	// Skill text Claude Code puts in: nobody's words
+	if (line.isMeta) return [];
+
 	const prompt = promptText(line);
 
-	if (prompt !== null) return urlsIn(prompt).map(found => ({ ...found, by: 'you' }));
+	// A compacted conversation's summary arrives as a prompt, though Claude wrote it
+	if (prompt !== null) return urlsIn(prompt).map(found => ({ ...found, by: line.isCompactSummary ? 'Claude' : 'you' }));
 
 	const content = line.message?.content;
 
@@ -108,12 +188,19 @@ export const linksOfLine = (line, quietToolIds) => {
 		if (line.type === 'assistant' && block.type === 'tool_use') {
 			if (QUIET_TOOLS.has(block.name)) quietToolIds.add(block.id);
 			if (block.name === 'WebFetch' && block.input?.url && !NOT_LINKS.some(pattern => pattern.test(block.input.url)))
-				return [{ url: block.input.url, context: block.input.prompt?.slice(0, CONTEXT * 2) ?? '', by: 'fetched' }];
+				return [
+					{
+						url: block.input.url,
+						title: '',
+						context: clip((block.input.prompt ?? '').replace(/\s+/g, ' ').trim()),
+						by: 'fetched',
+					},
+				];
 
 			return [];
 		}
 		if (block.type === 'tool_result' && !quietToolIds.has(block.tool_use_id))
-			return urlsIn(blockText(block)).map(found => ({ ...found, by: 'output' }));
+			return urlsIn(blockText(block)).map(found => ({ ...found, context: '', by: 'output' }));
 
 		return [];
 	});
@@ -122,19 +209,34 @@ export const linksOfLine = (line, quietToolIds) => {
 // Per session: how far its transcript has been read, and what came up in it
 const read = new Map();
 
-const add = (links, { url, context, by }, at, turn) => {
+// The first mention dates it; the clearest one says what it is
+const add = (links, { url, title, context, by }, at, turn) => {
 	const known = links.get(url);
 
 	if (known) {
 		known.count += 1;
 		known.lastAt = at ?? known.lastAt;
 		if (!known.by.includes(by)) known.by.push(by);
+		if (title && (!known.title || saysBetter(by, known.titleBy))) Object.assign(known, { title, titleBy: by });
+		if (context && (!known.context || saysBetter(by, known.contextBy))) Object.assign(known, { context, contextBy: by });
 
 		return;
 	}
 
 	if (links.size >= MAX_LINKS) return;
-	links.set(url, { url, kind: kindOf(url), context, by: [by], count: 1, firstAt: at, lastAt: at, turn });
+	links.set(url, {
+		url,
+		kind: kindOf(url),
+		title,
+		titleBy: title ? by : null,
+		context,
+		contextBy: context ? by : null,
+		by: [by],
+		count: 1,
+		firstAt: at,
+		lastAt: at,
+		turn,
+	});
 };
 
 // New lines since the last look: a transcript only grows, so only its end is read each time
@@ -264,10 +366,11 @@ export const projectLinks = async (project, cwd, { withHidden = false } = {}) =>
 
 			known.count += link.count;
 			known.by = [...new Set([...known.by, ...link.by])];
-			if (link.firstAt && (!known.firstAt || link.firstAt < known.firstAt)) {
-				known.firstAt = link.firstAt;
-				known.context = link.context;
-			}
+			if (link.firstAt && (!known.firstAt || link.firstAt < known.firstAt)) known.firstAt = link.firstAt;
+			if (link.title && (!known.title || saysBetter(link.titleBy, known.titleBy)))
+				Object.assign(known, { title: link.title, titleBy: link.titleBy });
+			if (link.context && (!known.context || saysBetter(link.contextBy, known.contextBy)))
+				Object.assign(known, { context: link.context, contextBy: link.contextBy });
 			if (link.lastAt && (!known.lastAt || link.lastAt > known.lastAt)) known.lastAt = link.lastAt;
 			known.sessions.push(from);
 		}
