@@ -44,6 +44,12 @@ const router = async (request, server) => {
 				headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' },
 			});
 
+		// The bundler copies the manifest but not the icons it names, so they're served from where they sit
+		const icon =
+			request.method === 'GET' && new URL(request.url).pathname.match(/^\/(icon-(?:192|512|maskable-512)\.png)$/);
+
+		if (icon) return new Response(Bun.file(`client/${icon[1]}`), { headers: { 'cache-control': 'no-cache' } });
+
 		if (hotReload.upgrade(request, server)) return;
 
 		response = await hooksRoutes(request);

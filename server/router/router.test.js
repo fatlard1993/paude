@@ -145,6 +145,14 @@ test("a session that won't start says why, rather than leaving its client to ret
 	}
 });
 
+test("the manifest's icons are served without a login, and nothing else beside them is", async () => {
+	const icon = await call('/icon-192.png');
+
+	expect(icon.status).toBe(200);
+	expect(icon.headers.get('content-type')).toBe('image/png');
+	expect((await call('/build.js')).headers.get('content-type')).not.toContain('javascript');
+});
+
 test('a write from another site is refused', async () => {
 	const response = await call('/api/projects', {
 		token: tokens.owner,
