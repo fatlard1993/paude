@@ -36,7 +36,7 @@ const end = socket => {
 };
 
 const spawn = (socket, { cols, rows, command }) => {
-	if (shells.size >= MAX_SHELLS) return socket.close(CLOSED.ended, 'Too many side terminals are open');
+	if (shells.size >= MAX_SHELLS) return socket.close(CLOSED.ended, 'Too many terminals are open');
 
 	try {
 		socket.data.shell = Bun.spawn(loginShell(command), {

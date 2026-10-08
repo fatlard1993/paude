@@ -165,7 +165,7 @@ const keysFor = (state, canNote) => {
 		canTypeIn(state) && `${keyCap('C')} ask Claude`,
 		canNote && `${keyCap('m')} comment on selection`,
 		canNote && `${keyCap('f')} files`,
-		canTypeIn(state) && `${keyCap('t')} side terminal`,
+		canTypeIn(state) && `${keyCap('t')} terminal`,
 		`${keyCap('d')} detach`,
 		state.canSwitch !== false && `${keyCap('s')} switch`,
 		`${keyCap('esc')} back to Claude`,

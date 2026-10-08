@@ -196,7 +196,7 @@ export default class TerminalView extends View {
 		if (canType()) {
 			this.shellButton = ghostButton(header, {
 				icon: 'terminal',
-				title: 'Side terminal: a shell in this folder that ends when you close it',
+				title: 'Terminal: a shell in this folder that ends when you close it',
 				className: 'tool',
 				onPress: () => this.toggleShell(),
 			});
@@ -264,7 +264,7 @@ export default class TerminalView extends View {
 				{
 					icon: 'terminal',
 					textContent: 'Terminal',
-					attributes: { title: "Put it on the side terminal's command line" },
+					attributes: { title: "Put it on the terminal's command line" },
 				},
 				() => this.sendSelectionToShell(),
 			);

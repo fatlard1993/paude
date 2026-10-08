@@ -100,7 +100,7 @@ A paude on your own network behind Caddy's `tls internal` has a certificate from
 
 What a session runs and makes can be opened from any device logged in to paude, at its own address on the preview port (8444 behind Caddy): `https://<host>:8444/s/<name>/`. The share button in a session's bar lists them, with links to open or copy, and buttons to rename (its address) or stop each. A service is named for its project and port (`shop-5173`) until it's renamed.
 
-- **Services.** A server the session starts (a dev server Claude runs, or one from the side terminal) is found once it listens and shared while it does. Any other port on the machine can be forwarded by hand. An app's own absolute paths (`/assets/app.js`) and WebSockets (a dev server's live reload) work without telling it about the `/s/<name>/` prefix.
+- **Services.** A server the session starts (a dev server Claude runs, or one from its terminal) is found once it listens and shared while it does. Any other port on the machine can be forwarded by hand. An app's own absolute paths (`/assets/app.js`) and WebSockets (a dev server's live reload) work without telling it about the `/s/<name>/` prefix.
 - **Files.** A file in the project to download, or a folder as a zip.
 - **Sites.** A folder served as a website, a built `dist/` say, with no server running.
 
@@ -137,7 +137,7 @@ A Drive invite can type into Claude, which runs commands as the server's user: g
 
 | Role    | Can                                                                      |
 | ------- | ------------------------------------------------------------------------ |
-| Drive   | type into Claude, open a side terminal, edit files, and everything below |
+| Drive   | type into Claude, open a terminal, edit files, and everything below |
 | Comment | chat, comment, read the project's files                                  |
 | View    | see the terminal                                                         |
 
@@ -160,7 +160,7 @@ Inside a session everything goes to Claude except **Ctrl+]** (**Cmd+]** on a Mac
 | **C** | ask Claude: typed into Claude as a prompt, its answer posted back in the chat |
 | **1**-**9** | open a comment's thread; there, **r** replies, **A** asks Claude (its answer lands in the thread), **x** resolves (or reopens), **+** then a number reacts, **D** twice deletes it |
 | **f** | the project's files |
-| **t** | a side terminal: a shell in the session's folder, for a few quick commands. Ctrl+] brings the box back over it: **a** quotes your selection in Claude's prompt, **k** ends it, **Esc** returns to it. It ends when you go back to Claude |
+| **t** | a terminal: a shell in the session's folder, for a few quick commands. Ctrl+] brings the box back over it: **a** quotes your selection in Claude's prompt, **k** ends it, **Esc** returns to it. It ends when you go back to Claude |
 | **s**, **d** | switch session, detach |
 | **Esc** | back to Claude |
 
@@ -174,7 +174,7 @@ In **f**, the reader: arrows (or j/k) move and Enter opens; **/** finds a file b
 | **a** | attach the marked lines, or the whole file, to Claude's prompt (nothing is sent until you press Enter)   |
 | **y** | copy them to your clipboard                                                                              |
 | **z** | full screen                                                                                              |
-| **e** | edit it in your editor, in the side terminal; quitting the editor comes back here with the file reloaded |
+| **e** | edit it in your editor, in the terminal; quitting the editor comes back here with the file reloaded |
 | **c** | its changes, if it has any                                                                               |
 
 In a diff, **v** marks lines, **a** attaches the marked lines (or all of it) as a diff, **y** copies, **o** opens the file under the cursor and **s** switches between side by side (where the box is wide enough) and unified. **e** uses `$PAUDE_EDITOR`, `$VISUAL` or `$EDITOR` when it names an editor that runs in a terminal, and otherwise the first of nvim, vim, nano and vi that's installed.
@@ -202,7 +202,7 @@ Open the server's address and log in, or follow an invite link.
 - **Files.** The reader, from the folder button in the bar: search by name or contents with the same options as the terminal, and read highlighted code, rendered markdown, images, audio, video and PDFs. Click a line number and Shift+click another (on a phone, tap another) to attach those lines.
 - **Changes.** The reader's **Changes** lists what Claude proposes while it waits on a permission prompt, what changed since the last commit (staged or not, and marked in the tree), and what each of Claude's turns changed. **Compare...** on a file you're reading diffs it against another. Every diff reads the same way, side by side where there's room (**Unified** switches, and the choice is remembered): attach a hunk, the lines you pick, or all of it. A turn shows what Claude's own edit tools changed; changes made by commands it ran (`sed`, `rm`) aren't recorded by Claude Code, so they show only against the last commit.
 - **Editing.** **Edit** on a file you're reading; Ctrl+S saves. If the file changed since you opened it (Claude saved it, most likely), saving stops and asks whether to save yours anyway or load theirs.
-- **Side terminal.** The terminal button in the bar opens a shell in the session's folder, yours alone, which ends when you close it. Select some output (on a phone, **Select**, then the first and last line) and **Attach selection** quotes it in Claude's prompt.
+- **Terminal.** The terminal button in the bar opens a shell in the session's folder, yours alone, which ends when you close it. Select some output (on a phone, **Select**, then the first and last line) and **Attach selection** quotes it in Claude's prompt.
 - **Start over from a point.** Each `done` line Claude prints after a turn is a link that starts a new session holding the conversation up to there.
 - **Finding a session.** Home's search box looks through every session, and a project's through its own: each word you type has to appear in the title, the prompt it began with, the project, branch or worktree. **Show more** pages on. In the terminal, **▸ All sessions** in the picker does the same as you type.
 - **Names.** Click a session's title to pin a name (📌); **Use automatic name** goes back to Claude's.

@@ -16,7 +16,7 @@ const endedBecause = ({ code, reason }, opened) => {
 	if (code === CLOSED.unauthorized) return 'Your login no longer allows a terminal here.';
 	if (code === CLOSED.ended) return reason === 'Shell exited' ? null : reason;
 
-	return opened ? 'The connection dropped, so the side terminal ended.' : 'Could not open a side terminal.';
+	return opened ? 'The connection dropped, so the terminal ended.' : 'Could not open a terminal.';
 };
 
 // A shell in the session's folder for this terminal alone, living as long as its socket, or one command run by it. The mirror keeps its

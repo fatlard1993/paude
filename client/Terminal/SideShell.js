@@ -16,7 +16,7 @@ const endedBecause = ({ code, reason }, opened) => {
 	if (code === CLOSED.unauthorized) return 'Your login no longer allows a terminal here.';
 	if (code === CLOSED.ended) return reason === 'Shell exited' ? null : reason;
 
-	return opened ? 'The connection dropped, so the side terminal ended.' : 'Could not open a side terminal.';
+	return opened ? 'The connection dropped, so the terminal ended.' : 'Could not open a terminal.';
 };
 
 // A shell in the session's folder for whoever opened it, for a few quick commands beside Claude. It lives exactly
@@ -24,7 +24,7 @@ const endedBecause = ({ code, reason }, opened) => {
 export default class SideShell extends Panel {
 	build() {
 		const bar = element('div', 'bar');
-		const label = element('span', 'label', 'Side terminal: ends when you close it');
+		const label = element('span', 'label', 'Terminal: ends when you close it');
 
 		label.prepend(icon('terminal'));
 		this.attachButton = button('Attach selection', () => this.attachSelection(), {

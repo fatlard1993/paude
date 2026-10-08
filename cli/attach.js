@@ -232,7 +232,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 					write(LEAVE_SHELL);
 					if (overlay) {
 						write(RESTORE_KEYS);
-						state.hint = why ?? 'The side terminal ended.';
+						state.hint = why ?? 'The terminal ended.';
 						redraw();
 					} else if (why) {
 						overlay = true;
