@@ -22,7 +22,7 @@ import { Empty, Header, LinkCard, Scroll, SectionTitle, sessionCard } from './La
 
 const Grid = styled.Component`
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+	grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
 	gap: 8px;
 `;
 
