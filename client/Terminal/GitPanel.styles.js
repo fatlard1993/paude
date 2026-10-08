@@ -242,7 +242,7 @@ const Panel = styled(
 			cursor: pointer;
 		}
 
-		.commit-box input, .commit-box textarea, .new-branch input {
+		.commit-box input:not([type='checkbox']), .commit-box textarea, .new-branch input {
 			box-sizing: border-box;
 			width: 100%;
 			font: inherit;
@@ -250,14 +250,24 @@ const Panel = styled(
 
 		.commit-options {
 			display: flex;
+			flex-wrap: wrap;
 			align-items: center;
-			justify-content: space-between;
+			justify-content: flex-end;
 			gap: 6px;
 		}
 
 		.amend {
 			flex: 1;
+			display: flex;
+			align-items: center;
+			gap: 6px;
 			font-size: 0.85em;
+			white-space: nowrap;
+			cursor: pointer;
+		}
+
+		.amend input {
+			margin: 0;
 		}
 
 		.new-branch {
