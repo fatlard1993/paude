@@ -834,16 +834,18 @@ export default class TerminalView extends View {
 		);
 	}
 
-	// The bar's buttons, as a menu: each item presses its button, and says what its badge says and whether it's open
+	// The bar's buttons, as a menu: each item presses its button, and says what its badge says and whether its panel is
+	// open. A button with a menu label of its own (Watch, Stop watching) already says its state, and opens no panel.
 	toggleToolsMenu(anchor, header) {
 		this.openMenu(
 			anchor,
 			[...header.elem.querySelectorAll('.ghost.tool')].map(tool => {
 				const count = tool.querySelector('.count');
+				const open = !tool.dataset.menuLabel && tool.classList.contains('active');
 
 				return {
 					label: tool.dataset.menuLabel ?? tool.title.split(':')[0],
-					detail: [count?.style.display !== 'none' && count?.textContent, tool.classList.contains('active') && 'open']
+					detail: [count?.style.display !== 'none' && count?.textContent, open && 'open']
 						.filter(Boolean)
 						.join(' · '),
 					onPress: () => tool.click(),
