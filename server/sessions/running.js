@@ -74,6 +74,18 @@ export const resumeFolder = async (id, reported) => {
 	return null;
 };
 
+// Why each session that wouldn't start didn't, for whoever tried to open it; cleared once one does
+const startFailures = new Map();
+
+export const startFailureOf = id => startFailures.get(id);
+
+const failedToStart = (id, why) => {
+	startFailures.set(id, why);
+	console.error(`Session ${id} would not start: ${why}`);
+
+	return null;
+};
+
 export const openSession = async id => {
 	if (running.has(id)) return running.get(id);
 
@@ -83,8 +95,16 @@ export const openSession = async id => {
 
 	const cwd = await resumeFolder(id, info.cwd);
 
-	if (!cwd) return null;
+	if (!cwd) return failedToStart(id, `its folder is gone (${info.cwd})`);
 
-	// A concurrent attach may have started it while this one awaited
-	return running.get(id) ?? launch({ id, cwd, resume: !isHeld(id), adopt: isHeld(id) });
+	try {
+		// A concurrent attach may have started it while this one awaited
+		const session = running.get(id) ?? launch({ id, cwd, resume: !isHeld(id), adopt: isHeld(id) });
+
+		startFailures.delete(id);
+
+		return session;
+	} catch (error) {
+		return failedToStart(id, `Claude Code couldn't be started in ${cwd}: ${error.message}`);
+	}
 };

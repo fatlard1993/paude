@@ -50,7 +50,7 @@ const FRAME_MS = 33;
 
 const displayName = () => process.env.PAUDE_NAME || os.userInfo().username;
 
-// Resolves to 'detach' | 'switch' | 'ended' | 'unauthorized'
+// Resolves to 'detach' | 'switch' | 'ended' | 'unauthorized', or { failed: why it wouldn't start }
 const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHint = false } = {}) =>
 	new Promise(resolve => {
 		const state = {
@@ -417,11 +417,12 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 				if (!overlay && !state.shell) write(filter(bytes));
 			},
 			onMessage: handleMessage,
-			onState: connectionState => {
+			onState: (connectionState, reason) => {
 				if (connectionState === 'connected') {
 					filter = outputFilter();
 					warnedOffline = false;
-				} else if (connectionState !== 'reconnecting') finish(connectionState);
+				} else if (connectionState === 'failed') finish({ failed: reason });
+				else if (connectionState !== 'reconnecting') finish(connectionState);
 			},
 		});
 	});

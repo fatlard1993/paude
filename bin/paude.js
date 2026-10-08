@@ -145,6 +145,7 @@ const attachLoop = async (pick, first) => {
 			showKeyHint,
 		});
 
+		if (outcome.failed) return console.log(`The session wouldn't start: ${outcome.failed}`);
 		if (outcome !== 'switch') return console.log(OUTCOMES[outcome]);
 
 		chosen = null;

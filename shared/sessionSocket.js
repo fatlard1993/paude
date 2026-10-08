@@ -1,12 +1,17 @@
 import { CLOSED } from './protocol';
 
-// Why the server closed or refused the socket, when it's for good: the login ended, or the session did
+// Why the server closed or refused the socket, when it's for good: the login ended, the session did, or it won't
+// start (and why not): { state, reason }
 const whyRefused = async (url, sessionId, headers) => {
 	try {
-		const { status } = await fetch(`${url}/api/sessions/${sessionId}`, { headers });
+		const response = await fetch(`${url}/api/sessions/${sessionId}`, { headers });
 
-		if (status === 401) return 'unauthorized';
-		if (status === 404) return 'ended';
+		if (response.status === 401) return { state: 'unauthorized' };
+		if (response.status === 404) return { state: 'ended' };
+
+		const { startFailure } = response.ok ? await response.json() : {};
+
+		if (startFailure) return { state: 'failed', reason: startFailure };
 	} catch {
 		// Unreachable: keep retrying
 	}
@@ -15,19 +20,19 @@ const whyRefused = async (url, sessionId, headers) => {
 };
 
 // Keeps one session attached across drops, from a browser (its cookie) or the terminal (a bearer token in
-// `headers`); each reconnect starts from a fresh snapshot. `onState` hears 'connected', 'reconnecting', 'ended' or
-// 'unauthorized'; the last two are final.
+// `headers`); each reconnect starts from a fresh snapshot. `onState` hears 'connected', 'reconnecting', 'ended',
+// 'unauthorized' or 'failed' (to start, with the reason); the last three are final.
 const sessionSocket = ({ url, sessionId, headers, hello, onOutput, onMessage, onState, startAfter = 0 }) => {
 	let socket;
 	let retry;
 	let delay = 1000;
 	let finished = false;
 
-	const finish = state => {
+	const finish = (state, reason) => {
 		if (finished) return;
 		finished = true;
 		clearTimeout(retry);
-		onState(state);
+		onState(state, reason);
 	};
 
 	const send = message => {
@@ -67,7 +72,7 @@ const sessionSocket = ({ url, sessionId, headers, hello, onOutput, onMessage, on
 
 			const refused = await whyRefused(url, sessionId, headers);
 
-			if (refused) return finish(refused);
+			if (refused) return finish(refused.state, refused.reason);
 
 			onState('reconnecting');
 			retry = setTimeout(connect, delay);

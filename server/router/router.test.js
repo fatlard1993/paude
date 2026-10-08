@@ -41,6 +41,7 @@ beforeAll(async () => {
 
 	await mkdir(path.join(base, 'projects', 'app'), { recursive: true });
 	process.env.XDG_CONFIG_HOME = path.join(base, 'config');
+	process.env.CLAUDE_CONFIG_DIR = path.join(base, 'claude');
 	setProjectsRoot(path.join(base, 'projects'));
 	await Promise.all([initAuth(data), initNotes(data), initNames(data), initActivity(data), initProjects(data)]);
 	initAttachments(data);
@@ -102,6 +103,26 @@ test('a dropped file is saved outside the project for Claude to read, by whoever
 	expect(path.basename(saved)).toMatch(/^\w+-Screen-Shot\.png$/);
 	expect(saved).not.toContain(path.join('projects', 'app'));
 	expect(await Bun.file(saved).text()).toBe('png bytes');
+});
+
+test("a session that won't start says why, rather than leaving its client to retry", async () => {
+	const id = '58a732eb-0000-4000-8000-00000000c1a0';
+	const app = path.join(process.env.CLAUDE_CONFIG_DIR, '..', 'projects', 'app');
+
+	await Bun.write(
+		path.join(process.env.CLAUDE_CONFIG_DIR, 'projects', app.replace(/[^a-zA-Z0-9]/g, '-'), `${id}.jsonl`),
+		`${JSON.stringify({ type: 'user', cwd: app, sessionId: id, message: { content: 'hi' } })}\n`,
+	);
+	setClaudePath('/nowhere/claude');
+	try {
+		expect((await call(`/api/sessions/${id}/attach`, { token: tokens.owner })).status).toBe(404);
+
+		const { startFailure } = await (await call(`/api/sessions/${id}`, { token: tokens.owner })).json();
+
+		expect(startFailure).toStartWith(`Claude Code couldn't be started in ${app}`);
+	} finally {
+		setClaudePath(FAKE_CLAUDE);
+	}
 });
 
 test('a write from another site is refused', async () => {

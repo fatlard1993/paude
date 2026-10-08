@@ -22,7 +22,14 @@ import {
 } from '../projects';
 import { sessionRecord } from '../sessions/record';
 import { listAllSessions, listProjectSessions, toSummary } from '../sessions/stored';
-import { allRunning, openSession, runningSession, startSession, stopSession } from '../sessions/running';
+import {
+	allRunning,
+	openSession,
+	runningSession,
+	startFailureOf,
+	startSession,
+	stopSession,
+} from '../sessions/running';
 import {
 	WorktreeError,
 	checkoutsOf,
@@ -392,6 +399,7 @@ const sessionsRoutes = async (request, server) => {
 			title,
 			hue: sessionHue(match.id),
 			pinned: Boolean(pinnedName(match.id)),
+			startFailure: running ? undefined : startFailureOf(match.id),
 			...activitySummary(identity, match.id, { running: Boolean(running), busy: running?.busy }),
 		});
 	}

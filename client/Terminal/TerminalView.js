@@ -505,7 +505,7 @@ export default class TerminalView extends View {
 				this.terminal.write(withoutPointerReporting(text, this.trackPointerMode));
 			},
 			onMessage: message => this.handleMessage(message),
-			onState: state => this.showConnection(state),
+			onState: (state, reason) => this.showConnection(state, reason),
 		});
 
 		// Our own size only matters to the session while we drive, but the server keeps it so typing can claim it
@@ -552,12 +552,17 @@ export default class TerminalView extends View {
 		this.terminal.element.style.transform = scale < 1 ? `scale(${scale})` : '';
 	}
 
-	showConnection(state) {
+	showConnection(state, reason) {
 		if (state === 'unauthorized') return window.location.reload();
 
-		this.connectionState = state;
+		// Final either way; a session that won't start says why, where the title was
+		this.connectionState = state === 'failed' ? 'ended' : state;
 
 		if (state === 'ended') this.titleLabel.elem.textContent = 'Session ended. Open it again to resume.';
+		if (state === 'failed') {
+			this.titleLabel.elem.textContent = `Won't start: ${reason}`;
+			new Notify({ type: 'error', content: `This session won't start: ${reason}`, timeout: 0 });
+		}
 
 		this.renderPresence(this.lastPresence ?? { clients: [] });
 	}
