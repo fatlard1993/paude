@@ -3,7 +3,7 @@ import { deleteSession, forkSession, listSessions } from '@anthropic-ai/claude-a
 
 import { activitySummary, forgetActivity, setWatching, watchedBy } from '../activity';
 import { credentialOf, identityOf, revokeInvitesFor } from '../auth';
-import { folderHue } from '../../shared/folderColor';
+import { folderHue, sessionHue } from '../../shared/hues';
 import { matchesQuery } from '../../shared/sessionSearch';
 import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
@@ -390,7 +390,7 @@ const sessionsRoutes = async (request, server) => {
 			project: projectOf(cwd),
 			live: Boolean(running),
 			title,
-			hue: folderHue(cwd, os.homedir()),
+			hue: sessionHue(match.id),
 			pinned: Boolean(pinnedName(match.id)),
 			...activitySummary(identity, match.id, { running: Boolean(running), busy: running?.busy }),
 		});

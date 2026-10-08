@@ -20,7 +20,7 @@ import confirmDialog, { confirmDeleteSession, nameDialog } from '../confirmDialo
 import { canBrowse, canNote, canType, identity, serverName } from '../identity';
 import DONE_MARKER from '../../shared/doneMarker';
 import findFilePaths, { pathResolver } from '../../shared/filePaths';
-import { folderTints } from '../../shared/folderColor';
+import { tintsOf } from '../../shared/hues';
 import findUrls from '../../shared/terminalLinks';
 import withoutPointerReporting from '../../shared/pointerReporting';
 import { NOTE_TYPES } from '../../shared/protocol';
@@ -404,10 +404,9 @@ export default class TerminalView extends View {
 		if (!this.titleLabel.elem.textContent) this.titleLabel.elem.textContent = body.title || body.project;
 	}
 
-	// The session's folder color, as kitty-bg would tint a terminal started there: the screen, its text and cursor, and
-	// the bar's edge. The home folder has none.
+	// The session's own color, in kitty-bg's tints: the screen, its text and cursor, and the bar's edge
 	paint(hue) {
-		const tints = folderTints(hue);
+		const tints = tintsOf(hue);
 
 		this.tints = tints;
 		this.elem.classList.toggle('tinted', Boolean(tints));
@@ -858,7 +857,7 @@ export default class TerminalView extends View {
 			...this.waitingOthers.map(session => ({
 				label: session.title || session.project,
 				detail: [session.project, session.remote?.name ?? serverName()].filter(Boolean).join(' · '),
-				accent: folderTints(session.hue)?.accent,
+				accent: tintsOf(session.hue)?.accent,
 				onPress: () => this.openWaiting(session),
 			})),
 		]);

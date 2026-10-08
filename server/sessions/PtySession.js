@@ -1,8 +1,7 @@
-import os from 'os';
 import xtermHeadless from '@xterm/headless';
 import serializeAddon from '@xterm/addon-serialize';
 
-import { folderHue } from '../../shared/folderColor';
+import { sessionHue } from '../../shared/hues';
 import inputKind, { FOCUS_IN } from '../../shared/inputKind';
 import { setStatus, statusOf } from '../activity';
 import { hookSettings } from '../hookSettings';
@@ -281,7 +280,7 @@ export default class PtySession {
 				busy: this.busy,
 				waiting: statusOf(this.id) === 'waiting',
 				title: pinnedName(this.id) || this.title,
-				hue: folderHue(this.cwd, os.homedir()),
+				hue: sessionHue(this.id),
 				clients,
 				you: index,
 			});

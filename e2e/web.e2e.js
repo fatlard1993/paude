@@ -2,7 +2,7 @@
 // browser variant: these bugs showed only on a GPU renderer, a Mac, or a session that's printing.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
-import { folderHue, folderTints } from '../shared/folderColor';
+import { sessionHue, tintsOf } from '../shared/hues';
 import { VARIANTS, cellCenter, centerOf, openBrowser, startServer } from './harness';
 
 const TIMEOUT_MS = 60_000;
@@ -105,12 +105,13 @@ describe.each(VARIANTS)('%s', variant => {
 	);
 });
 
-// The session wears its folder's color, as kitty-bg would tint a terminal started there: the screen and the bar's edge
+// Each session wears its own color, with kitty-bg's tints: the screen and the bar's edge
 test(
-	"a session is tinted with its folder's color",
+	'a session is tinted with its own color',
 	async () => {
 		const { browser, page } = await openSession('dom', servers.turns);
-		const { background, accent } = folderTints(folderHue(servers.turns.project));
+		const id = page.url().split('/sessions/')[1];
+		const { background, accent } = tintsOf(sessionHue(id));
 
 		try {
 			const painted = await page.$eval('.tinted', view => ({

@@ -1,5 +1,6 @@
-// A folder's color, as the dotfiles' kitty-bg tints a terminal started in it (and claude-statusline its accent): one of
-// 24 hues, 15° apart, chosen by the path's POSIX cksum. The same session reads the same in paude as in that terminal.
+// Colors told apart at a glance, as the dotfiles' kitty-bg tints a terminal (and claude-statusline its accent): one of
+// 24 hues, 15° apart, chosen by a name's POSIX cksum. A session's comes from its id, so each has its own; a project's
+// from its folder, matching kitty-bg's tint for a terminal opened there.
 const HUES = 24;
 
 const TABLE = Array.from({ length: 256 }, (_, index) => {
@@ -24,8 +25,12 @@ export const cksum = text => {
 	return ~crc >>> 0;
 };
 
-// The hue in degrees, or null for the home folder, which kitty-bg leaves untinted
-export const folderHue = (folder, home) => (folder && folder !== home ? (cksum(folder) % HUES) * (360 / HUES) : null);
+const hueOf = name => (cksum(name) % HUES) * (360 / HUES);
+
+// A folder's hue in degrees, or null for the home folder, which kitty-bg leaves untinted
+export const folderHue = (folder, home) => (folder && folder !== home ? hueOf(folder) : null);
+
+export const sessionHue = id => (id ? hueOf(id) : null);
 
 const hex = (hue, saturation, lightness) => {
 	const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
@@ -45,7 +50,7 @@ const hex = (hue, saturation, lightness) => {
 
 // kitty-bg's three: a dark tinted background, a faintly tinted foreground, and a bright accent (its cursor); none for
 // a folder without a hue
-export const folderTints = hue =>
+export const tintsOf = hue =>
 	hue === null || hue === undefined
 		? null
 		: { background: hex(hue, 0.12, 0.07), foreground: hex(hue, 0.08, 0.88), accent: hex(hue, 0.8, 0.6) };

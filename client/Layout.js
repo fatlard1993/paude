@@ -1,6 +1,6 @@
 import { Component, Elem, styled } from '@vanilla-bean/components';
 
-import { folderTints } from '../shared/folderColor';
+import { tintsOf } from '../shared/hues';
 import relativeTime from '../shared/relativeTime';
 
 const column = `
@@ -73,7 +73,7 @@ const Card = styled(
 			background: ${colors.alpha(colors.white, 0.1)};
 		}
 
-		/* A session's folder color, as kitty-bg tints its terminal */
+		/* A session's own color, or a project's folder color, in kitty-bg's tints */
 		&.tinted {
 			box-shadow: inset 3px 0 var(--card-accent);
 		}
@@ -288,7 +288,7 @@ export const sessionCard = (session, { showProject = true, appendTo, remove, ser
 		waiting: session.status === 'waiting',
 		unseen: session.unseen,
 		watching: session.watching,
-		accent: folderTints(session.hue)?.accent,
+		accent: tintsOf(session.hue)?.accent,
 		remove,
 		onOpen,
 	});

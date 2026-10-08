@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { cksum, folderHue, folderTints } from './folderColor';
+import { cksum, folderHue, sessionHue, tintsOf } from './hues';
 
 test('checksums a path as cksum does', () => {
 	expect(cksum('/home/chase/Projects/paude')).toBe(4246214386);
@@ -18,9 +18,17 @@ test("picks kitty-bg's hue for a folder, and none for home", () => {
 	expect(folderHue(undefined, '/home/chase')).toBeNull();
 });
 
+test("gives each session its own hue, not its folder's", () => {
+	const [one, other] = ['2861c3a3-3552-4759-9c9a-28990d1fddfa', '79057fc1-aa66-4012-8a5e-7c2f1d3c9e01'];
+
+	expect(sessionHue(one)).toBe((cksum(one) % 24) * 15);
+	expect(sessionHue(one)).not.toBe(sessionHue(other));
+	expect(sessionHue(undefined)).toBeNull();
+});
+
 test("tints as kitty-bg's awk does", () => {
 	// What kitty-bg's _hsl prints for index 0's cursor and index 8's three
-	expect(folderTints(0).accent).toBe('#eb4747');
-	expect(folderTints(120)).toEqual({ background: '#101410', foreground: '#dee3de', accent: '#47eb47' });
-	expect(folderTints(null)).toBeNull();
+	expect(tintsOf(0).accent).toBe('#eb4747');
+	expect(tintsOf(120)).toEqual({ background: '#101410', foreground: '#dee3de', accent: '#47eb47' });
+	expect(tintsOf(null)).toBeNull();
 });

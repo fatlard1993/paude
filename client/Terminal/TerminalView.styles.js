@@ -214,7 +214,7 @@ export const TopBar = styled(
 		-webkit-backdrop-filter: blur(12px);
 		border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 
-		/* The session's folder color, as kitty-bg tints its terminal */
+		/* The session's own color, in kitty-bg's tints */
 		.tinted & {
 			border-bottom: 2px solid var(--session-accent);
 		}
