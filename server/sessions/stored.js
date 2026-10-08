@@ -6,7 +6,7 @@ import { projectOf, projectPath } from '../projects';
 import { worktreeName } from '../worktrees';
 import { titleOf } from './record';
 import { allRunning, runningSession } from './running';
-import { firstPromptOf } from './transcript';
+import { firstPromptOf, folderOf } from './transcript';
 
 const FIRST_PROMPT_PREVIEW = 200;
 
@@ -50,13 +50,24 @@ const withFirstPrompts = async sessions =>
 		),
 	);
 
-export const listProjectSessions = async (cwd, identity) =>
-	withUnsaved(
-		await withFirstPrompts(await listSessions({ dir: cwd })),
-		folder => projectOf(folder) === projectOf(cwd),
-	).map(toSummary(identity));
+// Every saved session, each with its folder: the SDK leaves out the folder of one whose transcript opens with a long
+// run of bookkeeping, and such a session would belong to no project (listed by none, opened and deleted by none)
+export const storedSessions = async () =>
+	Promise.all(
+		(await listSessions()).map(async session =>
+			session.cwd ? session : { ...session, cwd: await folderOf(session.sessionId) },
+		),
+	);
 
 export const listAllSessions = async identity =>
-	withUnsaved(await withFirstPrompts(await listSessions()), folder => Boolean(projectOf(folder)))
+	withUnsaved(await withFirstPrompts(await storedSessions()), folder => Boolean(projectOf(folder)))
 		.map(toSummary(identity))
 		.filter(session => session.project);
+
+// The project's sessions, as its count on the projects page has them: those in its folders below too, not only the
+// ones started at its top
+export const listProjectSessions = async (cwd, identity) => {
+	const project = projectOf(cwd);
+
+	return (await listAllSessions(identity)).filter(session => session.project === project);
+};

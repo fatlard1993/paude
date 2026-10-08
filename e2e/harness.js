@@ -96,10 +96,11 @@ export const startServer = async ({ claude = FAKE_CLAUDE, fake = 'turns' } = {})
 	};
 
 	// A transcript as Claude Code keeps one, for a session the fake runs
+	// Each line names its session and folder, as Claude Code writes them
 	const writeTranscript = (sessionId, lines) =>
 		Bun.write(
 			path.join(dir, 'claude', 'projects', project.replace(/[^a-zA-Z0-9]/g, '-'), `${sessionId}.jsonl`),
-			lines.map(line => JSON.stringify(line)).join('\n'),
+			lines.map(line => JSON.stringify({ sessionId, cwd: project, ...line })).join('\n'),
 		);
 
 	return {

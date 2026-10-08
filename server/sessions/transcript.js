@@ -5,6 +5,9 @@ import { join } from 'path';
 import { promptText } from './history';
 
 const PROMPT_SCAN_BYTES = 256 * 1024;
+const FOLDER_SCAN_BYTES = 1024 * 1024;
+const FOLDER_SCAN_LIMIT = 64 * 1024 * 1024;
+const FOLDER = /"cwd":"((?:[^"\\]|\\.)*)"/;
 
 export const claudeHome = () => process.env.CLAUDE_CONFIG_DIR ?? join(os.homedir(), '.claude');
 
@@ -38,6 +41,27 @@ export const transcriptLines = async (id, cwd) => {
 	const file = await transcriptFile(id, cwd);
 
 	return file ? parsed(await file.text()) : [];
+};
+
+const folders = new Map();
+
+// The folder a session ran in, from its transcript, for one the SDK can't place: its head can be all bookkeeping
+// (a title, the mode, a long run of file snapshots), megabytes before the first line that names it
+export const folderOf = async id => {
+	if (folders.has(id)) return folders.get(id);
+
+	const file = await transcriptFile(id);
+	let found = null;
+
+	// Each read overlaps the next a little, so a line cut at the boundary is still found whole in one of them
+	for (let at = 0; file && !found && at < Math.min(file.size, FOLDER_SCAN_LIMIT); at += FOLDER_SCAN_BYTES)
+		found = FOLDER.exec(await file.slice(at, at + FOLDER_SCAN_BYTES + 4096).text())?.[1];
+
+	const folder = found ? JSON.parse(`"${found}"`) : null;
+
+	if (folder) folders.set(id, folder);
+
+	return folder;
 };
 
 const firstPrompts = new Map();

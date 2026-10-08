@@ -212,11 +212,9 @@ const sessionsRoutes = async (request, server) => {
 	// Every link the project's sessions brought up, as one list; pinned and hidden for the project
 	match = requestMatch('GET', '/api/projects/:project/links', request);
 	if (match) {
-		const cwd = projectPath(match.project);
+		if (!projectPath(match.project)) return new Response('Unknown project', { status: 404 });
 
-		if (!cwd) return new Response('Unknown project', { status: 404 });
-
-		return Response.json(await projectLinks(match.project, cwd, { withHidden: match.all === '1' }));
+		return Response.json(await projectLinks(match.project, { withHidden: match.all === '1' }));
 	}
 
 	match = requestMatch('POST', '/api/projects/:project/links/mark', request);

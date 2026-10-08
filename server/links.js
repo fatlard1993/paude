@@ -1,5 +1,4 @@
 import path from 'path';
-import { listSessions } from '@anthropic-ai/claude-agent-sdk';
 
 import readJsonFile from '../shared/readJsonFile';
 import { trimUrl } from '../shared/terminalLinks';
@@ -9,6 +8,7 @@ import { projectOf } from './projects';
 import { promptText } from './sessions/history';
 import { titleOf } from './sessions/record';
 import { allRunning, runningSession } from './sessions/running';
+import { storedSessions } from './sessions/stored';
 import { transcriptFile } from './sessions/transcript';
 
 // The links that came up in a session, gathered for its Links panel: from the conversation (what you wrote, what
@@ -335,8 +335,8 @@ export const sessionLinks = async (id, cwd, { withHidden = false } = {}) => {
 const PROJECT_SESSIONS = 50;
 
 // The project's sessions to gather from, the latest first, the running ones whether saved yet or not
-const projectSessions = async (project, cwd) => {
-	const stored = (await listSessions({ dir: cwd })).filter(session => projectOf(session.cwd) === project);
+const projectSessions = async project => {
+	const stored = (await storedSessions()).filter(session => projectOf(session.cwd) === project);
 	const listed = new Set(stored.map(({ sessionId }) => sessionId));
 	const running = [...allRunning()]
 		.filter(session => projectOf(session.cwd) === project && !listed.has(session.id))
@@ -349,10 +349,10 @@ const projectSessions = async (project, cwd) => {
 
 // Every link the project's latest sessions brought up, as one list: counted across them, with the sessions each
 // came up in. What a session hid stays hidden; pinning and hiding here are the project's own.
-export const projectLinks = async (project, cwd, { withHidden = false } = {}) => {
+export const projectLinks = async (project, { withHidden = false } = {}) => {
 	const merged = new Map();
 
-	for (const session of await projectSessions(project, cwd)) {
+	for (const session of await projectSessions(project)) {
 		const title = titleOf(session.sessionId, runningSession(session.sessionId), session);
 
 		for (const link of await sessionLinks(session.sessionId, session.cwd)) {
