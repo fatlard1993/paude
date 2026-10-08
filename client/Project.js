@@ -165,11 +165,12 @@ export default class Project extends View {
 		this.links = new LinksPanel({
 			appendTo: scroll,
 			addClass: 'project-links',
-			style: { height: 'auto', padding: '0', marginTop: '16px' },
+			style: { height: 'auto', flexShrink: '0', padding: '0', marginTop: '16px' },
 			load: () => getProjectLinks(project),
 			mark: (url, change) => markProjectLink(project, url, change),
 		});
-		this.links.body.style.maxHeight = '70vh';
+		// Sized by its links here, not by the panel's height as at a session's side
+		Object.assign(this.links.body.style, { flex: '0 1 auto', maxHeight: '70vh' });
 		this.links.refresh();
 
 		this.load();

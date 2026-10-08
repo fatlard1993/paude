@@ -770,6 +770,10 @@ test(
 			// The ticket came up in both sessions, the docs in one; each session named by what began it
 			expect(links).toEqual({ 'github.com/acme/shop/issues/12': 2, 'docs.acme.dev/api': 1 });
 			expect(await page.$eval('.project-links .link-sessions', line => line.textContent)).toContain('see https://');
+			// Shown, not only there: the panel's body is sized for a session's side and could collapse to nothing here
+			expect(
+				await page.$eval('.project-links .body', body => body.clientHeight >= body.scrollHeight - 1),
+			).toBe(true);
 		} finally {
 			await browser.close();
 			await server.stop();
