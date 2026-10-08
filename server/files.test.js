@@ -4,6 +4,7 @@ import path from 'path';
 import { beforeAll, expect, test } from 'bun:test';
 
 import { SearchError, listFiles, readProjectFile, searchProject } from './files';
+import gitEnvironment from './utils/gitEnvironment';
 
 let project;
 let outside;
@@ -21,8 +22,8 @@ beforeAll(async () => {
 	await Bun.write(path.join(outside, 'private.txt'), 'outside the project\n');
 	await symlink(path.join(outside, 'private.txt'), path.join(project, 'escape.txt'));
 
-	Bun.spawnSync(['git', 'init', '-q'], { cwd: project });
-	Bun.spawnSync(['git', 'add', 'src/app.js', '.gitignore'], { cwd: project });
+	Bun.spawnSync(['git', 'init', '-q'], { cwd: project, env: gitEnvironment() });
+	Bun.spawnSync(['git', 'add', 'src/app.js', '.gitignore'], { cwd: project, env: gitEnvironment() });
 });
 
 test('lists what git would show, leaving ignored files out', async () => {

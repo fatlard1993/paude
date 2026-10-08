@@ -5,12 +5,13 @@ import { afterAll, beforeAll, expect, test } from 'bun:test';
 
 import { parseEnvFile, sessionEnvironmentView } from './environment';
 import { replaceInProject } from './files';
+import gitEnvironment from './utils/gitEnvironment';
 
 let cwd;
 
 beforeAll(async () => {
 	cwd = await mkdtemp(path.join(os.tmpdir(), 'paude-replace-'));
-	Bun.spawnSync(['git', 'init', '-q'], { cwd });
+	Bun.spawnSync(['git', 'init', '-q'], { cwd, env: gitEnvironment() });
 	await writeFile(path.join(cwd, 'a.js'), 'const total = add(1);\nconst subtotal = add(2);\n');
 	await writeFile(path.join(cwd, 'b.js'), 'add(3); // add more\n');
 	await writeFile(path.join(cwd, '.env'), 'API_KEY="abc123"\nexport PORT=3000\n# a comment\n');
