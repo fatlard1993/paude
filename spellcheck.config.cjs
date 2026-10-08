@@ -1,5 +1,7 @@
 module.exports = {
 	skipWords: [
+		'dragover',
+		'dragleave',
 		'tls',
 		'pem',
 		'urls', 'cmd', 'pki', 'crt', 'nums', 'passphrase', 'unstaged', 'unstage', 'unstash', 'stashes', 'upstream', 'rebase', 'rebasing', 'refname', 'nobracket', 'committerdate', 'gd', 'unstaging', 'readlink', 'loopback', 'environ', 'todos', 'repos', 'dotenv', 'cancelled', 'gh', 'rollup', 'selectionchange', 'extern', 'func', 'hpp', 'lua', 'struct',  'clippy', 'cmdline', 'cpu', 'etime', 'justfile', 'Justfile', 'lockb', 'lockfile', 'pnpm', 'pyproject', 'pytest', 'rss', 'statm', 'uptime',  'crc', 'crc32', 'deduplicated', 'endian', 'fd', 'ffff', 'inode', 'latin1', 'linux', 'lsof', 'pids', 'pn', 'posix', 'proc', 'referer', 'tcp', 'tcp6', 'cksum', 'statusline', 'dotfiles', 'untinted', 'chroma',

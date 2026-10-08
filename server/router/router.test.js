@@ -4,6 +4,7 @@ import path from 'path';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 
 import { initActivity, statusOf } from '../activity';
+import { initAttachments } from '../attachments';
 import { createInvite, createToken, initAuth } from '../auth';
 import { hookSecret, setHookAddress } from '../hookSettings';
 import { initNames } from '../names';
@@ -42,6 +43,7 @@ beforeAll(async () => {
 	process.env.XDG_CONFIG_HOME = path.join(base, 'config');
 	setProjectsRoot(path.join(base, 'projects'));
 	await Promise.all([initAuth(data), initNotes(data), initNames(data), initActivity(data), initProjects(data)]);
+	initAttachments(data);
 	setHookAddress({ host: '127.0.0.1', port: 1 });
 	setClaudePath(FAKE_CLAUDE);
 
@@ -79,6 +81,27 @@ test("git: reading takes the files role, changing takes the typing role, and a g
 	expect((await call(`/api/sessions/${other.id}/git/status`, { token: tokens.comment })).status).toBe(403);
 	expect((await call(`/api/sessions/${session.id}/git/stage`, { token: tokens.comment, ...stage })).status).toBe(403);
 	expect((await call(`/api/sessions/${session.id}/git/stage`, { token: tokens.owner, ...stage })).status).toBe(404);
+});
+
+test('a dropped file is saved outside the project for Claude to read, by whoever may type', async () => {
+	const route = `/api/sessions/${session.id}/attachments?name=${encodeURIComponent('../Screen Shot.png')}`;
+	const drop = token =>
+		router(
+			new Request(`http://paude.test${route}`, {
+				method: 'POST',
+				headers: { authorization: `Bearer ${token}` },
+				body: 'png bytes',
+			}),
+			server,
+		);
+
+	expect((await drop(tokens.comment)).status).toBe(403);
+
+	const { path: saved } = await (await drop(tokens.owner)).json();
+
+	expect(path.basename(saved)).toMatch(/^\w+-Screen-Shot\.png$/);
+	expect(saved).not.toContain(path.join('projects', 'app'));
+	expect(await Bun.file(saved).text()).toBe('png bytes');
 });
 
 test('a write from another site is refused', async () => {

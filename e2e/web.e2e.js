@@ -144,6 +144,7 @@ test(
 		try {
 			await press('[title^="Git"]');
 			expect(await page.$eval('.git', panel => panel.classList.contains('open'))).toBe(true);
+			expect(await git('.bar .repository')).toBe('demo');
 			expect(await git('.body')).toContain('server/app.js');
 
 			await page.type('.git .commit-box textarea', 'first from the panel');
@@ -153,9 +154,20 @@ test(
 			await press('.git .tabs button', 'History');
 			expect(await git('.body')).toContain('first from the panel');
 
+			// A big project's file list loads after the commit's diff, and leaves the diff showing
+			const slowList = request =>
+				new URL(request.url()).pathname.endsWith('/files')
+					? setTimeout(() => request.continue(), 1500)
+					: request.continue();
+
+			await page.setRequestInterception(true);
+			page.on('request', slowList);
 			await press('.git .history-item');
 			expect(await page.$eval('.files', panel => panel.classList.contains('open'))).toBe(true);
+			await wait(1500);
 			expect(await page.$eval('.files .viewer', viewer => viewer.textContent)).toContain('first from the panel');
+			page.off('request', slowList);
+			await page.setRequestInterception(false);
 
 			await press('.git .tabs button', 'Branches');
 			await page.type('.git .new-branch input', 'idea');
@@ -167,6 +179,36 @@ test(
 			await press('.git .file [title="Discard"]');
 			await press('button', 'Discard');
 			expect(await Bun.file(`${servers.turns.project}/server/app.js`).text()).toStartWith('line 1');
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+// A screenshot dropped on the terminal is saved on the server and its path typed into the prompt
+test(
+	'a file dropped on the terminal goes to Claude by its path',
+	async () => {
+		const { browser, page } = await openSession('dom', servers.turns);
+		const screenText = () =>
+			page.evaluate(() => [...document.querySelectorAll('.xterm-rows > div')].map(row => row.textContent).join('\n'));
+
+		try {
+			await page.evaluate(() => {
+				const files = new DataTransfer();
+
+				files.items.add(new File(['png bytes'], 'Screen Shot.png', { type: 'image/png' }));
+				document
+					.querySelector('.xterm')
+					.parentElement.dispatchEvent(new DragEvent('drop', { dataTransfer: files, bubbles: true, cancelable: true }));
+			});
+			await wait(1000);
+
+			const saved = /\/\S+\/attachments\/\S+-Screen-Shot\.png/.exec(await screenText())?.[0];
+
+			expect(saved).toBeTruthy();
+			expect(await Bun.file(saved).text()).toBe('png bytes');
 		} finally {
 			await browser.close();
 		}

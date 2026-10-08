@@ -1,4 +1,5 @@
 import { credentialOf, identityOf } from '../auth';
+import { MAX_ATTACHMENT, saveAttachment } from '../attachments';
 import { listChanges } from '../changes';
 import { DiffError, diffSet, turnsWithChanges } from '../diffs';
 import { markLink, sessionLinks } from '../links';
@@ -108,11 +109,29 @@ const showEnvironment = async (request, id) => {
 	return cwd ? Response.json(await sessionEnvironmentView(cwd)) : new Response('Session not found', { status: 404 });
 };
 
+// A dropped or pasted file goes to Claude by its path, so it takes the same trust as typing into Claude
+const attach = async (request, id, name) => {
+	if (!may(identityOf(credentialOf(request)), 'type', id))
+		return new Response('Your invite does not include typing', { status: 403 });
+	if (!(await sessionRecord(id))) return new Response('Session not found', { status: 404 });
+
+	const bytes = await request.arrayBuffer();
+
+	if (!bytes.byteLength) return new Response('Nothing to attach', { status: 400 });
+	if (bytes.byteLength > MAX_ATTACHMENT) return new Response('Too big to attach (25MB at most)', { status: 413 });
+
+	return Response.json({ path: await saveAttachment(id, name, bytes) });
+};
+
 // Reading a session's project needs at least the comment role; watchers see only the terminal
 const filesRoutes = async request => {
 	const saving = requestMatch('PUT', '/api/sessions/:id/file', request);
 
 	if (saving) return save(request, saving.id);
+
+	const attaching = requestMatch('POST', '/api/sessions/:id/attachments', request);
+
+	if (attaching) return attach(request, attaching.id, attaching.name);
 
 	const replacing = requestMatch('POST', '/api/sessions/:id/replace', request);
 

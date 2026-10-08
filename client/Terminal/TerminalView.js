@@ -5,6 +5,7 @@ import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 
 import {
+	attachFile,
 	deleteSession,
 	forkSession,
 	getSession,
@@ -80,6 +81,11 @@ const Screen = styled.Component`
 
 	&.selecting {
 		outline: 2px dashed hsl(29, 55%, 62%);
+		outline-offset: -2px;
+	}
+
+	&.dropping {
+		outline: 2px dashed var(--session-accent, hsl(29, 55%, 62%));
 		outline-offset: -2px;
 	}
 `;
@@ -448,6 +454,7 @@ export default class TerminalView extends View {
 		redrawWhenSymbolsLoad(this.terminal);
 		if (identity()?.owner) this.markDoneLines();
 		this.linkUrls();
+		if (canType()) this.acceptFiles();
 		if (canBrowse()) this.linkFilePaths();
 		this.terminal.onData(data => this.sendInput(data));
 		this.scrollClaudeWithWheel();
@@ -1064,6 +1071,50 @@ export default class TerminalView extends View {
 	// Wheel notches up or down at a point on the terminal
 	sendWheel(up, point, notches) {
 		this.sendInput(this.mouseReport(up ? 64 : 65, point).repeat(notches));
+	}
+
+	// A file dropped or pasted onto the terminal is saved on the server and its path put in the prompt, where Claude
+	// reads it (an image's path becomes an attached image); a text paste still goes through as typing
+	acceptFiles() {
+		const screen = this.screen.elem;
+		const carriesFiles = event => event.dataTransfer?.types.includes('Files');
+
+		screen.addEventListener('dragover', event => {
+			if (!carriesFiles(event)) return;
+			event.preventDefault();
+			screen.classList.add('dropping');
+		});
+		screen.addEventListener('dragleave', () => screen.classList.remove('dropping'));
+		screen.addEventListener('drop', event => {
+			screen.classList.remove('dropping');
+			if (!carriesFiles(event)) return;
+			event.preventDefault();
+			this.attachFiles([...event.dataTransfer.files]);
+		});
+		screen.addEventListener(
+			'paste',
+			event => {
+				const files = [...(event.clipboardData?.files ?? [])];
+
+				if (!files.length) return;
+				event.preventDefault();
+				event.stopPropagation();
+				this.attachFiles(files);
+			},
+			true,
+		);
+	}
+
+	async attachFiles(files) {
+		const paths = [];
+
+		for (const file of files) {
+			const { response, body } = await attachFile(this.options.id, file);
+
+			if (response.ok) paths.push(body.path);
+			else new Notify({ type: 'warning', content: `${file.name || 'The file'} wasn't attached: ${body}` });
+		}
+		if (paths.length) this.attachToPrompt(`${paths.join(' ')} `);
 	}
 
 	// A click or tap that selected nothing goes to Claude, which moves its cursor there; a drag still selects
