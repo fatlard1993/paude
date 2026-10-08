@@ -462,7 +462,7 @@ export default class FilesPanel extends Panel {
 
 		this.paths = body;
 		this.renderList();
-		if (!this.current) this.viewer.replaceChildren(element('div', 'empty', 'Pick a file to read it.'));
+		if (!this.view) this.viewer.replaceChildren(element('div', 'empty', 'Pick a file to read it.'));
 	}
 
 	// null outside git, which hides the Changes mode
