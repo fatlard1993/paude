@@ -84,7 +84,7 @@ export default class GitPanel extends Panel {
 	}
 
 	renderBar() {
-		const { branch, detached, upstream, ahead, behind, inProgress } = this.status;
+		const { repository, branch, detached, upstream, ahead, behind, inProgress } = this.status;
 		const where = element('button', 'branch', detached ? 'detached HEAD' : branch);
 
 		where.title = upstream ? `Tracking ${upstream}` : 'Not tracking a remote branch';
@@ -104,6 +104,7 @@ export default class GitPanel extends Panel {
 			: [];
 
 		this.bar.replaceChildren(
+			element('span', 'repository', repository),
 			where,
 			tracking,
 			element('span', 'spacer'),

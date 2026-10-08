@@ -77,6 +77,12 @@ const Panel = styled(
 			text-overflow: ellipsis;
 		}
 
+		/* Which repository: the session's folder's, which may not be the one Claude is working in */
+		.repository {
+			color: ${colors.light(colors.gray)};
+			white-space: nowrap;
+		}
+
 		.tracking, .meta {
 			color: ${colors.light(colors.gray)};
 			font-size: 0.85em;

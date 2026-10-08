@@ -1,3 +1,5 @@
+import { basename } from 'path';
+
 import { isSecret } from './files';
 import gitEnvironment from './utils/gitEnvironment';
 
@@ -142,6 +144,7 @@ export const gitStatus = async root => {
 
 	return {
 		...parseStatus(text),
+		repository: basename(root),
 		stashes: stashes.out.split('\n').filter(Boolean).length,
 		inProgress,
 		hasCommits: head.code === 0,
