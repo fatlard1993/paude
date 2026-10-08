@@ -118,6 +118,8 @@ export const startServer = async ({ claude = FAKE_CLAUDE, fake = 'turns' } = {})
 		stop: async () => {
 			server.kill();
 			await server.exited;
+			// Sessions outlive their server on purpose, held open to come back to; a test's own end with it
+			Bun.spawnSync(['pkill', '-KILL', '-f', `${dir}/`]);
 			await rm(dir, { recursive: true, force: true });
 		},
 	};
