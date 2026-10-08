@@ -182,6 +182,10 @@ const handlers = {
 		socket.data.session.input(socket.data.client, data);
 		if (inputKind(data) === 'typing' && data.includes('\r')) watchIfNew(socket.data.identity, socket.data.session.id);
 	},
+	// A client checking its socket still reaches the server (a phone back from sleep)
+	ping(socket) {
+		socket.send(JSON.stringify({ type: 'pong' }));
+	},
 	// A client that drew over the terminal (the CLI's overlay) asks for the screen back
 	refresh(socket) {
 		const now = Date.now();

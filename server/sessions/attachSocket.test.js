@@ -45,4 +45,17 @@ describe('attach socket messages', () => {
 		expect(failures).not.toHaveBeenCalled();
 		failures.mockRestore();
 	});
+
+	test('a ping is answered, so a client can tell its socket still reaches the server', async () => {
+		const login = await createLogin();
+		const target = { ...socket(), sent: [] };
+
+		target.send = message => target.sent.push(JSON.parse(message));
+		target.data.credential = credentialOf(
+			new Request('http://paude.test/', { headers: { cookie: `paude_login=${login}` } }),
+		);
+		attachSocket.message(target, JSON.stringify({ type: 'ping' }));
+		await Bun.sleep(10);
+		expect(target.sent).toEqual([{ type: 'pong' }]);
+	});
 });
