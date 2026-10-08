@@ -19,6 +19,8 @@ const ESC = '\x1b';
 const IDLE_EXIT_MS = 60 * 60 * 1000;
 // A session still working at that point gets this much longer, again and again, until it's done
 const BUSY_RECHECK_MS = 10 * 60 * 1000;
+// How long the size is off by a row when a session taken back is asked to redraw, and how soon after
+const REDRAW_NUDGE_MS = 300;
 const SCROLLBACK_LINES = 5000;
 const SIZE_LIMITS = { cols: [20, 500], rows: [5, 200] };
 
@@ -63,9 +65,11 @@ export default class PtySession {
 	ended = false;
 	startedAt = Date.now();
 
-	constructor({ id, cwd, resume, prompt, claudePath, onExit, adopt = false }) {
+	constructor({ id, cwd, resume, prompt, claudePath, onExit, adopt = false, title = '' }) {
 		this.id = id;
 		this.cwd = cwd;
+		// What it was called when saved, until Claude names it again (it does only when the name changes)
+		this.title = title;
 		this.onExit = onExit;
 		this.cols = 100;
 		this.rows = 30;
@@ -115,6 +119,17 @@ export default class PtySession {
 
 		this.process.exited.then(() => this.exited());
 		this.resetIdle();
+		if (adopt) this.redrawSoon();
+	}
+
+	// Taken back after a restart, Claude has drawn nothing for this server to show, and the redraw dtach asks for on
+	// attaching doesn't come (its size didn't change). A size that really changes, for a moment, has it draw it all.
+	redrawSoon() {
+		setTimeout(() => {
+			if (this.ended) return;
+			this.process.terminal.resize(this.cols, this.rows - 1);
+			setTimeout(() => !this.ended && this.process.terminal.resize(this.cols, this.rows), REDRAW_NUDGE_MS);
+		}, REDRAW_NUDGE_MS);
 	}
 
 	// Clients first: the mirror and the mode tracking only matter to the next joiner, so they wait behind delivery

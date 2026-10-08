@@ -31,13 +31,14 @@ beforeAll(async () => {
 	await initActivity(cwd);
 });
 
-const start = () => {
+const start = (options = {}) => {
 	const exits = [];
 	const session = new PtySession({
 		id: crypto.randomUUID(),
 		cwd,
 		claudePath: FAKE_CLAUDE,
 		onExit: () => exits.push(1),
+		...options,
 	});
 
 	return { session, exits };
@@ -56,6 +57,14 @@ test('a joiner gets a snapshot, and the title says when Claude is working', asyn
 	expect(await until(() => !session.busy)).toBe(true);
 	expect(owner.sent.some(message => message.type === 'presence' && message.busy)).toBe(true);
 
+	session.process.kill();
+});
+
+test('a session taken back after a restart is made to draw its screen again, at its own size', async () => {
+	const { session } = start({ adopt: true });
+	const screen = () => session.serializer.serialize();
+
+	expect(await until(() => screen().includes('redrawn at 100x30'))).toBe(true);
 	session.process.kill();
 });
 

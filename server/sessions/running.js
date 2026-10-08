@@ -48,9 +48,15 @@ const launch = options => {
 export const startSession = (cwd, prompt) => launch({ id: crypto.randomUUID(), cwd, resume: false, prompt });
 
 // Sessions a previous server left running under dtach, taken back so they show as live and report their status
+const savedTitle = info => info?.customTitle ?? info?.summary ?? '';
+
 export const adoptHeldSessions = async () => {
 	for (const { id, cwd } of await heldSessions()) {
-		if (!running.has(id) && projectOf(cwd)) launch({ id, cwd, adopt: true });
+		if (running.has(id) || !projectOf(cwd)) continue;
+
+		const info = await getSessionInfo(id).catch(() => null);
+
+		if (!running.has(id)) launch({ id, cwd, adopt: true, title: savedTitle(info) });
 	}
 };
 
@@ -68,7 +74,11 @@ export const resumeFolder = async (id, reported) => {
 	if (found) return found;
 
 	for (const start of candidates)
-		for (let folder = path.dirname(start); projectOf(folder) && folder !== path.dirname(folder); folder = path.dirname(folder))
+		for (
+			let folder = path.dirname(start);
+			projectOf(folder) && folder !== path.dirname(folder);
+			folder = path.dirname(folder)
+		)
 			if (isFolder(folder)) return folder;
 
 	return null;
@@ -99,7 +109,8 @@ export const openSession = async id => {
 
 	try {
 		// A concurrent attach may have started it while this one awaited
-		const session = running.get(id) ?? launch({ id, cwd, resume: !isHeld(id), adopt: isHeld(id) });
+		const session =
+			running.get(id) ?? launch({ id, cwd, resume: !isHeld(id), adopt: isHeld(id), title: savedTitle(info) });
 
 		startFailures.delete(id);
 
