@@ -332,7 +332,16 @@ export const markLink = async (sessionId, url, { pinned, hidden }) => {
 	await writeJsonFile(marksFile, () => marks);
 };
 
-// Everything that came up, the pinned first then the latest; hidden ones only when asked for
+const dayOf = at => (at ? new Date(at).toLocaleDateString('en-CA') : '');
+
+// The pinned first; then by the day each last came up, the latest first; within a day, the most mentioned first
+export const byPinnedThenRecent = (a, b) =>
+	b.pinned - a.pinned ||
+	dayOf(b.lastAt).localeCompare(dayOf(a.lastAt)) ||
+	b.count - a.count ||
+	String(b.lastAt ?? '').localeCompare(String(a.lastAt ?? ''));
+
+// Everything that came up, the pinned first then the latest and most mentioned; hidden ones only when asked for
 export const sessionLinks = async (id, cwd, { withHidden = false } = {}) => {
 	// Copies: the chat's mentions are counted onto them for this answer, not onto what the transcript gathered
 	const links = new Map(
@@ -371,7 +380,7 @@ export const sessionLinks = async (id, cwd, { withHidden = false } = {}) => {
 			hidden: hidden.includes(link.url),
 		}))
 		.filter(link => withHidden || !link.hidden)
-		.sort((a, b) => b.pinned - a.pinned || String(b.lastAt ?? '').localeCompare(String(a.lastAt ?? '')));
+		.sort(byPinnedThenRecent);
 };
 
 const PROJECT_SESSIONS = 50;
@@ -424,7 +433,7 @@ export const projectLinks = async (project, { withHidden = false } = {}) => {
 	return [...merged.values()]
 		.map(link => ({ ...link, pinned: pinned.includes(link.url), hidden: hidden.includes(link.url) }))
 		.filter(link => withHidden || !link.hidden)
-		.sort((a, b) => b.pinned - a.pinned || String(b.lastAt ?? '').localeCompare(String(a.lastAt ?? '')));
+		.sort(byPinnedThenRecent);
 };
 
 export const markProjectLink = (project, url, change) => markLink(`project:${project}`, url, change);

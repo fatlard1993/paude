@@ -159,7 +159,7 @@ export default class LinksPanel extends Panel {
 			element(
 				'div',
 				'meta',
-				[who, link.count > 1 && `${link.count}×`, link.firstAt && relativeTime(Date.parse(link.firstAt))]
+				[who, link.count > 1 && `${link.count}×`, link.lastAt && relativeTime(Date.parse(link.lastAt))]
 					.filter(Boolean)
 					.join(' · '),
 			),

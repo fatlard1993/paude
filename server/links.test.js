@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { kindOf, linksOfLine, saysBetter, urlsIn } from './links';
+import { byPinnedThenRecent, kindOf, linksOfLine, saysBetter, urlsIn } from './links';
 
 test('sorts a link into its kind', () => {
 	expect(kindOf('https://github.com/acme/shop/issues/12')).toBe('ticket');
@@ -104,4 +104,19 @@ test("takes links from prompts, Claude's words, fetches and command output, neve
 		'fetched https://blog.acme.dev/post',
 		'output https://github.com/acme/shop/pull/8',
 	]);
+});
+
+test('lists the pinned first, then by the day each last came up, the most mentioned first within a day', () => {
+	const link = (url, lastAt, count, pinned = false) => ({ url, lastAt, count, pinned });
+	const sorted = [
+		link('once-today-late', '2026-10-08T15:00:00', 1),
+		link('thrice-today-early', '2026-10-08T09:00:00', 3),
+		link('often-yesterday', '2026-10-07T12:00:00', 9),
+		link('pinned-old', '2026-09-01T12:00:00', 1, true),
+		link('once-today-early', '2026-10-08T08:00:00', 1),
+	]
+		.sort(byPinnedThenRecent)
+		.map(({ url }) => url);
+
+	expect(sorted).toEqual(['pinned-old', 'thrice-today-early', 'once-today-late', 'once-today-early', 'often-yesterday']);
 });
