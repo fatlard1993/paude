@@ -13,13 +13,14 @@ const KINDS = [
 	['server', 'Servers'],
 	['reference', 'Other'],
 ];
+const DESCRIBING_MS = 4000;
 const KIND_ICONS = { docs: 'book', ticket: 'ticket', repo: 'code-branch', server: 'server', reference: 'globe' };
 
 // A link as it reads best: its host and path, without the scheme or a trailing slash
 const shortened = url => url.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
-// The links that came up, gathered: docs, tickets, repos, servers and other references, each with the words around
-// its first mention and who brought it up. Pinned ones stay on top; noise can be hidden. What only a command printed
+// The links that came up, gathered: docs, tickets, repos, servers and other references, each described (by Haiku,
+// from what was said around it; the clearest words said until then) and who brought it up. Pinned ones stay on top; noise can be hidden. What only a command printed
 // is left out unless asked for. A session's own, or a project's across its sessions (each link naming the sessions
 // it came up in): `load()` and `mark(url, change)` say whose, and `close` gives it a close button.
 export default class LinksPanel extends Panel {
@@ -60,6 +61,15 @@ export default class LinksPanel extends Panel {
 
 		this.links = body;
 		this.renderLinks();
+		// Haiku is still writing some: look again shortly, while the panel is showing
+		clearTimeout(this.again);
+		if (body.some(link => link.describing))
+			this.again = setTimeout(() => this.showing() && this.refresh(), DESCRIBING_MS);
+	}
+
+	// On the page, and open when it's a panel that closes
+	showing() {
+		return this.elem.isConnected && (!this.options.close || this.elem.classList.contains('open'));
 	}
 
 	// Mentioned by someone (you, Claude, the chat) or fetched, rather than only printed by a command
@@ -92,7 +102,7 @@ export default class LinksPanel extends Panel {
 		const list = shown.filter(
 			link =>
 				(this.kind === 'all' || link.kind === this.kind) &&
-				(!query || [link.url, link.title, link.context].some(text => text?.toLowerCase().includes(query))),
+				(!query || [link.url, link.title, link.description, link.context].some(text => text?.toLowerCase().includes(query))),
 		);
 		const toggle = button(
 			this.withOutput ? 'Leave out what only commands printed' : `Include what only commands printed (${outputOnly})`,
@@ -144,7 +154,7 @@ export default class LinksPanel extends Panel {
 		row.append(
 			head,
 			...(link.title ? [element('div', 'link-address', shortened(link.url))] : []),
-			...(link.context ? [this.contextOf(link)] : []),
+			...this.describe(link),
 			...(link.sessions ? [this.sessionsOf(link)] : []),
 			element(
 				'div',
@@ -156,6 +166,13 @@ export default class LinksPanel extends Panel {
 		);
 
 		return row;
+	}
+
+	// What Haiku wrote of it; until then, the clearest thing said about it
+	describe(link) {
+		if (link.description) return [element('div', 'link-context', link.description)];
+
+		return link.context ? [this.contextOf(link)] : [];
 	}
 
 	// The clearest thing said about it, and who said it

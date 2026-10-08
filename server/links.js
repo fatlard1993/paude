@@ -3,6 +3,7 @@ import path from 'path';
 import readJsonFile from '../shared/readJsonFile';
 import { trimUrl } from '../shared/terminalLinks';
 import writeJsonFile from '../shared/writeJsonFile';
+import { describeLinks, describingOf, descriptionOf } from './linkDescriptions';
 import { getNotes } from './notes';
 import { projectOf } from './projects';
 import { promptText } from './sessions/history';
@@ -16,6 +17,9 @@ import { transcriptFile } from './sessions/transcript';
 // chat and comments. Each sorted into a kind, with where it first came up. (What the session shares has its own panel.)
 const URL = /https?:\/\/[^\s<>"'`\\|]+/g;
 const CONTEXT = 160;
+// What's said around a mention, for Haiku to describe the link from
+const PASSAGE = 300;
+const PASSAGES = 3;
 const MAX_LINKS = 1000;
 // Read but never mined: a file's contents, and the like
 const QUIET_TOOLS = new Set(['Read', 'Glob', 'Grep', 'NotebookRead', 'TodoWrite']);
@@ -145,7 +149,14 @@ const sentenceAround = (text, at, url, title) => {
 	return besides.length < 12 ? '' : clip(sentence);
 };
 
-// The URLs in a piece of text, each with the sentence it's in and what the text calls it
+// The text around a mention, on one line
+const passageAround = (text, at, url) =>
+	text
+		.slice(Math.max(0, at - PASSAGE), at + url.length + PASSAGE)
+		.replace(/\s+/g, ' ')
+		.trim();
+
+// The URLs in a piece of text, each with the sentence it's in, what the text calls it, and what's said around it
 export const urlsIn = text => {
 	const source = String(text);
 
@@ -155,7 +166,12 @@ export const urlsIn = text => {
 		.map(({ url, at }) => {
 			const title = titleBefore(source, at, url);
 
-			return { url, title, context: sentenceAround(source, at, url, title) };
+			return {
+				url,
+				title,
+				context: sentenceAround(source, at, url, title),
+				passage: passageAround(source, at, url),
+			};
 		});
 };
 
@@ -188,14 +204,11 @@ export const linksOfLine = (line, quietToolIds) => {
 		if (line.type === 'assistant' && block.type === 'tool_use') {
 			if (QUIET_TOOLS.has(block.name)) quietToolIds.add(block.id);
 			if (block.name === 'WebFetch' && block.input?.url && !NOT_LINKS.some(pattern => pattern.test(block.input.url)))
-				return [
-					{
-						url: block.input.url,
-						title: '',
-						context: clip((block.input.prompt ?? '').replace(/\s+/g, ' ').trim()),
-						by: 'fetched',
-					},
-				];
+			{
+				const why = (block.input.prompt ?? '').replace(/\s+/g, ' ').trim();
+
+				return [{ url: block.input.url, title: '', context: clip(why), passage: why, by: 'fetched' }];
+			}
 
 			return [];
 		}
@@ -209,11 +222,17 @@ export const linksOfLine = (line, quietToolIds) => {
 // Per session: how far its transcript has been read, and what came up in it
 const read = new Map();
 
-// The first mention dates it; the clearest one says what it is
-const add = (links, { url, title, context, by }, at, turn) => {
+// The first mention dates it; the clearest one says what it is. A few of what's said around it are kept, the
+// clearest speakers' first.
+const add = (links, { url, title, context, passage, by }, at, turn) => {
 	const known = links.get(url);
 
 	if (known) {
+		if (passage && !known.passages.some(kept => kept.text === passage)) {
+			known.passages = [...known.passages, { text: passage, by }]
+				.sort((a, b) => (SAYS_BEST[a.by] ?? 0) - (SAYS_BEST[b.by] ?? 0))
+				.slice(0, PASSAGES);
+		}
 		known.count += 1;
 		known.lastAt = at ?? known.lastAt;
 		if (!known.by.includes(by)) known.by.push(by);
@@ -231,6 +250,7 @@ const add = (links, { url, title, context, by }, at, turn) => {
 		titleBy: title ? by : null,
 		context,
 		contextBy: context ? by : null,
+		passages: passage ? [{ text: passage, by }] : [],
 		by: [by],
 		count: 1,
 		firstAt: at,
@@ -314,7 +334,10 @@ export const markLink = async (sessionId, url, { pinned, hidden }) => {
 
 // Everything that came up, the pinned first then the latest; hidden ones only when asked for
 export const sessionLinks = async (id, cwd, { withHidden = false } = {}) => {
-	const links = new Map(await transcriptLinks(id, cwd));
+	// Copies: the chat's mentions are counted onto them for this answer, not onto what the transcript gathered
+	const links = new Map(
+		[...(await transcriptLinks(id, cwd))].map(([url, link]) => [url, { ...link, by: [...link.by] }]),
+	);
 	const notes = await getNotes(id);
 
 	for (const message of notes.chat)
@@ -326,8 +349,27 @@ export const sessionLinks = async (id, cwd, { withHidden = false } = {}) => {
 
 	const { pinned = [], hidden = [] } = marks[id] ?? {};
 
+	describeLinks(
+		[...links.values()]
+			.filter(link => !hidden.includes(link.url))
+			.map(({ url, title, turn, passages, by, lastAt }) => ({
+				url,
+				title,
+				turn,
+				passages: passages.map(({ text }) => text),
+				mentioned: by.some(speaker => speaker !== 'output'),
+				lastAt,
+			})),
+	);
+
 	return [...links.values()]
-		.map(link => ({ ...link, pinned: pinned.includes(link.url), hidden: hidden.includes(link.url) }))
+		.map(({ passages, ...link }) => ({
+			...link,
+			description: descriptionOf(link.url),
+			describing: describingOf(link.url),
+			pinned: pinned.includes(link.url),
+			hidden: hidden.includes(link.url),
+		}))
 		.filter(link => withHidden || !link.hidden)
 		.sort((a, b) => b.pinned - a.pinned || String(b.lastAt ?? '').localeCompare(String(a.lastAt ?? '')));
 };
@@ -372,6 +414,7 @@ export const projectLinks = async (project, { withHidden = false } = {}) => {
 			if (link.context && (!known.context || saysBetter(link.contextBy, known.contextBy)))
 				Object.assign(known, { context: link.context, contextBy: link.contextBy });
 			if (link.lastAt && (!known.lastAt || link.lastAt > known.lastAt)) known.lastAt = link.lastAt;
+			known.describing ||= link.describing;
 			known.sessions.push(from);
 		}
 	}

@@ -3,10 +3,16 @@
 // lines, a URL, a file path, and a prompt box. PAUDE_E2E_FAKE=busy keeps printing too, as Claude does mid-turn.
 const write = text => process.stdout.write(text);
 
-// claude -p: reads its prompt, answers once (a commit message, as the Git panel asks for)
+// claude -p: reads its prompt, answers once: links described (as the Links panel asks Haiku), or a commit message
 if (process.argv.includes('-p')) {
-	await Bun.stdin.text();
-	write('describe the staged change\n');
+	const prompt = await Bun.stdin.text();
+	const links = [...prompt.matchAll(/^(\d+)\. (\S+)/gm)];
+
+	write(
+		process.argv.includes('haiku')
+			? JSON.stringify(Object.fromEntries(links.map(([, number, url]) => [number, `described ${new URL(url).host}`])))
+			: 'describe the staged change\n',
+	);
 	process.exit(0);
 }
 

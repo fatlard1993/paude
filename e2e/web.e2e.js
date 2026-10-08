@@ -786,6 +786,13 @@ test(
 			await press('[title^="Links"]');
 			expect(await shown()).toEqual(['docs.acme.dev/api', 'github.com/acme/shop/issues/12']);
 
+			// Haiku describes each in the background; the panel looks again until it has
+			const described = () => page.$$eval('.links .link-context', lines => lines.map(line => line.textContent));
+
+			for (let tries = 0; tries < 20 && !(await described()).includes('described docs.acme.dev'); tries++)
+				await wait(500);
+			expect(await described()).toEqual(['described docs.acme.dev', 'described github.com']);
+
 			await press('.links .body button', 'Include what only commands printed');
 			expect((await shown()).length).toBe(3);
 
