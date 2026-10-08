@@ -2,6 +2,9 @@ import { desktopNotificationsOn } from './storage';
 
 let registration = null;
 
+// Served from client/ under a fixed name, so the path holds across builds
+const ICON = '/icon-192.png';
+
 export const registerNotificationWorker = async () => {
 	try {
 		// Missing in Android's WebView, where the optional chain leaves notifications to the plain constructor
@@ -17,9 +20,9 @@ export const showNotification = async ({ title, body, tag, url }) => {
 
 	try {
 		if (registration) {
-			await registration.showNotification(title, { body, tag, data: { url } });
+			await registration.showNotification(title, { body, tag, icon: ICON, data: { url } });
 		} else {
-			const notification = new Notification(title, { body, tag });
+			const notification = new Notification(title, { body, tag, icon: ICON });
 
 			notification.onclick = () => {
 				window.focus();
