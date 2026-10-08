@@ -20,6 +20,7 @@ import confirmDialog, { confirmDeleteSession, nameDialog } from '../confirmDialo
 import { canBrowse, canNote, canType, identity, serverName } from '../identity';
 import DONE_MARKER from '../../shared/doneMarker';
 import findFilePaths, { pathResolver } from '../../shared/filePaths';
+import { folderTints } from '../../shared/folderColor';
 import findUrls from '../../shared/terminalLinks';
 import withoutPointerReporting from '../../shared/pointerReporting';
 import { NOTE_TYPES } from '../../shared/protocol';
@@ -69,7 +70,7 @@ const Screen = styled.Component`
 	min-height: 0;
 	overflow: hidden;
 	padding: 0 4px;
-	background: ${BACKGROUND};
+	background: var(--session-background, ${BACKGROUND});
 	/* xterm's own layers (the GPU renderer's link canvas among them) stack in here, under the buttons over the screen */
 	isolation: isolate;
 
@@ -396,10 +397,31 @@ export default class TerminalView extends View {
 		if (!response?.ok) return;
 
 		this.project = body.project;
+		this.paint(body.hue);
 		this.showWatching(body.watching);
 		this.crumb.elem.textContent = `${body.project} /`;
 		this.crumb.elem.style.display = identity()?.owner ? '' : 'none';
 		if (!this.titleLabel.elem.textContent) this.titleLabel.elem.textContent = body.title || body.project;
+	}
+
+	// The session's folder color, as kitty-bg would tint a terminal started there: the screen, its text and cursor, and
+	// the bar's edge. The home folder has none.
+	paint(hue) {
+		const tints = folderTints(hue);
+
+		this.tints = tints;
+		this.elem.classList.toggle('tinted', Boolean(tints));
+		this.elem.style.setProperty('--session-accent', tints?.accent ?? '');
+		this.elem.style.setProperty('--session-background', tints?.background ?? '');
+		if (this.terminal) this.terminal.options.theme = this.theme();
+	}
+
+	theme() {
+		const { background, foreground, accent } = this.tints ?? {};
+
+		return this.tints
+			? { background, foreground, cursor: accent, cursorAccent: background }
+			: { background: BACKGROUND };
 	}
 
 	open() {
@@ -417,7 +439,7 @@ export default class TerminalView extends View {
 			...xtermOptions,
 			scrollback: 5000,
 			disableStdin: !canType(),
-			theme: { background: BACKGROUND },
+			theme: this.theme(),
 		});
 		this.fitter = new FitAddon();
 		this.terminal.loadAddon(this.fitter);
@@ -836,12 +858,13 @@ export default class TerminalView extends View {
 			...this.waitingOthers.map(session => ({
 				label: session.title || session.project,
 				detail: [session.project, session.remote?.name ?? serverName()].filter(Boolean).join(' · '),
+				accent: folderTints(session.hue)?.accent,
 				onPress: () => this.openWaiting(session),
 			})),
 		]);
 	}
 
-	// A menu under a bar button: items ({ label, detail, onPress }) and headings; Esc or a press elsewhere closes it
+	// A menu under a bar button: items ({ label, detail, accent, onPress }) and headings; Esc or a press elsewhere closes it
 	openMenu(anchor, items) {
 		if (this.backMenu) return this.closeBackMenu();
 
@@ -863,6 +886,7 @@ export default class TerminalView extends View {
 				element('span', 'label', item.label),
 				...(item.detail ? [element('span', 'detail', item.detail)] : []),
 			);
+			if (item.accent) row.style.boxShadow = `inset 3px 0 ${item.accent}`;
 			menu.elem.append(row);
 		}
 

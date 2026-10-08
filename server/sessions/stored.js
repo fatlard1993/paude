@@ -1,4 +1,7 @@
+import os from 'os';
 import { listSessions } from '@anthropic-ai/claude-agent-sdk';
+
+import { folderHue } from '../../shared/folderColor';
 
 import { activitySummary } from '../activity';
 import { pinnedName } from '../names';
@@ -24,6 +27,7 @@ export const toSummary =
 			firstPrompt: firstPrompt?.slice(0, FIRST_PROMPT_PREVIEW),
 			project: projectOf(cwd),
 			worktree: worktreeName(projectPath(projectOf(cwd)), cwd),
+			hue: folderHue(cwd, os.homedir()),
 			live: Boolean(running),
 			busy: Boolean(running?.busy),
 			attached: running?.clients.size ?? 0,

@@ -2,6 +2,7 @@
 // browser variant: these bugs showed only on a GPU renderer, a Mac, or a session that's printing.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
+import { folderHue, folderTints } from '../shared/folderColor';
 import { VARIANTS, cellCenter, centerOf, openBrowser, startServer } from './harness';
 
 const TIMEOUT_MS = 60_000;
@@ -103,6 +104,27 @@ describe.each(VARIANTS)('%s', variant => {
 		TIMEOUT_MS,
 	);
 });
+
+// The session wears its folder's color, as kitty-bg would tint a terminal started there: the screen and the bar's edge
+test(
+	"a session is tinted with its folder's color",
+	async () => {
+		const { browser, page } = await openSession('dom', servers.turns);
+		const { background, accent } = folderTints(folderHue(servers.turns.project));
+
+		try {
+			const painted = await page.$eval('.tinted', view => ({
+				background: view.style.getPropertyValue('--session-background'),
+				accent: view.style.getPropertyValue('--session-accent'),
+			}));
+
+			expect(painted).toEqual({ background, accent });
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
 
 // Plain page elements, so one browser does: the Git panel commits, shows the history and a commit's diff, branches,
 // and discards an edit after asking

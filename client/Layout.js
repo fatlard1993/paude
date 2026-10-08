@@ -1,5 +1,6 @@
 import { Component, Elem, styled } from '@vanilla-bean/components';
 
+import { folderTints } from '../shared/folderColor';
 import relativeTime from '../shared/relativeTime';
 
 const column = `
@@ -70,6 +71,11 @@ const Card = styled(
 
 		&:hover, &:focus-visible {
 			background: ${colors.alpha(colors.white, 0.1)};
+		}
+
+		/* A session's folder color, as kitty-bg tints its terminal */
+		&.tinted {
+			box-shadow: inset 3px 0 var(--card-accent);
 		}
 
 		.body {
@@ -194,9 +200,15 @@ export const LinkCard = ({
 	removeLabel = 'Delete',
 	removeIcon = 'trash-can',
 	onOpen,
+	accent,
 	appendTo,
 }) => {
 	const card = new Card({ tag: 'a', attributes: { href }, appendTo });
+
+	if (accent) {
+		card.elem.classList.add('tinted');
+		card.elem.style.setProperty('--card-accent', accent);
+	}
 
 	if (onOpen) {
 		card.elem.addEventListener('click', event => {
@@ -276,6 +288,7 @@ export const sessionCard = (session, { showProject = true, appendTo, remove, ser
 		waiting: session.status === 'waiting',
 		unseen: session.unseen,
 		watching: session.watching,
+		accent: folderTints(session.hue)?.accent,
 		remove,
 		onOpen,
 	});

@@ -14,6 +14,7 @@ import { loadPrefs, savePrefs } from './prefs';
 import readSelection from './selection';
 import sessionFiles from './sessionFiles';
 import openSideShell, { LEAVE_SHELL } from './sideShell';
+import { UNTINT, tintFor } from './tint';
 import {
 	CLEAR,
 	CLEAR_SCROLLBACK,
@@ -66,6 +67,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 		let done = false;
 		let filter = outputFilter();
 		let warnedOffline = false;
+		let tinted = false;
 		const notify = notifier();
 
 		const send = message => connection?.send(message) ?? false;
@@ -288,6 +290,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			clearTimeout(drawTimer);
 			hideImage();
 			if (overlay) write(RESTORE_KEYS);
+			if (tinted) write(UNTINT);
 			write(`${RESET_MODES}\r\n`);
 			connection?.close();
 			resolve(outcome);
@@ -382,6 +385,12 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 				redrawSoon();
 			} else if (message.type === 'presence') {
 				state.presence = message;
+				const tint = tinted ? '' : tintFor(message.hue);
+
+				if (tint) {
+					write(tint);
+					tinted = true;
+				}
 				redraw();
 			} else if (NOTE_TYPES.includes(message.type)) {
 				const arrived = applyNote(state.notes, message);

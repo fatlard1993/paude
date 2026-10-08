@@ -1,7 +1,9 @@
+import os from 'os';
 import { deleteSession, forkSession, listSessions } from '@anthropic-ai/claude-agent-sdk';
 
 import { activitySummary, forgetActivity, setWatching, watchedBy } from '../activity';
 import { credentialOf, identityOf, revokeInvitesFor } from '../auth';
+import { folderHue } from '../../shared/folderColor';
 import { matchesQuery } from '../../shared/sessionSearch';
 import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
@@ -132,6 +134,7 @@ const sessionsRoutes = async (request, server) => {
 					lastActivity: own[0]?.lastModified ?? null,
 					sessionCount: own.length,
 					liveCount: own.filter(session => session.live).length,
+					hue: folderHue(projectPath(name), os.homedir()),
 					...(registered.has(name) && { registered: true, path: registered.get(name) }),
 				};
 			}),
@@ -387,6 +390,7 @@ const sessionsRoutes = async (request, server) => {
 			project: projectOf(cwd),
 			live: Boolean(running),
 			title,
+			hue: folderHue(cwd, os.homedir()),
 			pinned: Boolean(pinnedName(match.id)),
 			...activitySummary(identity, match.id, { running: Boolean(running), busy: running?.busy }),
 		});

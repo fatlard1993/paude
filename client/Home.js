@@ -1,5 +1,6 @@
 import { Button, Elem, Notify, View, styled } from '@vanilla-bean/components';
 
+import { folderTints } from '../shared/folderColor';
 import { byRecentActivity, projectSummary } from '../shared/projects';
 import mergedPages from '../shared/mergedPages';
 import byUrgency from '../shared/urgency';
@@ -216,6 +217,7 @@ export default class Home extends View {
 					server: project.remote.name,
 					meta: [projectSummary(project)],
 					live: project.liveCount > 0,
+					accent: folderTints(project.hue)?.accent,
 					onOpen: () => this.openThere(project.remote, { project: project.name }),
 				});
 				continue;
@@ -228,6 +230,7 @@ export default class Home extends View {
 				server: hereName(),
 				meta: [projectSummary(project)],
 				live: project.liveCount > 0,
+				accent: folderTints(project.hue)?.accent,
 				removeLabel: project.registered
 					? `Stop treating ${project.path} as a project (nothing is deleted)`
 					: `Hide ${project.name} from the list (nothing is deleted)`,
