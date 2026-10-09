@@ -1393,8 +1393,8 @@ export default class TerminalView extends View {
 		if (until) this.warmButton.dataset.menuDetail = `until ${time}`;
 		else delete this.warmButton.dataset.menuDetail;
 		this.warmButton.title = until
-			? `Kept warm until ${time}: once Claude has been quiet 45 minutes, paude pings it, so coming back finds the whole conversation still cached and not compacted. Click to stop.`
-			: 'Keep warm: while you are away, ping Claude before its prompt cache expires and the conversation is compacted (12 hours, a cached read of the conversation each 45 minutes)';
+			? `Kept warm until ${time}: once Claude has been quiet 50 minutes, paude pings it, so coming back finds the whole conversation still cached and not compacted. Click to stop.`
+			: 'Keep warm: while you are away, ping Claude before its prompt cache expires and the conversation is compacted (12 hours, a cached read of the conversation each 50 minutes)';
 	}
 
 	async toggleKeepWarm() {

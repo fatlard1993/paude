@@ -5,10 +5,11 @@ import writeJsonFile from '../shared/writeJsonFile';
 import { statusOf } from './activity';
 
 // Sessions kept warm while nobody's in them: once Claude has been quiet this long, paude types a ping it answers in a
-// word. That reads the conversation from Claude's prompt cache, which keeps it there another hour, ahead of the idle
-// compaction Claude Code runs about 55 minutes in. Each ping costs a cached read of the whole conversation, so it's
-// on only until a cutoff.
-export const PING_AFTER_MS = 45 * 60 * 1000;
+// word. That reads the conversation from Claude's prompt cache, which keeps it there another hour. Claude Code compacts
+// an idle conversation of 200k tokens or more 54 minutes after its last request (unless "idleCompaction": false), and
+// that request began before the hook that says the turn ended: 50 minutes, with the minute between checks, comes
+// before either. Each ping costs a cached read of the whole conversation, so it's on only until a cutoff.
+export const PING_AFTER_MS = 50 * 60 * 1000;
 export const DEFAULT_HOURS = 12;
 export const MAX_HOURS = 48;
 const CHECK_MS = 60 * 1000;
