@@ -15,6 +15,7 @@ import {
 	markLink,
 	nameSession,
 	openRemote,
+	getAsking,
 	setKeepWarm,
 	setWatching,
 } from '../api';
@@ -31,6 +32,7 @@ import { recall, remember } from '../storage';
 import { button, dragHandle, element } from '../dom';
 import goBack from '../goBack';
 import { onWaitingChange } from '../waiting';
+import { AskingCard, showAsking } from '../Asking';
 import attach from './attach';
 import KeyBar from './KeyBar';
 import selectLinesByTap from './lineSelect';
@@ -268,6 +270,7 @@ export default class TerminalView extends View {
 		// Kept from taking focus, so the selection is still there to act on; acting on the click rather than the press, so
 		// the release can't land on whatever was under the buttons once they hide
 		this.selectionActions = new SelectionActions({ appendTo: column, style: { display: 'none' } });
+		this.askingCard = new AskingCard({ appendTo: column, addClass: 'asking-overlay' });
 		this.selectionActions.elem.addEventListener('pointerdown', event => event.preventDefault());
 		this.selectionActions.elem.addEventListener('mousedown', event => event.preventDefault());
 
@@ -615,6 +618,7 @@ export default class TerminalView extends View {
 		}
 		const offline = this.connectionState === 'reconnecting' || this.connectionState === 'ended';
 
+		if (waiting !== Boolean(this.lastPresence?.waiting)) this.showAsking(waiting);
 		this.lastPresence = presence;
 		this.notes.myName = clients[you]?.name;
 		if (title && this.connectionState !== 'ended') this.titleLabel.elem.textContent = title;
@@ -648,6 +652,30 @@ export default class TerminalView extends View {
 				},
 			});
 		});
+	}
+
+	// Claude draws its dialog around when it says it's waiting, so the screen is read again a moment later if it isn't
+	// there yet
+	async showAsking(waiting) {
+		const shown = this.askingCard.elem.classList;
+
+		shown.remove('shown');
+		for (const wait of waiting ? [0, 400, 1500] : []) {
+			await new Promise(done => setTimeout(done, wait));
+			if (!this.lastPresence?.waiting) return;
+
+			const { body } = await getAsking(this.options.id);
+
+			if (body?.asking) {
+				showAsking(this.askingCard, this.options.id, body.asking, {
+					canAnswer: canType(),
+					onAnswered: () => shown.remove('shown'),
+				});
+				shown.add('shown');
+
+				return;
+			}
+		}
 	}
 
 	toggleNotes(open = !this.notes.elem.classList.contains('open'), { focus = true } = {}) {

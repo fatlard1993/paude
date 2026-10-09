@@ -220,6 +220,28 @@ const sessionsRoutes = async (request, server) => {
 		return new Response(null, { status: 204 });
 	}
 
+	match = requestMatch('GET', '/api/sessions/:id/asking', request);
+	if (match) {
+		// Anyone in the session sees the question on its screen anyway
+		if (!identity.owner && identity.sessionId !== match.id)
+			return new Response('Not part of your invite', { status: 403 });
+
+		return Response.json({ asking: runningSession(match.id)?.asking() ?? null });
+	}
+
+	match = requestMatch('POST', '/api/sessions/:id/answer', request);
+	if (match) {
+		if (!may(identity, 'type', match.id)) return new Response('Answering takes the drive role', { status: 403 });
+
+		const session = runningSession(match.id);
+		const { question, key } = await request.json();
+
+		if (!session?.answer(String(question), String(key)))
+			return new Response('Claude is no longer asking that', { status: 409 });
+
+		return new Response(null, { status: 204 });
+	}
+
 	// The pings are typed in as the owner and spend the owner's Claude usage
 	match = requestMatch('PUT', '/api/sessions/:id/keep-warm', request);
 	if (match) {

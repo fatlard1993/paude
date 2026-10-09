@@ -8,6 +8,7 @@ import { hookSettings } from '../hookSettings';
 import { warmUntil } from '../keepWarm';
 import { pinnedName } from '../names';
 import parseTitle from './claudeTitle';
+import readDialog from './dialog';
 import readPromptDraft from './promptBox';
 import { endHeld, heldCommand, releaseHeld } from './holder';
 
@@ -242,6 +243,26 @@ export default class PtySession {
 	// What's typed in Claude's prompt box now, from the screen paude keeps ('' for nothing, null for no box)
 	promptDraft() {
 		return readPromptDraft(this.mirror.buffer.active);
+	}
+
+	// What Claude is asking, while it waits on someone: its dialog, read from the screen (null for nothing asked)
+	asking() {
+		if (statusOf(this.id) !== 'waiting' || this.promptDraft() !== null) return null;
+
+		return readDialog(this.mirror.buffer.active, this.cols);
+	}
+
+	// One of the dialog's numbered answers, pressed for someone who chose it elsewhere; refused when the screen no
+	// longer asks that question with that answer, so an answer never lands on whatever was asked next
+	answer(question, key) {
+		const asked = this.asking();
+
+		if (asked?.question !== question || !asked.options.some(option => option.key === key)) return false;
+
+		setStatus(this.id, 'working');
+		this.process.terminal.write(key);
+
+		return true;
 	}
 
 	resize(client, cols, rows) {

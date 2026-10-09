@@ -31,6 +31,7 @@ export const toSummary =
 			busy: Boolean(running?.busy),
 			attached: running?.clients.size ?? 0,
 			...activitySummary(identity, sessionId, { running: Boolean(running), busy: running?.busy }),
+			asking: running?.asking() ?? undefined,
 		};
 	};
 

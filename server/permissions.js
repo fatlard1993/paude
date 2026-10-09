@@ -24,6 +24,8 @@ export const mayManage = (identity, comment) =>
 // role allows within those is checked by the route itself.
 const OWN_SESSION_ROUTES = [
 	'/attach',
+	'/asking',
+	'/answer',
 	'/shell',
 	'/files',
 	'/file',

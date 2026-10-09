@@ -2,6 +2,7 @@ import { Component, Elem, styled } from '@vanilla-bean/components';
 
 import { tintsOf } from '../shared/hues';
 import relativeTime from '../shared/relativeTime';
+import { AskingCard, showAsking } from './Asking';
 
 const column = `
 	width: 100%;
@@ -81,6 +82,16 @@ const Card = styled(
 		.body {
 			flex: 1;
 			min-width: 0;
+		}
+
+		/* What Claude asks takes the card's whole width, under its title and flags */
+		&:has(> .asking) {
+			flex-wrap: wrap;
+		}
+
+		> .asking {
+			order: 1;
+			flex: 1 0 100%;
 		}
 
 		.title {
@@ -271,24 +282,41 @@ export const LinkCard = ({
 	return card;
 };
 
-export const sessionCard = (session, { showProject = true, appendTo, remove, server, onOpen }) =>
-	LinkCard({
-		appendTo,
-		href: `#/sessions/${session.id}`,
-		title: session.pinned ? `📌 ${session.title}` : session.title,
-		project: showProject ? session.project : null,
-		server,
-		meta: [
-			relativeTime(session.lastModified ?? session.activeAt),
-			session.worktree && `⎇ ${session.worktree}`,
-			session.gitBranch !== 'HEAD' && session.gitBranch !== session.worktree && session.gitBranch,
-		],
-		live: session.live,
-		busy: session.status === 'working' || session.busy,
-		waiting: session.status === 'waiting',
-		unseen: session.unseen,
-		watching: session.watching,
-		accent: tintsOf(session.hue)?.accent,
-		remove,
-		onOpen,
+// A session waiting on someone shows what Claude asks, answerable here when it's this server's
+const withAsking = (card, session) => {
+	if (session.status !== 'waiting' || !session.asking) return card;
+
+	const asking = new AskingCard({ appendTo: card, addClass: 'asking' });
+
+	showAsking(asking, session.id, session.asking, {
+		canAnswer: !session.remote,
+		onAnswered: () => asking.elem.remove(),
 	});
+
+	return card;
+};
+
+export const sessionCard = (session, { showProject = true, appendTo, remove, server, onOpen }) =>
+	withAsking(
+		LinkCard({
+			appendTo,
+			href: `#/sessions/${session.id}`,
+			title: session.pinned ? `📌 ${session.title}` : session.title,
+			project: showProject ? session.project : null,
+			server,
+			meta: [
+				relativeTime(session.lastModified ?? session.activeAt),
+				session.worktree && `⎇ ${session.worktree}`,
+				session.gitBranch !== 'HEAD' && session.gitBranch !== session.worktree && session.gitBranch,
+			],
+			live: session.live,
+			busy: session.status === 'working' || session.busy,
+			waiting: session.status === 'waiting',
+			unseen: session.unseen,
+			watching: session.watching,
+			accent: tintsOf(session.hue)?.accent,
+			remove,
+			onOpen,
+		}),
+		session,
+	);

@@ -19,6 +19,31 @@ export const Body = styled.Component`
 		position: relative;
 	}
 
+	/* What Claude asks, as buttons over the bottom of the terminal: on a phone, where its dialog is hard to work */
+	.asking-overlay {
+		position: absolute;
+		left: 8px;
+		right: 8px;
+		bottom: 8px;
+		z-index: 2;
+		max-height: 70%;
+		overflow: auto;
+		display: none;
+	}
+
+	@media (pointer: coarse), (max-width: 600px) {
+		.asking-overlay.shown {
+			display: flex;
+		}
+	}
+
+	/* Above the phone's key bar */
+	@media (pointer: coarse) {
+		.asking-overlay {
+			bottom: 60px;
+		}
+	}
+
 	/* Over the terminal, holding only the buttons beside Claude's done lines */
 	.fork-layer {
 		position: absolute;

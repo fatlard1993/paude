@@ -17,7 +17,8 @@ const alert = async (session, what) => {
 	const url = session.remote ? '/#/' : `/#/sessions/${session.id}`;
 	const shown = await showNotification({
 		title: `${session.title || 'A session'}${what}`,
-		body: where,
+		// What Claude asks, when that's the news
+		body: [what.trim() === 'needs you' && session.asking?.question, where].filter(Boolean).join('\n'),
 		tag: `paude-watch-${keyOf(session)}`,
 		url,
 	});
