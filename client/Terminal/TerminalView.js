@@ -216,7 +216,7 @@ export default class TerminalView extends View {
 		});
 		if (identity()?.owner) {
 			this.warmButton = ghostButton(header, {
-				icon: 'fire',
+				icon: 'mug-hot',
 				title: 'Keep warm',
 				className: 'tool',
 				onPress: () => this.toggleKeepWarm(),
