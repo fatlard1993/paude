@@ -1,7 +1,7 @@
 import os from 'os';
 import { expect, test } from 'bun:test';
 
-import { artifactsOfLine, commandFolder, kindOfPath, pathsIn, shownPath } from './artifacts';
+import { artifactsOfLine, commandFolders, kindOfPath, pathsIn, shownPath, withVariables } from './artifacts';
 
 const freshState = () => ({ turn: '', said: '', cwd: '/work/app', commands: new Map() });
 const said = text => ({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
@@ -26,10 +26,15 @@ test('paths with an artifact kind, made absolute, without dependencies, builds o
 	expect(kindOfPath('/a/Makefile')).toBeNull();
 });
 
-test("a command's relative paths are from where it cd's first", () => {
-	expect(commandFolder('cd /tmp/scratch && bun x.js', '/work/app')).toBe('/tmp/scratch');
-	expect(commandFolder('cd "my dir"; ls', '/work/app')).toBe('/work/app/my dir');
-	expect(commandFolder('ls', '/work/app')).toBe('/work/app');
+test("a command's relative paths may be from where the session is or anywhere it cd's", () => {
+	expect(commandFolders('cd /tmp/scratch && bun x.js', '/work/app')).toEqual(['/work/app', '/tmp/scratch']);
+	expect(commandFolders('mkdir -p out; cd "my dir"; ls', '/work/app')).toEqual(['/work/app', '/work/app/my dir']);
+	expect(commandFolders('ls', '/work/app')).toEqual(['/work/app']);
+	expect(pathsIn('cat a.csv /tmp/b.csv', ['/work/app', '/tmp/s'])).toEqual([
+		'/work/app/a.csv',
+		'/tmp/s/a.csv',
+		'/tmp/b.csv',
+	]);
 });
 
 test('what Claude wrote, looked at, and its commands named, each with what it was for', () => {
@@ -43,9 +48,14 @@ test('what Claude wrote, looked at, and its commands named, each with what it wa
 	]);
 	expect(
 		artifactsOfLine(tool('Bash', { command: 'cd /tmp/s && python chart.py', description: 'Render the chart' }), state),
-	).toEqual([{ file: '/tmp/s/chart.py', by: 'command', why: 'Render the chart' }]);
-	expect(artifactsOfLine(result('Saved chart.png'), state)).toEqual([
-		{ file: '/tmp/s/chart.png', by: 'output', why: 'Render the chart' },
+	).toEqual([
+		// Wherever it may be: what isn't there is left out when listed
+		{ file: '/work/app/chart.py', by: 'command', why: 'Render the chart' },
+		{ file: '/tmp/s/chart.py', by: 'command', why: 'Render the chart' },
+	]);
+	expect(artifactsOfLine(result('Saved chart.png'), state).map(found => found.file)).toEqual([
+		'/work/app/chart.png',
+		'/tmp/s/chart.png',
 	]);
 	expect(artifactsOfLine(tool('Read', { file_path: '/tmp/s/chart.png' }, 't2'), state)).toEqual([
 		{ file: '/tmp/s/chart.png', by: 'viewed', why: 'Drawing it now.' },
@@ -61,4 +71,13 @@ test('a path as it reads best: from the project, the scratchpad, or home', () =>
 	);
 	expect(shownPath(`${os.homedir()}/Desktop/a.png`, '/work/app')).toBe('~/Desktop/a.png');
 	expect(shownPath('/var/tmp/a.png')).toBe('/var/tmp/a.png');
+});
+
+test('a path built from a variable the command sets is seen whole', () => {
+	expect(withVariables('D=/tmp/viz\nmkdir -p $D && cat > $D/gen.js && node ${D}/gen.js > "$D/out.csv"')).toBe(
+		'D=/tmp/viz\nmkdir -p /tmp/viz && cat > /tmp/viz/gen.js && node /tmp/viz/gen.js > "/tmp/viz/out.csv"',
+	);
+	expect(withVariables('OUT="/tmp/a b"; ls $OUTPUT $OUT')).toBe('OUT="/tmp/a b"; ls $OUTPUT /tmp/a b');
+	expect(pathsIn(withVariables('D=/tmp/viz; cat > $D/gen.js'), '/work')).toEqual(['/tmp/viz/gen.js']);
+	expect(pathsIn('cat /tmp/claude-1000/bundled-skills/2.1/x/dataviz/palette.md', '/work')).toEqual([]);
 });

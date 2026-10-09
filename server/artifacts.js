@@ -34,10 +34,17 @@ const WRITING_TOOLS = new Set(['Write', 'NotebookEdit']);
 // What Claude looked at that's worth finding again (a screenshot it checked), as opposed to the code it read
 const VIEWED_KINDS = new Set(['image', 'page', 'doc']);
 // A command that starts in another folder: cd somewhere && …
-const LEADING_CD = /^\s*cd\s+("[^"]+"|'[^']+'|[^\s;&|]+)\s*(?:&&|;)/;
+// Where a command goes: cd somewhere, at its start or after a newline, ; or &&
+const CD = /(?:^|[\n;&|(]\s*)cd\s+("[^"]+"|'[^']+'|[^\s;&|)]+)/g;
 // Never things anyone made: dependencies, a build's output, and what lives in hidden folders (git's own, Claude Code's
 // bookkeeping, an app's state like ~/.paude)
-const NOT_ARTIFACTS = [/\/node_modules\//, /\/(build|dist|coverage|\.next)\//, /\/\.[^/]+\//];
+const NOT_ARTIFACTS = [
+	/\/node_modules\//,
+	/\/(build|dist|coverage|\.next)\//,
+	/\/\.[^/]+\//,
+	// The skills Claude Code unpacks for itself
+	/^\/tmp\/claude-\d+\/bundled-skills\//,
+];
 // Written within a moment before it was named still counts: a command names its output as it writes it
 const NAMED_SLACK_MS = 60 * 1000;
 const WHY = 200;
@@ -62,17 +69,47 @@ export const absolutePath = (written, cwd) => {
 	return cwd ? path.resolve(cwd, written) : null;
 };
 
-export const pathsIn = (text, cwd) =>
-	[...new Set(String(text ?? '').match(PATH) ?? [])]
-		.map(written => absolutePath(written, cwd))
-		.filter(file => file && !NOT_ARTIFACTS.some(pattern => pattern.test(file)));
+// folders: where a relative path may be from; each is tried, and what isn't there is left out when listed
+export const pathsIn = (text, folders) => {
+	const from = [folders].flat();
 
-// The folder a command's relative paths are from: where it cd's to first, or where the session is
-export const commandFolder = (command, cwd) => {
-	const to = LEADING_CD.exec(String(command ?? ''))?.[1]?.replace(/^["']|["']$/g, '');
-
-	return (to && absolutePath(to, cwd)) || cwd;
+	return [
+		...new Set(
+			(String(text ?? '').match(PATH) ?? []).flatMap(written =>
+				written.startsWith('/') || written.startsWith('~/')
+					? [absolutePath(written)]
+					: from.map(folder => absolutePath(written, folder)),
+			),
+		),
+	].filter(file => file && !NOT_ARTIFACTS.some(pattern => pattern.test(file)));
 };
+
+// A shell variable set in the command: NAME=value at its start, or after a newline, ; or &&
+const ASSIGNMENT = /(?:^|[\n;&|]\s*)([A-Za-z_]\w*)=("[^"]*"|'[^']*'|[^\s;&|]+)/g;
+
+// The command with the variables it sets filled in where it uses them ($D/out.png, ${D}/out.png), so a path built
+// from one is seen whole
+export const withVariables = command => {
+	const text = String(command ?? '');
+	const values = new Map(
+		[...text.matchAll(ASSIGNMENT)].map(([, name, value]) => [name, value.replace(/^["']|["']$/g, '')]),
+	);
+
+	return [...values].reduce(
+		(filled, [name, value]) => filled.replace(new RegExp(`\\$(?:\\{${name}\\}|${name}(?!\\w))`, 'g'), () => value),
+		text,
+	);
+};
+
+// The folders a command's relative paths may be from: where the session is, and wherever it cd's
+export const commandFolders = (command, cwd) => [
+	...new Set([
+		cwd,
+		...[...String(command ?? '').matchAll(CD)]
+			.map(([, to]) => absolutePath(to.replace(/^["']|["']$/g, ''), cwd))
+			.filter(Boolean),
+	]),
+];
 
 const blockText = block =>
 	typeof block.content === 'string'
@@ -119,11 +156,12 @@ export const artifactsOfLine = (line, state) => {
 				return file && VIEWED_KINDS.has(kindOfPath(file)) ? [{ file, by: 'viewed', why: state.said }] : [];
 			}
 			if (block.name === 'Bash') {
-				const folder = commandFolder(input.command, state.cwd);
+				const command = withVariables(input.command);
+				const folders = commandFolders(command, state.cwd);
 
-				state.commands.set(block.id, { why: input.description ?? '', folder });
+				state.commands.set(block.id, { why: input.description ?? '', folders });
 
-				return pathsIn(input.command, folder).map(file => ({
+				return pathsIn(command, folders).map(file => ({
 					file,
 					by: 'command',
 					why: clip(input.description) || state.said,
@@ -133,9 +171,9 @@ export const artifactsOfLine = (line, state) => {
 			return [];
 		}
 		if (block.type === 'tool_result' && state.commands.has(block.tool_use_id)) {
-			const { why, folder } = state.commands.get(block.tool_use_id);
+			const { why, folders } = state.commands.get(block.tool_use_id);
 
-			return pathsIn(blockText(block), folder).map(file => ({ file, by: 'output', why: clip(why) || state.said }));
+			return pathsIn(blockText(block), folders).map(file => ({ file, by: 'output', why: clip(why) || state.said }));
 		}
 
 		return [];
