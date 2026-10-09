@@ -186,6 +186,10 @@ export const answerAsking = async (sessionId, question, key) =>
 export const continueAfterLimit = async (sessionId, when) =>
 	await POST('/api/sessions/:id/continue', { urlParameters: { id: sessionId }, body: { when } });
 
+// The conversation's size, its cache, and what it has cost ({ meter: null } before Claude's first answer)
+export const getMeter = async sessionId =>
+	await GET('/api/sessions/:id/meter', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
+
 // hours: 0 stops it; { until } is when it stops on its own (null for not warm)
 export const setKeepWarm = async (sessionId, hours) =>
 	await PUT('/api/sessions/:id/keep-warm', { urlParameters: { id: sessionId }, body: { hours } });

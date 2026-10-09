@@ -7,6 +7,7 @@ import { folderHue, sessionHue } from '../../shared/hues';
 import { matchesQuery } from '../../shared/sessionSearch';
 import { DEFAULT_HOURS, keepWarm, warmUntil } from '../keepWarm';
 import { continueSession } from '../usageLimit';
+import { meterOf } from '../cacheMeter';
 import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
 import { listRemotes, remoteLink, remoteSessions } from '../remotes';
@@ -241,6 +242,18 @@ const sessionsRoutes = async (request, server) => {
 			return new Response('Claude is no longer asking that', { status: 409 });
 
 		return new Response(null, { status: 204 });
+	}
+
+	// The conversation's size, whether Claude's cache still holds it, and what it has cost: the owner's usage
+	match = requestMatch('GET', '/api/sessions/:id/meter', request);
+	if (match) {
+		if (!identity.owner) return new Response('Only the owner sees what a session costs', { status: 403 });
+
+		const record = await sessionRecord(match.id);
+
+		if (!record) return new Response('Session not found', { status: 404 });
+
+		return Response.json({ meter: await meterOf(match.id, record.cwd) });
 	}
 
 	// After a usage limit: carry on now ('now'), once it resets ('reset'), or stop waiting for that ('cancel')

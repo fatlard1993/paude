@@ -385,6 +385,16 @@ export const TopBar = styled(
 			line-height: 14px;
 		}
 
+		/* The meter's count beside its gauge; a cache gone cold reads amber */
+		.meter .meter-text {
+			font-size: 0.8em;
+			white-space: nowrap;
+		}
+
+		.meter.cold {
+			color: hsl(35, 90%, 62%);
+		}
+
 		.divider {
 			width: 1px;
 			height: 20px;

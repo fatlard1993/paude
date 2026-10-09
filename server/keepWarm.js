@@ -34,6 +34,7 @@ export const keepWarm = async (id, hours, now = Date.now()) => {
 		warm[id] = now + Math.min(hours, MAX_HOURS) * 60 * 60 * 1000;
 		if (!lastTurnAt.has(id)) lastTurnAt.set(id, now);
 	} else delete warm[id];
+	console.log(`Keep warm ${id}: ${hours > 0 ? `on until ${new Date(warm[id]).toISOString()}` : 'off'}`);
 	if (file) await save();
 
 	return warmUntil(id, now);
@@ -43,6 +44,7 @@ export const stopKeepingWarm = async id => {
 	lastTurnAt.delete(id);
 	pinged.delete(id);
 	if (!(id in warm)) return;
+	console.log(`Keep warm ${id}: off, the session ended`);
 	delete warm[id];
 	if (file) await save();
 };
@@ -82,6 +84,7 @@ export const checkWarm = async (sessionOf, now = Date.now()) => {
 		// Not heard from since this server started: counted from now
 		if (!lastTurnAt.has(id)) lastTurnAt.set(id, now);
 		if (until <= now || !session) {
+			console.log(`Keep warm ${id}: off, ${session ? 'past its cutoff' : 'not running'}`);
 			delete warm[id];
 			changed = true;
 		} else if (now - lastTurnAt.get(id) >= PING_AFTER_MS && ping(id, session, now)) pings.push(id);

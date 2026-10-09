@@ -16,6 +16,7 @@ import {
 	nameSession,
 	openRemote,
 	getAsking,
+	getMeter,
 	setKeepWarm,
 	setWatching,
 } from '../api';
@@ -125,6 +126,11 @@ const bufferLines = terminal => {
 	return lines;
 };
 
+// A cold conversation this big gets a word before the next message caches it all again
+const COLD_WARNING_TOKENS = 50_000;
+
+const tokens = count => (count >= 1e6 ? `${(count / 1e6).toFixed(1)}M` : `${Math.round(count / 1000)}k`);
+
 export default class TerminalView extends View {
 	constructor(options) {
 		super({
@@ -217,6 +223,14 @@ export default class TerminalView extends View {
 			onPress: () => this.toggleWatching(),
 		});
 		if (identity()?.owner) {
+			this.meterButton = ghostButton(header, {
+				icon: 'gauge',
+				title: 'Cache and cost',
+				className: 'tool meter',
+				onPress: () => this.openMeter(),
+			});
+			this.meterText = element('span', 'meter-text');
+			this.meterButton.append(this.meterText);
 			this.warmButton = ghostButton(header, {
 				icon: 'mug-hot',
 				title: 'Keep warm',
@@ -272,6 +286,7 @@ export default class TerminalView extends View {
 		this.selectionActions = new SelectionActions({ appendTo: column, style: { display: 'none' } });
 		this.askingCard = new AskingCard({ appendTo: column, addClass: 'asking-overlay' });
 		this.limitCard = new AskingCard({ appendTo: column, addClass: 'limit-overlay' });
+		this.coldCard = new AskingCard({ appendTo: column, addClass: 'limit-overlay' });
 		this.selectionActions.elem.addEventListener('pointerdown', event => event.preventDefault());
 		this.selectionActions.elem.addEventListener('mousedown', event => event.preventDefault());
 
@@ -420,6 +435,7 @@ export default class TerminalView extends View {
 		this.paint(body.hue);
 		this.showWatching(body.watching);
 		this.showKeepWarm(body.warmUntil);
+		this.loadMeter();
 		this.crumb.elem.textContent = `${body.project} /`;
 		this.crumb.elem.style.display = identity()?.owner ? '' : 'none';
 		if (!this.titleLabel.elem.textContent) this.titleLabel.elem.textContent = body.title || body.project;
@@ -615,6 +631,7 @@ export default class TerminalView extends View {
 			this.files?.changesMayHaveChanged();
 			if (this.git?.elem.classList.contains('open')) this.git.refresh();
 			this.activity?.busy(busy);
+			if (!busy) this.loadMeter();
 			this.resolvePath = null;
 		}
 		const offline = this.connectionState === 'reconnecting' || this.connectionState === 'ended';
@@ -1412,6 +1429,116 @@ export default class TerminalView extends View {
 		const { response } = await setWatching(this.options.id, !this.watching);
 
 		if (response?.ok) this.showWatching(!this.watching);
+	}
+
+	async loadMeter() {
+		if (!this.meterButton) return;
+
+		const { body } = await getMeter(this.options.id);
+
+		this.meter = body?.meter ?? null;
+		this.showMeter();
+		clearInterval(this.meterTick);
+		// The countdown to the cache going cold
+		this.meterTick = setInterval(() => this.showMeter(), 60_000);
+		this.addCleanup('meterTick', () => clearInterval(this.meterTick));
+	}
+
+	showMeter() {
+		const { meter } = this;
+
+		this.meterButton.style.display = meter ? '' : 'none';
+		if (!meter) return;
+
+		const left = meter.warmUntil - Date.now();
+		const state = left > 0 ? `warm ${Math.ceil(left / 60_000)}m` : 'cold';
+
+		this.meterText.textContent = ` ${tokens(meter.context)} · ${state}`;
+		this.meterButton.classList.toggle('cold', left <= 0);
+		this.meterButton.dataset.menuLabel = `Cache: ${tokens(meter.context)}, ${state}`;
+		this.meterButton.title = `${tokens(meter.context)} tokens in the conversation; Claude's cache holds it ${left > 0 ? `for ${Math.ceil(left / 60_000)} more minutes` : 'no longer'}`;
+		this.showCold(left <= 0);
+	}
+
+	// Coming back to a big conversation the cache has let go of: what the next message costs, and compacting first
+	showCold(cold) {
+		const { meter } = this;
+		const shown = cold && meter.context >= COLD_WARNING_TOKENS && !this.lastPresence?.busy && !this.coldDismissed;
+
+		this.coldCard.elem.classList.toggle('shown', Boolean(shown));
+		if (!shown) return;
+
+		const into = this.coldCard.elem;
+		const answers = element('div', 'answers');
+
+		into.replaceChildren(
+			element('div', 'title', "Claude's cache has let go of this conversation"),
+			element(
+				'div',
+				'question',
+				`The next message caches all ${tokens(meter.context)} again: about ${tokens(meter.coldCost)} input-token equivalents, ${Math.round(meter.coldCost / meter.warmCost)}× a warm turn. Compacting first reads it once (about ${tokens(meter.context)}) and carries on from a summary.`,
+			),
+			answers,
+		);
+		const dismiss = () => {
+			this.coldDismissed = true;
+			this.coldCard.elem.classList.remove('shown');
+		};
+
+		if (canType()) answers.append(button('Compact first', () => (this.compactNow(), dismiss())));
+		answers.append(button('Carry on as it is', dismiss));
+	}
+
+	compactNow() {
+		this.sendInput('/compact');
+		setTimeout(() => this.sendInput('\r'), 300);
+	}
+
+	openMeter() {
+		const { meter } = this;
+
+		if (!meter) return;
+
+		const left = meter.warmUntil - Date.now();
+
+		this.openMenu(this.meterButton, [
+			{ heading: 'In input-token equivalents' },
+			{
+				label: `${tokens(meter.context)} in the conversation`,
+				detail:
+					left > 0
+						? `cached for ${Math.ceil(left / 60_000)} more minutes`
+						: `cache let go at ${new Date(meter.warmUntil).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
+				onPress: () => {},
+			},
+			{
+				label: 'The next message',
+				detail:
+					left > 0
+						? `about ${tokens(meter.warmCost)}, read from the cache`
+						: `about ${tokens(meter.coldCost)}, cached again`,
+				onPress: () => {},
+			},
+			{
+				label: `${tokens(meter.spent)} spent here`,
+				detail: `${(meter.hitRate * 100).toFixed(meter.hitRate >= 0.99 ? 1 : 0)}% read from the cache, over ${meter.requests} requests`,
+				onPress: () => {},
+			},
+			...(canType()
+				? [
+						{
+							label: 'Compact now',
+							detail: 'a summary takes the place of the conversation',
+							onPress: () => this.compactNow(),
+						},
+					]
+				: []),
+			{
+				label: this.warmUntil ? 'Stop keeping warm' : 'Keep warm',
+				detail: this.warmUntil ? 'pinged while you are away' : 'ping it while you are away, 12 hours',
+				onPress: () => this.toggleKeepWarm(),
+			},
+		]);
 	}
 
 	showKeepWarm(until) {
