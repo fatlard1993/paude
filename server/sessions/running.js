@@ -38,7 +38,8 @@ const launch = options => {
 		onExit: ({ id }) => {
 			running.delete(id);
 			forgetProposals(id);
-			stopKeepingWarm(id);
+			// A server restart lets go of the session too, while Claude carries on under dtach, still warm
+			if (!isHeld(id)) stopKeepingWarm(id);
 		},
 	});
 
