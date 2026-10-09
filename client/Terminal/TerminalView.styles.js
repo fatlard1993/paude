@@ -37,9 +37,27 @@ export const Body = styled.Component`
 		}
 	}
 
+	/* A usage limit stopped the turn: shown on any screen, since Claude's own says nothing of carrying on; at the top,
+	   clear of the prompt box */
+	.limit-overlay {
+		position: absolute;
+		left: 8px;
+		right: 8px;
+		top: 8px;
+		z-index: 2;
+		max-width: 480px;
+		margin-left: auto;
+		display: none;
+
+		&.shown {
+			display: flex;
+		}
+	}
+
 	/* Above the phone's key bar */
 	@media (pointer: coarse) {
-		.asking-overlay {
+		.asking-overlay,
+		.limit-overlay {
 			bottom: 60px;
 		}
 	}

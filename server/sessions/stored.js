@@ -3,6 +3,7 @@ import { listSessions } from '@anthropic-ai/claude-agent-sdk';
 import { sessionHue } from '../../shared/hues';
 
 import { activitySummary } from '../activity';
+import { limitOf } from '../usageLimit';
 import { pinnedName } from '../names';
 import { projectOf, projectPath } from '../projects';
 import { worktreeName } from '../worktrees';
@@ -32,6 +33,7 @@ export const toSummary =
 			attached: running?.clients.size ?? 0,
 			...activitySummary(identity, sessionId, { running: Boolean(running), busy: running?.busy }),
 			asking: running?.asking() ?? undefined,
+			limit: limitOf(sessionId) ?? undefined,
 		};
 	};
 

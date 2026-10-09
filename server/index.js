@@ -22,6 +22,7 @@ import { initLinks } from './links';
 import { initLinkDescriptions } from './linkDescriptions';
 import { initAttachments } from './attachments';
 import { initKeepWarm } from './keepWarm';
+import { initUsageLimits, onLimitChange } from './usageLimit';
 import { setPreviewPort } from './router/shares';
 import server, { spawnBuild } from './server';
 
@@ -88,6 +89,8 @@ setClaudePath(options.claude);
 setHolderFolder(path.join(options.data, 'held'));
 await adoptHeldSessions();
 await initKeepWarm(options.data, runningSession);
+await initUsageLimits(options.data, runningSession);
+onLimitChange(sessionId => runningSession(sessionId)?.broadcastPresence());
 
 server.init({ host: options.host, port: options.port, data: options.data });
 

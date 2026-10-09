@@ -182,6 +182,10 @@ export const getAsking = async sessionId =>
 export const answerAsking = async (sessionId, question, key) =>
 	await POST('/api/sessions/:id/answer', { urlParameters: { id: sessionId }, body: { question, key } });
 
+// After a usage limit: 'now', 'reset' (carry on when it resets) or 'cancel' (stop waiting for that)
+export const continueAfterLimit = async (sessionId, when) =>
+	await POST('/api/sessions/:id/continue', { urlParameters: { id: sessionId }, body: { when } });
+
 // hours: 0 stops it; { until } is when it stops on its own (null for not warm)
 export const setKeepWarm = async (sessionId, hours) =>
 	await PUT('/api/sessions/:id/keep-warm', { urlParameters: { id: sessionId }, body: { hours } });

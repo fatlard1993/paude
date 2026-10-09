@@ -6,6 +6,7 @@ import { credentialOf, identityOf, revokeInvitesFor } from '../auth';
 import { folderHue, sessionHue } from '../../shared/hues';
 import { matchesQuery } from '../../shared/sessionSearch';
 import { DEFAULT_HOURS, keepWarm, warmUntil } from '../keepWarm';
+import { continueSession } from '../usageLimit';
 import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
 import { listRemotes, remoteLink, remoteSessions } from '../remotes';
@@ -238,6 +239,21 @@ const sessionsRoutes = async (request, server) => {
 
 		if (!session?.answer(String(question), String(key)))
 			return new Response('Claude is no longer asking that', { status: 409 });
+
+		return new Response(null, { status: 204 });
+	}
+
+	// After a usage limit: carry on now ('now'), once it resets ('reset'), or stop waiting for that ('cancel')
+	match = requestMatch('POST', '/api/sessions/:id/continue', request);
+	if (match) {
+		if (!may(identity, 'type', match.id)) return new Response('Continuing takes the drive role', { status: 403 });
+
+		const { when } = await request.json();
+
+		if (!(await continueSession(match.id, runningSession(match.id), when)))
+			return new Response("Claude can't take it now: it's busy, asking something, or something is typed", {
+				status: 409,
+			});
 
 		return new Response(null, { status: 204 });
 	}

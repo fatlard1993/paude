@@ -4,6 +4,7 @@ import path from 'path';
 
 import { stopKeepingWarm } from '../keepWarm';
 import { projectOf } from '../projects';
+import { forgetLimit } from '../usageLimit';
 import { heldSessions, isHeld } from './holder';
 import PtySession from './PtySession';
 import { folderOf } from './transcript';
@@ -39,7 +40,10 @@ const launch = options => {
 			running.delete(id);
 			forgetProposals(id);
 			// A server restart lets go of the session too, while Claude carries on under dtach, still warm
-			if (!isHeld(id)) stopKeepingWarm(id);
+			if (!isHeld(id)) {
+				stopKeepingWarm(id);
+				forgetLimit(id);
+			}
 		},
 	});
 

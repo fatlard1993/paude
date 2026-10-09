@@ -6,6 +6,7 @@ import inputKind, { FOCUS_IN } from '../../shared/inputKind';
 import { setStatus, statusOf } from '../activity';
 import { hookSettings } from '../hookSettings';
 import { warmUntil } from '../keepWarm';
+import { limitOf } from '../usageLimit';
 import { pinnedName } from '../names';
 import parseTitle from './claudeTitle';
 import readDialog from './dialog';
@@ -319,6 +320,7 @@ export default class PtySession {
 				waiting: statusOf(this.id) === 'waiting',
 				title: pinnedName(this.id) || this.title,
 				hue: sessionHue(this.id),
+				limit: limitOf(this.id),
 				clients,
 				you: index,
 			});

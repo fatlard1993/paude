@@ -32,7 +32,7 @@ import { recall, remember } from '../storage';
 import { button, dragHandle, element } from '../dom';
 import goBack from '../goBack';
 import { onWaitingChange } from '../waiting';
-import { AskingCard, showAsking } from '../Asking';
+import { AskingCard, showAsking, showLimit } from '../Asking';
 import attach from './attach';
 import KeyBar from './KeyBar';
 import selectLinesByTap from './lineSelect';
@@ -271,6 +271,7 @@ export default class TerminalView extends View {
 		// the release can't land on whatever was under the buttons once they hide
 		this.selectionActions = new SelectionActions({ appendTo: column, style: { display: 'none' } });
 		this.askingCard = new AskingCard({ appendTo: column, addClass: 'asking-overlay' });
+		this.limitCard = new AskingCard({ appendTo: column, addClass: 'limit-overlay' });
 		this.selectionActions.elem.addEventListener('pointerdown', event => event.preventDefault());
 		this.selectionActions.elem.addEventListener('mousedown', event => event.preventDefault());
 
@@ -619,6 +620,9 @@ export default class TerminalView extends View {
 		const offline = this.connectionState === 'reconnecting' || this.connectionState === 'ended';
 
 		if (waiting !== Boolean(this.lastPresence?.waiting)) this.showAsking(waiting);
+		// The presence that follows each change brings the next state, so the card is redrawn from each
+		this.limitCard.elem.classList.toggle('shown', Boolean(presence.limit));
+		if (presence.limit) showLimit(this.limitCard, this.options.id, presence.limit, { canAct: canType() });
 		this.lastPresence = presence;
 		this.notes.myName = clients[you]?.name;
 		if (title && this.connectionState !== 'ended') this.titleLabel.elem.textContent = title;

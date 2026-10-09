@@ -2,7 +2,7 @@ import { Component, Elem, styled } from '@vanilla-bean/components';
 
 import { tintsOf } from '../shared/hues';
 import relativeTime from '../shared/relativeTime';
-import { AskingCard, showAsking } from './Asking';
+import { AskingCard, showAsking, showLimit } from './Asking';
 
 const column = `
 	width: 100%;
@@ -282,8 +282,22 @@ export const LinkCard = ({
 	return card;
 };
 
-// A session waiting on someone shows what Claude asks, answerable here when it's this server's
+// A session waiting on someone shows what Claude asks, and one a usage limit stopped how to carry on: answerable
+// here when it's this server's
 const withAsking = (card, session) => {
+	if (session.limit) {
+		const limit = new AskingCard({ appendTo: card, addClass: 'asking' });
+		const show = state =>
+			showLimit(limit, session.id, state, {
+				canAct: !session.remote,
+				onChanged: when =>
+					when === 'now' ? limit.elem.remove() : show({ ...state, armed: when === 'reset', triedAt: null }),
+			});
+
+		show(session.limit);
+
+		return card;
+	}
 	if (session.status !== 'waiting' || !session.asking) return card;
 
 	const asking = new AskingCard({ appendTo: card, addClass: 'asking' });
