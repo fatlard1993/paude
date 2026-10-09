@@ -8,7 +8,8 @@ import { statusOf } from './activity';
 // word. That reads the conversation from Claude's prompt cache, which keeps it there another hour. Claude Code compacts
 // an idle conversation of 200k tokens or more 54 minutes after its last request (unless "idleCompaction": false), and
 // that request began before the hook that says the turn ended: 50 minutes, with the minute between checks, comes
-// before either. Each ping costs a cached read of the whole conversation, so it's on only until a cutoff.
+// before either. Each ping costs a cached read of the whole conversation, so it stops once nobody has sent the session
+// anything for a while: the hours it's kept warm count from the last real prompt, not from when it was turned on.
 export const PING_AFTER_MS = 50 * 60 * 1000;
 export const DEFAULT_HOURS = 12;
 export const MAX_HOURS = 48;
@@ -18,7 +19,7 @@ export const PING = 'keep-warm ping from paude: reply with only "·" and no tool
 const ENTER_AFTER_MS = 300;
 
 let file;
-// { [sessionId]: until }
+// { [sessionId]: { hours, until } }
 let warm = {};
 // When Claude last did anything (any hook), per session; a ping is due PING_AFTER_MS after
 const lastTurnAt = new Map();
@@ -27,14 +28,18 @@ const pinged = new Set();
 
 const save = () => writeJsonFile(file, () => warm);
 
-export const warmUntil = (id, now = Date.now()) => (warm[id] > now ? warm[id] : null);
+const HOUR_MS = 60 * 60 * 1000;
+
+export const warmUntil = (id, now = Date.now()) => (warm[id]?.until > now ? warm[id].until : null);
 
 export const keepWarm = async (id, hours, now = Date.now()) => {
 	if (hours > 0) {
-		warm[id] = now + Math.min(hours, MAX_HOURS) * 60 * 60 * 1000;
+		const kept = Math.min(hours, MAX_HOURS);
+
+		warm[id] = { hours: kept, until: now + kept * HOUR_MS };
 		if (!lastTurnAt.has(id)) lastTurnAt.set(id, now);
 	} else delete warm[id];
-	console.log(`Keep warm ${id}: ${hours > 0 ? `on until ${new Date(warm[id]).toISOString()}` : 'off'}`);
+	console.log(`Keep warm ${id}: ${hours > 0 ? `on until ${new Date(warm[id].until).toISOString()}` : 'off'}`);
 	if (file) await save();
 
 	return warmUntil(id, now);
@@ -49,13 +54,19 @@ export const stopKeepingWarm = async id => {
 	if (file) await save();
 };
 
-// A hook from the session: Claude is doing something, which reads the cache anyway. Whether the turn this ends was a
-// ping, for the Stop that ends it.
+// A hook from the session: Claude is doing something, which reads the cache anyway. A real prompt (not a ping) starts
+// the hours it's kept warm over. Returns whether the turn this ends was a ping, for the Stop that ends it.
 export const claudeActive = (id, { hook_event_name: event, prompt } = {}, now = Date.now()) => {
 	lastTurnAt.set(id, now);
 	if (event === 'UserPromptSubmit') {
 		if (String(prompt ?? '').includes(PING)) pinged.add(id);
-		else pinged.delete(id);
+		else {
+			pinged.delete(id);
+			if (warm[id]) {
+				warm[id] = { ...warm[id], until: now + warm[id].hours * HOUR_MS };
+				if (file) save();
+			}
+		}
 	}
 
 	return pinged.has(id);
@@ -78,7 +89,7 @@ export const checkWarm = async (sessionOf, now = Date.now()) => {
 	const pings = [];
 	let changed = false;
 
-	for (const [id, until] of Object.entries(warm)) {
+	for (const [id, { until }] of Object.entries(warm)) {
 		const session = sessionOf(id);
 
 		// Not heard from since this server started: counted from now
@@ -96,7 +107,13 @@ export const checkWarm = async (sessionOf, now = Date.now()) => {
 
 export const initKeepWarm = async (dataDir, sessionOf) => {
 	file = path.join(dataDir, 'keep-warm.json');
-	warm = await readJsonFile(file, {});
+	// Kept before as a bare cutoff
+	warm = Object.fromEntries(
+		Object.entries(await readJsonFile(file, {})).map(([id, kept]) => [
+			id,
+			typeof kept === 'number' ? { hours: DEFAULT_HOURS, until: kept } : kept,
+		]),
+	);
 	setInterval(
 		() => checkWarm(sessionOf).catch(error => console.error('Keeping sessions warm failed:', error)),
 		CHECK_MS,

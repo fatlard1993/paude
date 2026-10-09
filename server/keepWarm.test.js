@@ -77,3 +77,14 @@ test("a ping's turn is known as one, from its prompt to its Stop", () => {
 	expect(claudeActive('turns', { hook_event_name: 'UserPromptSubmit', prompt: 'fix the build' })).toBe(false);
 	expect(claudeActive('turns', { hook_event_name: 'Stop' })).toBe(false);
 });
+
+test('a real prompt starts the hours over; a ping does not', async () => {
+	await keepWarm('sliding', 12, 0);
+	expect(warmUntil('sliding', 0)).toBe(12 * HOUR);
+
+	claudeActive('sliding', { hook_event_name: 'UserPromptSubmit', prompt: PING }, 5 * HOUR);
+	expect(warmUntil('sliding', 0)).toBe(12 * HOUR);
+
+	claudeActive('sliding', { hook_event_name: 'UserPromptSubmit', prompt: 'fix the build' }, 10 * HOUR);
+	expect(warmUntil('sliding', 0)).toBe(22 * HOUR);
+});
