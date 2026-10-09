@@ -1,4 +1,4 @@
-import { Button, Elem, Input, Notify, View, styled } from '@vanilla-bean/components';
+import { Button, Elem, Notify, View, styled } from '@vanilla-bean/components';
 
 import { runningSummary } from '../shared/checkouts';
 import { readProgress, recentLines } from '../shared/progress';
@@ -15,17 +15,8 @@ import { element } from './dom';
 import goBack from './goBack';
 import sessionList from './SessionList';
 import { Header, Scroll, SectionTitle, sessionCard } from './Layout';
+import { Composer, Places, placePrompt, takeDraft } from './PromptHome';
 import LinksPanel from './Terminal/LinksPanel';
-
-const Composer = styled(
-	Input,
-	() => `
-		width: 100%;
-		min-height: 4.5em;
-		max-height: 40vh;
-		box-sizing: border-box;
-	`,
-);
 
 const Where = styled(
 	Elem,
@@ -136,11 +127,25 @@ export default class Project extends View {
 
 		const actions = new Actions({ appendTo: scroll });
 
+		new Button({
+			appendTo: actions,
+			textContent: 'Find a session for it',
+			onPointerPress: () =>
+				placePrompt({
+					places: this.places,
+					prompt: this.prompt.elem.value.trim(),
+					project,
+					startFresh: () => this.start(),
+				}),
+		});
 		this.startButton = new Button({
 			appendTo: actions,
 			textContent: 'Start session',
 			onPointerPress: () => this.start(),
 		});
+		this.places = new Places({ appendTo: scroll });
+		// Brought here from home to start in this project
+		this.prompt.elem.value = takeDraft(project) ?? '';
 
 		new SectionTitle({ appendTo: scroll, textContent: 'Sessions' });
 		this.sessions = sessionList({

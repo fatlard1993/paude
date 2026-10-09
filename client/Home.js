@@ -19,6 +19,7 @@ import confirmDialog, { confirmDeleteSession } from './confirmDialog';
 import { identity, serverName } from './identity';
 import sessionList from './SessionList';
 import { Empty, Header, LinkCard, Scroll, SectionTitle, sessionCard } from './Layout';
+import { Composer, Places, carryDraft, placePrompt } from './PromptHome';
 
 const Grid = styled.Component`
 	display: grid;
@@ -77,6 +78,7 @@ export default class Home extends View {
 
 		const scroll = new Scroll({ appendTo: this });
 
+		this.promptBox(scroll);
 		this.watchingTitle = new SectionTitle({ appendTo: scroll, textContent: 'Watching', style: { display: 'none' } });
 		this.watching = new List({ appendTo: scroll });
 
@@ -96,6 +98,31 @@ export default class Home extends View {
 		this.addFolderForm(scroll);
 
 		this.load();
+	}
+
+	// A prompt placed before it's sent: in a conversation it carries on, or a new session in the project that fits
+	promptBox(appendTo) {
+		const prompt = new Composer({
+			appendTo,
+			tag: 'textarea',
+			placeholder: 'What should Claude do? paude finds the session it carries on, or the project to start one in',
+			onKeyDown: event => {
+				if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+					event.preventDefault();
+					place();
+				}
+			},
+		});
+		const actions = new Elem({ appendTo, style: { display: 'flex', justifyContent: 'flex-end', marginTop: '8px' } });
+		const places = new Places({ appendTo });
+		const place = () =>
+			placePrompt({
+				places,
+				prompt: prompt.elem.value.trim(),
+				startFresh: project => carryDraft(project, prompt.elem.value.trim()),
+			});
+
+		new Button({ appendTo: actions, textContent: 'Find where it goes', onPointerPress: place });
 	}
 
 	addFolderForm(appendTo) {

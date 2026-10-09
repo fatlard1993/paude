@@ -9,6 +9,8 @@ import { DEFAULT_HOURS, keepWarm, warmUntil } from '../keepWarm';
 import { continueSession } from '../usageLimit';
 import { meterOf } from '../cacheMeter';
 import { catchUp } from '../catchUp';
+import { findHome } from '../promptHome';
+import { askClaude } from '../claudeInbox';
 import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
 import { listRemotes, remoteLink, remoteSessions } from '../remotes';
@@ -241,6 +243,31 @@ const sessionsRoutes = async (request, server) => {
 
 		if (!session?.answer(String(question), String(key)))
 			return new Response('Claude is no longer asking that', { status: 409 });
+
+		return new Response(null, { status: 204 });
+	}
+
+	// Where a prompt belongs: a session it carries on, or a new one (in which project, unless one is given)
+	if (requestMatch('POST', '/api/prompt-home', request)) {
+		const { prompt, project } = await request.json();
+
+		if (!String(prompt ?? '').trim()) return new Response('Say what Claude should do', { status: 400 });
+		if (project && !projectPath(project)) return new Response('Unknown project', { status: 404 });
+
+		const home = await findHome({ prompt: String(prompt).trim(), project, identity });
+
+		return home ? Response.json(home) : new Response("Haiku couldn't place it just now", { status: 502 });
+	}
+
+	// A prompt for a session, typed in once its prompt box is free (taken back up first if it isn't running)
+	match = requestMatch('POST', '/api/sessions/:id/prompt', request);
+	if (match) {
+		const { text } = await request.json();
+
+		if (!String(text ?? '').trim()) return new Response('Nothing to send', { status: 400 });
+		if (!(await openSession(match.id))) return new Response('Session not found', { status: 404 });
+
+		askClaude(match.id, { prompt: String(text).trim(), answer: async () => {} });
 
 		return new Response(null, { status: 204 });
 	}

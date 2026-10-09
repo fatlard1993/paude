@@ -194,6 +194,13 @@ export const getMeter = async sessionId =>
 export const catchUpOn = async (sessionId, since) =>
 	await POST('/api/sessions/:id/catch-up', { urlParameters: { id: sessionId }, body: { since } });
 
+// Where a prompt belongs: { matches: [{ session, why, meter }], fresh: { project, why } }; project keeps it to one
+export const findPromptHome = async (prompt, project) => await POST('/api/prompt-home', { body: { prompt, project } });
+
+// A prompt typed into a session once its prompt box is free (taken back up first if it isn't running)
+export const sendPrompt = async (sessionId, text) =>
+	await POST('/api/sessions/:id/prompt', { urlParameters: { id: sessionId }, body: { text } });
+
 // hours: 0 stops it; { until } is when it stops on its own (null for not warm)
 export const setKeepWarm = async (sessionId, hours) =>
 	await PUT('/api/sessions/:id/keep-warm', { urlParameters: { id: sessionId }, body: { hours } });

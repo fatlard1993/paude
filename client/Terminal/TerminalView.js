@@ -25,6 +25,7 @@ import { canBrowse, canNote, canType, identity, serverName } from '../identity';
 import DONE_MARKER from '../../shared/doneMarker';
 import findFilePaths, { pathResolver } from '../../shared/filePaths';
 import { tintsOf } from '../../shared/hues';
+import tokens from '../../shared/tokenCount';
 import findUrls from '../../shared/terminalLinks';
 import withoutPointerReporting from '../../shared/pointerReporting';
 import { NOTE_TYPES } from '../../shared/protocol';
@@ -129,8 +130,6 @@ const bufferLines = terminal => {
 
 // A cold conversation this big gets a word before the next message caches it all again
 const COLD_WARNING_TOKENS = 50_000;
-
-const tokens = count => (count >= 1e6 ? `${(count / 1e6).toFixed(1)}M` : `${Math.round(count / 1000)}k`);
 
 export default class TerminalView extends View {
 	constructor(options) {
