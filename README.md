@@ -223,6 +223,10 @@ The side panels float over the terminal and resize from their inner edge.
 
 ![The Links panel: each link described, with who brought it up](docs/web-links.png)
 
+![The Artifacts panel: a chart, the page and script that made it, each described](docs/web-artifacts.png)
+
+![Home's prompt box: the session a prompt carries on, with what sending it costs, or a new one](docs/web-prompt-home.png)
+
 ## Watching
 
 ![Home: watched sessions first, with what changed](docs/web-home.png)
