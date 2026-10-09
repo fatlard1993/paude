@@ -67,7 +67,7 @@ export const homePrompt = ({ prompt, candidates, projects }) =>
 					.join('\n')}`
 			: 'There are no conversations going.',
 		projects && `For a new session, the projects (each on its server) are: ${projects.join(', ')}.`,
-		`Reply with only a JSON object: {"matches": [{"n": 2, "why": "…"}], "fresh": {${projects ? '"project": "…", ' : ''}"why": "…"}}.${projects ? ' "project" is one of the projects exactly as written above.' : ''} "matches" holds at most ${MOST_MATCHES} conversations this truly carries on, best first, and is empty when none does; each "why" is one plain sentence.`,
+		`Reply with only a JSON object: {"matches": [{"n": 2, "why": "…"}], "fresh": {${projects ? '"project": "…", ' : ''}"why": "…"}}.${projects ? ' "project" is one of the projects exactly as written above.' : ''} "matches" holds at most ${MOST_MATCHES} conversations this truly carries on, best first, and is empty when none does; each "why" is one plain sentence that names a conversation by its title, never by its number.`,
 	]
 		.filter(Boolean)
 		.join('\n\n');
@@ -146,7 +146,11 @@ export const findHome = async ({ prompt, project, identity, remotes = false }) =
 				return { session: summary, remote, why, meter: await meterFor(session) };
 			}),
 	);
-	const fresh = project ? { name: project } : projects.find(found => placeName(found, here) === reply.fresh?.project);
+	// As written, or by the project's name alone (this server's first) when Haiku left the server off
+	const said = String(reply.fresh?.project ?? '').trim();
+	const fresh = project
+		? { name: project }
+		: (projects.find(found => placeName(found, here) === said) ?? projects.find(found => found.name === said));
 
 	return {
 		matches,
