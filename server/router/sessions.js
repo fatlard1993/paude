@@ -5,6 +5,7 @@ import { activitySummary, forgetActivity, setWatching, watchedBy } from '../acti
 import { credentialOf, identityOf, revokeInvitesFor } from '../auth';
 import { folderHue, sessionHue } from '../../shared/hues';
 import { matchesQuery } from '../../shared/sessionSearch';
+import { DEFAULT_HOURS, keepWarm, warmUntil } from '../keepWarm';
 import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
 import { listRemotes, remoteLink, remoteSessions } from '../remotes';
@@ -219,6 +220,17 @@ const sessionsRoutes = async (request, server) => {
 		return new Response(null, { status: 204 });
 	}
 
+	// The pings are typed in as the owner and spend the owner's Claude usage
+	match = requestMatch('PUT', '/api/sessions/:id/keep-warm', request);
+	if (match) {
+		if (!identity.owner) return new Response('Only the owner keeps a session warm', { status: 403 });
+		if (!runningSession(match.id)) return new Response('Only a running session stays warm', { status: 409 });
+
+		const { hours = DEFAULT_HOURS } = await request.json();
+
+		return Response.json({ until: await keepWarm(match.id, Number(hours) || 0) });
+	}
+
 	// Every link the project's sessions brought up, as one list; pinned and hidden for the project
 	match = requestMatch('GET', '/api/projects/:project/links', request);
 	if (match) {
@@ -400,6 +412,7 @@ const sessionsRoutes = async (request, server) => {
 			hue: sessionHue(match.id),
 			pinned: Boolean(pinnedName(match.id)),
 			startFailure: running ? undefined : startFailureOf(match.id),
+			warmUntil: identity.owner ? warmUntil(match.id) : undefined,
 			...activitySummary(identity, match.id, { running: Boolean(running), busy: running?.busy }),
 		});
 	}

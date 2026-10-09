@@ -21,6 +21,7 @@ import { initTasks, onRunsChange } from './tasks';
 import { initLinks } from './links';
 import { initLinkDescriptions } from './linkDescriptions';
 import { initAttachments } from './attachments';
+import { initKeepWarm } from './keepWarm';
 import { setPreviewPort } from './router/shares';
 import server, { spawnBuild } from './server';
 
@@ -86,6 +87,7 @@ if (!passwordIsSet()) {
 setClaudePath(options.claude);
 setHolderFolder(path.join(options.data, 'held'));
 await adoptHeldSessions();
+await initKeepWarm(options.data, runningSession);
 
 server.init({ host: options.host, port: options.port, data: options.data });
 

@@ -175,6 +175,10 @@ export const getWatching = async () => await GET('/api/watching', { invalidateAf
 export const setWatching = async (sessionId, watching) =>
 	await PUT('/api/sessions/:id/watch', { urlParameters: { id: sessionId }, body: { watching } });
 
+// hours: 0 stops it; { until } is when it stops on its own (null for not warm)
+export const setKeepWarm = async (sessionId, hours) =>
+	await PUT('/api/sessions/:id/keep-warm', { urlParameters: { id: sessionId }, body: { hours } });
+
 export const addFolder = async path => await POST('/api/projects', { body: { path }, responseType: 'text' });
 
 export const removeFolder = async name => await DELETE('/api/projects/:name', { urlParameters: { name } });

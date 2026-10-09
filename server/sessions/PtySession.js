@@ -5,6 +5,7 @@ import { sessionHue } from '../../shared/hues';
 import inputKind, { FOCUS_IN } from '../../shared/inputKind';
 import { setStatus, statusOf } from '../activity';
 import { hookSettings } from '../hookSettings';
+import { warmUntil } from '../keepWarm';
 import { pinnedName } from '../names';
 import parseTitle from './claudeTitle';
 import readPromptDraft from './promptBox';
@@ -16,8 +17,9 @@ const { SerializeAddon } = serializeAddon;
 const ESC = '\x1b';
 
 // Nobody attached for this long: the prompt cache has expired anyway, so an idle process holds nothing worth keeping
+// (unless it's kept warm)
 const IDLE_EXIT_MS = 60 * 60 * 1000;
-// A session still working at that point gets this much longer, again and again, until it's done
+// A session still working or kept warm at that point gets this much longer, again and again, until it isn't
 const BUSY_RECHECK_MS = 10 * 60 * 1000;
 // How long the size is off by a row when a session taken back is asked to redraw, and how soon after
 const REDRAW_NUDGE_MS = 300;
@@ -305,7 +307,7 @@ export default class PtySession {
 	resetIdle(delay = IDLE_EXIT_MS) {
 		clearTimeout(this.idleTimer);
 		this.idleTimer = setTimeout(() => {
-			if (this.busy || statusOf(this.id) === 'working') this.resetIdle(BUSY_RECHECK_MS);
+			if (this.busy || statusOf(this.id) === 'working' || warmUntil(this.id)) this.resetIdle(BUSY_RECHECK_MS);
 			else this.end();
 		}, delay);
 		this.idleTimer.unref?.();

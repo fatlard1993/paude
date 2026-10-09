@@ -4,6 +4,7 @@ import { projectOf } from '../projects';
 import { afterTurnTasks, runTask } from '../tasks';
 import { sessionTimeline } from '../timeline';
 import { HOOK_EVENTS, hookSecret } from '../hookSettings';
+import { claudeActive } from '../keepWarm';
 import { trackProposals } from '../sessions/proposals';
 import { runningSession } from '../sessions/running';
 import requestMatch from '../utils/requestMatch';
@@ -37,6 +38,8 @@ const hooksRoutes = async request => {
 	if (typeof id !== 'string' || !runningSession(id)) return new Response(null, { status: 204 });
 	trackProposals(id, payload);
 	if (status) await setStatus(id, status);
+	// A keep-warm ping's turn isn't news, and edits nothing
+	if (claudeActive(id, payload)) return new Response(null, { status: 204 });
 	if (payload.hook_event_name === 'Stop') await recordChange(id);
 	// Not waited for: Claude waits on its hook, and the answer can take a few seconds to reach the transcript
 	if (payload.hook_event_name === 'Stop')

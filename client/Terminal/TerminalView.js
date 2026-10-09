@@ -15,6 +15,7 @@ import {
 	markLink,
 	nameSession,
 	openRemote,
+	setKeepWarm,
 	setWatching,
 } from '../api';
 import confirmDialog, { confirmDeleteSession, nameDialog } from '../confirmDialog';
@@ -213,6 +214,15 @@ export default class TerminalView extends View {
 			className: 'tool',
 			onPress: () => this.toggleWatching(),
 		});
+		if (identity()?.owner) {
+			this.warmButton = ghostButton(header, {
+				icon: 'fire',
+				title: 'Keep warm',
+				className: 'tool',
+				onPress: () => this.toggleKeepWarm(),
+			});
+			this.showKeepWarm(null);
+		}
 		this.sharesButton = ghostButton(header, {
 			icon: 'share-nodes',
 			title: 'Shared: services this session runs, files and sites',
@@ -405,6 +415,7 @@ export default class TerminalView extends View {
 		this.project = body.project;
 		this.paint(body.hue);
 		this.showWatching(body.watching);
+		this.showKeepWarm(body.warmUntil);
 		this.crumb.elem.textContent = `${body.project} /`;
 		this.crumb.elem.style.display = identity()?.owner ? '' : 'none';
 		if (!this.titleLabel.elem.textContent) this.titleLabel.elem.textContent = body.title || body.project;
@@ -850,7 +861,7 @@ export default class TerminalView extends View {
 
 				return {
 					label: tool.dataset.menuLabel ?? tool.title.split(':')[0],
-					detail: [count?.style.display !== 'none' && count?.textContent, open && 'open']
+					detail: [count?.style.display !== 'none' && count?.textContent, open && 'open', tool.dataset.menuDetail]
 						.filter(Boolean)
 						.join(' · '),
 					onPress: () => tool.click(),
@@ -1369,6 +1380,28 @@ export default class TerminalView extends View {
 		const { response } = await setWatching(this.options.id, !this.watching);
 
 		if (response?.ok) this.showWatching(!this.watching);
+	}
+
+	showKeepWarm(until) {
+		if (!this.warmButton) return;
+		this.warmUntil = until ?? null;
+
+		const time = until && new Date(until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+		this.warmButton.classList.toggle('active', Boolean(until));
+		this.warmButton.dataset.menuLabel = until ? 'Stop keeping warm' : 'Keep warm';
+		if (until) this.warmButton.dataset.menuDetail = `until ${time}`;
+		else delete this.warmButton.dataset.menuDetail;
+		this.warmButton.title = until
+			? `Kept warm until ${time}: once Claude has been quiet 45 minutes, paude pings it, so coming back finds the whole conversation still cached and not compacted. Click to stop.`
+			: 'Keep warm: while you are away, ping Claude before its prompt cache expires and the conversation is compacted (12 hours, a cached read of the conversation each 45 minutes)';
+	}
+
+	async toggleKeepWarm() {
+		const { body, response } = await setKeepWarm(this.options.id, this.warmUntil ? 0 : 12);
+
+		if (response?.ok) this.showKeepWarm(body.until);
+		else new Notify({ type: 'error', content: "Couldn't keep this session warm (only a running session can be)" });
 	}
 
 	async rename() {

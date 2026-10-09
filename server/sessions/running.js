@@ -2,6 +2,7 @@ import { getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import { statSync } from 'fs';
 import path from 'path';
 
+import { stopKeepingWarm } from '../keepWarm';
 import { projectOf } from '../projects';
 import { heldSessions, isHeld } from './holder';
 import PtySession from './PtySession';
@@ -37,6 +38,7 @@ const launch = options => {
 		onExit: ({ id }) => {
 			running.delete(id);
 			forgetProposals(id);
+			stopKeepingWarm(id);
 		},
 	});
 
