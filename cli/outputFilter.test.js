@@ -53,3 +53,19 @@ test('padded OSC numbers, string sequences and C1 controls are dropped too', () 
 test('a whole snapshot is filtered the same way', () => {
 	expect(filterText('x\x1b]52;c;Y3Vy\x07y')).toBe('xy');
 });
+
+test("Claude's copy of a selection reaches the clipboard only when this person's input just asked for it", () => {
+	const copy = '\x1b]52;c;c2VsZWN0ZWQ=\x07';
+	let mine = false;
+	const filter = outputFilter({ mayCopy: () => mine });
+
+	expect(filter(bytes(`a${copy}b`))).toBe('ab');
+	mine = true;
+	expect(filter(bytes(`a${copy}b`))).toBe(`a${copy}b`);
+});
+
+test('reading the clipboard back is never let through', () => {
+	const filter = outputFilter({ mayCopy: () => true });
+
+	expect(filter(bytes('a\x1b]52;c;?\x07b'))).toBe('ab');
+});

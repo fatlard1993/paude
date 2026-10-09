@@ -31,14 +31,23 @@ const nextStringStart = (text, from) => {
 	return -1;
 };
 
-const kept = (text, start, end) => {
+// A clipboard write (never a read: '?' asks the terminal to send its clipboard back into the session)
+const CLIPBOARD_WRITE = /^52;[a-z0-9]*;[A-Za-z0-9+/=]+$/;
+
+const kept = (text, start, end, mayCopy) => {
 	if (text[start + 1] !== ']') return false;
 
-	return !BLOCKED_OSC.has(Number.parseInt(text.slice(start + 2, end.at).split(';')[0], 10));
+	const body = text.slice(start + 2, end.at);
+
+	if (CLIPBOARD_WRITE.test(body)) return mayCopy();
+
+	return !BLOCKED_OSC.has(Number.parseInt(body.split(';')[0], 10));
 };
 
-// Returns a function that filters one chunk at a time, holding back a sequence split across chunks
-const outputFilter = () => {
+// Returns a function that filters one chunk at a time, holding back a sequence split across chunks. mayCopy says
+// whether a clipboard write goes through now: Claude copies what's selected in its own screen that way, so it's let
+// through just after this person's own click or key, which nobody else in the session can time.
+const outputFilter = ({ mayCopy = () => false } = {}) => {
 	const decoder = new TextDecoder();
 	let carry = '';
 
@@ -72,7 +81,7 @@ const outputFilter = () => {
 				break;
 			}
 
-			if (kept(text, start, end)) out += text.slice(start, end.at + end.length);
+			if (kept(text, start, end, mayCopy)) out += text.slice(start, end.at + end.length);
 
 			index = end.at + end.length;
 		}

@@ -47,6 +47,8 @@ const OVERLAY_KEY_HINT = OVERLAY_KEY === 'Ctrl+]' ? OVERLAY_KEY : `${OVERLAY_KEY
 
 const NOTE_ACTIONS = ['chat', 'comment', 'reply', 'resolve', 'react', 'delete', 'ask'];
 const FRAME_MS = 33;
+// How soon after this person's own click or key a clipboard write from the session is theirs
+const OWN_COPY_MS = 3000;
 
 const displayName = () => process.env.PAUDE_NAME || os.userInfo().username;
 
@@ -65,7 +67,10 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 		};
 		let overlay = false;
 		let done = false;
-		let filter = outputFilter();
+		// When this person last clicked or typed: Claude's copy of a selection follows right after
+		let ownInputAt = 0;
+		const newFilter = () => outputFilter({ mayCopy: () => Date.now() - ownInputAt < OWN_COPY_MS });
+		let filter = newFilter();
 		let warnedOffline = false;
 		let tinted = false;
 		const notify = notifier();
@@ -336,6 +341,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 				// The key itself, not a paste that happens to contain its byte
 				if (OVERLAY_KEYS.includes(key)) return openOverlay();
 				if (state.shell) return state.shell.input(key);
+				ownInputAt = Date.now();
 				if (!send({ type: 'input', data: key }) && !warnedOffline) {
 					warnedOffline = true;
 					notify('paude', 'Reconnecting: what you type is lost until it is back');
@@ -419,7 +425,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			onMessage: handleMessage,
 			onState: (connectionState, reason) => {
 				if (connectionState === 'connected') {
-					filter = outputFilter();
+					filter = newFilter();
 					warnedOffline = false;
 				} else if (connectionState === 'failed') finish({ failed: reason });
 				else if (connectionState !== 'reconnecting') finish(connectionState);
