@@ -393,6 +393,26 @@ const Panel = styled(
 			-webkit-box-orient: vertical;
 		}
 
+		/* The Artifacts panel: an image's preview under its name */
+		.artifact-preview {
+			display: block;
+			padding-left: calc(1.2em + 6px);
+		}
+
+		.artifact-preview img {
+			display: block;
+			max-width: 100%;
+			max-height: 160px;
+			border-radius: 4px;
+			background: ${colors.alpha(colors.white, 0.05)};
+		}
+
+		.link-head .download {
+			color: inherit;
+			opacity: 0.7;
+			padding: 2px 4px;
+		}
+
 		/* The Tasks panel */
 		.task-name {
 			flex: 1;

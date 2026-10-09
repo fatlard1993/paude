@@ -28,6 +28,8 @@ const OWN_SESSION_ROUTES = [
 	'/answer',
 	'/continue',
 	'/catch-up',
+	'/artifacts',
+	'/artifact',
 	'/shell',
 	'/files',
 	'/file',

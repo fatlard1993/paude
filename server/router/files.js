@@ -1,5 +1,6 @@
 import { credentialOf, identityOf } from '../auth';
 import { MAX_ATTACHMENT, saveAttachment } from '../attachments';
+import { sessionArtifacts } from '../artifacts';
 import { listChanges } from '../changes';
 import { DiffError, diffSet, turnsWithChanges } from '../diffs';
 import { markLink, sessionLinks } from '../links';
@@ -17,6 +18,7 @@ import {
 } from '../files';
 import { searchOptionsFrom } from '../../shared/searchQuery';
 import { may } from '../permissions';
+import { projectOf, projectPath } from '../projects';
 import { sessionRecord } from '../sessions/record';
 import requestMatch from '../utils/requestMatch';
 
@@ -123,6 +125,43 @@ const attach = async (request, id, name) => {
 	return Response.json({ path: await saveAttachment(id, name, bytes) });
 };
 
+// Pages and SVGs a session made run nowhere near paude: in a sandbox, with no access to its cookies or API
+const SANDBOXED = /\.(html?|svg)$/i;
+
+// What a session made (the owner's to see wherever it is; a guest's only inside the project), and one of those files
+// served as it is. Only a file the session's own transcript names is served.
+const artifacts = async (request, match) => {
+	const identity = identityOf(credentialOf(request));
+
+	if (!may(identity, 'files', match.id)) return new Response('Not part of your invite', { status: 403 });
+
+	const record = await sessionRecord(match.id);
+
+	if (!record) return new Response('Session not found', { status: 404 });
+
+	const made = (
+		await sessionArtifacts(match.id, record.cwd, { projectFolder: projectPath(projectOf(record.cwd)) })
+	).filter(artifact => identity.owner || artifact.inProject);
+
+	if (new URL(request.url).pathname.endsWith('/artifacts')) return Response.json(made);
+
+	const artifact = made.find(found => found.path === match.path);
+
+	if (!artifact) return new Response('Not something this session made', { status: 404 });
+
+	const file = Bun.file(artifact.path);
+	const name = encodeURIComponent(artifact.name);
+
+	return new Response(file, {
+		headers: {
+			'content-type': file.type,
+			'content-disposition': `${match.download ? 'attachment' : 'inline'}; filename*=UTF-8''${name}`,
+			'x-content-type-options': 'nosniff',
+			...(SANDBOXED.test(artifact.path) && { 'content-security-policy': 'sandbox allow-scripts' }),
+		},
+	});
+};
+
 // Reading a session's project needs at least the comment role; watchers see only the terminal
 const filesRoutes = async request => {
 	const saving = requestMatch('PUT', '/api/sessions/:id/file', request);
@@ -150,6 +189,12 @@ const filesRoutes = async request => {
 
 		return new Response(null, { status: 204 });
 	}
+
+	const made =
+		requestMatch('GET', '/api/sessions/:id/artifacts', request) ||
+		requestMatch('GET', '/api/sessions/:id/artifact', request);
+
+	if (made) return artifacts(request, made);
 
 	const environment = requestMatch('GET', '/api/sessions/:id/environment', request);
 

@@ -45,6 +45,7 @@ import {
 	validWorktreeName,
 } from '../worktrees';
 import { markProjectLink, projectLinks } from '../links';
+import { projectArtifacts } from '../artifacts';
 import requestMatch from '../utils/requestMatch';
 
 const isFolder = async path =>
@@ -358,6 +359,14 @@ const sessionsRoutes = async (request, server) => {
 		const { hours = DEFAULT_HOURS } = await request.json();
 
 		return Response.json({ until: await keepWarm(match.id, Number(hours) || 0) });
+	}
+
+	// Everything the project's sessions made, as one list
+	match = requestMatch('GET', '/api/projects/:project/artifacts', request);
+	if (match) {
+		if (!projectPath(match.project)) return new Response('Unknown project', { status: 404 });
+
+		return Response.json(await projectArtifacts(match.project));
 	}
 
 	// Every link the project's sessions brought up, as one list; pinned and hidden for the project

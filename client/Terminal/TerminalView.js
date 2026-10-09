@@ -15,6 +15,7 @@ import {
 	markLink,
 	nameSession,
 	openRemote,
+	getArtifacts,
 	getAsking,
 	getMeter,
 	setKeepWarm,
@@ -46,6 +47,7 @@ import SharesPanel from './SharesPanel';
 import ActivityPanel from './ActivityPanel';
 import TasksPanel from './TasksPanel';
 import LinksPanel from './LinksPanel';
+import ArtifactsPanel from './ArtifactsPanel';
 import NotesPanel from './NotesPanel';
 import SideShell from './SideShell';
 import { BackMenu, Body, NARROW, Presence, SelectHint, SelectionActions, TopBar } from './TerminalView.styles';
@@ -200,6 +202,12 @@ export default class TerminalView extends View {
 				title: 'Links: the docs, tickets, repos and servers that came up',
 				className: 'tool',
 				onPress: () => this.toggleLinks(),
+			});
+			this.artifactsButton = ghostButton(header, {
+				icon: 'shapes',
+				title: 'Artifacts: the screenshots, pages, scripts and data made along the way',
+				className: 'tool',
+				onPress: () => this.toggleArtifacts(),
 			});
 			this.gitButton = ghostButton(header, {
 				icon: 'code-branch',
@@ -386,6 +394,14 @@ export default class TerminalView extends View {
 				close: () => this.toggleLinks(false),
 			});
 			this.addResizeHandle(this.links.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
+			this.artifacts = new ArtifactsPanel({
+				appendTo: body,
+				addClass: 'links',
+				sessionId: this.options.id,
+				load: () => getArtifacts(this.options.id),
+				close: () => this.toggleArtifacts(false),
+			});
+			this.addResizeHandle(this.artifacts.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
 		}
 		this.shares = new SharesPanel({
 			appendTo: body,
@@ -778,6 +794,15 @@ export default class TerminalView extends View {
 		if (keep !== 'activity' && this.activity?.elem.classList.contains('open')) this.toggleActivity(false);
 		if (keep !== 'tasks' && this.tasks?.elem.classList.contains('open')) this.toggleTasks(false);
 		if (keep !== 'links' && this.links?.elem.classList.contains('open')) this.toggleLinks(false);
+		if (keep !== 'artifacts' && this.artifacts?.elem.classList.contains('open')) this.toggleArtifacts(false);
+	}
+
+	toggleArtifacts(open = !this.artifacts.elem.classList.contains('open')) {
+		if (open) this.closeOthersOnTheRight('artifacts');
+		this.artifacts.elem.classList.toggle('open', open);
+		this.artifactsButton?.classList.toggle('active', open);
+		if (open) this.artifacts.refresh();
+		this.focusPanel(this.artifacts.elem, open);
 	}
 
 	toggleLinks(open = !this.links.elem.classList.contains('open')) {

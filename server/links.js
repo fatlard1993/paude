@@ -106,7 +106,8 @@ const HERE = '\u0000';
 // What the text calls the link: a markdown link's words, or a search result's title. Not just its host again.
 const titleBefore = (text, at, url) => {
 	const before = text.slice(Math.max(0, at - 300), at);
-	const title = (/\[([^\]\n]{2,200})\]\($/.exec(before) ?? /"title":"((?:[^"\\]|\\.){2,200})","url":"$/.exec(before))?.[1]
+	const title = (/\[([^\]\n]{2,200})\]\($/.exec(before) ??
+		/"title":"((?:[^"\\]|\\.){2,200})","url":"$/.exec(before))?.[1]
 		?.replace(/\\(.)/g, '$1')
 		.trim();
 	const host = hostOf(url);
@@ -124,7 +125,9 @@ const sentenceAround = (text, at, url, title) => {
 
 	if ((text.slice(0, lineStart).match(/^\s*```/gm)?.length ?? 0) % 2) return '';
 
-	const markdown = new RegExp(`\\[[^\\]\\n]*\\]\\(${RegExp.escape(url)}\\)`).exec(text.slice(lineStart, at + url.length + 1));
+	const markdown = new RegExp(`\\[[^\\]\\n]*\\]\\(${RegExp.escape(url)}\\)`).exec(
+		text.slice(lineStart, at + url.length + 1),
+	);
 	const from = markdown ? lineStart + markdown.index : at;
 	const to = markdown ? from + markdown[0].length : at + url.length;
 	// The link marked, the rest of the line's links as their words, so neither is split as a sentence
@@ -203,8 +206,7 @@ export const linksOfLine = (line, quietToolIds) => {
 			return urlsIn(block.text).map(found => ({ ...found, by: 'Claude' }));
 		if (line.type === 'assistant' && block.type === 'tool_use') {
 			if (QUIET_TOOLS.has(block.name)) quietToolIds.add(block.id);
-			if (block.name === 'WebFetch' && block.input?.url && !NOT_LINKS.some(pattern => pattern.test(block.input.url)))
-			{
+			if (block.name === 'WebFetch' && block.input?.url && !NOT_LINKS.some(pattern => pattern.test(block.input.url))) {
 				const why = (block.input.prompt ?? '').replace(/\s+/g, ' ').trim();
 
 				return [{ url: block.input.url, title: '', context: clip(why), passage: why, by: 'fetched' }];
@@ -237,7 +239,8 @@ const add = (links, { url, title, context, passage, by }, at, turn) => {
 		known.lastAt = at ?? known.lastAt;
 		if (!known.by.includes(by)) known.by.push(by);
 		if (title && (!known.title || saysBetter(by, known.titleBy))) Object.assign(known, { title, titleBy: by });
-		if (context && (!known.context || saysBetter(by, known.contextBy))) Object.assign(known, { context, contextBy: by });
+		if (context && (!known.context || saysBetter(by, known.contextBy)))
+			Object.assign(known, { context, contextBy: by });
 
 		return;
 	}
@@ -386,7 +389,7 @@ export const sessionLinks = async (id, cwd, { withHidden = false } = {}) => {
 const PROJECT_SESSIONS = 50;
 
 // The project's sessions to gather from, the latest first, the running ones whether saved yet or not
-const projectSessions = async project => {
+export const projectSessions = async project => {
 	const stored = (await storedSessions()).filter(session => projectOf(session.cwd) === project);
 	const listed = new Set(stored.map(({ sessionId }) => sessionId));
 	const running = [...allRunning()]

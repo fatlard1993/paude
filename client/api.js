@@ -204,6 +204,12 @@ export const sendPrompt = async (sessionId, text) =>
 export const sendRemotePrompt = async (url, sessionId, text) =>
 	await POST('/api/remotes/prompt', { body: { url, sessionId, text } });
 
+export const getArtifacts = async sessionId =>
+	await GET('/api/sessions/:id/artifacts', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
+
+export const getProjectArtifacts = async project =>
+	await GET('/api/projects/:project/artifacts', { urlParameters: { project }, invalidateAfter: 0 });
+
 // hours: 0 stops it; { until } is when it stops on its own (null for not warm)
 export const setKeepWarm = async (sessionId, hours) =>
 	await PUT('/api/sessions/:id/keep-warm', { urlParameters: { id: sessionId }, body: { hours } });

@@ -6,6 +6,7 @@ import {
 	createSession,
 	deleteSession,
 	getCheckouts,
+	getProjectArtifacts,
 	getProjectLinks,
 	getProjectSessions,
 	markProjectLink,
@@ -17,6 +18,7 @@ import sessionList from './SessionList';
 import { Header, Scroll, SectionTitle, sessionCard } from './Layout';
 import { Composer, Places, placePrompt, takeDraft } from './PromptHome';
 import LinksPanel from './Terminal/LinksPanel';
+import ArtifactsPanel from './Terminal/ArtifactsPanel';
 
 const Where = styled(
 	Elem,
@@ -177,6 +179,16 @@ export default class Project extends View {
 		// Sized by its links here, not by the panel's height as at a session's side
 		Object.assign(this.links.body.style, { flex: '0 1 auto', maxHeight: '70vh' });
 		this.links.refresh();
+
+		// And everything they made along the way
+		this.artifacts = new ArtifactsPanel({
+			appendTo: scroll,
+			addClass: 'project-links',
+			style: { height: 'auto', flexShrink: '0', padding: '0', marginTop: '16px' },
+			load: () => getProjectArtifacts(project),
+		});
+		Object.assign(this.artifacts.body.style, { flex: '0 1 auto', maxHeight: '70vh' });
+		this.artifacts.refresh();
 
 		this.load();
 		this.loadCheckouts();
