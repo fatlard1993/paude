@@ -130,6 +130,7 @@ const bufferLines = terminal => {
 	return lines;
 };
 
+const METER_AFTER_TURN_MS = 4000;
 // A cold conversation this big gets a word before the next message caches it all again
 const COLD_WARNING_TOKENS = 50_000;
 
@@ -655,7 +656,11 @@ export default class TerminalView extends View {
 			this.files?.changesMayHaveChanged();
 			if (this.git?.elem.classList.contains('open')) this.git.refresh();
 			this.activity?.busy(busy);
-			if (!busy) this.loadMeter();
+			// The turn's usage lands in the transcript a moment after Claude stops: read now, and again then
+			if (!busy) {
+				this.loadMeter();
+				setTimeout(() => this.loadMeter(), METER_AFTER_TURN_MS);
+			}
 			this.resolvePath = null;
 		}
 		const offline = this.connectionState === 'reconnecting' || this.connectionState === 'ended';
@@ -1464,6 +1469,8 @@ export default class TerminalView extends View {
 		if (response?.ok) this.showWatching(!this.watching);
 	}
 
+	// Read again each minute (only what the transcript gained since), so the countdown and a cache warmed again by a
+	// turn show as they are
 	async loadMeter() {
 		if (!this.meterButton) return;
 
@@ -1471,10 +1478,11 @@ export default class TerminalView extends View {
 
 		this.meter = body?.meter ?? null;
 		this.showMeter();
-		clearInterval(this.meterTick);
-		// The countdown to the cache going cold
-		this.meterTick = setInterval(() => this.showMeter(), 60_000);
-		this.addCleanup('meterTick', () => clearInterval(this.meterTick));
+		if (body && 'warmUntil' in body) this.showKeepWarm(body.warmUntil);
+		if (!this.meterTick) {
+			this.meterTick = setInterval(() => this.loadMeter(), 60_000);
+			this.addCleanup('meterTick', () => clearInterval(this.meterTick));
+		}
 	}
 
 	showMeter() {

@@ -332,7 +332,8 @@ const sessionsRoutes = async (request, server) => {
 
 		if (!record) return new Response('Session not found', { status: 404 });
 
-		return Response.json({ meter: await meterOf(match.id, record.cwd) });
+		// With when it's kept warm until, which each real prompt moves on
+		return Response.json({ meter: await meterOf(match.id, record.cwd), warmUntil: warmUntil(match.id) });
 	}
 
 	// After a usage limit: carry on now ('now'), once it resets ('reset'), or stop waiting for that ('cancel')
