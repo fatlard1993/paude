@@ -8,6 +8,7 @@ import { matchesQuery } from '../../shared/sessionSearch';
 import { DEFAULT_HOURS, keepWarm, warmUntil } from '../keepWarm';
 import { continueSession } from '../usageLimit';
 import { meterOf } from '../cacheMeter';
+import { catchUp } from '../catchUp';
 import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
 import { listRemotes, remoteLink, remoteSessions } from '../remotes';
@@ -242,6 +243,22 @@ const sessionsRoutes = async (request, server) => {
 			return new Response('Claude is no longer asking that', { status: 409 });
 
 		return new Response(null, { status: 204 });
+	}
+
+	// A tour of what happened since a time (or lately), for anyone in the session: Haiku tells it, on the owner's login
+	match = requestMatch('POST', '/api/sessions/:id/catch-up', request);
+	if (match) {
+		if (!identity.owner && identity.sessionId !== match.id)
+			return new Response('Not part of your invite', { status: 403 });
+
+		const record = await sessionRecord(match.id);
+
+		if (!record) return new Response('Session not found', { status: 404 });
+
+		const { since } = await request.json();
+		const tour = await catchUp(match.id, record.cwd, { since: Number(since) || undefined });
+
+		return tour ? Response.json(tour) : new Response("Haiku couldn't tell it just now", { status: 502 });
 	}
 
 	// The conversation's size, whether Claude's cache still holds it, and what it has cost: the owner's usage

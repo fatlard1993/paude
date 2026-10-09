@@ -54,6 +54,12 @@ export const Body = styled.Component`
 		}
 	}
 
+	/* The catch-up tour keeps left, clear of the side panel it opens */
+	.limit-overlay.tour {
+		margin-left: 0;
+		margin-right: auto;
+	}
+
 	/* Above the phone's key bar */
 	@media (pointer: coarse) {
 		.asking-overlay,

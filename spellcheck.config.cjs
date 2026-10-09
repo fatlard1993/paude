@@ -1,6 +1,8 @@
 module.exports = {
 	skipWords: [
 		'ttl',
+		'visibilitychange',
+		'pageshow',
 		'uncached',
 		'dragover',
 		'dragleave',

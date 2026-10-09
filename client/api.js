@@ -190,6 +190,10 @@ export const continueAfterLimit = async (sessionId, when) =>
 export const getMeter = async sessionId =>
 	await GET('/api/sessions/:id/meter', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 
+// A tour of what happened in a session since a time (ms), or lately without one: { overview, stops }
+export const catchUpOn = async (sessionId, since) =>
+	await POST('/api/sessions/:id/catch-up', { urlParameters: { id: sessionId }, body: { since } });
+
 // hours: 0 stops it; { until } is when it stops on its own (null for not warm)
 export const setKeepWarm = async (sessionId, hours) =>
 	await PUT('/api/sessions/:id/keep-warm', { urlParameters: { id: sessionId }, body: { hours } });

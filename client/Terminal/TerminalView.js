@@ -35,6 +35,7 @@ import goBack from '../goBack';
 import { onWaitingChange } from '../waiting';
 import { AskingCard, showAsking, showLimit } from '../Asking';
 import attach from './attach';
+import { startCatchUp, trackLastSeen } from './catchUp';
 import KeyBar from './KeyBar';
 import selectLinesByTap from './lineSelect';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from './xtermOptions';
@@ -216,6 +217,12 @@ export default class TerminalView extends View {
 				onPress: () => this.toggleShell(),
 			});
 		}
+		ghostButton(header, {
+			icon: 'route',
+			title: 'Catch me up: a tour of what happened since you were last here',
+			className: 'tool',
+			onPress: () => this.catchUp(),
+		});
 		this.watchButton = ghostButton(header, {
 			icon: 'eye',
 			title: 'Watch: count what changes here while you are away',
@@ -287,6 +294,8 @@ export default class TerminalView extends View {
 		this.askingCard = new AskingCard({ appendTo: column, addClass: 'asking-overlay' });
 		this.limitCard = new AskingCard({ appendTo: column, addClass: 'limit-overlay' });
 		this.coldCard = new AskingCard({ appendTo: column, addClass: 'limit-overlay' });
+		this.tourCard = new AskingCard({ appendTo: column, addClass: ['limit-overlay', 'tour'] });
+		this.seenBefore = trackLastSeen(this.options.id, (name, cleanup) => this.addCleanup(name, cleanup));
 		this.selectionActions.elem.addEventListener('pointerdown', event => event.preventDefault());
 		this.selectionActions.elem.addEventListener('mousedown', event => event.preventDefault());
 
@@ -1487,6 +1496,21 @@ export default class TerminalView extends View {
 
 		if (canType()) answers.append(button('Compact first', () => (this.compactNow(), dismiss())));
 		answers.append(button('Carry on as it is', dismiss));
+	}
+
+	catchUp() {
+		startCatchUp({
+			card: this.tourCard,
+			sessionId: this.options.id,
+			since: this.seenBefore,
+			terminal: this.terminal,
+			openActivity:
+				this.activityButton &&
+				(turnId => {
+					this.toggleActivity(true);
+					this.activity.focusTurn(turnId);
+				}),
+		});
 	}
 
 	compactNow() {

@@ -10,10 +10,12 @@ const TAIL_BYTES = 6 * 1024 * 1024;
 const MAX_TURNS = 40;
 const OUTPUT_CHARACTERS = 2000;
 const PROMPT_PREVIEW = 200;
+// The end of what Claude last wrote in a turn: its answer, usually
+const SAID_CHARACTERS = 800;
 
 const cache = new Map();
 
-const lastLines = async file => {
+export const lastLines = async file => {
 	const size = file.size;
 	const text = await file.slice(Math.max(0, size - TAIL_BYTES)).text();
 	// Read from partway through a line: the first is cut short
@@ -90,7 +92,7 @@ const contextOf = usage =>
 		? (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
 		: null;
 
-// The transcript's lines as turns, newest last: [{ id, prompt, at, endedAt, steps, context, output }]
+// The transcript's lines as turns, newest last: [{ id, prompt, at, endedAt, steps, context, output, said }]
 export const timelineFrom = (lines, cwd) => {
 	const turns = [];
 	const pending = new Map();
@@ -126,6 +128,14 @@ export const timelineFrom = (lines, cwd) => {
 			turn.context = contextOf(usage) ?? turn.context;
 			turn.output += usage?.output_tokens ?? 0;
 			turn.model = line.message?.model ?? turn.model;
+
+			const said = content
+				.filter(block => block.type === 'text')
+				.map(block => block.text)
+				.join('\n')
+				.trim();
+
+			if (said) turn.said = said.slice(-SAID_CHARACTERS);
 
 			for (const block of content) {
 				if (block.type !== 'tool_use') continue;

@@ -1,15 +1,12 @@
-import os from 'os';
 import path from 'path';
 
 import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
-import { sessionEnvironment } from './sessions/PtySession';
-import { claudeCommand } from './sessions/running';
+import askHaiku, { jsonIn } from './haiku';
 
 // A link's description, written by Haiku from what was said around it: once per link, kept by its address. Asked in
 // the background, a batch at a time, while the Links panel shows what it has.
 const BATCH = 20;
-const TIMEOUT_MS = 120_000;
 // A batch Haiku couldn't answer waits this long before it's asked again
 const RETRY_MS = 60 * 60 * 1000;
 
@@ -31,7 +28,7 @@ export const describingOf = url => queue.has(url);
 export const describePrompt = links =>
 	[
 		'Each link below came up in a conversation with a coding assistant. For each, write what it is and why it came up, in at most 12 words.',
-		"Plain words: no URL, no domain name, no quotes, no trailing period. When nothing says why, say what the page itself is.",
+		'Plain words: no URL, no domain name, no quotes, no trailing period. When nothing says why, say what the page itself is.',
 		'Reply with only a JSON object from each number to its description, like {"1": "…", "2": "…"}.',
 		links
 			.map((link, index) =>
@@ -48,46 +45,8 @@ export const describePrompt = links =>
 	].join('\n\n');
 
 // Haiku's reply as { [number]: description }: a JSON object, perhaps fenced or with words around it
-export const parseDescriptions = reply => {
-	const json = /\{[\s\S]*\}/.exec(reply)?.[0];
-
-	try {
-		return Object.fromEntries(
-			Object.entries(JSON.parse(json)).filter(([, text]) => typeof text === 'string' && text.trim()),
-		);
-	} catch {
-		return {};
-	}
-};
-
-const askHaiku = async prompt => {
-	const child = Bun.spawn(
-		[
-			claudeCommand(),
-			'-p',
-			'--model',
-			'haiku',
-			'--output-format',
-			'text',
-			'--no-session-persistence',
-			'--setting-sources',
-			'',
-			'--tools',
-			'',
-		],
-		{
-			cwd: os.tmpdir(),
-			env: sessionEnvironment(),
-			stdin: new TextEncoder().encode(prompt),
-			stdout: 'pipe',
-			stderr: 'ignore',
-			timeout: TIMEOUT_MS,
-		},
-	);
-	const out = await new Response(child.stdout).text();
-
-	return (await child.exited) === 0 ? out : '';
-};
+export const parseDescriptions = reply =>
+	Object.fromEntries(Object.entries(jsonIn(reply) ?? {}).filter(([, text]) => typeof text === 'string' && text.trim()));
 
 // What the panel shows first goes first: what someone mentioned, the latest; what only a command printed, last
 const sooner = (a, b) => b.mentioned - a.mentioned || String(b.lastAt ?? '').localeCompare(String(a.lastAt ?? ''));

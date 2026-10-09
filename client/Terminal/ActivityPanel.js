@@ -71,6 +71,17 @@ export default class ActivityPanel extends Panel {
 		this.renderTurns(body.turns);
 	}
 
+	// One turn opened and scrolled to, as the catch-up tour does for a turn the terminal no longer holds
+	async focusTurn(id) {
+		this.opened = new Set([id]);
+		this.focused = id;
+		await this.refresh();
+
+		const node = this.body.querySelector(`[data-turn="${CSS.escape(id)}"]`);
+
+		node?.scrollIntoView({ block: 'start' });
+	}
+
 	// While Claude works the newest turn grows; it's read again until Claude is done
 	busy(working) {
 		clearInterval(this.timer);
@@ -89,7 +100,9 @@ export default class ActivityPanel extends Panel {
 	}
 
 	turn(turn) {
-		const node = element('div', 'turn');
+		const node = element('div', `turn${turn.id === this.focused ? ' focused' : ''}`);
+
+		node.dataset.turn = turn.id;
 		const head = element('button', 'turn-head');
 		const edited = new Set(turn.steps.filter(step => step.edits).map(step => step.file));
 		const failed = turn.steps.filter(step => step.ok === false).length;

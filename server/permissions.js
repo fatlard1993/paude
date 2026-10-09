@@ -27,6 +27,7 @@ const OWN_SESSION_ROUTES = [
 	'/asking',
 	'/answer',
 	'/continue',
+	'/catch-up',
 	'/shell',
 	'/files',
 	'/file',

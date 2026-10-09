@@ -481,6 +481,11 @@ const Panel = styled(
 			border-radius: 4px;
 		}
 
+		/* The turn a catch-up tour is on */
+		.turn.focused {
+			box-shadow: inset 2px 0 ${colors.orange};
+		}
+
 		.turn-head {
 			display: flex;
 			flex-direction: column;
