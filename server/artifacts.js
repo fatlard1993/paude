@@ -2,6 +2,7 @@ import { stat } from 'fs/promises';
 import os from 'os';
 import path from 'path';
 
+import { artifactDescriptionOf, describeArtifacts, describingArtifact } from './artifactDescriptions';
 import { projectSessions } from './links';
 import { projectPath } from './projects';
 import { promptText } from './sessions/history';
@@ -270,7 +271,7 @@ export const sessionArtifacts = async (id, cwd, { projectFolder } = {}) => {
 	).filter(Boolean);
 	const tracked = await trackedOf(existing.map(artifact => artifact.file));
 
-	return existing
+	const made = existing
 		.filter(artifact => !tracked.has(artifact.file))
 		.map(({ file, ...artifact }) => ({
 			...artifact,
@@ -282,6 +283,14 @@ export const sessionArtifacts = async (id, cwd, { projectFolder } = {}) => {
 		}))
 		.sort((a, b) => b.modifiedAt - a.modifiedAt)
 		.slice(0, MAX_ARTIFACTS);
+
+	describeArtifacts(made);
+
+	return made.map(artifact => ({
+		...artifact,
+		description: artifactDescriptionOf(artifact.path),
+		describing: describingArtifact(artifact.path),
+	}));
 };
 
 // What the project's latest sessions made, as one list: each with the session that made it, newest first

@@ -23,6 +23,7 @@ const KIND_ICONS = {
 	media: 'film',
 	archive: 'box-archive',
 };
+const DESCRIBING_MS = 4000;
 const MADE_BY = {
 	written: 'Claude wrote it',
 	viewed: 'Claude looked at it',
@@ -77,6 +78,15 @@ export default class ArtifactsPanel extends Panel {
 
 		this.artifacts = body;
 		this.renderArtifacts();
+		// Haiku is still writing some: look again shortly, while the panel is showing
+		clearTimeout(this.again);
+		if (body.some(made => made.describing))
+			this.again = setTimeout(() => this.showing() && this.refresh(), DESCRIBING_MS);
+	}
+
+	// On the page, and open when it's a panel that closes
+	showing() {
+		return this.elem.isConnected && (!this.options.close || this.elem.classList.contains('open'));
 	}
 
 	renderArtifacts() {
@@ -101,7 +111,8 @@ export default class ArtifactsPanel extends Panel {
 		const list = this.artifacts.filter(
 			made =>
 				(this.kind === 'all' || made.kind === this.kind) &&
-				(!query || [made.path, made.why, made.turn].some(text => text?.toLowerCase().includes(query))),
+				(!query ||
+					[made.path, made.description, made.why, made.turn].some(text => text?.toLowerCase().includes(query))),
 		);
 
 		this.body.replaceChildren(
@@ -151,7 +162,7 @@ export default class ArtifactsPanel extends Panel {
 
 		row.append(
 			element('div', 'link-address', made.shown ?? made.path),
-			...(made.why || made.turn ? [element('div', 'link-context', made.why || `While: ${made.turn}`)] : []),
+			...this.describe(made),
 			...(made.session ? [this.sessionOf(made.session)] : []),
 			element(
 				'div',
@@ -161,6 +172,13 @@ export default class ArtifactsPanel extends Panel {
 		);
 
 		return row;
+	}
+
+	// What Haiku wrote of it; until then, what Claude said as it was made
+	describe(made) {
+		const said = made.description || made.why || (made.turn && `While: ${made.turn}`);
+
+		return said ? [element('div', 'link-context', said)] : [];
 	}
 
 	sessionOf(session) {
