@@ -34,14 +34,15 @@ test('the prompt numbers each conversation with what it began with, lately asked
 				changed: ['server/keepWarm.js'],
 			},
 		],
-		projects: ['paude', 'minecraft'],
+		projects: ['paude on dellbook', 'minecraft on vps'],
 	});
 
 	expect(prompt).toContain('The task:\nmake the cup show minutes left');
 	expect(prompt).toContain(
 		'1. "Keep warm" in paude\n   Began with: ping idle sessions\n   Lately: use a coffee cup\n   Changed lately: server/keepWarm.js',
 	);
-	expect(prompt).toContain('For a new session, the projects are: paude, minecraft.');
+	expect(prompt).toContain('the projects (each on its server) are: paude on dellbook, minecraft on vps.');
+	expect(prompt).toContain('"project" is one of the projects exactly as written above');
 	expect(prompt).toContain('"fresh": {"project": "…", "why": "…"}');
 });
 

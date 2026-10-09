@@ -6,6 +6,7 @@ import Login from './Login';
 import { recall, remember } from './storage';
 import { registerNotificationWorker } from './notify';
 import Project from './Project';
+import { keepDraft } from './PromptHome';
 import TerminalView from './Terminal/TerminalView';
 import { updateTabTitle } from './tabTitle';
 import { startWatchAlerts } from './watchAlerts';
@@ -46,8 +47,9 @@ if (joinToken) {
 	} else joinFailed = true;
 }
 
-const [, handoffCode, handoffTo] =
-	window.location.hash.match(/^#\/handoff\/([^/]+)(\/(?:sessions|projects)\/[^/]+)?$/) ?? [];
+// A handoff from another server: a code to log in with, where to go, and for a project page a prompt to start with
+const [, handoffCode, handoffTo, handoffProject, handoffDraft] =
+	window.location.hash.match(/^#\/handoff\/([^/]+)(\/sessions\/[^/]+|\/projects\/([^/]+))?(?:\/draft\/(.+))?$/) ?? [];
 
 if (handoffCode) {
 	// An expired code leaves the login page showing
@@ -57,6 +59,7 @@ if (handoffCode) {
 		body: JSON.stringify({ code: handoffCode }),
 	});
 
+	if (handoffProject && handoffDraft) keepDraft(decodeURIComponent(handoffProject), decodeURIComponent(handoffDraft));
 	window.location.replace(`#${handoffTo ?? '/'}`);
 }
 

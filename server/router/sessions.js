@@ -9,11 +9,11 @@ import { DEFAULT_HOURS, keepWarm, warmUntil } from '../keepWarm';
 import { continueSession } from '../usageLimit';
 import { meterOf } from '../cacheMeter';
 import { catchUp } from '../catchUp';
-import { findHome } from '../promptHome';
+import { findHome, localCandidates } from '../promptHome';
 import { askClaude } from '../claudeInbox';
 import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
-import { listRemotes, remoteLink, remoteSessions } from '../remotes';
+import { listRemotes, remoteApi, remoteLink, remoteSessions } from '../remotes';
 import { mayListRemotes } from '../serverSettings';
 import { deleteNotes } from '../notes';
 import { sessionTurns } from '../sessions/history';
@@ -180,10 +180,31 @@ const sessionsRoutes = async (request, server) => {
 	if (requestMatch('GET', '/api/remotes', request)) return Response.json(await listRemotes());
 
 	if (requestMatch('POST', '/api/remotes/open', request)) {
-		const { url, sessionId, project } = await request.json();
-		const link = await remoteLink(url, { sessionId, project });
+		const { url, sessionId, project, draft } = await request.json();
+		const link = await remoteLink(url, { sessionId, project, draft });
 
 		return link ? Response.json({ link }) : new Response('Not one of your servers', { status: 404 });
+	}
+
+	// A prompt for a session on another server, sent there as its owner
+	if (requestMatch('POST', '/api/remotes/prompt', request)) {
+		const { url, sessionId, text } = await request.json();
+
+		if (typeof sessionId !== 'string' || !/^[\w-]+$/.test(sessionId))
+			return new Response('No such session', { status: 400 });
+
+		try {
+			const sent = await remoteApi(url, `/api/sessions/${sessionId}/prompt`, {
+				method: 'POST',
+				body: JSON.stringify({ text }),
+			});
+
+			return sent === undefined
+				? new Response('Not one of your servers', { status: 404 })
+				: new Response(null, { status: 204 });
+		} catch (error) {
+			return new Response(error.message, { status: 502 });
+		}
 	}
 
 	match = requestMatch('GET', '/api/remotes/sessions', request);
@@ -254,9 +275,22 @@ const sessionsRoutes = async (request, server) => {
 		if (!String(prompt ?? '').trim()) return new Response('Say what Claude should do', { status: 400 });
 		if (project && !projectPath(project)) return new Response('Unknown project', { status: 404 });
 
-		const home = await findHome({ prompt: String(prompt).trim(), project, identity });
+		const home = await findHome({
+			prompt: String(prompt).trim(),
+			project,
+			identity,
+			remotes: await mayListRemotes(identity),
+		});
 
 		return home ? Response.json(home) : new Response("Haiku couldn't place it just now", { status: 502 });
+	}
+
+	// This server's sessions a prompt might carry on, for another server placing one (what it has been about lately)
+	match = requestMatch('GET', '/api/prompt-candidates', request);
+	if (match) {
+		if (match.project && !projectPath(match.project)) return Response.json([]);
+
+		return Response.json(await localCandidates({ project: match.project, identity }));
 	}
 
 	// A prompt for a session, typed in once its prompt box is free (taken back up first if it isn't running)

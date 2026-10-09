@@ -1,6 +1,8 @@
 import { meterOf } from './cacheMeter';
 import askHaiku, { jsonIn } from './haiku';
 import { listProjects } from './projects';
+import { ownedRemotes, remoteApi } from './remotes';
+import { serverName } from './serverSettings';
 import { sessionRecord } from './sessions/record';
 import { listAllSessions } from './sessions/stored';
 import { sessionTimeline } from './timeline';
@@ -54,7 +56,7 @@ export const homePrompt = ({ prompt, candidates, projects }) =>
 			? `The conversations:\n${candidates
 					.map((session, index) =>
 						[
-							`${index + 1}. "${clip(session.title)}" in ${session.project}${session.worktree ? `, worktree ${session.worktree}` : ''}`,
+							`${index + 1}. "${clip(session.title)}" in ${session.where ?? session.project}${session.worktree ? `, worktree ${session.worktree}` : ''}`,
 							session.firstPrompt && `   Began with: ${clip(session.firstPrompt)}`,
 							...session.latest.map(text => `   Lately: ${text}`),
 							session.changed.length && `   Changed lately: ${session.changed.join(', ')}`,
@@ -64,23 +66,72 @@ export const homePrompt = ({ prompt, candidates, projects }) =>
 					)
 					.join('\n')}`
 			: 'There are no conversations going.',
-		projects && `For a new session, the projects are: ${projects.join(', ')}.`,
-		`Reply with only a JSON object: {"matches": [{"n": 2, "why": "…"}], "fresh": {${projects ? '"project": "…", ' : ''}"why": "…"}}. "matches" holds at most ${MOST_MATCHES} conversations this truly carries on, best first, and is empty when none does; each "why" is one plain sentence.`,
+		projects && `For a new session, the projects (each on its server) are: ${projects.join(', ')}.`,
+		`Reply with only a JSON object: {"matches": [{"n": 2, "why": "…"}], "fresh": {${projects ? '"project": "…", ' : ''}"why": "…"}}.${projects ? ' "project" is one of the projects exactly as written above.' : ''} "matches" holds at most ${MOST_MATCHES} conversations this truly carries on, best first, and is empty when none does; each "why" is one plain sentence.`,
 	]
 		.filter(Boolean)
 		.join('\n\n');
 
-// project: a project's name keeps the search to its sessions, and a new session to it
-export const findHome = async ({ prompt, project, identity }) => {
+// This server's sessions worth weighing, each with what it has been about lately; project keeps them to one
+export const localCandidates = async ({ project, identity }) => {
 	const all = await listAllSessions(identity);
-	const candidates = await Promise.all(
+
+	return Promise.all(
 		candidatesFrom(project ? all.filter(session => session.project === project) : all).map(async session => ({
 			...session,
 			...(await lately(session.id)),
 		})),
 	);
-	const projects = project ? null : await listProjects();
-	const reply = jsonIn(await askHaiku(homePrompt({ prompt, candidates, projects })));
+};
+
+// Every server's candidates and projects: this one's, and with `remotes`, those of the other servers this machine is
+// logged into as owner, each marked with its server ({ url, name }; none for this one)
+const everyPlace = async ({ project, identity, remotes }) => {
+	const here = { remote: undefined, candidates: await localCandidates({ project, identity }) };
+	const there = remotes
+		? await Promise.all(
+				(await ownedRemotes()).map(async ({ server, name }) => {
+					const remote = { url: server.url, name };
+					const query = project ? `?project=${encodeURIComponent(project)}` : '';
+					const [candidates, projects] = await Promise.all([
+						remoteApi(server.url, `/api/prompt-candidates${query}`).catch(() => []),
+						project ? [] : remoteApi(server.url, '/api/projects').catch(() => []),
+					]);
+
+					return { remote, candidates: candidates ?? [], projects: (projects ?? []).map(({ name: found }) => found) };
+				}),
+			)
+		: [];
+	const places = [{ ...here, projects: project ? [] : await listProjects() }, ...there];
+
+	return {
+		candidates: places.flatMap(({ remote, candidates }) => candidates.map(session => ({ ...session, remote }))),
+		projects: project ? null : places.flatMap(({ remote, projects }) => projects.map(name => ({ name, remote }))),
+	};
+};
+
+const placeName = ({ name, remote }, here) => `${name} on ${remote?.name ?? here}`;
+
+const meterFor = async ({ id, remote }) => {
+	if (remote) return (await remoteApi(remote.url, `/api/sessions/${id}/meter`).catch(() => null))?.meter ?? null;
+
+	const record = await sessionRecord(id);
+
+	return record ? meterOf(id, record.cwd) : null;
+};
+
+// project: a project's name keeps the search to its sessions, and a new session to it. remotes: weigh the other
+// servers' sessions and projects too.
+export const findHome = async ({ prompt, project, identity, remotes = false }) => {
+	const here = await serverName();
+	const { candidates, projects } = await everyPlace({ project, identity, remotes });
+	const named = candidates.map(session => ({
+		...session,
+		where: placeName({ name: session.project, remote: session.remote }, here),
+	}));
+	const reply = jsonIn(
+		await askHaiku(homePrompt({ prompt, candidates: named, projects: projects?.map(found => placeName(found, here)) })),
+	);
 
 	if (!reply) return null;
 
@@ -90,13 +141,15 @@ export const findHome = async ({ prompt, project, identity }) => {
 			.filter(match => match.session)
 			.slice(0, MOST_MATCHES)
 			.map(async ({ session, why }) => {
-				const record = await sessionRecord(session.id);
-				const { latest, changed, ...summary } = session;
+				const { latest, changed, remote, ...summary } = session;
 
-				return { session: summary, why, meter: record ? await meterOf(session.id, record.cwd) : null };
+				return { session: summary, remote, why, meter: await meterFor(session) };
 			}),
 	);
-	const freshProject = project ?? (projects.includes(reply.fresh?.project) ? reply.fresh.project : null);
+	const fresh = project ? { name: project } : projects.find(found => placeName(found, here) === reply.fresh?.project);
 
-	return { matches, fresh: { project: freshProject, why: String(reply.fresh?.why ?? '') } };
+	return {
+		matches,
+		fresh: { project: fresh?.name ?? null, remote: fresh?.remote, why: String(reply.fresh?.why ?? '') },
+	};
 };

@@ -201,6 +201,9 @@ export const findPromptHome = async (prompt, project) => await POST('/api/prompt
 export const sendPrompt = async (sessionId, text) =>
 	await POST('/api/sessions/:id/prompt', { urlParameters: { id: sessionId }, body: { text } });
 
+export const sendRemotePrompt = async (url, sessionId, text) =>
+	await POST('/api/remotes/prompt', { body: { url, sessionId, text } });
+
 // hours: 0 stops it; { until } is when it stops on its own (null for not warm)
 export const setKeepWarm = async (sessionId, hours) =>
 	await PUT('/api/sessions/:id/keep-warm', { urlParameters: { id: sessionId }, body: { hours } });
