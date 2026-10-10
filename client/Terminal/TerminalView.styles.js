@@ -276,17 +276,6 @@ export const TopBar = styled(
 			min-width: 0;
 		}
 
-		.crumb {
-			color: ${colors.gray};
-			font-weight: normal;
-			cursor: pointer;
-			flex-shrink: 0;
-		}
-
-		.crumb:hover {
-			color: ${colors.white};
-		}
-
 		.name {
 			overflow: hidden;
 			text-overflow: ellipsis;
@@ -408,9 +397,9 @@ export const TopBar = styled(
 			background: rgba(255, 255, 255, 0.1);
 		}
 
-		/* A phone keeps the session's name: the project gives way */
+		/* A phone keeps the session's name: the divider gives way */
 		@media (max-width: 600px) {
-			.crumb, .divider {
+			.divider {
 				display: none;
 			}
 		}
@@ -485,52 +474,3 @@ export const Presence = styled(
 );
 
 // Back's menu when sessions are waiting: back where you came from, or straight to one of them
-export const BackMenu = styled(
-	Elem,
-	({ colors }) => `
-		position: fixed;
-		z-index: 20;
-		display: flex;
-		flex-direction: column;
-		min-width: 240px;
-		max-width: min(360px, calc(100vw - 16px));
-		padding: 4px;
-		border-radius: 8px;
-		border: 1px solid rgba(255, 255, 255, 0.12);
-		background: rgba(24, 24, 27, 0.92);
-		backdrop-filter: blur(18px);
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
-
-		button {
-			display: flex;
-			flex-direction: column;
-			align-items: flex-start;
-			gap: 2px;
-			padding: 6px 10px;
-			border: none;
-			border-radius: 6px;
-			background: transparent;
-			color: inherit;
-			font: inherit;
-			text-align: left;
-			cursor: pointer;
-		}
-
-		button:hover, button:focus-visible {
-			background: ${colors.alpha(colors.white, 0.08)};
-		}
-
-		.detail {
-			color: ${colors.light(colors.gray)};
-			font-size: 0.8em;
-		}
-
-		.heading {
-			margin: 6px 10px 2px;
-			color: hsl(29, 70%, 65%);
-			font-size: 0.75em;
-			text-transform: uppercase;
-			letter-spacing: 0.05em;
-		}
-	`,
-);

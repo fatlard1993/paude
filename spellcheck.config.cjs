@@ -1,6 +1,7 @@
 module.exports = {
 	skipWords: [
 		'ttl',
+		'favicon',
 		'tsv',
 		'visibilitychange',
 		'pageshow',

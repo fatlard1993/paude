@@ -18,6 +18,7 @@ import {
 import confirmDialog, { confirmDeleteSession } from './confirmDialog';
 import { identity, serverName } from './identity';
 import sessionList from './SessionList';
+import { breadcrumbs } from './Breadcrumbs';
 import { Empty, Header, LinkCard, Scroll, SectionTitle, sessionCard } from './Layout';
 import { Composer, Places, carryDraft, placePrompt } from './PromptHome';
 
@@ -70,11 +71,10 @@ export default class Home extends View {
 	}
 
 	build() {
-		new Header(
-			{ appendTo: this },
-			new Elem({ addClass: 'title', textContent: 'paude' }),
-			new Button({ textContent: 'Log out', onPointerPress: () => this.logout() }),
-		);
+		const header = new Header({ appendTo: this });
+
+		breadcrumbs({ appendTo: header });
+		new Button({ appendTo: header, textContent: 'Log out', onPointerPress: () => this.logout() });
 
 		const scroll = new Scroll({ appendTo: this });
 

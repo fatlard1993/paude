@@ -14,7 +14,6 @@ import {
 	listFiles,
 	markLink,
 	nameSession,
-	openRemote,
 	getArtifacts,
 	getAsking,
 	getMeter,
@@ -22,7 +21,7 @@ import {
 	setWatching,
 } from '../api';
 import confirmDialog, { confirmDeleteSession, nameDialog } from '../confirmDialog';
-import { canBrowse, canNote, canType, identity, serverName } from '../identity';
+import { canBrowse, canNote, canType, identity } from '../identity';
 import DONE_MARKER from '../../shared/doneMarker';
 import findFilePaths, { pathResolver } from '../../shared/filePaths';
 import { tintsOf } from '../../shared/hues';
@@ -33,8 +32,8 @@ import { NOTE_TYPES } from '../../shared/protocol';
 import { showNotification } from '../notify';
 import { recall, remember } from '../storage';
 import { button, dragHandle, element } from '../dom';
-import goBack from '../goBack';
-import { onWaitingChange } from '../waiting';
+import { breadcrumbs } from '../Breadcrumbs';
+import { closeMenu, openMenu } from '../menu';
 import { AskingCard, showAsking, showLimit } from '../Asking';
 import attach from './attach';
 import { startCatchUp, trackLastSeen } from './catchUp';
@@ -50,7 +49,7 @@ import LinksPanel from './LinksPanel';
 import ArtifactsPanel from './ArtifactsPanel';
 import NotesPanel from './NotesPanel';
 import SideShell from './SideShell';
-import { BackMenu, Body, NARROW, Presence, SelectHint, SelectionActions, TopBar } from './TerminalView.styles';
+import { Body, NARROW, Presence, SelectHint, SelectionActions, TopBar } from './TerminalView.styles';
 
 const BACKGROUND = '#1b1b1b';
 // How far a finger can wander and still be tapping rather than scrolling
@@ -145,15 +144,8 @@ export default class TerminalView extends View {
 	build() {
 		const header = new TopBar({ appendTo: this });
 
-		if (identity()?.owner) {
-			const back = ghostButton(header, {
-				icon: 'arrow-left',
-				title: 'Back',
-				onPress: () => (this.waitingOthers?.length ? this.toggleBackMenu(back) : this.goBack()),
-			});
-
-			this.showWaitingOn(back);
-		} else {
+		// A guest has no home or project page here to go up to: leaving is the way out
+		if (!identity()?.owner) {
 			ghostButton(header, {
 				label: 'Leave',
 				onPress: async () => {
@@ -163,12 +155,24 @@ export default class TerminalView extends View {
 			});
 		}
 
-		const title = new Elem({ appendTo: header, addClass: 'title' });
+		const title = new Elem({ addClass: 'title' });
 
 		this.stateDot = new Elem({ appendTo: title, addClass: 'state' });
-		this.crumb = new Elem({ appendTo: title, addClass: 'crumb', style: { display: 'none' } });
-		this.crumb.elem.addEventListener('click', () => (window.location.hash = `#/projects/${this.project}`));
 		this.titleLabel = new Elem({ appendTo: title, addClass: 'name' });
+		if (identity()?.owner) {
+			// The project's crumb is filled in once the session says which it is
+			const { links } = breadcrumbs({
+				appendTo: header,
+				trail: [{ label: '', href: '#/' }],
+				current: title,
+				sessionId: this.options.id,
+				addCleanup: (name, stop) => this.addCleanup(name, stop),
+			});
+
+			[this.projectCrumb] = links;
+			this.projectCrumb.style.display = 'none';
+			this.projectCrumb.previousSibling.style.display = 'none';
+		} else header.elem.append(title.elem);
 		if (identity()?.owner) {
 			this.titleLabel.elem.title = 'Rename';
 			this.titleLabel.elem.style.cursor = 'pointer';
@@ -461,8 +465,12 @@ export default class TerminalView extends View {
 		this.showWatching(body.watching);
 		this.showKeepWarm(body.warmUntil);
 		this.loadMeter();
-		this.crumb.elem.textContent = `${body.project} /`;
-		this.crumb.elem.style.display = identity()?.owner ? '' : 'none';
+		if (this.projectCrumb) {
+			this.projectCrumb.textContent = body.project;
+			this.projectCrumb.href = `#/projects/${encodeURIComponent(body.project)}`;
+			this.projectCrumb.style.display = '';
+			this.projectCrumb.previousSibling.style.display = '';
+		}
 		if (!this.titleLabel.elem.textContent) this.titleLabel.elem.textContent = body.title || body.project;
 	}
 
@@ -918,25 +926,6 @@ export default class TerminalView extends View {
 		if (!this.notesOpen || this.notes.tab !== tab) new Notify({ type: 'info', content: what, timeout: 6000 });
 	}
 
-	// How many other watched sessions need you, on the way out
-	showWaitingOn(back) {
-		const count = Object.assign(document.createElement('span'), { className: 'count' });
-
-		back.append(count);
-		this.addCleanup(
-			'waitingCount',
-			onWaitingChange(sessions => {
-				this.waitingOthers = sessions.filter(session => session.remote || session.id !== this.options.id);
-
-				const others = this.waitingOthers.length;
-
-				count.textContent = others;
-				count.style.display = others ? '' : 'none';
-				back.title = others ? `Back, or one of the ${others} waiting for you` : 'Back';
-			}),
-		);
-	}
-
 	// The bar's buttons, as a menu: each item presses its button, and says what its badge says and whether its panel is
 	// open. A button with a menu label of its own (Watch, Stop watching) already says its state, and opens no panel.
 	toggleToolsMenu(anchor, header) {
@@ -957,91 +946,13 @@ export default class TerminalView extends View {
 		);
 	}
 
-	goBack() {
-		goBack(this.project ? `#/projects/${this.project}` : '#/');
-	}
-
-	// With sessions waiting for you, back offers them too: back where you came from, or straight to one of them
-	toggleBackMenu(back) {
-		this.openMenu(back, [
-			{ label: '← Back', onPress: () => this.goBack() },
-			{ heading: 'Waiting for you' },
-			...this.waitingOthers.map(session => ({
-				label: session.title || session.project,
-				detail: [session.project, session.remote?.name ?? serverName()].filter(Boolean).join(' · '),
-				accent: tintsOf(session.hue)?.accent,
-				onPress: () => this.openWaiting(session),
-			})),
-		]);
-	}
-
-	// A menu under a bar button: items ({ label, detail, accent, onPress }) and headings; Esc or a press elsewhere closes it
+	// A menu under a bar button: items ({ label, detail, accent, onPress }) and headings
 	openMenu(anchor, items) {
-		if (this.backMenu) return this.closeBackMenu();
-
-		const menu = new BackMenu({ appendTo: document.body });
-		const box = anchor.getBoundingClientRect();
-
-		for (const item of items) {
-			if (item.heading) {
-				menu.elem.append(element('div', 'heading', item.heading));
-				continue;
-			}
-
-			const row = button('', () => {
-				this.closeBackMenu();
-				item.onPress();
-			});
-
-			row.append(
-				element('span', 'label', item.label),
-				...(item.detail ? [element('span', 'detail', item.detail)] : []),
-			);
-			if (item.accent) row.style.boxShadow = `inset 3px 0 ${item.accent}`;
-			menu.elem.append(row);
-		}
-
-		// Kept on the screen: under the button, moved left as far as it needs
-		Object.assign(menu.elem.style, { left: `${box.left}px`, top: `${box.bottom + 4}px` });
-		menu.elem.style.left = `${Math.max(8, Math.min(box.left, window.innerWidth - menu.elem.offsetWidth - 8))}px`;
-
-		const outside = event => {
-			if (!menu.elem.contains(event.target) && !anchor.contains(event.target)) this.closeBackMenu();
-		};
-		const escape = event => event.key === 'Escape' && this.closeBackMenu();
-
-		document.addEventListener('pointerdown', outside, true);
-		document.addEventListener('keydown', escape);
-		this.backMenu = {
-			menu,
-			stop: () => {
-				document.removeEventListener('pointerdown', outside, true);
-				document.removeEventListener('keydown', escape);
-			},
-		};
-		this.addCleanup('backMenu', () => this.closeBackMenu());
-	}
-
-	closeBackMenu() {
-		this.backMenu?.stop();
-		this.backMenu?.menu.elem.remove();
-		this.backMenu = null;
+		openMenu(anchor, items);
+		this.addCleanup('menu', closeMenu);
 	}
 
 	// One here opens here; one on another server, through a link that logs this browser in there
-	async openWaiting(session) {
-		if (!session.remote) {
-			window.location.hash = `#/sessions/${session.id}`;
-
-			return;
-		}
-
-		const { body, response } = await openRemote(session.remote.url, { sessionId: session.id });
-
-		if (response?.ok) window.location.href = body.link;
-		else new Notify({ type: 'error', content: `Could not reach ${session.remote.name}.` });
-	}
-
 	async copySelection() {
 		const text = this.terminal.getSelection();
 

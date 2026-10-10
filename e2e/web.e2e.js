@@ -327,7 +327,7 @@ test(
 );
 
 test(
-	'back offers the sessions waiting for you, and opens one',
+	'the breadcrumb counts the sessions waiting for you, and opens one',
 	async () => {
 		const server = servers.turns;
 		const waiting = await server.newSession();
@@ -338,11 +338,14 @@ test(
 		const { browser, page } = await openSession('dom', server);
 
 		try {
-			await page.waitForFunction(() => document.querySelector('[title^="Back, or one of"]'), { timeout: 20_000 });
+			await page.waitForFunction(() => document.querySelector('.breadcrumbs .waiting')?.offsetParent, {
+				timeout: 20_000,
+			});
+			expect(await page.$eval('.breadcrumbs .waiting', badge => badge.textContent)).toBe('1');
 
-			const back = await centerOf(page, '[title^="Back, or one of"]');
+			const badge = await centerOf(page, '.breadcrumbs .waiting');
 
-			await page.mouse.click(back.x, back.y);
+			await page.mouse.click(badge.x, badge.y);
 			await wait(400);
 
 			const rows = await page.$$eval('button', buttons =>
@@ -505,7 +508,10 @@ test(
 			]);
 
 			await press('.tasks .task [title^="Run "][title$="run check"]');
-			expect(await page.$eval('.tasks .run-head', head => head.textContent)).toContain('failed');
+			// The script takes as long as it takes to start and fail: waited for, not given a second
+			await page.waitForFunction(() => document.querySelector('.tasks .run-head')?.textContent.includes('failed'), {
+				timeout: 20_000,
+			});
 			expect(await page.$eval('.tasks .run-output', output => output.textContent)).toContain('something is off');
 
 			await press('.tasks .run-head [title="Back to the tasks"]');
@@ -709,7 +715,7 @@ test(
 );
 
 test(
-	"on a phone the bar is back, the session's name and a menu holding the rest",
+	"on a phone the bar is the breadcrumb (paude, the project, the session's name) and a menu holding the rest",
 	async () => {
 		const { browser, page } = await openBrowser('dom');
 
@@ -723,10 +729,10 @@ test(
 				buttons.filter(button => button.offsetParent).map(button => button.title.split(':')[0]),
 			);
 
-			// Back says how many sessions wait for you, when any do
-			expect(visible.length).toBe(2);
-			expect(visible[0]).toStartWith('Back');
-			expect(visible[1]).toBe('Menu');
+			expect(visible).toEqual(['Menu']);
+			expect(await page.$eval('.breadcrumbs', crumbs => crumbs.innerText.replace(/\s+/g, ' ').trim())).toMatch(
+				/\/ demo \/ New session$/,
+			);
 
 			const menu = await centerOf(page, '.ghost.tools');
 
@@ -843,9 +849,7 @@ test(
 			expect(links).toEqual({ 'github.com/acme/shop/issues/12': 2, 'docs.acme.dev/api': 1 });
 			expect(await page.$eval('.project-links .link-sessions', line => line.textContent)).toContain('see https://');
 			// Shown, not only there: the panel's body is sized for a session's side and could collapse to nothing here
-			expect(
-				await page.$eval('.project-links .body', body => body.clientHeight >= body.scrollHeight - 1),
-			).toBe(true);
+			expect(await page.$eval('.project-links .body', body => body.clientHeight >= body.scrollHeight - 1)).toBe(true);
 		} finally {
 			await browser.close();
 			await server.stop();

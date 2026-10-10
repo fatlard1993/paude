@@ -13,7 +13,7 @@ import {
 } from './api';
 import { confirmDeleteSession } from './confirmDialog';
 import { element } from './dom';
-import goBack from './goBack';
+import { breadcrumbs } from './Breadcrumbs';
 import sessionList from './SessionList';
 import { Header, Scroll, SectionTitle, sessionCard } from './Layout';
 import { Composer, Places, placePrompt, takeDraft } from './PromptHome';
@@ -104,11 +104,7 @@ export default class Project extends View {
 		const { project } = this.options;
 		const header = new Header({ appendTo: this });
 
-		const back = new Button({ appendTo: header, icon: 'arrow-left', attributes: { title: 'Back' } });
-
-		// On click, not press: navigating on press leaves the click to land on whatever card is now under the finger
-		back.elem.addEventListener('click', () => goBack('#/'));
-		new Elem({ addClass: 'title', appendTo: header, textContent: project });
+		breadcrumbs({ appendTo: header, current: project, addCleanup: (name, stop) => this.addCleanup(name, stop) });
 
 		const scroll = new Scroll({ appendTo: this });
 
