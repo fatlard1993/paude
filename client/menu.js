@@ -40,6 +40,7 @@ const MenuBox = styled(
 		.detail {
 			color: ${colors.light(colors.gray)};
 			font-size: 0.8em;
+			white-space: normal;
 		}
 
 		.heading {

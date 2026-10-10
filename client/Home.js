@@ -119,7 +119,7 @@ export default class Home extends View {
 			placePrompt({
 				places,
 				prompt: prompt.elem.value.trim(),
-				startFresh: project => carryDraft(project, prompt.elem.value.trim()),
+				startFresh: (project, lifetime) => carryDraft(project, prompt.elem.value.trim(), lifetime),
 			});
 
 		new Button({ appendTo: actions, textContent: 'Find where it goes', onPointerPress: place });

@@ -48,8 +48,11 @@ if (joinToken) {
 }
 
 // A handoff from another server: a code to log in with, where to go, and for a project page a prompt to start with
-const [, handoffCode, handoffTo, handoffProject, handoffDraft] =
-	window.location.hash.match(/^#\/handoff\/([^/]+)(\/sessions\/[^/]+|\/projects\/([^/]+))?(?:\/draft\/(.+))?$/) ?? [];
+// and how long its session should last
+const [, handoffCode, handoffTo, handoffProject, handoffLifetime, handoffDraft] =
+	window.location.hash.match(
+		/^#\/handoff\/([^/]+)(\/sessions\/[^/]+|\/projects\/([^/]+))?(?:\/lifetime\/(\w+))?(?:\/draft\/(.+))?$/,
+	) ?? [];
 
 if (handoffCode) {
 	// An expired code leaves the login page showing
@@ -59,7 +62,8 @@ if (handoffCode) {
 		body: JSON.stringify({ code: handoffCode }),
 	});
 
-	if (handoffProject && handoffDraft) keepDraft(decodeURIComponent(handoffProject), decodeURIComponent(handoffDraft));
+	if (handoffProject && handoffDraft)
+		keepDraft(decodeURIComponent(handoffProject), decodeURIComponent(handoffDraft), handoffLifetime);
 	window.location.replace(`#${handoffTo ?? '/'}`);
 }
 

@@ -1,5 +1,6 @@
 import { meterOf } from './cacheMeter';
 import askHaiku, { jsonIn } from './haiku';
+import { LIFETIMES } from './lifetime';
 import { listProjects } from './projects';
 import { ownedRemotes, remoteApi } from './remotes';
 import { serverName } from './serverSettings';
@@ -67,7 +68,8 @@ export const homePrompt = ({ prompt, candidates, projects }) =>
 					.join('\n')}`
 			: 'There are no conversations going.',
 		projects && `For a new session, the projects (each on its server) are: ${projects.join(', ')}.`,
-		`Reply with only a JSON object: {"matches": [{"n": 2, "why": "…"}], "fresh": {${projects ? '"project": "…", ' : ''}"why": "…"}}.${projects ? ' "project" is one of the projects exactly as written above.' : ''} "matches" holds at most ${MOST_MATCHES} conversations this truly carries on, best first, and is empty when none does; each "why" is one plain sentence that names a conversation by its title, never by its number.`,
+		'For a new session, also say how long it should last: "brief" for a quick question or one-off check nobody will come back to (it deletes itself once done), "warm" for deep work likely to be picked up again after a break of an hour or more (kept ready while away), or "ordinary".',
+		`Reply with only a JSON object: {"matches": [{"n": 2, "why": "…"}], "fresh": {${projects ? '"project": "…", ' : ''}"lifetime": "ordinary", "why": "…"}}.${projects ? ' "project" is one of the projects exactly as written above.' : ''} "matches" holds at most ${MOST_MATCHES} conversations this truly carries on, best first, and is empty when none does; each "why" is one plain sentence that names a conversation by its title, never by its number.`,
 	]
 		.filter(Boolean)
 		.join('\n\n');
@@ -154,6 +156,11 @@ export const findHome = async ({ prompt, project, identity, remotes = false }) =
 
 	return {
 		matches,
-		fresh: { project: fresh?.name ?? null, remote: fresh?.remote, why: String(reply.fresh?.why ?? '') },
+		fresh: {
+			project: fresh?.name ?? null,
+			remote: fresh?.remote,
+			lifetime: LIFETIMES.includes(reply.fresh?.lifetime) ? reply.fresh.lifetime : 'ordinary',
+			why: String(reply.fresh?.why ?? ''),
+		},
 	};
 };

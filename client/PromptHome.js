@@ -72,6 +72,12 @@ const openThere = async (url, to) => {
 	else new Notify({ type: 'error', content: 'Could not reach that server' });
 };
 
+// What the lifetime suggested for a new session means
+const LIFETIME_NOTES = {
+	warm: 'Starts kept warm: pinged while you are away, so it comes back cached',
+	brief: "Starts short-lived: deleted once Claude's cache lets go of it with nobody in it",
+};
+
 // What sending there costs, from the session's cache meter
 const costOf = meter => {
 	if (!meter) return null;
@@ -136,39 +142,45 @@ export const placePrompt = async ({ places, prompt, project, startFresh }) => {
 
 	into.append(element('div', 'heading', 'Or a new session'), place);
 	if (fresh.why) place.append(element('div', 'why', fresh.why));
+	if (fresh.lifetime && fresh.lifetime !== 'ordinary')
+		place.append(element('div', 'cost', LIFETIME_NOTES[fresh.lifetime]));
 	if (fresh.remote)
 		place.append(
 			button(`Start it in ${fresh.project} on ${fresh.remote.name}`, () =>
-				openThere(fresh.remote.url, { project: fresh.project, draft: prompt }),
+				openThere(fresh.remote.url, { project: fresh.project, draft: prompt, lifetime: fresh.lifetime }),
 			),
 		);
 	else if (fresh.project || project)
-		place.append(button(`Start it in ${fresh.project ?? project}`, () => startFresh(fresh.project ?? project)));
+		place.append(
+			button(`Start it in ${fresh.project ?? project}`, () => startFresh(fresh.project ?? project, fresh.lifetime)),
+		);
 };
 
 // A prompt carried from home to the project page it starts in, there to pick its worktree
 const DRAFT_KEY = 'paude.draft.';
 
-export const keepDraft = (project, text) => {
+// A prompt for a project page to start with, and the lifetime suggested for it
+export const keepDraft = (project, text, lifetime) => {
 	try {
-		sessionStorage.setItem(DRAFT_KEY + project, text);
+		sessionStorage.setItem(DRAFT_KEY + project, JSON.stringify({ text, lifetime }));
 	} catch {
 		// Without storage the project page opens with an empty box
 	}
 };
 
-export const carryDraft = (project, text) => {
-	keepDraft(project, text);
+export const carryDraft = (project, text, lifetime) => {
+	keepDraft(project, text, lifetime);
 	window.location.hash = `#/projects/${encodeURIComponent(project)}`;
 };
 
+// { text, lifetime }, or null for none
 export const takeDraft = project => {
 	try {
-		const text = sessionStorage.getItem(DRAFT_KEY + project);
+		const kept = sessionStorage.getItem(DRAFT_KEY + project);
 
 		sessionStorage.removeItem(DRAFT_KEY + project);
 
-		return text;
+		return kept ? JSON.parse(kept) : null;
 	} catch {
 		return null;
 	}

@@ -43,7 +43,8 @@ test('the prompt numbers each conversation with what it began with, lately asked
 	);
 	expect(prompt).toContain('the projects (each on its server) are: paude on dellbook, minecraft on vps.');
 	expect(prompt).toContain('"project" is one of the projects exactly as written above');
-	expect(prompt).toContain('"fresh": {"project": "…", "why": "…"}');
+	expect(prompt).toContain('"fresh": {"project": "…", "lifetime": "ordinary", "why": "…"}');
+	expect(prompt).toContain('"brief" for a quick question or one-off check');
 });
 
 test('kept to one project, a new session needs no project named', () => {
@@ -51,5 +52,5 @@ test('kept to one project, a new session needs no project named', () => {
 
 	expect(prompt).toContain('There are no conversations going.');
 	expect(prompt).not.toContain('the projects are');
-	expect(prompt).toContain('"fresh": {"why": "…"}');
+	expect(prompt).toContain('"fresh": {"lifetime": "ordinary", "why": "…"}');
 });

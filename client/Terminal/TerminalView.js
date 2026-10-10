@@ -17,8 +17,7 @@ import {
 	getArtifacts,
 	getAsking,
 	getMeter,
-	keepSession,
-	setKeepWarm,
+	setLifetime,
 	setWatching,
 } from '../api';
 import confirmDialog, { confirmDeleteSession, nameDialog } from '../confirmDialog';
@@ -131,6 +130,20 @@ const bufferLines = terminal => {
 };
 
 const METER_AFTER_TURN_MS = 4000;
+// How long a session lasts, as its bar shows it
+const LIFETIMES = {
+	ordinary: { label: 'Ordinary', icon: 'infinity', detail: 'stays until you delete it' },
+	warm: {
+		label: 'Kept warm',
+		icon: 'mug-hot',
+		detail: 'pinged while you are away so it comes back cached, 12 hours from your last message',
+	},
+	brief: {
+		label: 'Short-lived',
+		icon: 'hourglass-half',
+		detail: "deleted once Claude's cache lets go of it with nobody here",
+	},
+};
 // A cold conversation this big gets a word before the next message caches it all again
 const COLD_WARNING_TOKENS = 50_000;
 
@@ -251,22 +264,13 @@ export default class TerminalView extends View {
 			});
 			this.meterText = element('span', 'meter-text');
 			this.meterButton.append(this.meterText);
-			this.briefButton = ghostButton(header, {
-				icon: 'hourglass-half',
-				title: "Short-lived: deleted once Claude's cache lets go with nobody here. Click to keep it",
-				className: 'tool brief',
-				onPress: () => this.keepThisSession(),
+			this.lifetimeButton = ghostButton(header, {
+				icon: LIFETIMES.ordinary.icon,
+				title: 'How long this session lasts',
+				className: 'tool lifetime',
+				onPress: () => this.openLifetime(),
 			});
-			this.briefButton.dataset.menuLabel = 'Keep this session';
-			this.briefButton.dataset.menuDetail = 'short-lived now';
-			this.briefButton.style.display = 'none';
-			this.warmButton = ghostButton(header, {
-				icon: 'mug-hot',
-				title: 'Keep warm',
-				className: 'tool',
-				onPress: () => this.toggleKeepWarm(),
-			});
-			this.showKeepWarm(null);
+			this.showLifetime('ordinary');
 		}
 		this.sharesButton = ghostButton(header, {
 			icon: 'share-nodes',
@@ -473,8 +477,7 @@ export default class TerminalView extends View {
 		this.project = body.project;
 		this.paint(body.hue);
 		this.showWatching(body.watching);
-		this.showKeepWarm(body.warmUntil);
-		if (this.briefButton) this.briefButton.style.display = body.brief ? '' : 'none';
+		this.showLifetime(body.lifetime, body.warmUntil);
 		this.loadMeter();
 		if (this.projectCrumb) {
 			this.projectCrumb.textContent = body.project;
@@ -1400,7 +1403,9 @@ export default class TerminalView extends View {
 
 		this.meter = body?.meter ?? null;
 		this.showMeter();
-		if (body && 'warmUntil' in body) this.showKeepWarm(body.warmUntil);
+		// Kept warm until a cutoff that each real prompt moves on, and that can pass
+		if (body && 'warmUntil' in body && (body.warmUntil || this.lifetime === 'warm'))
+			this.showLifetime(body.warmUntil ? 'warm' : 'ordinary', body.warmUntil);
 		if (!this.meterTick) {
 			this.meterTick = setInterval(() => this.loadMeter(), 60_000);
 			this.addCleanup('meterTick', () => clearInterval(this.meterTick));
@@ -1512,41 +1517,47 @@ export default class TerminalView extends View {
 					]
 				: []),
 			{
-				label: this.warmUntil ? 'Stop keeping warm' : 'Keep warm',
-				detail: this.warmUntil ? 'pinged while you are away' : 'ping it while you are away, 12 hours',
-				onPress: () => this.toggleKeepWarm(),
+				label: `Lifetime: ${LIFETIMES[this.lifetime].label}`,
+				detail: 'ordinary, kept warm, or short-lived',
+				onPress: () => this.openLifetime(),
 			},
 		]);
 	}
 
-	showKeepWarm(until) {
-		if (!this.warmButton) return;
-		this.warmUntil = until ?? null;
+	showLifetime(lifetime = 'ordinary', warmUntil = null) {
+		if (!this.lifetimeButton) return;
+		this.lifetime = lifetime;
+		this.warmUntil = warmUntil;
 
-		const time = until && new Date(until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+		const { icon, label } = LIFETIMES[lifetime];
+		const until = warmUntil && new Date(warmUntil).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-		this.warmButton.classList.toggle('active', Boolean(until));
-		this.warmButton.dataset.menuLabel = until ? 'Stop keeping warm' : 'Keep warm';
-		if (until) this.warmButton.dataset.menuDetail = `until ${time}`;
-		else delete this.warmButton.dataset.menuDetail;
-		this.warmButton.title = until
-			? `Kept warm until ${time}: once Claude has been quiet 50 minutes, paude pings it, so coming back finds the whole conversation still cached and not compacted. Click to stop.`
-			: 'Keep warm: while you are away, ping Claude before its prompt cache expires and the conversation is compacted (12 hours, a cached read of the conversation each 50 minutes)';
+		this.lifetimeButton.firstChild.className = `fa-solid fa-${icon}`;
+		this.lifetimeButton.classList.toggle('active', lifetime === 'warm');
+		this.lifetimeButton.classList.toggle('brief', lifetime === 'brief');
+		this.lifetimeButton.dataset.menuLabel = `Lifetime: ${label}`;
+		if (until) this.lifetimeButton.dataset.menuDetail = `until ${until}`;
+		else delete this.lifetimeButton.dataset.menuDetail;
+		this.lifetimeButton.title = `${label}: ${LIFETIMES[lifetime].detail}${until ? ` (until ${until})` : ''}. Click to change`;
 	}
 
-	async keepThisSession() {
-		const { response } = await keepSession(this.options.id);
-
-		if (!response?.ok) return new Notify({ type: 'error', content: "Couldn't keep this session" });
-		this.briefButton.style.display = 'none';
-		new Notify({ type: 'success', content: 'Kept: it stays until you delete it', timeout: 4000 });
+	openLifetime() {
+		this.openMenu(this.lifetimeButton, [
+			{ heading: 'How long this session lasts' },
+			...Object.entries(LIFETIMES).map(([lifetime, { label, detail }]) => ({
+				label: lifetime === this.lifetime ? `✓ ${label}` : label,
+				detail,
+				onPress: () => this.changeLifetime(lifetime),
+			})),
+		]);
 	}
 
-	async toggleKeepWarm() {
-		const { body, response } = await setKeepWarm(this.options.id, this.warmUntil ? 0 : 12);
+	async changeLifetime(lifetime) {
+		const { body, response } = await setLifetime(this.options.id, lifetime);
 
-		if (response?.ok) this.showKeepWarm(body.until);
-		else new Notify({ type: 'error', content: "Couldn't keep this session warm (only a running session can be)" });
+		if (!response?.ok)
+			return new Notify({ type: 'error', content: "Couldn't change it (only a running session stays warm)" });
+		this.showLifetime(body.lifetime, body.warmUntil);
 	}
 
 	async rename() {

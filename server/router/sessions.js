@@ -5,9 +5,9 @@ import { activitySummary, setWatching, watchedBy } from '../activity';
 import { credentialOf, identityOf } from '../auth';
 import { folderHue, sessionHue } from '../../shared/hues';
 import { matchesQuery } from '../../shared/sessionSearch';
-import { DEFAULT_HOURS, keepWarm, warmUntil } from '../keepWarm';
+import { warmUntil } from '../keepWarm';
 import { continueSession } from '../usageLimit';
-import { isBrief, keepSession, markBrief } from '../briefSessions';
+import { LIFETIMES, lifetimeOf, setLifetime } from '../lifetime';
 import removeSession from '../removeSession';
 import { meterOf } from '../cacheMeter';
 import { catchUp } from '../catchUp';
@@ -29,20 +29,8 @@ import {
 } from '../projects';
 import { sessionRecord } from '../sessions/record';
 import { listAllSessions, listProjectSessions, toSummary } from '../sessions/stored';
-import {
-	allRunning,
-	openSession,
-	runningSession,
-	startFailureOf,
-	startSession,
-} from '../sessions/running';
-import {
-	WorktreeError,
-	checkoutsOf,
-	createWorktree,
-	joinWorktree,
-	validWorktreeName,
-} from '../worktrees';
+import { allRunning, openSession, runningSession, startFailureOf, startSession } from '../sessions/running';
+import { WorktreeError, checkoutsOf, createWorktree, joinWorktree, validWorktreeName } from '../worktrees';
 import { markProjectLink, projectLinks } from '../links';
 import { projectArtifacts } from '../artifacts';
 import requestMatch from '../utils/requestMatch';
@@ -93,8 +81,7 @@ const HEARTBEAT_MS = 5000;
 const startWith = async (folder, text, mode) => {
 	const { id } = startSession(folder, text?.trim());
 
-	if (mode === 'warm') await keepWarm(id, DEFAULT_HOURS);
-	if (mode === 'brief') await markBrief(id);
+	if (LIFETIMES.includes(mode)) await setLifetime(id, mode);
 
 	return id;
 };
@@ -194,8 +181,8 @@ const sessionsRoutes = async (request, server) => {
 	if (requestMatch('GET', '/api/remotes', request)) return Response.json(await listRemotes());
 
 	if (requestMatch('POST', '/api/remotes/open', request)) {
-		const { url, sessionId, project, draft } = await request.json();
-		const link = await remoteLink(url, { sessionId, project, draft });
+		const { url, sessionId, project, draft, lifetime } = await request.json();
+		const link = await remoteLink(url, { sessionId, project, draft, lifetime });
 
 		return link ? Response.json({ link }) : new Response('Not one of your servers', { status: 404 });
 	}
@@ -349,13 +336,18 @@ const sessionsRoutes = async (request, server) => {
 		return Response.json({ meter: await meterOf(match.id, record.cwd), warmUntil: warmUntil(match.id) });
 	}
 
-	// A short-lived session kept: an ordinary one from now on
-	match = requestMatch('PUT', '/api/sessions/:id/keep', request);
+	// How long the session lasts, changed: kept warm (whose pings spend the owner's usage), short-lived, or ordinary
+	match = requestMatch('PUT', '/api/sessions/:id/lifetime', request);
 	if (match) {
-		if (!identity.owner) return new Response('Only the owner keeps a session', { status: 403 });
-		await keepSession(match.id);
+		if (!identity.owner) return new Response('Only the owner sets how long a session lasts', { status: 403 });
 
-		return new Response(null, { status: 204 });
+		const { lifetime } = await request.json();
+
+		if (!LIFETIMES.includes(lifetime)) return new Response('Ordinary, warm or brief', { status: 400 });
+		if (lifetime === 'warm' && !runningSession(match.id))
+			return new Response('Only a running session stays warm', { status: 409 });
+
+		return Response.json({ lifetime: await setLifetime(match.id, lifetime), warmUntil: warmUntil(match.id) });
 	}
 
 	// After a usage limit: carry on now ('now'), once it resets ('reset'), or stop waiting for that ('cancel')
@@ -371,17 +363,6 @@ const sessionsRoutes = async (request, server) => {
 			});
 
 		return new Response(null, { status: 204 });
-	}
-
-	// The pings are typed in as the owner and spend the owner's Claude usage
-	match = requestMatch('PUT', '/api/sessions/:id/keep-warm', request);
-	if (match) {
-		if (!identity.owner) return new Response('Only the owner keeps a session warm', { status: 403 });
-		if (!runningSession(match.id)) return new Response('Only a running session stays warm', { status: 409 });
-
-		const { hours = DEFAULT_HOURS } = await request.json();
-
-		return Response.json({ until: await keepWarm(match.id, Number(hours) || 0) });
 	}
 
 	// Everything the project's sessions made, as one list
@@ -556,7 +537,7 @@ const sessionsRoutes = async (request, server) => {
 			pinned: Boolean(pinnedName(match.id)),
 			startFailure: running ? undefined : startFailureOf(match.id),
 			warmUntil: identity.owner ? warmUntil(match.id) : undefined,
-			brief: isBrief(match.id),
+			lifetime: lifetimeOf(match.id),
 			...activitySummary(identity, match.id, { running: Boolean(running), busy: running?.busy }),
 		});
 	}

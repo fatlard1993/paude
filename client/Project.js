@@ -134,7 +134,10 @@ export default class Project extends View {
 					places: this.places,
 					prompt: this.prompt.elem.value.trim(),
 					project,
-					startFresh: () => this.start(),
+					startFresh: (_, lifetime) => {
+						this.pickLifetime(lifetime);
+						this.start();
+					},
 				}),
 		});
 		this.startButton = new Button({
@@ -144,7 +147,10 @@ export default class Project extends View {
 		});
 		this.places = new Places({ appendTo: scroll });
 		// Brought here from home to start in this project
-		this.prompt.elem.value = takeDraft(project) ?? '';
+		const draft = takeDraft(project);
+
+		this.prompt.elem.value = draft?.text ?? '';
+		this.pickLifetime(draft?.lifetime);
 
 		new SectionTitle({ appendTo: scroll, textContent: 'Sessions' });
 		this.sessions = sessionList({
@@ -217,7 +223,17 @@ export default class Project extends View {
 			),
 		);
 
+		this.lifetimeChoices = choice.elem;
+
 		return () => choice.elem.querySelector('input[name=lifetime]:checked')?.value || undefined;
+	}
+
+	// As the prompt's router suggested: 'warm' or 'brief' (anything else is ordinary)
+	pickLifetime(lifetime) {
+		const value = ['warm', 'brief'].includes(lifetime) ? lifetime : '';
+		const radio = this.lifetimeChoices.querySelector(`input[name=lifetime][value="${value}"]`);
+
+		if (radio) radio.checked = true;
 	}
 
 	// Asked every time in a git repository

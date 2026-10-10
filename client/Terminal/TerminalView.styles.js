@@ -391,7 +391,7 @@ export const TopBar = styled(
 		}
 
 		/* A short-lived session says so, a press from being kept */
-		.tool.brief {
+		.tool.lifetime.brief {
 			color: hsl(35, 90%, 62%);
 		}
 

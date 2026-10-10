@@ -33,7 +33,7 @@ export const listRemotes = async () => {
 };
 
 // A link that logs this browser in there and opens a session, or a project page
-export const remoteLink = async (url, { sessionId, project, draft }) => {
+export const remoteLink = async (url, { sessionId, project, draft, lifetime }) => {
 	const server = (await remoteServers()).find(remote => remote.url === url);
 	const to =
 		(typeof sessionId === 'string' && /^[\w-]+$/.test(sessionId) && `/sessions/${sessionId}`) ||
@@ -44,7 +44,13 @@ export const remoteLink = async (url, { sessionId, project, draft }) => {
 	const { code } = await serverApi(server, '/api/handoff', { method: 'POST' });
 
 	// A prompt for the project page to start with, carried in the link since the page there can't read this one's storage
-	const carried = draft && to.startsWith('/projects/') ? `/draft/${encodeURIComponent(draft)}` : '';
+	const forProject = to.startsWith('/projects/');
+	const carried = [
+		forProject && /^(warm|brief)$/.test(lifetime ?? '') && `/lifetime/${lifetime}`,
+		forProject && draft && `/draft/${encodeURIComponent(draft)}`,
+	]
+		.filter(Boolean)
+		.join('');
 
 	return `${server.url}/#/handoff/${code}${to}${carried}`;
 };

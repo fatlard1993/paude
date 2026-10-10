@@ -211,13 +211,9 @@ export const getArtifacts = async sessionId =>
 export const getProjectArtifacts = async project =>
 	await GET('/api/projects/:project/artifacts', { urlParameters: { project }, invalidateAfter: 0 });
 
-// A short-lived session kept: an ordinary one from now on
-export const keepSession = async sessionId =>
-	await PUT('/api/sessions/:id/keep', { urlParameters: { id: sessionId }, body: {} });
-
-// hours: 0 stops it; { until } is when it stops on its own (null for not warm)
-export const setKeepWarm = async (sessionId, hours) =>
-	await PUT('/api/sessions/:id/keep-warm', { urlParameters: { id: sessionId }, body: { hours } });
+// How long a session lasts: 'ordinary', 'warm' or 'brief'; { lifetime, warmUntil }
+export const setLifetime = async (sessionId, lifetime) =>
+	await PUT('/api/sessions/:id/lifetime', { urlParameters: { id: sessionId }, body: { lifetime } });
 
 export const addFolder = async path => await POST('/api/projects', { body: { path }, responseType: 'text' });
 
