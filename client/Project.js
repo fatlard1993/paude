@@ -104,7 +104,12 @@ export default class Project extends View {
 		const { project } = this.options;
 		const header = new Header({ appendTo: this });
 
-		breadcrumbs({ appendTo: header, current: project, addCleanup: (name, stop) => this.addCleanup(name, stop) });
+		breadcrumbs({
+			appendTo: header,
+			current: project,
+			project,
+			addCleanup: (name, stop) => this.addCleanup(name, stop),
+		});
 
 		const scroll = new Scroll({ appendTo: this });
 

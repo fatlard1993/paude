@@ -175,7 +175,7 @@ export default class TerminalView extends View {
 		this.titleLabel = new Elem({ appendTo: title, addClass: 'name' });
 		if (identity()?.owner) {
 			// The project's crumb is filled in once the session says which it is
-			const { links } = breadcrumbs({
+			const { links, setProject } = breadcrumbs({
 				appendTo: header,
 				trail: [{ label: '', href: '#/' }],
 				current: title,
@@ -184,6 +184,7 @@ export default class TerminalView extends View {
 			});
 
 			[this.projectCrumb] = links;
+			this.countWaitingIn = setProject;
 			this.projectCrumb.style.display = 'none';
 			this.projectCrumb.previousSibling.style.display = 'none';
 		} else header.elem.append(title.elem);
@@ -484,6 +485,7 @@ export default class TerminalView extends View {
 			this.projectCrumb.href = `#/projects/${encodeURIComponent(body.project)}`;
 			this.projectCrumb.style.display = '';
 			this.projectCrumb.previousSibling.style.display = '';
+			this.countWaitingIn(body.project, this.projectCrumb);
 		}
 		if (!this.titleLabel.elem.textContent) this.titleLabel.elem.textContent = body.title || body.project;
 	}

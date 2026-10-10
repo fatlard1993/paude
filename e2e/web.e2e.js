@@ -327,7 +327,7 @@ test(
 );
 
 test(
-	'the breadcrumb counts the sessions waiting for you, and opens one',
+	"the breadcrumb counts the sessions waiting for you on their project's crumb, and opens one",
 	async () => {
 		const server = servers.turns;
 		const waiting = await server.newSession();
@@ -338,12 +338,14 @@ test(
 		const { browser, page } = await openSession('dom', server);
 
 		try {
-			await page.waitForFunction(() => document.querySelector('.breadcrumbs .waiting')?.offsetParent, {
+			// The waiting session is in this one's project: counted on the project's crumb, not beside paude
+			await page.waitForFunction(() => document.querySelector('.breadcrumbs a.trail + .waiting')?.offsetParent, {
 				timeout: 20_000,
 			});
-			expect(await page.$eval('.breadcrumbs .waiting', badge => badge.textContent)).toBe('1');
+			expect(await page.$eval('.breadcrumbs a.trail + .waiting', badge => badge.textContent)).toBe('1');
+			expect(await page.$eval('.breadcrumbs .root + .waiting', badge => badge.offsetParent)).toBeNull();
 
-			const badge = await centerOf(page, '.breadcrumbs .waiting');
+			const badge = await centerOf(page, '.breadcrumbs a.trail + .waiting');
 
 			await page.mouse.click(badge.x, badge.y);
 			await wait(400);
@@ -731,7 +733,7 @@ test(
 
 			expect(visible).toEqual(['Menu']);
 			expect(await page.$eval('.breadcrumbs', crumbs => crumbs.innerText.replace(/\s+/g, ' ').trim())).toMatch(
-				/\/ demo \/ New session$/,
+				/\/ demo (\d+ )?\/ New session$/,
 			);
 
 			const menu = await centerOf(page, '.ghost.tools');

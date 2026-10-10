@@ -105,11 +105,13 @@ const openWaiting = async session => {
 	else new Notify({ type: 'error', content: `Could not reach ${session.remote.name}.` });
 };
 
-// Where this page sits: paude (the bucket, home) / each page above this one / this page. Beside paude, how many
-// watched sessions are waiting on you (not counting `sessionId`, the one open), a press away from any of them.
-// trail: [{ label, href }]; current: what this page is (text, or a node to keep updating). Returns the elements, so a
-// page can fill in a crumb it learns later. addCleanup(name, stop) ends the waiting count with the page.
-export const breadcrumbs = ({ appendTo, trail = [], current, sessionId, addCleanup }) => {
+// Where this page sits: paude (the bucket, home) / each page above this one / this page, with the watched sessions
+// waiting on you counted where they live: the project's on its crumb, the rest (other projects, other servers) beside
+// paude, each a press away. The open session (sessionId) isn't counted. trail: [{ label, href }]; current: what this
+// page is (text, or a node to keep updating); project: the project this page is in, when it's known up front.
+// Returns the elements and setProject(name, crumb), for a page that learns its project later. addCleanup(name, stop)
+// ends the counting with the page.
+export const breadcrumbs = ({ appendTo, trail = [], current, project, sessionId, addCleanup }) => {
 	const crumbs = new Trail({ appendTo, addClass: 'breadcrumbs' });
 	const into = crumbs.elem;
 	const atHome = !trail.length && current === undefined;
@@ -121,36 +123,6 @@ export const breadcrumbs = ({ appendTo, trail = [], current, sessionId, addClean
 	if (!atHome) root.href = '#/';
 	root.title = serverName() ? `paude on ${serverName()}` : 'paude';
 	into.append(root);
-
-	if (!atHome) {
-		const waiting = element('button', 'waiting');
-
-		waiting.style.display = 'none';
-		into.append(waiting);
-
-		let others = [];
-
-		waiting.addEventListener('click', () =>
-			openMenu(waiting, [
-				{ heading: 'Waiting for you' },
-				...others.map(session => ({
-					label: session.title || session.project,
-					detail: [session.project, session.remote?.name ?? serverName()].filter(Boolean).join(' · '),
-					accent: tintsOf(session.hue)?.accent,
-					onPress: () => openWaiting(session),
-				})),
-			]),
-		);
-		addCleanup?.(
-			'waitingCount',
-			onWaitingChange(sessions => {
-				others = sessions.filter(session => session.remote || session.id !== sessionId);
-				waiting.textContent = others.length;
-				waiting.title = `${others.length} waiting for you`;
-				waiting.style.display = others.length ? '' : 'none';
-			}),
-		);
-	}
 
 	const links = trail.map(({ label, href }) => {
 		const link = element('a', 'crumb trail', label);
@@ -169,5 +141,67 @@ export const breadcrumbs = ({ appendTo, trail = [], current, sessionId, addClean
 		into.append(element('span', 'separator', '/'), here);
 	}
 
-	return { crumbs, links, here };
+	// Home lists what's waiting itself
+	if (atHome) return { crumbs, links, here, setProject: () => {} };
+
+	let waiting = [];
+	let inProject = null;
+	const inThisProject = session => !session.remote && session.project === inProject;
+	const badge = (after, heading) => {
+		const button = element('button', 'waiting');
+		const counted = { button, list: [], after };
+
+		button.style.display = 'none';
+		after.after(button);
+		button.addEventListener('click', () =>
+			openMenu(button, [
+				{ heading },
+				...counted.list.map(session => ({
+					label: session.title || session.project,
+					detail: [session.project, session.remote?.name ?? serverName()].filter(Boolean).join(' · '),
+					accent: tintsOf(session.hue)?.accent,
+					onPress: () => openWaiting(session),
+				})),
+			]),
+		);
+
+		return counted;
+	};
+	const elsewhere = badge(root, 'Waiting for you');
+	let projectBadge = null;
+	const show = (counted, list, what) => {
+		counted.list = list;
+		counted.button.textContent = list.length;
+		counted.button.title = `${list.length} waiting for you${what}`;
+		counted.button.style.display = list.length ? '' : 'none';
+	};
+	const render = () => {
+		const others = waiting.filter(session => session.remote || session.id !== sessionId);
+
+		show(
+			elsewhere,
+			others.filter(session => !inThisProject(session)),
+			inProject ? ' elsewhere' : '',
+		);
+		if (projectBadge) show(projectBadge, others.filter(inThisProject), ` in ${inProject}`);
+	};
+	const setProject = (name, crumb) => {
+		inProject = name;
+		if (!projectBadge || projectBadge.after !== crumb) {
+			projectBadge?.button.remove();
+			projectBadge = badge(crumb, `Waiting for you in ${name}`);
+		}
+		render();
+	};
+
+	addCleanup?.(
+		'waitingCount',
+		onWaitingChange(sessions => {
+			waiting = sessions;
+			render();
+		}),
+	);
+	if (project) setProject(project, here ?? links.at(-1));
+
+	return { crumbs, links, here, setProject };
 };
