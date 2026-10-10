@@ -74,6 +74,9 @@ export default class TasksPanel extends Panel {
 
 		const { body, response } = await getTasks(this.options.sessionId);
 
+		// A run opened while the list was on its way: the run's output stays
+		if (this.viewing) return;
+
 		if (!response?.ok) {
 			this.body.replaceChildren(element('div', 'empty', 'Could not read the tasks here.'));
 
