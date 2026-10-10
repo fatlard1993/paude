@@ -1,12 +1,14 @@
 import os from 'os';
-import { deleteSession, forkSession, listSessions } from '@anthropic-ai/claude-agent-sdk';
+import { forkSession } from '@anthropic-ai/claude-agent-sdk';
 
-import { activitySummary, forgetActivity, setWatching, watchedBy } from '../activity';
-import { credentialOf, identityOf, revokeInvitesFor } from '../auth';
+import { activitySummary, setWatching, watchedBy } from '../activity';
+import { credentialOf, identityOf } from '../auth';
 import { folderHue, sessionHue } from '../../shared/hues';
 import { matchesQuery } from '../../shared/sessionSearch';
 import { DEFAULT_HOURS, keepWarm, warmUntil } from '../keepWarm';
 import { continueSession } from '../usageLimit';
+import { isBrief, keepSession, markBrief } from '../briefSessions';
+import removeSession from '../removeSession';
 import { meterOf } from '../cacheMeter';
 import { catchUp } from '../catchUp';
 import { findHome, localCandidates } from '../promptHome';
@@ -15,7 +17,6 @@ import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
 import { listRemotes, remoteApi, remoteLink, remoteSessions } from '../remotes';
 import { mayListRemotes } from '../serverSettings';
-import { deleteNotes } from '../notes';
 import { sessionTurns } from '../sessions/history';
 import {
 	FolderError,
@@ -34,14 +35,12 @@ import {
 	runningSession,
 	startFailureOf,
 	startSession,
-	stopSession,
 } from '../sessions/running';
 import {
 	WorktreeError,
 	checkoutsOf,
 	createWorktree,
 	joinWorktree,
-	releaseWorktree,
 	validWorktreeName,
 } from '../worktrees';
 import { markProjectLink, projectLinks } from '../links';
@@ -89,7 +88,18 @@ const worktreeNameFor = text => {
 // would be dropped as idle. A reader who leaves doesn't stop the worktree being made; only the session waits.
 const HEARTBEAT_MS = 5000;
 
-const creatingSession = (create, text) => {
+// A new session, kept warm or short-lived from the start when asked: mode is 'warm', 'brief' or anything else for
+// neither
+const startWith = async (folder, text, mode) => {
+	const { id } = startSession(folder, text?.trim());
+
+	if (mode === 'warm') await keepWarm(id, DEFAULT_HOURS);
+	if (mode === 'brief') await markBrief(id);
+
+	return id;
+};
+
+const creatingSession = (create, text, mode) => {
 	const encoder = new TextEncoder();
 	let open = true;
 	let heartbeat;
@@ -112,7 +122,10 @@ const creatingSession = (create, text) => {
 				try {
 					const folder = await create(output => output && send({ output }));
 
-					if (open) send({ id: startSession(folder, text?.trim()).id });
+					// Started whether or not anyone is still reading
+					const id = await startWith(folder, text, mode);
+
+					if (open) send({ id });
 				} catch (error) {
 					if (!(error instanceof WorktreeError)) console.error('A worktree could not be made', error);
 					send({ error: error instanceof WorktreeError ? error.message : 'The worktree could not be made.' });
@@ -336,6 +349,15 @@ const sessionsRoutes = async (request, server) => {
 		return Response.json({ meter: await meterOf(match.id, record.cwd), warmUntil: warmUntil(match.id) });
 	}
 
+	// A short-lived session kept: an ordinary one from now on
+	match = requestMatch('PUT', '/api/sessions/:id/keep', request);
+	if (match) {
+		if (!identity.owner) return new Response('Only the owner keeps a session', { status: 403 });
+		await keepSession(match.id);
+
+		return new Response(null, { status: 204 });
+	}
+
 	// After a usage limit: carry on now ('now'), once it resets ('reset'), or stop waiting for that ('cancel')
 	match = requestMatch('POST', '/api/sessions/:id/continue', request);
 	if (match) {
@@ -412,7 +434,7 @@ const sessionsRoutes = async (request, server) => {
 	match = requestMatch('POST', '/api/projects/:project/sessions', request);
 	if (match) {
 		const cwd = projectPath(match.project);
-		const { text, checkout } = await request.json();
+		const { text, checkout, mode } = await request.json();
 
 		if (!(await isFolder(cwd))) return new Response('Unknown project', { status: 404 });
 
@@ -422,7 +444,7 @@ const sessionsRoutes = async (request, server) => {
 			if (!validWorktreeName(name))
 				return new Response('Name it with letters, digits, dots, dashes and underscores (up to 64).', { status: 400 });
 
-			return creatingSession(onOutput => createWorktree(cwd, match.project, name, { onOutput }), text);
+			return creatingSession(onOutput => createWorktree(cwd, match.project, name, { onOutput }), text, mode);
 		}
 
 		let folder = cwd;
@@ -435,7 +457,7 @@ const sessionsRoutes = async (request, server) => {
 			folder = joined.path;
 		}
 
-		return Response.json({ id: startSession(folder, text?.trim()).id });
+		return Response.json({ id: await startWith(folder, text, mode) });
 	}
 
 	match = requestMatch('GET', '/api/sessions/:id/attach', request);
@@ -496,29 +518,11 @@ const sessionsRoutes = async (request, server) => {
 
 	match = requestMatch('DELETE', '/api/sessions/:id', request);
 	if (match) {
-		const record = await sessionRecord(match.id);
+		const removed = await removeSession(match.id);
 
-		if (!record) return new Response('Session not found', { status: 404 });
+		if (removed === null) return new Response('Session not found', { status: 404 });
 
-		const { cwd } = record;
-
-		await stopSession(match.id);
-		// A session that never got a prompt has no transcript to delete
-		await deleteSession(match.id, { dir: cwd }).catch(error => {
-			if (!/not found/i.test(error.message)) throw error;
-		});
-		await deleteNotes(match.id);
-		await revokeInvitesFor(match.id);
-		await pinName(match.id, '');
-		await forgetActivity(match.id);
-
-		const projectDir = projectPath(projectOf(cwd));
-		const remaining = projectDir
-			? [...(await listSessions({ dir: projectDir, limit: 1000 })).map(session => session.cwd), ...runningFolders()]
-			: [];
-		const released = projectDir ? await releaseWorktree(projectDir, cwd, remaining).catch(() => null) : null;
-
-		return released ? Response.json(released) : new Response(null, { status: 204 });
+		return removed.released ? Response.json(removed.released) : new Response(null, { status: 204 });
 	}
 
 	// An empty name goes back to the automatic one
@@ -552,6 +556,7 @@ const sessionsRoutes = async (request, server) => {
 			pinned: Boolean(pinnedName(match.id)),
 			startFailure: running ? undefined : startFailureOf(match.id),
 			warmUntil: identity.owner ? warmUntil(match.id) : undefined,
+			brief: isBrief(match.id),
 			...activitySummary(identity, match.id, { running: Boolean(running), busy: running?.busy }),
 		});
 	}

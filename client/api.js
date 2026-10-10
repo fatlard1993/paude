@@ -19,10 +19,11 @@ export const getProjectSessions = async (project, options) =>
 export const getCheckouts = async project =>
 	await GET('/api/projects/:project/checkouts', { urlParameters: { project }, invalidateAfter: 0 });
 
-export const createSession = async (project, text, checkout) =>
+// mode: 'warm' (kept warm), 'brief' (short-lived), or nothing for an ordinary session
+export const createSession = async (project, text, checkout, mode) =>
 	await POST('/api/projects/:project/sessions', {
 		urlParameters: { project },
-		body: { text, checkout },
+		body: { text, checkout, mode },
 		invalidates: [['sessions', project]],
 	});
 
@@ -209,6 +210,10 @@ export const getArtifacts = async sessionId =>
 
 export const getProjectArtifacts = async project =>
 	await GET('/api/projects/:project/artifacts', { urlParameters: { project }, invalidateAfter: 0 });
+
+// A short-lived session kept: an ordinary one from now on
+export const keepSession = async sessionId =>
+	await PUT('/api/sessions/:id/keep', { urlParameters: { id: sessionId }, body: {} });
 
 // hours: 0 stops it; { until } is when it stops on its own (null for not warm)
 export const setKeepWarm = async (sessionId, hours) =>

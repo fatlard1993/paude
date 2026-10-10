@@ -4,6 +4,7 @@ import { sessionHue } from '../../shared/hues';
 
 import { activitySummary } from '../activity';
 import { limitOf } from '../usageLimit';
+import { isBrief } from '../briefSessions';
 import { pinnedName } from '../names';
 import { projectOf, projectPath } from '../projects';
 import { worktreeName } from '../worktrees';
@@ -34,6 +35,7 @@ export const toSummary =
 			...activitySummary(identity, sessionId, { running: Boolean(running), busy: running?.busy }),
 			asking: running?.asking() ?? undefined,
 			limit: limitOf(sessionId) ?? undefined,
+			brief: isBrief(sessionId) || undefined,
 		};
 	};
 

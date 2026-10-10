@@ -17,6 +17,7 @@ import {
 	getArtifacts,
 	getAsking,
 	getMeter,
+	keepSession,
 	setKeepWarm,
 	setWatching,
 } from '../api';
@@ -250,6 +251,15 @@ export default class TerminalView extends View {
 			});
 			this.meterText = element('span', 'meter-text');
 			this.meterButton.append(this.meterText);
+			this.briefButton = ghostButton(header, {
+				icon: 'hourglass-half',
+				title: "Short-lived: deleted once Claude's cache lets go with nobody here. Click to keep it",
+				className: 'tool brief',
+				onPress: () => this.keepThisSession(),
+			});
+			this.briefButton.dataset.menuLabel = 'Keep this session';
+			this.briefButton.dataset.menuDetail = 'short-lived now';
+			this.briefButton.style.display = 'none';
 			this.warmButton = ghostButton(header, {
 				icon: 'mug-hot',
 				title: 'Keep warm',
@@ -464,6 +474,7 @@ export default class TerminalView extends View {
 		this.paint(body.hue);
 		this.showWatching(body.watching);
 		this.showKeepWarm(body.warmUntil);
+		if (this.briefButton) this.briefButton.style.display = body.brief ? '' : 'none';
 		this.loadMeter();
 		if (this.projectCrumb) {
 			this.projectCrumb.textContent = body.project;
@@ -1521,6 +1532,14 @@ export default class TerminalView extends View {
 		this.warmButton.title = until
 			? `Kept warm until ${time}: once Claude has been quiet 50 minutes, paude pings it, so coming back finds the whole conversation still cached and not compacted. Click to stop.`
 			: 'Keep warm: while you are away, ping Claude before its prompt cache expires and the conversation is compacted (12 hours, a cached read of the conversation each 50 minutes)';
+	}
+
+	async keepThisSession() {
+		const { response } = await keepSession(this.options.id);
+
+		if (!response?.ok) return new Notify({ type: 'error', content: "Couldn't keep this session" });
+		this.briefButton.style.display = 'none';
+		new Notify({ type: 'success', content: 'Kept: it stays until you delete it', timeout: 4000 });
 	}
 
 	async toggleKeepWarm() {

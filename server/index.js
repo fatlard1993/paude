@@ -24,6 +24,10 @@ import { initArtifactDescriptions } from './artifactDescriptions';
 import { initAttachments } from './attachments';
 import { initKeepWarm } from './keepWarm';
 import { initUsageLimits, onLimitChange } from './usageLimit';
+import { initBriefSessions } from './briefSessions';
+import { meterOf } from './cacheMeter';
+import removeSession from './removeSession';
+import { sessionRecord } from './sessions/record';
 import { setPreviewPort } from './router/shares';
 import server, { spawnBuild } from './server';
 
@@ -92,6 +96,15 @@ await adoptHeldSessions();
 await initKeepWarm(options.data, runningSession);
 await initUsageLimits(options.data, runningSession);
 onLimitChange(sessionId => runningSession(sessionId)?.broadcastPresence());
+await initBriefSessions(options.data, {
+	sessionOf: runningSession,
+	meterOf: async id => {
+		const record = await sessionRecord(id);
+
+		return record ? meterOf(id, record.cwd) : null;
+	},
+	remove: removeSession,
+});
 
 server.init({ host: options.host, port: options.port, data: options.data });
 

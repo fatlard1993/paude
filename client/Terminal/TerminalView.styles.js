@@ -390,6 +390,11 @@ export const TopBar = styled(
 			color: hsl(35, 90%, 62%);
 		}
 
+		/* A short-lived session says so, a press from being kept */
+		.tool.brief {
+			color: hsl(35, 90%, 62%);
+		}
+
 		.divider {
 			width: 1px;
 			height: 20px;

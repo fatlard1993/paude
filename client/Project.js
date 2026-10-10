@@ -122,6 +122,7 @@ export default class Project extends View {
 
 		this.where = new Where({ appendTo: scroll, style: { display: 'none' } });
 		this.progress = new Progress({ appendTo: scroll, tag: 'pre', style: { display: 'none' } }).elem;
+		this.lifetime = this.lifetimeChoice(scroll);
 
 		const actions = new Actions({ appendTo: scroll });
 
@@ -190,6 +191,35 @@ export default class Project extends View {
 		this.loadCheckouts();
 	}
 
+	// How long the session lasts: until it's deleted, kept warm while you're away, or gone once it's done
+	lifetimeChoice(appendTo) {
+		const choice = new Where({ appendTo, addClass: 'lifetime' });
+		const option = (value, title, detail) => {
+			const label = element('label');
+			const radio = Object.assign(element('input'), { type: 'radio', name: 'lifetime', value, checked: !value });
+
+			label.append(radio, element('span', '', title), element('span', 'detail', detail));
+
+			return label;
+		};
+
+		choice.elem.append(
+			option('', 'Ordinary', 'stays until you delete it'),
+			option(
+				'warm',
+				'Kept warm',
+				'pinged while you are away, so it comes back cached (12 hours from your last message)',
+			),
+			option(
+				'brief',
+				'Short-lived',
+				'deleted once its cache lets go with nobody in it, about an hour after its last answer',
+			),
+		);
+
+		return () => choice.elem.querySelector('input[name=lifetime]:checked')?.value || undefined;
+	}
+
 	// Asked every time in a git repository
 	async loadCheckouts() {
 		const checkouts = (await getCheckouts(this.options.project)).body?.checkouts;
@@ -253,6 +283,7 @@ export default class Project extends View {
 	async start() {
 		const text = this.prompt.elem.value.trim();
 		const checkout = this.choice?.();
+		const mode = this.lifetime();
 		const creating = Boolean(checkout && 'create' in checkout);
 
 		if (this.starting) return;
@@ -261,7 +292,9 @@ export default class Project extends View {
 		this.startButton.elem.disabled = true;
 		this.startButton.elem.textContent = creating ? 'Making the worktree...' : 'Starting...';
 
-		const result = creating ? await this.startInNewWorktree(text, checkout) : await this.startSession(text, checkout);
+		const result = creating
+			? await this.startInNewWorktree(text, checkout, mode)
+			: await this.startSession(text, checkout, mode);
 
 		this.starting = false;
 		this.startButton.elem.disabled = false;
@@ -276,8 +309,8 @@ export default class Project extends View {
 		window.location.hash = `#/sessions/${result.id}`;
 	}
 
-	async startSession(text, checkout) {
-		const { body, response } = await createSession(this.options.project, text, checkout);
+	async startSession(text, checkout, mode) {
+		const { body, response } = await createSession(this.options.project, text, checkout, mode);
 
 		if (response?.ok) return { id: body.id };
 		if (response?.status === 404 && checkout?.join) return { error: 'That worktree is gone; pick again.' };
@@ -288,11 +321,11 @@ export default class Project extends View {
 	}
 
 	// Streamed, so a repo's own setup shows here while it runs
-	async startInNewWorktree(text, checkout) {
+	async startInNewWorktree(text, checkout, mode) {
 		const response = await fetch(`/api/projects/${encodeURIComponent(this.options.project)}/sessions`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ text, checkout }),
+			body: JSON.stringify({ text, checkout, mode }),
 		}).catch(() => null);
 
 		if (!response) return { error: 'Could not reach the server.' };
