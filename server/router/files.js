@@ -6,6 +6,7 @@ import { DiffError, diffSet, turnsWithChanges } from '../diffs';
 import { markLink, sessionLinks } from '../links';
 import { definitions, outline, searchSymbols } from '../symbols';
 import { sessionTimeline } from '../timeline';
+import { sessionFeed } from '../feed';
 import { sessionEnvironmentView } from '../environment';
 import {
 	SearchError,
@@ -205,6 +206,7 @@ const filesRoutes = async request => {
 		requestMatch('GET', '/api/sessions/:id/diffs', request) ||
 		requestMatch('GET', '/api/sessions/:id/turn-changes', request) ||
 		requestMatch('GET', '/api/sessions/:id/timeline', request) ||
+		requestMatch('GET', '/api/sessions/:id/feed', request) ||
 		requestMatch('GET', '/api/sessions/:id/symbols', request) ||
 		requestMatch('GET', '/api/sessions/:id/links', request) ||
 		requestMatch('GET', '/api/sessions/:id/files', request) ||
@@ -226,6 +228,7 @@ const filesRoutes = async request => {
 	if (pathname.endsWith('/changes')) return Response.json(await listChanges(cwd));
 	if (pathname.endsWith('/turn-changes')) return Response.json(await turnsWithChanges(match.id, cwd));
 	if (pathname.endsWith('/timeline')) return Response.json(await sessionTimeline(match.id, cwd));
+	if (pathname.endsWith('/feed')) return Response.json(await sessionFeed(match.id, cwd, match.after));
 	if (pathname.endsWith('/links'))
 		return Response.json(await sessionLinks(match.id, cwd, { withHidden: match.all === '1' }));
 	// A file's outline, where a name is defined, or the names matching what's typed

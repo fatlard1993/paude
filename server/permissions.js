@@ -39,6 +39,7 @@ const OWN_SESSION_ROUTES = [
 	'/diffs',
 	'/turn-changes',
 	'/timeline',
+	'/feed',
 	'/symbols',
 	'/links',
 ];
