@@ -25,6 +25,7 @@ import { canType } from '../identity';
 import { recall, remember } from '../storage';
 import confirmDialog from '../confirmDialog';
 import { button, closeButton, dragHandle, element } from '../dom';
+import { opensInViewer, viewImage } from '../imageViewer';
 import renderDiffSet from './DiffView';
 import Panel, { LINE_HEIGHT } from './FilesPanel.styles';
 
@@ -1127,6 +1128,7 @@ export default class FilesPanel extends Panel {
 			link.href = rawFileUrl(this.options.sessionId, this.current);
 			link.target = '_blank';
 			link.rel = 'noopener';
+			if (this.kind === 'image') opensInViewer(link, { src: link.href, name: this.current });
 			head.append(link);
 		}
 
@@ -1392,7 +1394,11 @@ export default class FilesPanel extends Panel {
 
 		node.src = url;
 		if (this.kind === 'video' || this.kind === 'audio') node.controls = true;
-		if (this.kind === 'image') node.alt = this.current;
+		if (this.kind === 'image') {
+			node.alt = this.current;
+			node.classList.add('enlarges');
+			node.addEventListener('click', () => viewImage({ src: url, name: this.current }));
+		}
 		node.addEventListener('error', () => holder.replaceChildren(element('div', 'empty', 'Could not show this file.')));
 		holder.append(node);
 
@@ -1414,6 +1420,13 @@ export default class FilesPanel extends Panel {
 			const path = projectPathFrom(this.current, image.getAttribute('src'));
 
 			if (path !== null) image.src = rawFileUrl(this.options.sessionId, path);
+			image.classList.add('enlarges');
+			image.addEventListener('click', event => {
+				if (image.closest('a')) return;
+
+				event.preventDefault();
+				viewImage({ src: image.src, name: image.alt || path || image.src });
+			});
 		}
 
 		for (const link of container.querySelectorAll('a[href]')) {

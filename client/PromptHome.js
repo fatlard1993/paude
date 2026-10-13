@@ -1,4 +1,4 @@
-import { Elem, Input, Notify, styled } from '@vanilla-bean/components';
+import { Elem, Notify, styled } from '@vanilla-bean/components';
 
 import tokens from '../shared/tokenCount';
 import { findPromptHome, openRemote, sendPrompt, sendRemotePrompt } from './api';
@@ -6,16 +6,175 @@ import { serverName } from './identity';
 import { button, element } from './dom';
 import { sessionCard } from './Layout';
 
-// A prompt's box: write what Claude should do, then find where it goes before sending it
-export const Composer = styled(
-	Input,
-	() => `
-		width: 100%;
-		min-height: 4.5em;
-		max-height: 40vh;
-		box-sizing: border-box;
+const Compose = styled(
+	Elem,
+	({ colors }) => `
+		display: flex;
+		flex-direction: column;
+		border: 1px solid ${colors.alpha(colors.white, 0.12)};
+		border-radius: 10px;
+		background: ${colors.alpha(colors.black, 0.35)};
+		transition: border-color 0.15s, box-shadow 0.15s;
+
+		&:focus-within {
+			border-color: ${colors.lightest(colors.teal).setAlpha(0.6)};
+			box-shadow: 0 0 0 3px ${colors.alpha(colors.teal, 0.15)};
+		}
+
+		textarea {
+			min-height: 4.5em;
+			max-height: 40vh;
+			padding: 10px 12px;
+			border: none;
+			border-radius: 10px 10px 0 0;
+			background: transparent;
+			outline: none;
+			resize: vertical;
+		}
+
+		.footer {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 6px;
+			padding: 6px 8px;
+			border-top: 1px solid ${colors.alpha(colors.white, 0.06)};
+		}
+
+		/* What the prompt goes out with: chips a page adds, left of the actions */
+		.options {
+			flex: 1;
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 6px;
+			min-width: 0;
+		}
+
+		/* A setting the prompt goes out with, as the session's bar shows it; a press opens its choices */
+		.chip {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+			max-width: 100%;
+			padding: 3px 10px;
+			border: 1px solid ${colors.alpha(colors.white, 0.12)};
+			border-radius: 999px;
+			background: transparent;
+			color: ${colors.alpha(colors.white, 0.75)};
+			font: inherit;
+			font-size: 0.85em;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			cursor: pointer;
+		}
+
+		.chip::after {
+			display: none;
+		}
+
+		.chip:hover {
+			background: ${colors.alpha(colors.white, 0.08)};
+			color: ${colors.white};
+		}
+
+		.chip.lifetime.warm {
+			border-color: ${colors.alpha(colors.blue, 0.5)};
+			background: ${colors.alpha(colors.blue, 0.2)};
+			color: ${colors.lighter(colors.blue)};
+		}
+
+		.chip.lifetime.brief {
+			border-color: hsla(35, 90%, 62%, 0.5);
+			color: hsl(35, 90%, 62%);
+		}
+
+		.chip-name {
+			flex: 1 1 140px;
+			min-width: 0;
+			max-width: 260px;
+			padding: 3px 10px;
+			border: 1px solid ${colors.alpha(colors.white, 0.12)};
+			border-radius: 999px;
+			background: transparent;
+			font-size: 0.85em;
+		}
+
+		.actions {
+			display: flex;
+			flex-wrap: wrap;
+			justify-content: flex-end;
+			gap: 6px;
+			margin-left: auto;
+		}
+
+		.actions button {
+			border-radius: 6px;
+		}
+
+		/* The lesser action reads as an option, not a second send */
+		.actions button.secondary {
+			background: transparent;
+			color: ${colors.alpha(colors.white, 0.75)};
+		}
+
+		.actions button.secondary:hover {
+			background: ${colors.alpha(colors.white, 0.08)};
+			color: ${colors.white};
+		}
+
+		.actions button.secondary::after {
+			display: none;
+		}
+
+		.keys {
+			margin-left: 8px;
+			opacity: 0.6;
+			font-size: 0.8em;
+		}
+
+		@media (pointer: coarse) {
+			.keys {
+				display: none;
+			}
+		}
 	`,
 );
+
+const SEND_KEYS = /Mac/.test(navigator.platform) ? '⌘↵' : 'Ctrl ↵';
+
+// A prompt's box: write what Claude should do, then send it with its actions, the last of them the main one (Ctrl or
+// Command with Enter presses it). Returns the textarea, the row for options, and each action's button.
+export const composeBox = ({ appendTo, placeholder, actions }) => {
+	const box = new Compose({ appendTo });
+	const prompt = Object.assign(element('textarea'), { placeholder });
+	const options = element('div', 'options');
+	const row = element('div', 'actions');
+	const buttons = actions.map(({ label, title, onPress }, index) => {
+		const main = index === actions.length - 1;
+		const node = button(element('span', 'label', label), onPress, {
+			title,
+			className: main ? 'primary' : 'secondary',
+		});
+
+		if (main) node.append(element('span', 'keys', SEND_KEYS));
+
+		return node;
+	});
+	const footer = element('div', 'footer');
+
+	row.append(...buttons);
+	footer.append(options, row);
+	box.elem.append(prompt, footer);
+	prompt.addEventListener('keydown', event => {
+		if (event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) return;
+		event.preventDefault();
+		buttons.at(-1).click();
+	});
+
+	return { prompt, options, buttons };
+};
 
 export const Places = styled(
 	Elem,

@@ -1,5 +1,9 @@
 // The web client against a fake Claude that draws as the real one does (bun run test:e2e). Each runs in every
 // browser variant: these bugs showed only on a GPU renderer, a Mac, or a session that's printing.
+import { mkdtemp, rm } from 'fs/promises';
+import os from 'os';
+import path from 'path';
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
 import { sessionHue, tintsOf } from '../shared/hues';
@@ -343,7 +347,7 @@ test(
 				timeout: 20_000,
 			});
 			expect(await page.$eval('.breadcrumbs a.trail + .waiting', badge => badge.textContent)).toBe('1');
-			expect(await page.$eval('.breadcrumbs .root + .waiting', badge => badge.offsetParent)).toBeNull();
+			expect(await page.$eval('.breadcrumbs .server-switch + .waiting', badge => badge.offsetParent)).toBeNull();
 
 			const badge = await centerOf(page, '.breadcrumbs a.trail + .waiting');
 
@@ -855,6 +859,90 @@ test(
 		} finally {
 			await browser.close();
 			await server.stop();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	'an image a session made opens over the page, a step from the others, and closes back to the list',
+	async () => {
+		const server = await startServer();
+		const id = await server.newSession();
+		const folder = await mkdtemp(path.join(os.tmpdir(), 'paude-images-'));
+		const pixel = Buffer.from(
+			'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+			'base64',
+		);
+		const wrote = (file, second) => ({
+			type: 'assistant',
+			timestamp: new Date(Date.now() - (10 - second) * 1000).toISOString(),
+			message: { content: [{ type: 'tool_use', id: file, name: 'Write', input: { file_path: file } }] },
+		});
+		const [first, second] = [path.join(folder, 'first.png'), path.join(folder, 'second.png')];
+
+		// The last line counts once another follows it, as one still being written might not be whole
+		await server.writeTranscript(id, [
+			wrote(first, 1),
+			wrote(second, 2),
+			{ type: 'user', message: { content: 'thanks' } },
+		]);
+		await Promise.all([Bun.write(first, pixel), Bun.write(second, pixel)]);
+
+		const { browser, page } = await openBrowser('dom');
+		const shown = () => page.$eval('.viewer-name', name => name.textContent).catch(() => null);
+
+		try {
+			await page.goto(await server.loginLink('/projects/demo'));
+			await page.waitForSelector('[data-tab=artifacts]');
+			await page.click('[data-tab=artifacts]');
+			await page.waitForSelector('.artifact-preview');
+			await page.click('.artifact-preview');
+			await page.waitForSelector('.stage img');
+			expect(page.url()).toContain('/projects/demo');
+
+			const opened = await shown();
+
+			await page.keyboard.press('ArrowRight');
+			expect(await shown()).not.toBe(opened);
+			expect(await page.$eval('.viewer-count', count => count.textContent)).toMatch(/ of 2$/);
+
+			await page.keyboard.press('Escape');
+			expect(await shown()).toBeNull();
+		} finally {
+			await browser.close();
+			await server.stop();
+			await rm(folder, { recursive: true, force: true });
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	'the paude crumb names this server and switches to the others, landing on their home page logged in',
+	async () => {
+		const [here, there] = await Promise.all([startServer(), startServer()]);
+
+		await here.logInto(there, 'workshop');
+
+		const { browser, page } = await openBrowser('dom');
+
+		try {
+			await page.goto(await here.loginLink('/projects/demo'));
+			await page.waitForSelector('.server-switch:not([style*="none"])');
+			await page.click('.server-switch');
+			await page.waitForSelector('button .label');
+
+			const items = await page.$$eval('button .label', labels => labels.map(label => label.textContent));
+
+			expect(items.at(-1)).toBe('workshop');
+			await (await page.$$('button .label')).at(-1).click();
+			await page.waitForFunction(origin => window.location.origin === origin, {}, there.url);
+			await page.waitForSelector('.breadcrumbs span.root');
+			expect(new URL(page.url()).hash).toBe('#/');
+		} finally {
+			await browser.close();
+			await Promise.all([here.stop(), there.stop()]);
 		}
 	},
 	TIMEOUT_MS,

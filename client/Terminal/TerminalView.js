@@ -35,6 +35,8 @@ import { button, dragHandle, element } from '../dom';
 import { breadcrumbs } from '../Breadcrumbs';
 import { closeMenu, openMenu } from '../menu';
 import { AskingCard, showAsking, showLimit } from '../Asking';
+import { ghostButton } from '../Bar';
+import { LIFETIMES, clockTime } from '../lifetimes';
 import attach from './attach';
 import { startCatchUp, trackLastSeen } from './catchUp';
 import KeyBar from './KeyBar';
@@ -64,14 +66,6 @@ const GAP = 6;
 // its own editing.
 const MAC_LINE_KEYS = { Backspace: '\x15', ArrowLeft: '\x01', ArrowRight: '\x05' };
 const MAC_WORD_KEYS = { Backspace: '\x1b\x7f', ArrowLeft: '\x1bb', ArrowRight: '\x1bf' };
-
-const ghostButton = (appendTo, { icon, label, title, onPress, className = '' }) => {
-	const node = button(label, onPress, { icon, title: title ?? '', className: `ghost ${className}` });
-
-	appendTo.elem.append(node);
-
-	return node;
-};
 
 const Screen = styled.Component`
 	flex: 1;
@@ -130,20 +124,6 @@ const bufferLines = terminal => {
 };
 
 const METER_AFTER_TURN_MS = 4000;
-// How long a session lasts, as its bar shows it
-const LIFETIMES = {
-	ordinary: { label: 'Ordinary', icon: 'infinity', detail: 'stays until you delete it' },
-	warm: {
-		label: 'Kept warm',
-		icon: 'mug-hot',
-		detail: 'pinged while you are away so it comes back cached, 12 hours from your last message',
-	},
-	brief: {
-		label: 'Short-lived',
-		icon: 'hourglass-half',
-		detail: "deleted once Claude's cache lets go of it with nobody here",
-	},
-};
 // A cold conversation this big gets a word before the next message caches it all again
 const COLD_WARNING_TOKENS = 50_000;
 
@@ -271,6 +251,9 @@ export default class TerminalView extends View {
 				className: 'tool lifetime',
 				onPress: () => this.openLifetime(),
 			});
+			this.lifetimeWas = element('s', 'lifetime-was');
+			this.lifetimeText = element('span', 'lifetime-text');
+			this.lifetimeButton.append(this.lifetimeText, this.lifetimeWas);
 			this.showLifetime('ordinary');
 		}
 		this.sharesButton = ghostButton(header, {
@@ -478,7 +461,7 @@ export default class TerminalView extends View {
 		this.project = body.project;
 		this.paint(body.hue);
 		this.showWatching(body.watching);
-		this.showLifetime(body.lifetime, body.warmUntil);
+		this.showLifetime(body.lifetime, body.warmUntil, body.switched);
 		this.loadMeter();
 		if (this.projectCrumb) {
 			this.projectCrumb.textContent = body.project;
@@ -1407,7 +1390,7 @@ export default class TerminalView extends View {
 		this.showMeter();
 		// Kept warm until a cutoff that each real prompt moves on, and that can pass
 		if (body && 'warmUntil' in body && (body.warmUntil || this.lifetime === 'warm'))
-			this.showLifetime(body.warmUntil ? 'warm' : 'ordinary', body.warmUntil);
+			this.showLifetime(body.warmUntil ? 'warm' : 'ordinary', body.warmUntil, this.switched);
 		if (!this.meterTick) {
 			this.meterTick = setInterval(() => this.loadMeter(), 60_000);
 			this.addCleanup('meterTick', () => clearInterval(this.meterTick));
@@ -1421,11 +1404,11 @@ export default class TerminalView extends View {
 		if (!meter) return;
 
 		const left = meter.warmUntil - Date.now();
-		const state = left > 0 ? `warm ${Math.ceil(left / 60_000)}m` : 'cold';
+		const state = left > 0 ? `cached ${Math.ceil(left / 60_000)}m` : 'not cached';
 
 		this.meterText.textContent = ` ${tokens(meter.context)} · ${state}`;
 		this.meterButton.classList.toggle('cold', left <= 0);
-		this.meterButton.dataset.menuLabel = `Cache: ${tokens(meter.context)}, ${state}`;
+		this.meterButton.dataset.menuLabel = `Claude's cache: ${tokens(meter.context)}, ${state}`;
 		this.meterButton.title = `${tokens(meter.context)} tokens in the conversation; Claude's cache holds it ${left > 0 ? `for ${Math.ceil(left / 60_000)} more minutes` : 'no longer'}`;
 		this.showCold(left <= 0);
 	}
@@ -1493,7 +1476,7 @@ export default class TerminalView extends View {
 				detail:
 					left > 0
 						? `cached for ${Math.ceil(left / 60_000)} more minutes`
-						: `cache let go at ${new Date(meter.warmUntil).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
+						: `cache let go at ${clockTime(meter.warmUntil)}`,
 				onPress: () => {},
 			},
 			{
@@ -1526,26 +1509,43 @@ export default class TerminalView extends View {
 		]);
 	}
 
-	showLifetime(lifetime = 'ordinary', warmUntil = null) {
+	// switched: { was, until }, the lifetime before the last switch by hand, shown struck through while it can be put back
+	showLifetime(lifetime = 'ordinary', warmUntil = null, switched = null) {
 		if (!this.lifetimeButton) return;
 		this.lifetime = lifetime;
 		this.warmUntil = warmUntil;
+		this.switched = switched?.until > Date.now() ? switched : null;
 
 		const { icon, label } = LIFETIMES[lifetime];
-		const until = warmUntil && new Date(warmUntil).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+		const until = warmUntil && clockTime(warmUntil);
+		const was = this.switched && LIFETIMES[this.switched.was];
 
 		this.lifetimeButton.firstChild.className = `fa-solid fa-${icon}`;
+		this.lifetimeText.textContent = ` ${label}`;
+		this.lifetimeWas.textContent = was ? ` ${was.label}` : '';
 		this.lifetimeButton.classList.toggle('active', lifetime === 'warm');
 		this.lifetimeButton.classList.toggle('brief', lifetime === 'brief');
 		this.lifetimeButton.dataset.menuLabel = `Lifetime: ${label}`;
 		if (until) this.lifetimeButton.dataset.menuDetail = `until ${until}`;
+		else if (was) this.lifetimeButton.dataset.menuDetail = `was ${was.label.toLowerCase()}`;
 		else delete this.lifetimeButton.dataset.menuDetail;
-		this.lifetimeButton.title = `${label}: ${LIFETIMES[lifetime].detail}${until ? ` (until ${until})` : ''}. Click to change`;
+		this.lifetimeButton.title = `Lifetime, ${label}: ${LIFETIMES[lifetime].detail}${until ? ` (until ${until})` : ''}${was ? `. Was ${was.label.toLowerCase()} until you switched it` : ''}. Click to change`;
 	}
 
 	openLifetime() {
+		const was = this.switched?.until > Date.now() && this.switched.was;
+
 		this.openMenu(this.lifetimeButton, [
 			{ heading: 'How long this session lasts' },
+			...(was
+				? [
+						{
+							label: `↶ Put back: ${LIFETIMES[was].label}`,
+							detail: `as it was before your last switch, until ${clockTime(this.switched.until)}`,
+							onPress: () => this.changeLifetime(was),
+						},
+					]
+				: []),
 			...Object.entries(LIFETIMES).map(([lifetime, { label, detail }]) => ({
 				label: lifetime === this.lifetime ? `✓ ${label}` : label,
 				detail,
@@ -1559,7 +1559,7 @@ export default class TerminalView extends View {
 
 		if (!response?.ok)
 			return new Notify({ type: 'error', content: "Couldn't change it (only a running session stays warm)" });
-		this.showLifetime(body.lifetime, body.warmUntil);
+		this.showLifetime(body.lifetime, body.warmUntil, body.switched);
 	}
 
 	async rename() {

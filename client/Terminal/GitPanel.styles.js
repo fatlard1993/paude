@@ -401,6 +401,7 @@ const Panel = styled(
 
 		.artifact-preview img {
 			display: block;
+			cursor: zoom-in;
 			max-width: 100%;
 			max-height: 160px;
 			border-radius: 4px;

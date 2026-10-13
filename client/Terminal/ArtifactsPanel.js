@@ -2,6 +2,7 @@ import { Notify } from '@vanilla-bean/components';
 
 import relativeTime from '../../shared/relativeTime';
 import { button, closeButton, element, icon } from '../dom';
+import { opensInViewer } from '../imageViewer';
 import Panel from './GitPanel.styles';
 
 const KINDS = [
@@ -117,14 +118,30 @@ export default class ArtifactsPanel extends Panel {
 
 		this.body.replaceChildren(
 			...(list.length
-				? list.map(made => this.row(made))
+				? list.map(made => this.row(made, list))
 				: [element('div', 'empty', 'Nothing made here yet: screenshots, pages and scripts show up as they are.')]),
 		);
 	}
 
-	row(made) {
+	urls(made) {
 		const sessionId = made.session?.id ?? this.options.sessionId;
-		const url = artifactUrl(sessionId, made.path);
+
+		return { url: artifactUrl(sessionId, made.path), download: artifactUrl(sessionId, made.path, { download: true }) };
+	}
+
+	// An image opens over the page, a step from the others shown beside it
+	inViewer(link, made, list) {
+		const images = list.filter(shown => shown.kind === 'image');
+
+		opensInViewer(
+			link,
+			images.map(image => ({ src: this.urls(image).url, download: this.urls(image).download, name: image.name })),
+			images.indexOf(made),
+		);
+	}
+
+	row(made, list) {
+		const { url, download: downloadUrl } = this.urls(made);
 		const row = element('div', 'link artifact');
 		const head = element('div', 'link-head');
 		const open = element('a', 'name', made.name);
@@ -145,7 +162,7 @@ export default class ArtifactsPanel extends Panel {
 
 		const download = element('a', 'icon-only download');
 
-		Object.assign(download, { href: artifactUrl(sessionId, made.path, { download: true }), title: 'Download it' });
+		Object.assign(download, { href: downloadUrl, title: 'Download it' });
 		download.append(icon('download'));
 		head.append(download);
 		row.append(head);
@@ -158,6 +175,8 @@ export default class ArtifactsPanel extends Panel {
 			Object.assign(image, { src: url, loading: 'lazy', alt: made.name });
 			preview.append(image);
 			row.append(preview);
+			this.inViewer(open, made, list);
+			this.inViewer(preview, made, list);
 		}
 
 		row.append(

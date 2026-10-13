@@ -23,6 +23,7 @@ import { initLinkDescriptions } from './linkDescriptions';
 import { initArtifactDescriptions } from './artifactDescriptions';
 import { initAttachments } from './attachments';
 import { initKeepWarm } from './keepWarm';
+import { initLifetime } from './lifetime';
 import { initUsageLimits, onLimitChange } from './usageLimit';
 import { initBriefSessions } from './briefSessions';
 import { meterOf } from './cacheMeter';
@@ -94,6 +95,7 @@ setClaudePath(options.claude);
 setHolderFolder(path.join(options.data, 'held'));
 await adoptHeldSessions();
 await initKeepWarm(options.data, runningSession);
+await initLifetime(options.data);
 await initUsageLimits(options.data, runningSession);
 onLimitChange(sessionId => runningSession(sessionId)?.broadcastPresence());
 await initBriefSessions(options.data, {

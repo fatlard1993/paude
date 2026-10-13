@@ -619,6 +619,10 @@ const Panel = styled(
 			max-width: 100%;
 		}
 
+		img.enlarges {
+			cursor: zoom-in;
+		}
+
 		.markdown pre {
 			padding: 8px;
 			border-radius: 4px;

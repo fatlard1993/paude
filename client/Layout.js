@@ -3,6 +3,9 @@ import { Component, Elem, styled } from '@vanilla-bean/components';
 import { tintsOf } from '../shared/hues';
 import relativeTime from '../shared/relativeTime';
 import { AskingCard, showAsking, showLimit } from './Asking';
+import { element } from './dom';
+import { LIFETIMES, clockTime } from './lifetimes';
+import { hueOf } from './servers';
 
 const column = `
 	width: 100%;
@@ -32,7 +35,7 @@ export const Scroll = styled.Component`
 	${column}
 	flex: 1;
 	overflow-y: auto;
-	padding: 0 16px 24px;
+	padding: 12px 16px 24px;
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
@@ -181,6 +184,14 @@ const Card = styled(
 			color: ${colors.lighter(colors.blue)};
 		}
 
+		.lifetime-mark {
+			margin-right: 6px;
+
+			&.was {
+				opacity: 0.45;
+			}
+		}
+
 		.watching {
 			margin-left: 6px;
 			opacity: 0.5;
@@ -193,12 +204,10 @@ const Card = styled(
 	`,
 );
 
-// The same server keeps the same color wherever it shows
-const hueOf = name => [...name].reduce((hash, character) => (hash * 31 + character.codePointAt(0)) % 360, 7);
-
 export const LinkCard = ({
 	href,
 	title,
+	marks = [],
 	meta = [],
 	project,
 	server,
@@ -230,6 +239,8 @@ export const LinkCard = ({
 	const body = new Elem({ appendTo: card, addClass: 'body' });
 
 	const heading = new Elem({ appendTo: body, addClass: 'title', textContent: title });
+
+	heading.elem.prepend(...marks);
 
 	if (watching)
 		heading.elem.append(
@@ -310,18 +321,37 @@ const withAsking = (card, session) => {
 	return card;
 };
 
+// How long a session lasts, ahead of its title (an ordinary one goes unmarked), and struck through, what it was before
+// the last switch while that can still be put back
+const lifetimeMarks = ({ lifetime, switched }) => {
+	const marks = [];
+	const was = switched?.until > Date.now() && LIFETIMES[switched.was];
+	const now = LIFETIMES[lifetime];
+
+	if (was?.mark)
+		marks.push(
+			Object.assign(element('s', 'lifetime-mark was', was.mark), {
+				title: `Was ${was.label.toLowerCase()}; its lifetime menu puts it back until ${clockTime(switched.until)}`,
+			}),
+		);
+	if (now?.mark)
+		marks.push(Object.assign(element('span', 'lifetime-mark', now.mark), { title: `${now.label}: ${now.detail}` }));
+
+	return marks;
+};
+
 export const sessionCard = (session, { showProject = true, appendTo, remove, server, onOpen }) =>
 	withAsking(
 		LinkCard({
 			appendTo,
 			href: `#/sessions/${session.id}`,
-			title: session.pinned ? `📌 ${session.title}` : session.title,
+			title: session.title,
+			marks: lifetimeMarks(session),
 			project: showProject ? session.project : null,
 			server,
 			meta: [
 				relativeTime(session.lastModified ?? session.activeAt),
 				session.worktree && `⎇ ${session.worktree}`,
-				session.brief && '⏳ short-lived',
 				session.gitBranch !== 'HEAD' && session.gitBranch !== session.worktree && session.gitBranch,
 			],
 			live: session.live,

@@ -4,8 +4,7 @@ import { sessionHue } from '../../shared/hues';
 
 import { activitySummary } from '../activity';
 import { limitOf } from '../usageLimit';
-import { isBrief } from '../briefSessions';
-import { pinnedName } from '../names';
+import { lastSwitch, lifetimeOf } from '../lifetime';
 import { projectOf, projectPath } from '../projects';
 import { worktreeName } from '../worktrees';
 import { titleOf } from './record';
@@ -22,7 +21,6 @@ export const toSummary =
 		return {
 			id: sessionId,
 			title: titleOf(sessionId, running, { customTitle, summary }),
-			pinned: Boolean(pinnedName(sessionId)),
 			lastModified,
 			gitBranch,
 			firstPrompt: firstPrompt?.slice(0, FIRST_PROMPT_PREVIEW),
@@ -35,7 +33,8 @@ export const toSummary =
 			...activitySummary(identity, sessionId, { running: Boolean(running), busy: running?.busy }),
 			asking: running?.asking() ?? undefined,
 			limit: limitOf(sessionId) ?? undefined,
-			brief: isBrief(sessionId) || undefined,
+			lifetime: lifetimeOf(sessionId),
+			switched: lastSwitch(sessionId) ?? undefined,
 		};
 	};
 

@@ -1,6 +1,7 @@
-import { Button, Elem, Notify, View, styled } from '@vanilla-bean/components';
+import { Elem, Notify, View, styled } from '@vanilla-bean/components';
 
 import { runningSummary } from '../shared/checkouts';
+import { tintsOf } from '../shared/hues';
 import { readProgress, recentLines } from '../shared/progress';
 import {
 	createSession,
@@ -9,73 +10,21 @@ import {
 	getProjectArtifacts,
 	getProjectLinks,
 	getProjectSessions,
+	getProjects,
 	markProjectLink,
 } from './api';
 import { confirmDeleteSession } from './confirmDialog';
-import { element } from './dom';
+import { button, element } from './dom';
+import { Bar } from './Bar';
 import { breadcrumbs } from './Breadcrumbs';
 import sessionList from './SessionList';
-import { Header, Scroll, SectionTitle, sessionCard } from './Layout';
-import { Composer, Places, placePrompt, takeDraft } from './PromptHome';
+import { Scroll, sessionCard } from './Layout';
+import { LIFETIMES } from './lifetimes';
+import { openMenu } from './menu';
+import { Places, composeBox, placePrompt, takeDraft } from './PromptHome';
+import { recall, remember } from './storage';
 import LinksPanel from './Terminal/LinksPanel';
 import ArtifactsPanel from './Terminal/ArtifactsPanel';
-
-const Where = styled(
-	Elem,
-	({ colors }) => `
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		margin: 10px 0 4px;
-
-		.summary {
-			color: ${colors.light(colors.gray)};
-		}
-
-		label {
-			display: flex;
-			flex-wrap: wrap;
-			justify-content: flex-start;
-			align-items: center;
-			gap: 8px;
-			padding: 6px 8px;
-			border-radius: 6px;
-			cursor: pointer;
-		}
-
-		label:hover {
-			background: ${colors.alpha(colors.white, 0.05)};
-		}
-
-		.detail {
-			color: ${colors.light(colors.gray)};
-		}
-
-		.busy {
-			color: ${colors.light(colors.orange)};
-		}
-
-		label > span {
-			white-space: nowrap;
-		}
-
-		input[type='radio'] {
-			flex: none;
-			width: 16px;
-			height: 16px;
-			margin: 0;
-			padding: 0;
-		}
-
-		input[type='text'] {
-			flex: 1;
-			width: auto;
-			min-width: 120px;
-			max-width: 320px;
-			margin: 0;
-		}
-	`,
-);
 
 // The repo's own create command, as it runs
 const Progress = styled(
@@ -92,77 +41,139 @@ const Progress = styled(
 	`,
 );
 
-const Actions = styled.Component`
-	display: flex;
-	justify-content: flex-end;
-	align-items: center;
-	gap: 8px;
-`;
+// What the project holds, one at a time: its sessions, the links they brought up, what they made
+const Tabs = styled(
+	Elem,
+	({ colors }) => `
+		display: flex;
+		gap: 4px;
+		margin-top: 16px;
+		border-bottom: 1px solid ${colors.alpha(colors.white, 0.08)};
+
+		button {
+			margin-bottom: -1px;
+			padding: 6px 12px;
+			border: none;
+			border-bottom: 2px solid transparent;
+			border-radius: 0;
+			background: transparent;
+			color: ${colors.light(colors.gray)};
+			font: inherit;
+			cursor: pointer;
+		}
+
+		button::after {
+			display: none;
+		}
+
+		button:hover {
+			color: ${colors.white};
+		}
+
+		button.active {
+			border-bottom-color: var(--bar-accent, ${colors.blue});
+			color: ${colors.white};
+		}
+
+		.count {
+			margin-left: 6px;
+			color: ${colors.light(colors.gray)};
+			font-size: 0.8em;
+		}
+	`,
+);
+
+const TAB_KEY = 'paude.projectTab';
 
 export default class Project extends View {
 	build() {
 		const { project } = this.options;
-		const header = new Header({ appendTo: this });
 
+		this.bar = new Bar({ appendTo: this });
 		breadcrumbs({
-			appendTo: header,
+			appendTo: this.bar,
 			current: project,
 			project,
 			addCleanup: (name, stop) => this.addCleanup(name, stop),
 		});
 
 		const scroll = new Scroll({ appendTo: this });
-
-		this.prompt = new Composer({
+		const compose = composeBox({
 			appendTo: scroll,
-			tag: 'textarea',
 			placeholder: `What should Claude do in ${project}? (or leave empty to just open Claude)`,
-			onKeyDown: event => {
-				if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
-					event.preventDefault();
-					this.start();
-				}
-			},
+			actions: [
+				{
+					label: 'Find a session for it',
+					title: 'Carry it on in a session already going, if one fits',
+					onPress: () =>
+						placePrompt({
+							places: this.places,
+							prompt: this.prompt.value.trim(),
+							project,
+							startFresh: (_, lifetime) => {
+								this.pickLifetime(lifetime);
+								this.start();
+							},
+						}),
+				},
+				{ label: 'Start session', onPress: () => this.start() },
+			],
 		});
 
-		this.where = new Where({ appendTo: scroll, style: { display: 'none' } });
+		this.prompt = compose.prompt;
+		this.startButton = compose.buttons[1];
+		this.startLabel = this.startButton.querySelector('.label');
+		this.checkoutChip = element('button', 'chip');
+		this.newName = Object.assign(element('input', 'chip-name'), { placeholder: 'worktree name (from the prompt)' });
+		this.lifetimeChip = element('button', 'chip');
+		this.checkoutChip.style.display = 'none';
+		this.newName.style.display = 'none';
+		this.checkoutChip.addEventListener('click', () => this.openCheckouts());
+		this.lifetimeChip.addEventListener('click', () => this.openLifetimes());
+		compose.options.append(this.checkoutChip, this.newName, this.lifetimeChip);
 		this.progress = new Progress({ appendTo: scroll, tag: 'pre', style: { display: 'none' } }).elem;
-		this.lifetime = this.lifetimeChoice(scroll);
-
-		const actions = new Actions({ appendTo: scroll });
-
-		new Button({
-			appendTo: actions,
-			textContent: 'Find a session for it',
-			onPointerPress: () =>
-				placePrompt({
-					places: this.places,
-					prompt: this.prompt.elem.value.trim(),
-					project,
-					startFresh: (_, lifetime) => {
-						this.pickLifetime(lifetime);
-						this.start();
-					},
-				}),
-		});
-		this.startButton = new Button({
-			appendTo: actions,
-			textContent: 'Start session',
-			onPointerPress: () => this.start(),
-		});
 		this.places = new Places({ appendTo: scroll });
+
 		// Brought here from home to start in this project
 		const draft = takeDraft(project);
 
-		this.prompt.elem.value = draft?.text ?? '';
+		this.prompt.value = draft?.text ?? '';
 		this.pickLifetime(draft?.lifetime);
 
-		new SectionTitle({ appendTo: scroll, textContent: 'Sessions' });
+		this.holdings(scroll);
+		this.load();
+		this.loadCheckouts();
+		this.paint();
+	}
+
+	holdings(scroll) {
+		const { project } = this.options;
+		const tabs = new Tabs({ appendTo: scroll });
+		const panes = {};
+		const counts = {};
+		const tab = (name, label) => {
+			const count = element('span', 'count');
+			const node = button(label, () => this.showTab(name));
+
+			node.append(count);
+			node.dataset.tab = name;
+			tabs.elem.append(node);
+			counts[name] = count;
+		};
+
+		tab('sessions', 'Sessions');
+		tab('links', 'Links');
+		tab('artifacts', 'Artifacts');
+		this.tabs = tabs.elem;
+		this.counts = counts;
+
+		panes.sessions = new Elem({ appendTo: scroll }).elem;
 		this.sessions = sessionList({
-			appendTo: scroll,
+			appendTo: panes.sessions,
 			placeholder: `Find a session in ${project}`,
 			empty: 'No sessions in this project yet.',
 			pageSize: 30,
+			onCount: total => (counts.sessions.textContent = total || ''),
 			fetchPage: async searchParameters => {
 				const { body, response } = await getProjectSessions(project, { searchParameters });
 
@@ -176,125 +187,144 @@ export default class Project extends View {
 				}),
 		});
 
-		// Every link the project's sessions brought up: docs, tickets, repos, servers
-		this.links = new LinksPanel({
-			appendTo: scroll,
-			addClass: 'project-links',
-			style: { height: 'auto', flexShrink: '0', padding: '0', marginTop: '16px' },
-			load: () => getProjectLinks(project),
-			mark: (url, change) => markProjectLink(project, url, change),
-		});
-		// Sized by its links here, not by the panel's height as at a session's side
-		Object.assign(this.links.body.style, { flex: '0 1 auto', maxHeight: '70vh' });
-		this.links.refresh();
+		// Every link the project's sessions brought up (docs, tickets, repos, servers), and everything they made; the
+		// tab names each, so their own title bars go
+		const panel = (Kind, load) =>
+			new Kind({
+				appendTo: scroll,
+				addClass: 'project-links',
+				style: { height: 'auto', flexShrink: '0', padding: '0' },
+				load,
+				mark: (url, change) => markProjectLink(project, url, change),
+			});
 
-		// And everything they made along the way
-		this.artifacts = new ArtifactsPanel({
-			appendTo: scroll,
-			addClass: 'project-links',
-			style: { height: 'auto', flexShrink: '0', padding: '0', marginTop: '16px' },
-			load: () => getProjectArtifacts(project),
-		});
-		Object.assign(this.artifacts.body.style, { flex: '0 1 auto', maxHeight: '70vh' });
-		this.artifacts.refresh();
-
-		this.load();
-		this.loadCheckouts();
+		this.links = panel(LinksPanel, () => getProjectLinks(project));
+		this.artifacts = panel(ArtifactsPanel, () => getProjectArtifacts(project));
+		for (const [name, shown] of [
+			['links', this.links],
+			['artifacts', this.artifacts],
+		]) {
+			shown.bar.style.display = 'none';
+			// Sized by what it holds here, not by the panel's height as at a session's side
+			Object.assign(shown.body.style, { flex: '0 1 auto', maxHeight: 'none' });
+			panes[name] = shown.elem;
+		}
+		this.panes = panes;
+		this.countHeld();
+		this.showTab(recall(TAB_KEY) || 'sessions');
 	}
 
-	// How long the session lasts: until it's deleted, kept warm while you're away, or gone once it's done
-	lifetimeChoice(appendTo) {
-		const choice = new Where({ appendTo, addClass: 'lifetime' });
-		const option = (value, title, detail) => {
-			const label = element('label');
-			const radio = Object.assign(element('input'), { type: 'radio', name: 'lifetime', value, checked: !value });
-
-			label.append(radio, element('span', '', title), element('span', 'detail', detail));
-
-			return label;
-		};
-
-		choice.elem.append(
-			option('', 'Ordinary', 'stays until you delete it'),
-			option(
-				'warm',
-				'Kept warm',
-				'pinged while you are away, so it comes back cached (12 hours from your last message)',
-			),
-			option(
-				'brief',
-				'Short-lived',
-				'deleted once its cache lets go with nobody in it, about an hour after its last answer',
-			),
-		);
-
-		this.lifetimeChoices = choice.elem;
-
-		return () => choice.elem.querySelector('input[name=lifetime]:checked')?.value || undefined;
+	async countHeld() {
+		await Promise.all([this.links.refresh(), this.artifacts.refresh()]);
+		this.counts.links.textContent = this.links.links.length || '';
+		this.counts.artifacts.textContent = this.artifacts.artifacts.length || '';
 	}
 
-	// As the prompt's router suggested: 'warm' or 'brief' (anything else is ordinary)
+	showTab(name) {
+		const shown = name in this.panes ? name : 'sessions';
+
+		remember(TAB_KEY, shown);
+		for (const [pane, elem] of Object.entries(this.panes)) elem.style.display = pane === shown ? '' : 'none';
+		for (const node of this.tabs.children) node.classList.toggle('active', node.dataset.tab === shown);
+	}
+
+	// The bar underlined in the project's folder color, as its card on home is, and the open tab with it
+	async paint() {
+		const hue = (await getProjects()).body?.find(({ name }) => name === this.options.project)?.hue;
+		const accent = tintsOf(hue)?.accent;
+
+		if (!accent) return;
+		this.bar.elem.classList.add('accented');
+		this.elem.style.setProperty('--bar-accent', accent);
+	}
+
+	// How long the session lasts, as the session's own bar shows it: as the prompt's router suggested, 'warm' or
+	// 'brief', anything else ordinary
 	pickLifetime(lifetime) {
-		const value = ['warm', 'brief'].includes(lifetime) ? lifetime : '';
-		const radio = this.lifetimeChoices.querySelector(`input[name=lifetime][value="${value}"]`);
+		this.lifetime = ['warm', 'brief'].includes(lifetime) ? lifetime : 'ordinary';
 
-		if (radio) radio.checked = true;
+		const { icon, label, detail } = LIFETIMES[this.lifetime];
+
+		this.lifetimeChip.replaceChildren(element('i', `fa-solid fa-${icon}`), ` ${label}`);
+		this.lifetimeChip.className = `chip lifetime ${this.lifetime}`;
+		this.lifetimeChip.title = `How long it lasts: ${label}, ${detail}. Click to change`;
 	}
 
-	// Asked every time in a git repository
+	openLifetimes() {
+		openMenu(this.lifetimeChip, [
+			{ heading: 'How long the new session lasts' },
+			...Object.entries(LIFETIMES).map(([lifetime, { label, detail }]) => ({
+				label: lifetime === this.lifetime ? `✓ ${label}` : label,
+				detail,
+				onPress: () => this.pickLifetime(lifetime),
+			})),
+		]);
+	}
+
+	// Where the session works, asked every time in a git repository: the project folder, a worktree already there, or
+	// a new one
 	async loadCheckouts() {
-		const checkouts = (await getCheckouts(this.options.project)).body?.checkouts;
-		const where = this.where.elem;
+		this.checkouts = (await getCheckouts(this.options.project)).body?.checkouts;
+		this.checkoutChip.style.display = this.checkouts ? '' : 'none';
+		if (!this.checkouts) return this.pickCheckout(undefined);
 
-		this.choice = () => undefined;
-		where.replaceChildren();
-		where.style.display = 'none';
+		const main = this.checkouts.find(checkout => checkout.main);
 
-		if (!checkouts) return;
+		this.pickCheckout(main.active ? 'new' : 'main');
+	}
 
-		const main = checkouts.find(checkout => checkout.main);
-		const option = (value, title, detail, active) => {
-			const label = element('label');
-			const radio = Object.assign(element('input'), { type: 'radio', name: 'checkout', value });
+	// 'main', 'new', or 'join:<path>'
+	pickCheckout(value) {
+		this.checkout = value;
+		this.newName.style.display = value === 'new' ? '' : 'none';
+		if (!this.checkouts) return;
 
-			radio.checked = value === (main.active ? 'new' : 'main');
-			label.append(radio, element('span', '', title));
-			if (detail) label.append(element('span', 'detail', detail));
-			if (active) label.append(element('span', 'busy', `· ${active} running`));
+		const joined = value?.startsWith('join:') && this.checkouts.find(({ path }) => `join:${path}` === value);
+		const main = this.checkouts.find(checkout => checkout.main);
+		const label =
+			(value === 'new' && 'a new worktree') || (joined && joined.name) || main.branch || 'the project folder';
 
-			return label;
-		};
-		const newName = Object.assign(element('input'), {
-			type: 'text',
-			placeholder: 'name (from the prompt when empty)',
+		this.checkoutChip.replaceChildren(element('i', 'fa-solid fa-code-branch'), ` ${label}`);
+		this.checkoutChip.title = `Where it works: ${label}. ${runningSummary(this.checkouts)} Click to change`;
+	}
+
+	openCheckouts() {
+		const running = active => (active ? ` · ${active} running` : '');
+		const option = (value, label, detail) => ({
+			label: value === this.checkout ? `✓ ${label}` : label,
+			detail,
+			onPress: () => {
+				this.pickCheckout(value);
+				if (value === 'new') this.newName.focus();
+			},
 		});
-		const newOption = option('new', 'A new worktree', '');
+		const main = this.checkouts.find(checkout => checkout.main);
 
-		newOption.append(newName);
-		newName.addEventListener('focus', () => {
-			newOption.querySelector('input[type=radio]').checked = true;
-		});
-
-		where.append(
-			element('div', 'summary', runningSummary(checkouts)),
-			option('main', 'No worktree', `the project folder, on ${main.branch ?? 'a detached HEAD'}`, main.active),
-			...checkouts
+		openMenu(this.checkoutChip, [
+			{ heading: runningSummary(this.checkouts) },
+			option(
+				'main',
+				'No worktree',
+				`the project folder, on ${main.branch ?? 'a detached HEAD'}${running(main.active)}`,
+			),
+			...this.checkouts
 				.filter(checkout => !checkout.main)
 				.map(({ name, path, branch, active }) =>
-					option(`join:${path}`, `Worktree ${name}`, branch && branch !== name ? `on ${branch}` : '', active),
+					option(
+						`join:${path}`,
+						`Worktree ${name}`,
+						`${branch && branch !== name ? `on ${branch}` : 'its own folder'}${running(active)}`,
+					),
 				),
-			newOption,
-		);
-		where.style.display = '';
+			option('new', 'A new worktree', 'its own folder and branch, named from the prompt unless you name it'),
+		]);
+	}
 
-		this.choice = () => {
-			const picked = where.querySelector('input[name=checkout]:checked')?.value;
+	choice() {
+		if (this.checkout === 'new') return { create: this.newName.value.trim() };
+		if (this.checkout?.startsWith('join:')) return { join: this.checkout.slice('join:'.length) };
 
-			if (picked === 'new') return { create: newName.value.trim() };
-			if (picked?.startsWith('join:')) return { join: picked.slice('join:'.length) };
-
-			return undefined;
-		};
+		return undefined;
 	}
 
 	load() {
@@ -302,24 +332,24 @@ export default class Project extends View {
 	}
 
 	async start() {
-		const text = this.prompt.elem.value.trim();
-		const checkout = this.choice?.();
-		const mode = this.lifetime();
+		const text = this.prompt.value.trim();
+		const checkout = this.choice();
+		const mode = this.lifetime === 'ordinary' ? undefined : this.lifetime;
 		const creating = Boolean(checkout && 'create' in checkout);
 
 		if (this.starting) return;
 
 		this.starting = true;
-		this.startButton.elem.disabled = true;
-		this.startButton.elem.textContent = creating ? 'Making the worktree...' : 'Starting...';
+		this.startButton.disabled = true;
+		this.startLabel.textContent = creating ? 'Making the worktree...' : 'Starting...';
 
 		const result = creating
 			? await this.startInNewWorktree(text, checkout, mode)
 			: await this.startSession(text, checkout, mode);
 
 		this.starting = false;
-		this.startButton.elem.disabled = false;
-		this.startButton.elem.textContent = 'Start session';
+		this.startButton.disabled = false;
+		this.startLabel.textContent = 'Start session';
 
 		if (result.error) {
 			if (checkout?.join) this.loadCheckouts();

@@ -1,6 +1,6 @@
 import { Elem, styled } from '@vanilla-bean/components';
 
-import { Header } from '../Layout';
+import { Bar } from '../Bar';
 
 // Below this the side panels cover the whole terminal
 export const NARROW = '(max-width: 800px)';
@@ -253,16 +253,8 @@ export const Body = styled.Component`
 `;
 
 export const TopBar = styled(
-	Header,
+	Bar,
 	({ colors }) => `
-		max-width: none;
-		gap: 4px;
-		padding: 6px 10px;
-		background: rgba(24, 24, 27, 0.55);
-		backdrop-filter: blur(12px);
-		-webkit-backdrop-filter: blur(12px);
-		border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-
 		/* The session's own color, in kitty-bg's tints */
 		.tinted & {
 			border-bottom: 2px solid var(--session-accent);
@@ -310,34 +302,6 @@ export const TopBar = styled(
 			}
 		}
 
-		.ghost {
-			position: relative;
-			flex-shrink: 0;
-			min-width: 32px;
-			height: 32px;
-			padding: 0 8px;
-			border: none;
-			border-radius: 6px;
-			background: transparent;
-			color: ${colors.alpha(colors.white, 0.7)};
-			font: inherit;
-			cursor: pointer;
-		}
-
-		.ghost:hover {
-			background: ${colors.alpha(colors.white, 0.08)};
-			color: ${colors.white};
-		}
-
-		.ghost.active {
-			background: ${colors.alpha(colors.blue, 0.25)};
-			color: ${colors.lighter(colors.blue)};
-		}
-
-		.ghost.danger:hover {
-			color: ${colors.light(colors.red)};
-		}
-
 		/* On a phone the tool buttons fold into one menu */
 		.ghost.tools {
 			display: none;
@@ -367,18 +331,6 @@ export const TopBar = styled(
 			}
 		}
 
-		.ghost .count {
-			position: absolute;
-			top: 1px;
-			right: 0;
-			min-width: 14px;
-			padding: 0 3px;
-			border-radius: 7px;
-			background: ${colors.orange};
-			color: ${colors.white};
-			font-size: 10px;
-			line-height: 14px;
-		}
 
 		/* The meter's count beside its gauge; a cache gone cold reads amber */
 		.meter .meter-text {
@@ -393,6 +345,19 @@ export const TopBar = styled(
 		/* A short-lived session says so, a press from being kept */
 		.tool.lifetime.brief {
 			color: hsl(35, 90%, 62%);
+		}
+
+		/* The lever names what it switches, and what it was before the last switch while that can be put back */
+		.lifetime .lifetime-text {
+			font-size: 0.8em;
+			white-space: nowrap;
+		}
+
+		.lifetime .lifetime-was {
+			margin-left: 4px;
+			font-size: 0.7em;
+			opacity: 0.5;
+			white-space: nowrap;
 		}
 
 		.divider {

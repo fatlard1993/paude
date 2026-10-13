@@ -4,6 +4,7 @@ import watchChanges from '../shared/watchChanges';
 import { getRemotes, getWatching } from './api';
 import { showNotification } from './notify';
 import { updateTabTitle } from './tabTitle';
+import { setServers } from './servers';
 import { setWaitingSessions } from './waiting';
 
 const CHECK_MS = 15_000;
@@ -38,6 +39,7 @@ export const startWatchAlerts = ({ remotes }) => {
 		if (remotes && checks % REMOTE_EVERY === 0) {
 			const remotes = (await getRemotes()).body ?? [];
 
+			setServers(remotes);
 			remoteWatched = remotes
 				.filter(remote => !remote.error)
 				.flatMap(remote => remote.watching.map(session => ({ ...session, remote })));

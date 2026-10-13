@@ -1,4 +1,4 @@
-import { Button, Elem, Notify, View, styled } from '@vanilla-bean/components';
+import { Elem, Notify, View, styled } from '@vanilla-bean/components';
 
 import { tintsOf } from '../shared/hues';
 import { byRecentActivity, projectSummary } from '../shared/projects';
@@ -17,10 +17,13 @@ import {
 } from './api';
 import confirmDialog, { confirmDeleteSession } from './confirmDialog';
 import { identity, serverName } from './identity';
+import { setServers } from './servers';
 import sessionList from './SessionList';
 import { breadcrumbs } from './Breadcrumbs';
-import { Empty, Header, LinkCard, Scroll, SectionTitle, sessionCard } from './Layout';
-import { Composer, Places, carryDraft, placePrompt } from './PromptHome';
+import { button, element } from './dom';
+import { Bar, ghostButton } from './Bar';
+import { Empty, LinkCard, Scroll, SectionTitle, sessionCard } from './Layout';
+import { Places, carryDraft, composeBox, placePrompt } from './PromptHome';
 
 const Grid = styled.Component`
 	display: grid;
@@ -28,25 +31,62 @@ const Grid = styled.Component`
 	gap: 8px;
 `;
 
+// The grid's last card: pressed, it opens across the grid into the folder's path
 const AddFolder = styled(
 	Elem,
 	({ colors }) => `
 		display: flex;
-		gap: 6px;
-		margin-top: 8px;
+		align-items: center;
+		min-height: 56px;
 
-		input {
+		.open-form {
 			flex: 1;
+			align-self: stretch;
+			border: 1px dashed ${colors.alpha(colors.white, 0.18)};
+			border-radius: 6px;
+			background: transparent;
+			color: ${colors.light(colors.gray)};
+			font: inherit;
+			cursor: pointer;
+		}
+
+		.open-form::after {
+			display: none;
+		}
+
+		.open-form:hover {
+			border-color: ${colors.alpha(colors.white, 0.35)};
+			color: ${colors.white};
+		}
+
+		form {
+			flex: 1;
+			display: none;
+			gap: 6px;
+		}
+
+		form input {
+			flex: 1;
+			min-width: 0;
 			font-family: ui-monospace, monospace;
 		}
 
-		.hint {
-			color: ${colors.gray};
-			font-size: 0.85em;
-			align-self: center;
+		&.open {
+			grid-column: 1 / -1;
+		}
+
+		&.open .open-form {
+			display: none;
+		}
+
+		&.open form {
+			display: flex;
 		}
 	`,
 );
+
+// What needs you heads the page, in the color of a session asking
+const urgent = { color: 'hsl(38, 80%, 70%)' };
 
 const List = styled.Component`
 	display: flex;
@@ -71,14 +111,20 @@ export default class Home extends View {
 	}
 
 	build() {
-		const header = new Header({ appendTo: this });
+		const bar = new Bar({ appendTo: this });
 
-		breadcrumbs({ appendTo: header });
-		new Button({ appendTo: header, textContent: 'Log out', onPointerPress: () => this.logout() });
+		breadcrumbs({ appendTo: bar, addCleanup: (name, stop) => this.addCleanup(name, stop) });
+		ghostButton(bar, { icon: 'right-from-bracket', title: 'Log out', onPress: () => this.logout() });
 
 		const scroll = new Scroll({ appendTo: this });
 
 		this.promptBox(scroll);
+		this.needsTitle = new SectionTitle({
+			appendTo: scroll,
+			textContent: 'Needs you',
+			style: { ...urgent, display: 'none' },
+		});
+		this.needs = new List({ appendTo: scroll });
 		this.watchingTitle = new SectionTitle({ appendTo: scroll, textContent: 'Watching', style: { display: 'none' } });
 		this.watching = new List({ appendTo: scroll });
 
@@ -95,45 +141,47 @@ export default class Home extends View {
 
 		new SectionTitle({ appendTo: scroll, textContent: 'Projects' });
 		this.projects = new Grid({ appendTo: scroll });
-		this.addFolderForm(scroll);
+		this.adder = this.addFolderCard();
 
 		this.load();
 	}
 
 	// A prompt placed before it's sent: in a conversation it carries on, or a new session in the project that fits
 	promptBox(appendTo) {
-		const prompt = new Composer({
+		const { prompt } = composeBox({
 			appendTo,
-			tag: 'textarea',
 			placeholder: 'What should Claude do? paude finds the session it carries on, or the project to start one in',
-			onKeyDown: event => {
-				if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
-					event.preventDefault();
-					place();
-				}
-			},
+			actions: [{ label: 'Find where it goes', onPress: () => place() }],
 		});
-		const actions = new Elem({ appendTo, style: { display: 'flex', justifyContent: 'flex-end', marginTop: '8px' } });
 		const places = new Places({ appendTo });
 		const place = () =>
 			placePrompt({
 				places,
-				prompt: prompt.elem.value.trim(),
-				startFresh: (project, lifetime) => carryDraft(project, prompt.elem.value.trim(), lifetime),
+				prompt: prompt.value.trim(),
+				startFresh: (project, lifetime) => carryDraft(project, prompt.value.trim(), lifetime),
 			});
-
-		new Button({ appendTo: actions, textContent: 'Find where it goes', onPointerPress: place });
 	}
 
-	addFolderForm(appendTo) {
-		const form = new AddFolder({ appendTo, tag: 'form' });
-		const input = document.createElement('input');
-		const button = document.createElement('button');
+	addFolderCard() {
+		const card = new AddFolder({});
+		const opener = element('button', 'open-form', '+ Add a folder');
+		const form = element('form');
+		const input = element('input');
+		const add = element('button', '', 'Add');
+		const close = () => {
+			card.elem.classList.remove('open');
+			input.value = '';
+		};
 
-		input.placeholder = 'Add a folder as a project: ~/path/to/it, or ~/path/* for each folder in it';
-		button.textContent = 'Add';
-		form.elem.append(input, button);
-		form.elem.addEventListener('submit', async event => {
+		input.placeholder = 'A folder to add as a project: ~/path/to/it, or ~/path/* for each folder in it';
+		form.append(input, add, button('', close, { icon: 'xmark', title: 'Cancel (Esc)', className: 'icon-only' }));
+		card.elem.append(opener, form);
+		opener.addEventListener('click', () => {
+			card.elem.classList.add('open');
+			input.focus();
+		});
+		input.addEventListener('keydown', event => event.key === 'Escape' && close());
+		form.addEventListener('submit', async event => {
 			event.preventDefault();
 			if (!input.value.trim()) return;
 
@@ -143,7 +191,7 @@ export default class Home extends View {
 
 			const { names } = JSON.parse(body);
 
-			input.value = '';
+			close();
 			new Notify({
 				type: 'success',
 				content: names.length === 1 ? `Added "${names[0]}"` : `Added ${names.length} projects: ${names.join(', ')}`,
@@ -151,6 +199,8 @@ export default class Home extends View {
 			});
 			this.load();
 		});
+
+		return card.elem;
 	}
 
 	// Logs this browser in on that server and goes there: { sessionId } or { project }
@@ -165,14 +215,14 @@ export default class Home extends View {
 		return { server: session.remote.name, onOpen: () => this.openThere(session.remote, { sessionId: session.id }) };
 	}
 
-	// Every card names its server, this one's too, so sessions from several read as one list
+	// With other servers in the lists, every card names its server, this one's too, so they read as one list
 	card(session, appendTo) {
 		return sessionCard(session, {
 			appendTo,
 			...(session.remote
 				? this.remoteCard(session)
 				: {
-						server: hereName(),
+						server: this.otherServers ? hereName() : undefined,
 						remove: async () => (await confirmDeleteSession(session, deleteSession)) && this.load(),
 					}),
 		});
@@ -212,19 +262,28 @@ export default class Home extends View {
 			identity()?.remotes ? getRemotes() : { body: [] },
 		]);
 		const reachable = (remotes ?? []).filter(remote => !remote.error);
+
+		if (remotes) setServers(remotes);
+
+		this.otherServers = reachable.length > 0;
 		const remoteWatched = reachable.flatMap(remote => remote.watching.map(session => ({ ...session, remote })));
 		const watched = [...(watching ?? []), ...remoteWatched].sort(byUrgency);
 		const watchedIds = new Set(watched.map(({ id }) => id));
+		const asking = watched.filter(({ status }) => status === 'waiting');
+		const quiet = watched.filter(({ status }) => status !== 'waiting');
 
+		this.needs.empty();
+		this.needsTitle.elem.style.display = asking.length ? '' : 'none';
+		for (const session of asking) this.card(session, this.needs);
 		this.watching.empty();
-		this.watchingTitle.elem.style.display = watched.length ? '' : 'none';
-		for (const session of watched) this.card(session, this.watching);
+		this.watchingTitle.elem.style.display = quiet.length ? '' : 'none';
+		for (const session of quiet) this.card(session, this.watching);
 
 		this.unreachable.empty();
 		for (const remote of (remotes ?? []).filter(({ error }) => error))
 			new Empty({ appendTo: this.unreachable, textContent: `${remote.name}: ${remote.error}` });
 
-		// What's under Watching isn't listed again, unless a search asks for it
+		// What's under Needs you and Watching isn't listed again, unless a search asks for it
 		this.fetchRecent = this.recentFrom(reachable.map(({ url, name }) => ({ url, name })));
 		this.recent.reload({ exclude: watchedIds });
 
@@ -254,7 +313,7 @@ export default class Home extends View {
 				appendTo: this.projects,
 				href: `#/projects/${project.name}`,
 				title: project.name,
-				server: hereName(),
+				server: this.otherServers ? hereName() : undefined,
 				meta: [projectSummary(project)],
 				live: project.liveCount > 0,
 				accent: tintsOf(project.hue)?.accent,
@@ -276,5 +335,6 @@ export default class Home extends View {
 				},
 			});
 		}
+		this.projects.elem.append(this.adder);
 	}
 }

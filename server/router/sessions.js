@@ -7,7 +7,7 @@ import { folderHue, sessionHue } from '../../shared/hues';
 import { matchesQuery } from '../../shared/sessionSearch';
 import { warmUntil } from '../keepWarm';
 import { continueSession } from '../usageLimit';
-import { LIFETIMES, lifetimeOf, setLifetime } from '../lifetime';
+import { LIFETIMES, lastSwitch, lifetimeOf, setLifetime, switchLifetime } from '../lifetime';
 import removeSession from '../removeSession';
 import { meterOf } from '../cacheMeter';
 import { catchUp } from '../catchUp';
@@ -181,8 +181,8 @@ const sessionsRoutes = async (request, server) => {
 	if (requestMatch('GET', '/api/remotes', request)) return Response.json(await listRemotes());
 
 	if (requestMatch('POST', '/api/remotes/open', request)) {
-		const { url, sessionId, project, draft, lifetime } = await request.json();
-		const link = await remoteLink(url, { sessionId, project, draft, lifetime });
+		const { url, sessionId, project, home, draft, lifetime } = await request.json();
+		const link = await remoteLink(url, { sessionId, project, home, draft, lifetime });
 
 		return link ? Response.json({ link }) : new Response('Not one of your servers', { status: 404 });
 	}
@@ -347,7 +347,11 @@ const sessionsRoutes = async (request, server) => {
 		if (lifetime === 'warm' && !runningSession(match.id))
 			return new Response('Only a running session stays warm', { status: 409 });
 
-		return Response.json({ lifetime: await setLifetime(match.id, lifetime), warmUntil: warmUntil(match.id) });
+		return Response.json({
+			lifetime: await switchLifetime(match.id, lifetime),
+			warmUntil: warmUntil(match.id),
+			switched: lastSwitch(match.id),
+		});
 	}
 
 	// After a usage limit: carry on now ('now'), once it resets ('reset'), or stop waiting for that ('cancel')
@@ -538,6 +542,7 @@ const sessionsRoutes = async (request, server) => {
 			startFailure: running ? undefined : startFailureOf(match.id),
 			warmUntil: identity.owner ? warmUntil(match.id) : undefined,
 			lifetime: lifetimeOf(match.id),
+			switched: identity.owner ? lastSwitch(match.id) : undefined,
 			...activitySummary(identity, match.id, { running: Boolean(running), busy: running?.busy }),
 		});
 	}

@@ -47,8 +47,8 @@ const Box = styled(
 // Sessions to search and page through, `pageSize` at a time: with nothing typed the newest (less any the page lists
 // elsewhere, `skip`); typing searches every session the list covers (title, first prompt, project, branch).
 // `fetchPage({ q, offset, limit })` answers { sessions, total }, in order: pages seen are kept, so going back asks
-// for nothing and going on asks only for what follows.
-const sessionList = ({ appendTo, fetchPage, renderCard, placeholder, pageSize = 8, empty }) => {
+// for nothing and going on asks only for what follows. `onCount(total)` hears how many it holds while nothing is typed.
+const sessionList = ({ appendTo, fetchPage, renderCard, placeholder, pageSize = 8, empty, onCount }) => {
 	const box = new Box({ appendTo });
 	const search = Object.assign(element('input', 'search'), { type: 'search', placeholder });
 	const count = element('div', 'count');
@@ -83,6 +83,7 @@ const sessionList = ({ appendTo, fetchPage, renderCard, placeholder, pageSize = 
 		for (const session of shown) renderCard(session, list);
 
 		count.textContent = query() ? `${total} matching` : '';
+		if (!query()) onCount?.(all);
 		pager.style.display = all > pageSize ? '' : 'none';
 		where.textContent = `${first + 1}–${first + shown.length} of ${all}`;
 		previous.disabled = page === 0;

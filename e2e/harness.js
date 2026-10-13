@@ -107,6 +107,13 @@ export const startServer = async ({ claude = FAKE_CLAUDE, fake = 'turns' } = {})
 		url,
 		hook,
 		writeTranscript,
+		// Logs this server's machine into another, as `paude login` would, under a name
+		logInto: (other, name) =>
+			Bun.write(
+				path.join(dir, 'config', 'paude', 'credentials.json'),
+				JSON.stringify({ default: other.url, tokens: { [other.url]: other.token }, names: { [other.url]: name } }),
+			),
+		token,
 		previewUrl: `http://127.0.0.1:${previewPort}`,
 		project,
 		api,

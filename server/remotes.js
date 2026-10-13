@@ -32,14 +32,15 @@ export const listRemotes = async () => {
 	return remotes.filter(Boolean);
 };
 
-// A link that logs this browser in there and opens a session, or a project page
-export const remoteLink = async (url, { sessionId, project, draft, lifetime }) => {
+// A link that logs this browser in there and opens a session, a project page, or its home page
+export const remoteLink = async (url, { sessionId, project, home, draft, lifetime }) => {
 	const server = (await remoteServers()).find(remote => remote.url === url);
 	const to =
 		(typeof sessionId === 'string' && /^[\w-]+$/.test(sessionId) && `/sessions/${sessionId}`) ||
-		(typeof project === 'string' && project && !project.includes('/') && `/projects/${encodeURIComponent(project)}`);
+		(typeof project === 'string' && project && !project.includes('/') && `/projects/${encodeURIComponent(project)}`) ||
+		(home === true && '');
 
-	if (!server || !to) return null;
+	if (!server || typeof to !== 'string') return null;
 
 	const { code } = await serverApi(server, '/api/handoff', { method: 'POST' });
 
