@@ -14,6 +14,7 @@ import doctor from '../cli/doctor';
 import pickSession from '../cli/picker';
 import startWatchAlerts from '../cli/watchAlerts';
 import { loadPrefs, savePrefs } from '../cli/prefs';
+import openLocally from '../cli/openLocally';
 import { readHidden } from '../cli/screen';
 import { certificatesFile, needsRestartForCertificates } from '../shared/certificates';
 import { serverName, setServerName } from '../server/serverSettings';
@@ -250,8 +251,6 @@ const serve = async args => {
 	process.exitCode = await child.exited;
 };
 
-const OPENERS = { darwin: 'open', win32: 'explorer' };
-
 const web = async target => {
 	const server = target ? await resolveServer(target) : await ensureLocalServer();
 
@@ -260,11 +259,8 @@ const web = async target => {
 	const { code } = await api(server, '/api/handoff', { method: 'POST' });
 	const link = `${server.url}/#/handoff/${code}`;
 
-	try {
-		Bun.spawn([OPENERS[process.platform] ?? 'xdg-open', link], { stdio: ['ignore', 'ignore', 'ignore'] });
-	} catch {
-		// No browser to open here; the link below still works on any machine that can reach the server
-	}
+	// Where no browser opens, the link below still works on any machine that can reach the server
+	openLocally(link);
 	console.log(`Opening ${server.url}. If no browser comes up, open this within a minute (it works once):\n${link}`);
 };
 

@@ -36,7 +36,7 @@ import { breadcrumbs } from '../Breadcrumbs';
 import { closeMenu, openMenu } from '../menu';
 import { AskingCard, showAsking, showLimit } from '../Asking';
 import { ghostButton } from '../Bar';
-import { LIFETIMES, clockTime } from '../lifetimes';
+import { LIFETIMES, clockTime } from '../../shared/lifetimes';
 import attach from './attach';
 import { startCatchUp, trackLastSeen } from './catchUp';
 import KeyBar from './KeyBar';

@@ -23,3 +23,21 @@ export const loadPrefs = async () => {
 };
 
 export const savePrefs = prefs => updateJsonFile(file, DEFAULT_PREFS, () => prefs);
+
+// When this machine's terminal last had each session open, so catching up starts there: { [sessionId]: ms }
+const seenFile = path.join(path.dirname(file), 'seen.json');
+
+export const lastSeen = async id => {
+	try {
+		return (await Bun.file(seenFile).json())[id] ?? null;
+	} catch {
+		return null;
+	}
+};
+
+export const markSeen = id =>
+	updateJsonFile(seenFile, {}, seen => {
+		seen[id] = Date.now();
+
+		return seen;
+	});

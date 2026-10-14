@@ -3,6 +3,7 @@ import { REACTION_PALETTE } from '../shared/reactions';
 import { roleAllows } from '../shared/roles';
 import relativeTime from '../shared/relativeTime';
 import { browserKey, browserKeys, browserView } from './fileBrowser';
+import { createPanel, panelKey, panelKeys, panelView, statusLine } from './panels';
 import {
 	OVERLAY_KEY,
 	bold,
@@ -64,6 +65,11 @@ const openComments = notes => notes.comments.filter(({ resolved }) => !resolved)
 
 const canTypeIn = state => roleAllows(state.role ?? 'owner', 'type');
 
+const canBrowse = state => roleAllows(state.role ?? 'owner', 'files');
+
+// The panels each key opens: the action loads what it shows
+const PANEL_KEYS = { l: 'links', a: 'artifacts', h: 'activity', g: 'git' };
+
 const threadComment = state => state.notes.comments.find(({ id }) => id === state.thread);
 
 // The owner may delete any comment, anyone else their own (the server checks who, not just the name)
@@ -95,7 +101,10 @@ const listView = state => {
 		return `  ${keyCap(String(index + 1))} ${dim(`"${firstLine(quote)}"`)} ${bold(printable(author))}: ${printable(text)}${thread}`;
 	});
 
+	const status = statusLine(state.status);
+
 	return [
+		...(status ? [status, ''] : []),
 		heading('Here now'),
 		...here,
 		'',
@@ -133,6 +142,7 @@ const threadView = (state, width) => {
 const BOX_BACKGROUND = 235;
 const BORDER = text => `\x1b[38;5;242m${text}\x1b[39m`;
 const MAX_BOX_WIDTH = 78;
+const MAX_PANEL_WIDTH = 110;
 
 const keysFor = (state, canNote) => {
 	if (state.shell)
@@ -142,6 +152,7 @@ const keysFor = (state, canNote) => {
 			`${keyCap('esc')} back to the terminal`,
 		];
 	if (state.files) return browserKeys(state.files, canTypeIn(state), keyCap);
+	if (state.panel) return panelKeys(state.panel, keyCap);
 	if (state.draft) return [`${keyCap('enter')} send`, `${keyCap('esc')} cancel`];
 
 	if (state.reacting)
@@ -164,8 +175,16 @@ const keysFor = (state, canNote) => {
 		canNote && `${keyCap('c')} chat`,
 		canTypeIn(state) && `${keyCap('C')} ask Claude`,
 		canNote && `${keyCap('m')} comment on selection`,
-		canNote && `${keyCap('f')} files`,
+		canBrowse(state) && `${keyCap('f')} files`,
 		canTypeIn(state) && `${keyCap('t')} terminal`,
+		canBrowse(state) && `${keyCap('l')} links`,
+		canBrowse(state) && `${keyCap('a')} artifacts`,
+		canBrowse(state) && `${keyCap('h')} activity`,
+		canBrowse(state) && `${keyCap('g')} git`,
+		`${keyCap('p')} shared`,
+		`${keyCap('u')} catch me up`,
+		`${keyCap('w')} ${state.status?.watching ? 'stop watching' : 'watch'}`,
+		state.role === 'owner' && `${keyCap('L')} lifetime`,
 		`${keyCap('d')} detach`,
 		state.canSwitch !== false && `${keyCap('s')} switch`,
 		`${keyCap('esc')} back to Claude`,
@@ -192,13 +211,17 @@ const SHELL_HELP = [
 const mainView = (state, width, room) => {
 	if (state.shell) return SHELL_HELP.flatMap(line => (line ? wrap(line, width) : ['']));
 	if (state.files) return browserView(state.files, width, room);
+	if (state.panel) return panelView(state.panel, width, room);
 
 	return state.thread ? threadView(state, width) : listView(state);
 };
 
 // Near the top right, where it covers the least of the prompt; every line is exactly `width` wide
 export const overlayBox = (state, cols, rows) => {
-	const widest = state.files ? cols - 4 : MAX_BOX_WIDTH;
+	let widest = MAX_BOX_WIDTH;
+
+	if (state.files) widest = cols - 4;
+	else if (state.panel) widest = Math.min(cols - 4, MAX_PANEL_WIDTH);
 	const zoomed = Boolean(state.files?.zoom);
 	const width = cols < 50 || zoomed ? cols : Math.min(cols - 2, widest);
 	const inner = width - 4;
@@ -214,7 +237,9 @@ export const overlayBox = (state, cols, rows) => {
 	];
 	// The list keeps its newest lines when it overflows; a thread keeps its top, where the quote and comment are
 	const shown =
-		state.thread || state.files ? content.slice(0, room) : content.slice(Math.max(0, content.length - room));
+		state.thread || state.files || state.panel
+			? content.slice(0, room)
+			: content.slice(Math.max(0, content.length - room));
 	const title = fit(
 		` ${heading('paude')} ${bold(printable(state.presence.title) || state.id)} ${state.presence.busy ? orange('● working') : dim('○ ready')} `,
 		width - 4,
@@ -361,8 +386,17 @@ export const overlayKey = (state, rawKey, { readSelection = () => null } = {}) =
 	if (state.files) {
 		const action = browserKey(state.files, key, { canType: canTypeIn(state) });
 
-		if (action.type !== 'leave') return action;
+		// A file read from a panel goes back to the panel when it closes, not on to the project's files
+		if (action.type !== 'leave' && !(state.files.fromPanel && !state.files.open)) return action;
 		state.files = null;
+
+		return { type: 'redraw' };
+	}
+	if (state.panel) {
+		const action = panelKey(state.panel, key);
+
+		if (action.type !== 'leave') return action;
+		state.panel = null;
 
 		return { type: 'redraw' };
 	}
@@ -393,7 +427,16 @@ export const overlayKey = (state, rawKey, { readSelection = () => null } = {}) =
 		return { type: 'redraw' };
 	}
 
-	if (roleAllows(state.role ?? 'owner', 'files') && key === 'f') return { type: 'files' };
+	if (canBrowse(state) && key === 'f') return { type: 'files' };
+	if (canBrowse(state) && PANEL_KEYS[key]) return { type: 'panel', kind: PANEL_KEYS[key] };
+	if (key === 'p') return { type: 'panel', kind: 'services' };
+	if (key === 'u') {
+		state.panel = createPanel('tour', { stage: 'confirm', since: state.seenBefore, stop: 0 });
+
+		return { type: 'redraw' };
+	}
+	if (key === 'w') return { type: 'toggleWatch' };
+	if (state.role === 'owner' && key === 'L') return { type: 'panel', kind: 'lifetime' };
 	if (canTypeIn(state) && key === 't') return { type: 'shell' };
 
 	if (canNote && key === 'm') {

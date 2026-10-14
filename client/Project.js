@@ -3,6 +3,7 @@ import { Elem, Notify, View, styled } from '@vanilla-bean/components';
 import { runningSummary } from '../shared/checkouts';
 import { tintsOf } from '../shared/hues';
 import { readProgress, recentLines } from '../shared/progress';
+import { LIFETIMES } from '../shared/lifetimes';
 import {
 	createSession,
 	deleteSession,
@@ -19,7 +20,6 @@ import { Bar } from './Bar';
 import { breadcrumbs } from './Breadcrumbs';
 import sessionList from './SessionList';
 import { Scroll, sessionCard } from './Layout';
-import { LIFETIMES } from './lifetimes';
 import { openMenu } from './menu';
 import { Places, composeBox, placePrompt, takeDraft } from './PromptHome';
 import LinksPanel from './Terminal/LinksPanel';

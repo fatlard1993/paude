@@ -1,4 +1,6 @@
+import { mkdir } from 'fs/promises';
 import os from 'os';
+import path from 'path';
 
 import { attachOutputText } from '../shared/attachText';
 import { NOTE_TYPES, applyNote } from '../shared/protocol';
@@ -10,8 +12,11 @@ import editCommand from './editCommand';
 import { createBrowser, openDiffSet } from './fileBrowser';
 import { place, removeImage, transmit } from './graphics';
 import { overlayKey, overlayBox } from './overlay';
-import { loadPrefs, savePrefs } from './prefs';
+import openLocally from './openLocally';
+import { createPanel } from './panels';
+import { lastSeen, loadPrefs, markSeen, savePrefs } from './prefs';
 import readSelection from './selection';
+import sessionData from './sessionData';
 import sessionFiles from './sessionFiles';
 import openSideShell, { LEAVE_SHELL } from './sideShell';
 import { UNTINT, tintFor } from './tint';
@@ -125,6 +130,12 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 
 		const files = sessionFiles(server, id);
 
+		// When this terminal last had the session open, for the catch-up tour; now, from here on
+		lastSeen(id).then(seen => {
+			state.seenBefore = seen;
+			markSeen(id);
+		});
+
 		const openFiles = async () => {
 			try {
 				const [paths, changes] = await Promise.all([files.list(), files.changes()]);
@@ -201,15 +212,117 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			redraw();
 		};
 
+		const data = sessionData(server, id);
+
+		// How long the session lasts, whether you watch it, and its cache: the box's own line, read as it opens
+		const loadStatus = async () => {
+			const [detail, metered] = await Promise.all([data.detail(), role === 'owner' ? data.meter() : { meter: null }]);
+
+			if (detail.error) return;
+			state.status = { ...detail, meter: metered.meter ?? null };
+			redraw();
+		};
+
+		const LOADERS = {
+			links: () => data.links(),
+			artifacts: () => data.artifacts(),
+			activity: () => data.timeline(),
+			services: () => data.shares(),
+			lifetime: () => data.detail(),
+			git: async () => ({}),
+		};
+
+		const loadPanel = async ({ kind }) => {
+			const panel = createPanel(kind);
+
+			state.panel = panel;
+			redraw();
+
+			const loaded = await LOADERS[kind]();
+
+			if (state.panel !== panel) return;
+			if (loaded.error) panel.error = loaded.error;
+			else panel.data = loaded;
+			redraw();
+			if (kind === 'git') loadGit({ what: 'status' });
+		};
+
+		const reloadPanel = async () => {
+			const { panel } = state;
+			const loaded = panel && (await LOADERS[panel.kind]());
+
+			if (!loaded || state.panel !== panel || loaded.error) return;
+			panel.data = loaded;
+			redraw();
+		};
+
+		// A git tab, read when it's first shown (and again on r); no pull request reads as none
+		const loadGit = async ({ what }) => {
+			const { panel } = state;
+
+			if (panel?.kind !== 'git') return;
+
+			const loaded = await data.git(what);
+
+			if (state.panel !== panel) return;
+			panel.data = { ...panel.data, [what]: loaded ?? { none: true } };
+			redraw();
+		};
+
+		// The reader, over the panel it was opened from: closing it goes back there
+		const readFromPanel = async read => {
+			const opened = await read();
+
+			if (!state.panel) return;
+			state.files = Object.assign(createBrowser([], await loadPrefs()), { fromPanel: true, open: opened });
+			redraw();
+		};
+
+		const saveArtifact = async ({ path: made, name }) => {
+			const bytes = await data.artifactBytes(made);
+
+			if (!bytes) {
+				state.hint = 'Could not download it.';
+
+				return redraw();
+			}
+
+			const folder = path.join(os.homedir(), 'Downloads', 'paude');
+			const saved = path.join(folder, name);
+
+			await mkdir(folder, { recursive: true });
+			await Bun.write(saved, bytes);
+			state.hint = openLocally(saved) ? `Saved to ${saved}, and opened.` : `Saved to ${saved}.`;
+			redraw();
+		};
+
+		const takeTour = async () => {
+			const { panel } = state;
+
+			panel.stage = 'touring';
+			redraw();
+
+			const tour = await data.catchUp(panel.since ?? undefined);
+
+			if (state.panel !== panel) return;
+			if (tour.error) {
+				state.panel = null;
+				state.hint = "Couldn't catch you up just now.";
+			} else panel.data = tour;
+			redraw();
+		};
+
 		const openOverlay = () => {
 			overlay = true;
 			state.draft = null;
 			state.thread = null;
 			state.reacting = false;
 			state.files = null;
+			state.panel = null;
 			state.hint = null;
 			write(`${MOUSE_OFF}${PLAIN_KEYS}${HIDE_CURSOR}`);
 			redraw();
+			loadStatus();
 		};
 
 		const closeOverlay = () => {
@@ -308,7 +421,6 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			ignore: () => {},
 			shell: () => openShell(),
 			loadChanges,
-			readDiffSet: ({ source }) => readDiffSet(source),
 			editFile,
 			backToShell,
 			endShell,
@@ -317,7 +429,51 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 				endShell();
 			},
 			files: openFiles,
-			readFile: ({ path, line }) => readFile(path, line),
+			readFile: ({ path: file, line }) =>
+				state.panel && !state.files ? readFromPanel(() => files.read(file, line)) : readFile(file, line),
+			readDiffSet: ({ source }) =>
+				state.panel && !state.files
+					? readFromPanel(async () => {
+							const { set, error } = await files.diffSet(source);
+
+							return error ? { path: source.path ?? 'changes', error } : openDiffSet(set, source);
+						})
+					: readDiffSet(source),
+			panel: loadPanel,
+			loadGit,
+			readArtifact: ({ path: made }) => readFromPanel(() => data.readArtifact(made)),
+			saveArtifact,
+			takeTour,
+			openUrl: ({ url: link }) => {
+				const absolute = new URL(link, server.url).href;
+
+				state.hint = openLocally(absolute)
+					? 'Asked your browser to open it. Nothing came up? y copies it.'
+					: 'No browser to open it here. y copies it.';
+				redraw();
+			},
+			markLink: async ({ url: link, change }) => {
+				const marked = await data.markLink(link, change);
+
+				if (marked.error) state.hint = marked.error;
+				await reloadPanel();
+				redraw();
+			},
+			toggleWatch: async () => {
+				const watching = !state.status?.watching;
+				const set = await data.setWatching(watching);
+
+				state.hint =
+					set.error ?? (watching ? 'Watching: changes here are counted while you are away.' : 'Not watching.');
+				await loadStatus();
+			},
+			setLifetime: async ({ lifetime }) => {
+				const set = await data.setLifetime(lifetime);
+
+				if (set.error) state.hint = set.error;
+				else state.panel = null;
+				await loadStatus();
+			},
 			search: searchFiles,
 			savePrefs: () => {
 				savePrefs(state.files.prefs);

@@ -151,7 +151,9 @@ Revoking an invite, or changing the password with `bun run set-password` (a runn
 
 Inside a session everything goes to Claude except **Ctrl+]** (**Cmd+]** on a Mac, in a terminal that passes it on, such as kitty), which floats the box over Claude's screen. Claude keeps working behind it. A terminal that keeps Cmd+] for itself (iTerm2, Ghostty) can be set to send Ctrl+] (the byte `0x1d`) for it instead.
 
-![The box over a session: who's here, the chat, an open comment](docs/terminal-box.png)
+The box's top line says how long the session lasts, whether you watch it, and whether Claude's cache still holds it.
+
+![The box over a session: how long it lasts and its cache, who's here, the chat, an open comment, and its keys](docs/terminal-box.png)
 
 | Key |  |
 | --- | --- |
@@ -161,6 +163,14 @@ Inside a session everything goes to Claude except **Ctrl+]** (**Cmd+]** on a Mac
 | **1**-**9** | open a comment's thread; there, **r** replies, **A** asks Claude (its answer lands in the thread), **x** resolves (or reopens), **+** then a number reacts, **D** twice deletes it |
 | **f** | the project's files |
 | **t** | a terminal: a shell in the session's folder, for a few quick commands. Ctrl+] brings the box back over it: **a** quotes your selection in Claude's prompt, **k** ends it, **Esc** returns to it. It ends when you go back to Claude |
+| **l** | links: the docs, tickets, repos and servers that came up, by kind; **Enter** opens one in your browser, **y** copies, **p** pins, **x** hides, **i** includes what only a command printed |
+| **a** | artifacts: what the session made, wherever it landed; **Enter** reads it here (an image in place, where the terminal shows images), **o** saves it to `~/Downloads/paude` and opens it, **y** copies its path |
+| **h** | activity: Claude's turns, newest first; **Enter** shows a turn's steps, where **Enter** opens a step's file and **c** shows what the turn changed |
+| **g** | git: status, history, branches and the pull request, a tab each; **Enter** on a changed file or a commit shows its diff |
+| **p** | shared: the services, files and sites the session shares; **Enter** opens one in your browser |
+| **u** | catch me up: says what the tour is and asks; taken, an overview, then a stop per turn (**→** and **←**) |
+| **w** | watch the session, or stop |
+| **L** | how long the session lasts (the owner's): ordinary, kept warm or short-lived, and **Put back** for the last switch while it still can be |
 | **s**, **d** | switch session, detach |
 | **Esc** | back to Claude |
 

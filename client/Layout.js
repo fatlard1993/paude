@@ -2,9 +2,9 @@ import { Component, Elem, styled } from '@vanilla-bean/components';
 
 import { tintsOf } from '../shared/hues';
 import relativeTime from '../shared/relativeTime';
+import { LIFETIMES, clockTime } from '../shared/lifetimes';
 import { AskingCard, showAsking, showLimit } from './Asking';
 import { element } from './dom';
-import { LIFETIMES, clockTime } from './lifetimes';
 import { hueOf } from './servers';
 
 const column = `
