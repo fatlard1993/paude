@@ -1,6 +1,7 @@
 import { Notify } from '@vanilla-bean/components';
 
 import { catchUpOn } from '../api';
+import confirmDialog from '../confirmDialog';
 import { button, element } from '../dom';
 import { recall, remember } from '../storage';
 
@@ -49,8 +50,19 @@ const promptRow = (terminal, prompt) => {
 	return null;
 };
 
+// What the tour is, asked before Haiku is: the button's icon alone doesn't say
+const confirmTour = since =>
+	confirmDialog({
+		header: 'Catch up on this session?',
+		body: `Haiku writes an overview of what happened ${since ? `since you were last here (${clock(since)})` : 'in the last ten turns'}, then a stop per turn that scrolls the terminal to where it began. Nothing is typed into the session.`,
+		cancelLabel: 'Not now',
+		confirmLabel: 'Take the tour',
+	});
+
 // A tour of what happened: an overview, then a stop per turn, each scrolling the terminal to where that turn began
 export const startCatchUp = async ({ card, sessionId, since, terminal, openActivity }) => {
+	if (!(await confirmTour(since))) return;
+
 	const into = card.elem;
 	const shown = into.classList;
 	const close = () => {

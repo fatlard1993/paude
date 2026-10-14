@@ -947,3 +947,32 @@ test(
 	},
 	TIMEOUT_MS,
 );
+
+test(
+	'the catch-up tour says what it is and starts only once asked',
+	async () => {
+		const server = servers.turns;
+		const { browser, page } = await openSession('dom', server);
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(500);
+		};
+		const touring = () => page.$eval('.limit-overlay.tour', card => card.classList.contains('shown'));
+
+		try {
+			await press('[title^="Catch me up"]');
+			expect(await page.$eval('body', body => body.innerText)).toContain('Catch up on this session?');
+			await press('button', 'Not now');
+			expect(await touring()).toBe(false);
+
+			await press('[title^="Catch me up"]');
+			await press('button', 'Take the tour');
+			expect(await touring()).toBe(true);
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
