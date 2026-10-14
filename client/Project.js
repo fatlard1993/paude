@@ -14,7 +14,7 @@ import {
 	markProjectLink,
 } from './api';
 import { confirmDeleteSession } from './confirmDialog';
-import { button, element } from './dom';
+import { element } from './dom';
 import { Bar } from './Bar';
 import { breadcrumbs } from './Breadcrumbs';
 import sessionList from './SessionList';
@@ -22,9 +22,9 @@ import { Scroll, sessionCard } from './Layout';
 import { LIFETIMES } from './lifetimes';
 import { openMenu } from './menu';
 import { Places, composeBox, placePrompt, takeDraft } from './PromptHome';
-import { recall, remember } from './storage';
 import LinksPanel from './Terminal/LinksPanel';
 import ArtifactsPanel from './Terminal/ArtifactsPanel';
+import { tabs } from './Tabs';
 
 // The repo's own create command, as it runs
 const Progress = styled(
@@ -40,50 +40,6 @@ const Progress = styled(
 		white-space: pre-wrap;
 	`,
 );
-
-// What the project holds, one at a time: its sessions, the links they brought up, what they made
-const Tabs = styled(
-	Elem,
-	({ colors }) => `
-		display: flex;
-		gap: 4px;
-		margin-top: 16px;
-		border-bottom: 1px solid ${colors.alpha(colors.white, 0.08)};
-
-		button {
-			margin-bottom: -1px;
-			padding: 6px 12px;
-			border: none;
-			border-bottom: 2px solid transparent;
-			border-radius: 0;
-			background: transparent;
-			color: ${colors.light(colors.gray)};
-			font: inherit;
-			cursor: pointer;
-		}
-
-		button::after {
-			display: none;
-		}
-
-		button:hover {
-			color: ${colors.white};
-		}
-
-		button.active {
-			border-bottom-color: var(--bar-accent, ${colors.blue});
-			color: ${colors.white};
-		}
-
-		.count {
-			margin-left: 6px;
-			color: ${colors.light(colors.gray)};
-			font-size: 0.8em;
-		}
-	`,
-);
-
-const TAB_KEY = 'paude.projectTab';
 
 export default class Project extends View {
 	build() {
@@ -148,32 +104,25 @@ export default class Project extends View {
 
 	holdings(scroll) {
 		const { project } = this.options;
-		const tabs = new Tabs({ appendTo: scroll });
-		const panes = {};
-		const counts = {};
-		const tab = (name, label) => {
-			const count = element('span', 'count');
-			const node = button(label, () => this.showTab(name));
+		// What the project holds, one at a time: its sessions, the links they brought up, what they made
+		this.tabs = tabs({
+			appendTo: scroll,
+			key: 'paude.projectTab',
+			names: [
+				{ name: 'sessions', label: 'Sessions' },
+				{ name: 'links', label: 'Links' },
+				{ name: 'artifacts', label: 'Artifacts' },
+			],
+		});
 
-			node.append(count);
-			node.dataset.tab = name;
-			tabs.elem.append(node);
-			counts[name] = count;
-		};
+		const sessions = this.tabs.pane('sessions', new Elem({ appendTo: scroll }).elem);
 
-		tab('sessions', 'Sessions');
-		tab('links', 'Links');
-		tab('artifacts', 'Artifacts');
-		this.tabs = tabs.elem;
-		this.counts = counts;
-
-		panes.sessions = new Elem({ appendTo: scroll }).elem;
 		this.sessions = sessionList({
-			appendTo: panes.sessions,
+			appendTo: sessions,
 			placeholder: `Find a session in ${project}`,
 			empty: 'No sessions in this project yet.',
 			pageSize: 30,
-			onCount: total => (counts.sessions.textContent = total || ''),
+			onCount: total => this.tabs.count('sessions', total),
 			fetchPage: async searchParameters => {
 				const { body, response } = await getProjectSessions(project, { searchParameters });
 
@@ -207,25 +156,16 @@ export default class Project extends View {
 			shown.bar.style.display = 'none';
 			// Sized by what it holds here, not by the panel's height as at a session's side
 			Object.assign(shown.body.style, { flex: '0 1 auto', maxHeight: 'none' });
-			panes[name] = shown.elem;
+			this.tabs.pane(name, shown.elem);
 		}
-		this.panes = panes;
 		this.countHeld();
-		this.showTab(recall(TAB_KEY) || 'sessions');
+		this.tabs.show();
 	}
 
 	async countHeld() {
 		await Promise.all([this.links.refresh(), this.artifacts.refresh()]);
-		this.counts.links.textContent = this.links.links.length || '';
-		this.counts.artifacts.textContent = this.artifacts.artifacts.length || '';
-	}
-
-	showTab(name) {
-		const shown = name in this.panes ? name : 'sessions';
-
-		remember(TAB_KEY, shown);
-		for (const [pane, elem] of Object.entries(this.panes)) elem.style.display = pane === shown ? '' : 'none';
-		for (const node of this.tabs.children) node.classList.toggle('active', node.dataset.tab === shown);
+		this.tabs.count('links', this.links.links.length);
+		this.tabs.count('artifacts', this.artifacts.artifacts.length);
 	}
 
 	// The bar underlined in the project's folder color, as its card on home is, and the open tab with it

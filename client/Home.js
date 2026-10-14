@@ -24,6 +24,7 @@ import { button, element } from './dom';
 import { Bar, ghostButton } from './Bar';
 import { Empty, LinkCard, Scroll, SectionTitle, sessionCard } from './Layout';
 import { Places, carryDraft, composeBox, placePrompt } from './PromptHome';
+import { tabs } from './Tabs';
 
 const Grid = styled.Component`
 	display: grid;
@@ -125,25 +126,47 @@ export default class Home extends View {
 			style: { ...urgent, display: 'none' },
 		});
 		this.needs = new List({ appendTo: scroll });
-		this.watchingTitle = new SectionTitle({ appendTo: scroll, textContent: 'Watching', style: { display: 'none' } });
-		this.watching = new List({ appendTo: scroll });
 
-		new SectionTitle({ appendTo: scroll, textContent: 'Continue' });
-		this.unreachable = new List({ appendTo: scroll });
+		// What needs you stays in sight above them; the rest, one at a time
+		this.tabs = tabs({
+			appendTo: scroll,
+			key: 'paude.homeTab',
+			names: [
+				{ name: 'sessions', label: 'Sessions' },
+				{ name: 'projects', label: 'Projects' },
+			],
+		});
+
+		const sessions = this.tabs.pane('sessions', new List({ appendTo: scroll }).elem);
+
+		this.unreachable = new List({ appendTo: sessions });
+		this.watchingTitle = new SectionTitle({ appendTo: sessions, textContent: 'Watching', style: { display: 'none' } });
+		this.watching = new List({ appendTo: sessions });
+		this.recentTitle = new SectionTitle({ appendTo: sessions, textContent: 'Recent', style: { display: 'none' } });
 		this.fetchRecent = this.recentFrom([]);
 		this.recent = sessionList({
-			appendTo: scroll,
+			appendTo: sessions,
 			placeholder: 'Find a session in any project',
 			empty: 'Nothing yet. Pick a project to start a session.',
+			onCount: total => {
+				this.recentCount = total;
+				this.countSessions();
+			},
 			fetchPage: searchParameters => this.fetchRecent(searchParameters),
 			renderCard: (session, appendTo) => this.card(session, appendTo),
 		});
 
-		new SectionTitle({ appendTo: scroll, textContent: 'Projects' });
-		this.projects = new Grid({ appendTo: scroll });
+		this.projects = new Grid({ appendTo: scroll, style: { marginTop: '12px' } });
+		this.tabs.pane('projects', this.projects.elem);
 		this.adder = this.addFolderCard();
+		this.tabs.show();
 
 		this.load();
+	}
+
+	// The sessions tab counts what it lists: the watched ones that aren't asking, and the rest
+	countSessions() {
+		this.tabs.count('sessions', (this.quietCount ?? 0) + (this.recentCount ?? 0));
 	}
 
 	// A prompt placed before it's sent: in a conversation it carries on, or a new session in the project that fits
@@ -277,7 +300,10 @@ export default class Home extends View {
 		for (const session of asking) this.card(session, this.needs);
 		this.watching.empty();
 		this.watchingTitle.elem.style.display = quiet.length ? '' : 'none';
+		this.recentTitle.elem.style.display = quiet.length ? '' : 'none';
 		for (const session of quiet) this.card(session, this.watching);
+		this.quietCount = quiet.length;
+		this.countSessions();
 
 		this.unreachable.empty();
 		for (const remote of (remotes ?? []).filter(({ error }) => error))
@@ -336,5 +362,6 @@ export default class Home extends View {
 			});
 		}
 		this.projects.elem.append(this.adder);
+		this.tabs.count('projects', ordered.length);
 	}
 }
