@@ -987,3 +987,58 @@ test(
 	},
 	TIMEOUT_MS,
 );
+
+test(
+	"a file a session made reads in the files panel: one of the project's as any other, one outside it read-only",
+	async () => {
+		const server = await startServer();
+		const id = await server.newSession();
+		const folder = await mkdtemp(path.join(os.tmpdir(), 'paude-made-'));
+		const [outside, inside] = [path.join(folder, 'notes.txt'), path.join(server.project, 'report.txt')];
+		const wrote = (file, second) => ({
+			type: 'assistant',
+			timestamp: new Date(Date.now() - (10 - second) * 1000).toISOString(),
+			message: { content: [{ type: 'tool_use', id: file, name: 'Write', input: { file_path: file } }] },
+		});
+
+		// The last line counts once another follows it, as one still being written might not be whole
+		await server.writeTranscript(id, [
+			wrote(outside, 1),
+			wrote(inside, 2),
+			{ type: 'user', message: { content: 'ok' } },
+		]);
+		await Promise.all([Bun.write(outside, 'made outside\n'), Bun.write(inside, 'made inside\n')]);
+
+		const { browser, page } = await openBrowser('dom');
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+		const reading = () => page.$eval('.files', panel => panel.innerText);
+
+		try {
+			await page.goto(await server.loginLink(`/sessions/${id}`));
+			await page.waitForSelector('.xterm-screen');
+			await wait(1500);
+			await press('[title^="Artifacts"]');
+
+			await press('.links .artifact .name', 'notes.txt');
+			expect(page.url()).toContain(`/sessions/${id}`);
+			expect(await page.$eval('.files', panel => panel.classList.contains('open'))).toBe(true);
+			expect(await reading()).toContain('made outside');
+			expect(await reading()).not.toContain('Edit');
+
+			// The list stays open beside the files on a wide screen
+			await press('.links .artifact .name', 'report.txt');
+			expect(await reading()).toContain('made inside');
+			expect(await reading()).toContain('Edit');
+		} finally {
+			await browser.close();
+			await server.stop();
+			await rm(folder, { recursive: true, force: true });
+		}
+	},
+	TIMEOUT_MS,
+);

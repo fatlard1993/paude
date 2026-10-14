@@ -26,6 +26,7 @@ import { recall, remember } from '../storage';
 import confirmDialog from '../confirmDialog';
 import { button, closeButton, dragHandle, element } from '../dom';
 import { opensInViewer, viewImage } from '../imageViewer';
+import { artifactUrl } from './ArtifactsPanel';
 import renderDiffSet from './DiffView';
 import Panel, { LINE_HEIGHT } from './FilesPanel.styles';
 
@@ -926,6 +927,7 @@ export default class FilesPanel extends Panel {
 		const single = source.path ?? source.b ?? null;
 
 		this.current = single;
+		this.outside = false;
 		this.view = 'diff';
 		this.kind = single ? kindOf(single) : 'text';
 		this.diffSource = source;
@@ -951,10 +953,19 @@ export default class FilesPanel extends Panel {
 			.forEach(entry => entry.classList.toggle('current', entry.dataset.path === path));
 	}
 
-	async open(path, line, lastLine = line) {
+	// `outside`: a file the session made outside the project (its scratchpad, /tmp), read through its artifacts: shown,
+	// but not edited, blamed or listed
+	fileUrl() {
+		return this.outside
+			? artifactUrl(this.options.sessionId, this.current)
+			: rawFileUrl(this.options.sessionId, this.current);
+	}
+
+	async open(path, line, lastLine = line, { outside = false } = {}) {
 		if (!(await this.leaveEditing())) return;
 
 		this.current = path;
+		this.outside = outside;
 		this.view = 'file';
 		this.kind = kindOf(path);
 		this.selection = line ? { anchor: line, from: line, to: lastLine } : null;
@@ -967,7 +978,12 @@ export default class FilesPanel extends Panel {
 
 		if (['image', 'video', 'audio', 'pdf'].includes(this.kind)) return this.renderViewer();
 
-		const { body, response } = await readFile(this.options.sessionId, path);
+		const { body, response } = outside
+			? await fetch(this.fileUrl()).then(
+					async read => ({ response: read, body: await read.text() }),
+					() => ({ body: null }),
+				)
+			: await readFile(this.options.sessionId, path);
 
 		if (this.current !== path) return;
 
@@ -1092,7 +1108,7 @@ export default class FilesPanel extends Panel {
 		}
 
 		if (change) head.append(button('Changes', () => this.openDiff(this.current), { title: 'What changed in it' }));
-		if (this.lines && this.showingSource) {
+		if (this.lines && this.showingSource && !this.outside) {
 			this.nameActions = element('span', 'name-actions');
 			head.append(
 				button('Outline', () => this.showOutline(), { title: 'Its functions, classes and types, in the list' }),
@@ -1105,11 +1121,12 @@ export default class FilesPanel extends Panel {
 				}),
 			);
 		}
-		if (this.lines)
+		if (this.lines && !this.outside)
 			head.append(button('Compare...', () => this.startComparing(), { title: 'Compare it with another file' }));
 
 		if (canType()) {
-			if (this.lines && this.showingSource) head.append(button('Edit', () => this.startEditing(), { icon: 'pen' }));
+			if (this.lines && this.showingSource && !this.outside)
+				head.append(button('Edit', () => this.startEditing(), { icon: 'pen' }));
 			head.append(button('Attach file', () => this.attachFile()));
 
 			if (this.selection && this.lines && this.showingSource) {
@@ -1122,10 +1139,11 @@ export default class FilesPanel extends Panel {
 		}
 
 		if (this.selection && this.lines && this.showingSource) head.append(button('Copy', () => this.copyLines()));
-		if (this.kind !== 'text' && this.kind !== 'markdown') {
+		// What made outside the project may be a page: opened as it is (in a sandbox), beside its source here
+		if ((this.kind !== 'text' && this.kind !== 'markdown') || this.outside) {
 			const link = element('a', '', 'Open');
 
-			link.href = rawFileUrl(this.options.sessionId, this.current);
+			link.href = this.fileUrl();
 			link.target = '_blank';
 			link.rel = 'noopener';
 			if (this.kind === 'image') opensInViewer(link, { src: link.href, name: this.current });
@@ -1388,7 +1406,7 @@ export default class FilesPanel extends Panel {
 
 	media() {
 		const holder = element('div', 'media');
-		const url = rawFileUrl(this.options.sessionId, this.current);
+		const url = this.fileUrl();
 		const tag = { image: 'img', video: 'video', audio: 'audio', pdf: 'iframe' }[this.kind];
 		const node = element(tag);
 
@@ -1419,7 +1437,7 @@ export default class FilesPanel extends Panel {
 		for (const image of container.querySelectorAll('img[src]')) {
 			const path = projectPathFrom(this.current, image.getAttribute('src'));
 
-			if (path !== null) image.src = rawFileUrl(this.options.sessionId, path);
+			if (path !== null && !this.outside) image.src = rawFileUrl(this.options.sessionId, path);
 			image.classList.add('enlarges');
 			image.addEventListener('click', event => {
 				if (image.closest('a')) return;

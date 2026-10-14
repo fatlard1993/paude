@@ -403,6 +403,13 @@ export default class TerminalView extends View {
 				sessionId: this.options.id,
 				load: () => getArtifacts(this.options.id),
 				close: () => this.toggleArtifacts(false),
+				openFile:
+					this.files &&
+					((path, options) => {
+						if (window.matchMedia(NARROW).matches) this.toggleArtifacts(false);
+						this.toggleFiles(true);
+						this.files.open(path, undefined, undefined, options);
+					}),
 			});
 			this.addResizeHandle(this.artifacts.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
 		}

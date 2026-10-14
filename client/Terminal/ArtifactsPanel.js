@@ -15,6 +15,8 @@ const KINDS = [
 	['media', 'Media'],
 	['archive', 'Archives'],
 ];
+// Made, but not something to read as text
+const UNREADABLE = /\.(db|sqlite|docx|pptx|xlsx)$/i;
 const KIND_ICONS = {
 	image: 'image',
 	page: 'window-maximize',
@@ -140,6 +142,21 @@ export default class ArtifactsPanel extends Panel {
 		);
 	}
 
+	// Read in the files panel, where there is one: a file of the project as any other, one made outside it read-only.
+	// An image has its viewer; what can't be read as text (an archive, a database, an office file) downloads.
+	inFilesPanel(link, made) {
+		if (!this.options.openFile || made.kind === 'image' || made.kind === 'archive' || UNREADABLE.test(made.path))
+			return;
+
+		link.addEventListener('click', event => {
+			if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+			event.preventDefault();
+			if (made.inProject) this.options.openFile(made.shown);
+			else this.options.openFile(made.path, { outside: true });
+		});
+	}
+
 	row(made, list) {
 		const { url, download: downloadUrl } = this.urls(made);
 		const row = element('div', 'link artifact');
@@ -147,6 +164,7 @@ export default class ArtifactsPanel extends Panel {
 		const open = element('a', 'name', made.name);
 
 		Object.assign(open, { href: url, target: '_blank', rel: 'noopener noreferrer', title: made.path });
+		this.inFilesPanel(open, made);
 		head.append(
 			icon(KIND_ICONS[made.kind] ?? 'file'),
 			open,
