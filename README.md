@@ -23,7 +23,7 @@ paude add                 # this folder becomes a project; this machine's paude 
 paude                     # the picker: sessions and projects here and on every paude you're logged into
 ```
 
-![The picker: watched sessions from two paudes first, then each one's projects](docs/terminal-picker.png)
+![The picker: what needs you and what you watch first, then the rest, then the projects](docs/terminal-picker.png)
 
 Working on paude itself? `sh scripts/install.sh --dev` from your checkout runs that checkout as this machine's paude service (systemd, or launchd on macOS): it restarts itself as you save, rebuilds the web client and reloads open pages, and sessions carry on through it. Running the installer without `--dev` goes back to an installed copy.
 
@@ -174,6 +174,8 @@ The box's top line says how long the session lasts, whether you watch it, and wh
 | **s**, **d** | switch session, detach |
 | **Esc** | back to Claude |
 
+![The box's artifacts: what the session made, each described, a key from reading it here](docs/terminal-artifacts.png)
+
 In **f**, the reader: arrows (or j/k) move and Enter opens; **/** finds a file by name, **?** searches contents, and **c** lists changes: what Claude proposes, what changed since the last commit (the tree marks those files M, A, D, R or U, as VS Code does), and what each of Claude's turns changed. Alt+C, Alt+W and Alt+R toggle match case, whole word and regex, as in VS Code, and Tab moves to the files to include and exclude. Code is highlighted and markdown is rendered (**m** shows the source; the choice is remembered). In kitty, WezTerm or Ghostty, images show in place.
 
 ![The reader: a highlighted file with lines marked](docs/terminal-files.png)
@@ -237,9 +239,11 @@ The side panels float over the terminal and resize from their inner edge.
 
 ![Home's prompt box: the session a prompt carries on, with what sending it costs, or a new one](docs/web-prompt-home.png)
 
+![A project's page: the prompt box with its worktree and lifetime chips, and its sessions, links and artifacts in tabs](docs/web-project.png)
+
 ## Watching
 
-![Home: watched sessions first, with what changed](docs/web-home.png)
+![Home: what needs you on top, answerable there, then sessions and projects in tabs](docs/web-home.png)
 
 Home heads its lists with the watched sessions that need you, always in sight; under them, a Sessions tab (the rest it watches, then the recent ones) and a Projects tab, the one last open kept. A watched session is listed first everywhere, with what it's doing (**working**; **needs you** when Claude is asking for a permission or an answer; **ready** for the next prompt) and how many turns, chat messages and comments landed since you last looked. Watching starts on its own the first time you join a session by invite, post in it, or prompt it; the eye in the session's bar, or **w** in the picker, turns it off and on.
 
