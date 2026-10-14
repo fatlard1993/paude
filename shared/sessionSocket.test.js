@@ -71,7 +71,8 @@ test('woken, a socket that no longer answers is replaced at once', async () => {
 	try {
 		await until(() => opened.length === 1);
 		connection.wake();
-		await until(() => opened.length === 2);
+		// The server counts a socket open before the client hears it is
+		await until(() => opened.length === 2 && states.length === 3);
 		expect(opened.length).toBe(2);
 		expect(states).toEqual(['connected', 'reconnecting', 'connected']);
 	} finally {

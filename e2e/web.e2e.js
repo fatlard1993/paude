@@ -50,6 +50,16 @@ describe.each(VARIANTS)('%s', variant => {
 			try {
 				expect(await page.$$eval('.fork-here', buttons => buttons.length)).toBe(2);
 
+				// Clear of all the line, not only its done time: Claude goes on after it
+				const lineEnd = await cellCenter(
+					page,
+					10,
+					'✻ Cogitated for 1m 3s · done 10:25 AM · 1 shell still running'.length - 1,
+				);
+				const lastFork = await page.$$eval('.fork-here', buttons => buttons.at(-1).getBoundingClientRect().left);
+
+				expect(lastFork).toBeGreaterThan(lineEnd.x);
+
 				const fork = await centerOf(page, '.fork-here');
 
 				await page.mouse.click(fork.x, fork.y);
@@ -896,7 +906,8 @@ test(
 			await page.goto(await server.loginLink('/projects/demo'));
 			await page.waitForSelector('[data-tab=artifacts]');
 			await page.click('[data-tab=artifacts]');
-			await page.waitForSelector('.artifact-preview');
+			// Shown, not only there: a preview has no size until its image loads
+			await page.waitForSelector('.artifact-preview', { visible: true });
 			await page.click('.artifact-preview');
 			await page.waitForSelector('.stage img');
 			expect(page.url()).toContain('/projects/demo');

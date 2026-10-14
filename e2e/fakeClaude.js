@@ -26,7 +26,7 @@ const screen = () =>
 		'✻ Worked for 12s · done 10:22 AM\r\n\r\n',
 		'❯ second prompt\r\n\r\n',
 		'● More answer.\r\n\r\n',
-		'✻ Cogitated for 1m 3s · done 10:25 AM\r\n\r\n',
+		'✻ Cogitated for 1m 3s · done 10:25 AM · 1 shell still running\r\n\r\n',
 	].join('');
 
 write(screen());

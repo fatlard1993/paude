@@ -1186,7 +1186,8 @@ export default class TerminalView extends View {
 			if (!found) continue;
 
 			const fork = spare[used++] ?? this.forkButton();
-			const after = columns[found.index + found[0].length - 1] + 1;
+			// After all of the line, not only its "done" time: Claude goes on after it (· 1 shell still running)
+			const after = columns[text.length - 1] + 1;
 
 			fork.dataset.line = buffer.viewportY + row;
 			Object.assign(fork.style, { height: `${cellHeight}px`, fontSize: `${cellHeight * 0.65}px` });
