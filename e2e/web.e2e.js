@@ -73,6 +73,51 @@ describe.each(VARIANTS)('%s', variant => {
 	);
 
 	test(
+		"the side shell copies a selection with Ctrl+C or its Copy button, as Claude's screen does",
+		async () => {
+			const { browser, page } = await openSession(variant, servers.turns);
+
+			try {
+				await page.click('button[title^="Terminal:"]');
+				await page.waitForFunction(() => document.querySelectorAll('.xterm-screen').length === 2, { timeout: 20_000 });
+				await wait(1500);
+				await page.keyboard.type('clear; echo side-shell-copy\n');
+				await wait(800);
+
+				const shell = await page.$$eval('.xterm-screen', screens => {
+					const { x, y, width, height } = screens[1].getBoundingClientRect();
+
+					return { x, y, width, height };
+				});
+				// Each from its own corner: two presses on one spot in quick succession are a double click
+				const selectAll = inset =>
+					drag(
+						page,
+						{ x: shell.x + inset, y: shell.y + inset },
+						{ x: shell.x + shell.width - inset, y: shell.y + shell.height - inset },
+					);
+
+				await page.evaluate(() => navigator.clipboard.writeText('before'));
+				await selectAll(2);
+				await page.keyboard.down('Control');
+				await page.keyboard.press('c');
+				await page.keyboard.up('Control');
+				await wait(500);
+				expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('side-shell-copy');
+
+				await page.evaluate(() => navigator.clipboard.writeText('before'));
+				await selectAll(6);
+				await page.click('.bar button[title^="Copy the selected"]');
+				await wait(500);
+				expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('side-shell-copy');
+			} finally {
+				await browser.close();
+			}
+		},
+		TIMEOUT_MS,
+	);
+
+	test(
 		"the selection's Copy takes the click while Claude prints, and copies",
 		async () => {
 			const { browser, page } = await openSession(variant, servers.busy);

@@ -41,6 +41,7 @@ import { updateTabTitle } from '../tabTitle';
 import attach from './attach';
 import { startCatchUp, trackLastSeen } from './catchUp';
 import KeyBar from './KeyBar';
+import { copySelection, isCopyKey } from './copySelection';
 import selectLinesByTap from './lineSelect';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from './xtermOptions';
 import FilesPanel from './FilesPanel';
@@ -314,7 +315,7 @@ export default class TerminalView extends View {
 		const selectionButton = (options, onPress) =>
 			new Button({ appendTo: this.selectionActions, ...options }).elem.addEventListener('click', onPress);
 
-		selectionButton({ textContent: '📋 Copy' }, () => this.copySelection());
+		selectionButton({ textContent: '📋 Copy' }, () => copySelection(this.terminal));
 		if (canType())
 			selectionButton(
 				{
@@ -538,7 +539,6 @@ export default class TerminalView extends View {
 		this.terminal.onScroll(() => {
 			if (!this.selectionActions.elem.matches(':hover')) this.placeSelectionActions();
 		});
-		// Ctrl+C copies what's selected, as in a Windows terminal; with nothing selected it still interrupts Claude
 		this.terminal.attachCustomKeyEventHandler(event => {
 			const lineKey =
 				(event.metaKey && !event.ctrlKey && !event.altKey && MAC_LINE_KEYS[event.key]) ||
@@ -551,17 +551,11 @@ export default class TerminalView extends View {
 				return false;
 			}
 
-			const copy =
-				event.type === 'keydown' &&
-				event.ctrlKey &&
-				!event.altKey &&
-				!event.metaKey &&
-				event.key.toLowerCase() === 'c' &&
-				this.terminal.hasSelection();
+			const copy = isCopyKey(event, this.terminal);
 
 			if (copy) {
 				event.preventDefault();
-				this.copySelection();
+				copySelection(this.terminal);
 			}
 
 			return !copy;
@@ -961,21 +955,6 @@ export default class TerminalView extends View {
 	openMenu(anchor, items) {
 		openMenu(anchor, items);
 		this.addCleanup('menu', closeMenu);
-	}
-
-	// One here opens here; one on another server, through a link that logs this browser in there
-	async copySelection() {
-		const text = this.terminal.getSelection();
-
-		if (!text) return;
-
-		try {
-			await navigator.clipboard.writeText(text);
-			this.terminal.clearSelection();
-			new Notify({ type: 'success', content: 'Copied', timeout: 1500 });
-		} catch {
-			new Notify({ type: 'error', content: "The browser wouldn't let paude copy; its own Copy still works." });
-		}
 	}
 
 	sendSelectionToShell() {

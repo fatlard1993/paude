@@ -4,6 +4,7 @@ import { Terminal } from '@xterm/xterm';
 import { attachOutputText } from '../../shared/attachText';
 import { CLOSED } from '../../shared/protocol';
 import { button, element, icon } from '../dom';
+import { copySelection, isCopyKey } from './copySelection';
 import KeyBar from './KeyBar';
 import selectLinesByTap from './lineSelect';
 import Panel from './SideShell.styles';
@@ -31,9 +32,15 @@ export default class SideShell extends Panel {
 			icon: 'paperclip',
 			title: "Quote the selected output in Claude's prompt",
 		});
+		this.copyButton = button('Copy', () => copySelection(this.terminal), {
+			icon: 'copy',
+			title: 'Copy the selected output (or Ctrl+C)',
+		});
 		this.attachButton.disabled = true;
+		this.copyButton.disabled = true;
 		bar.append(
 			label,
+			this.copyButton,
 			this.attachButton,
 			button('', () => this.options.close(), { icon: 'xmark', title: 'End it', className: 'icon-only' }),
 		);
@@ -82,6 +89,15 @@ export default class SideShell extends Panel {
 		this.terminal.onResize(({ cols, rows }) => this.send({ type: 'resize', cols, rows }));
 		this.terminal.onSelectionChange(() => {
 			this.attachButton.disabled = !this.terminal.hasSelection();
+			this.copyButton.disabled = !this.terminal.hasSelection();
+		});
+		this.terminal.attachCustomKeyEventHandler(event => {
+			if (!isCopyKey(event, this.terminal)) return true;
+
+			event.preventDefault();
+			copySelection(this.terminal);
+
+			return false;
 		});
 		this.sizeWatcher = new ResizeObserver(() => this.fit());
 		this.sizeWatcher.observe(this.screen);
@@ -151,6 +167,7 @@ export default class SideShell extends Panel {
 		this.terminal = null;
 		this.screen.replaceChildren();
 		this.attachButton.disabled = true;
+		this.copyButton.disabled = true;
 	}
 
 	fit() {
