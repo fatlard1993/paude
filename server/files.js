@@ -1,25 +1,26 @@
-import { realpath } from 'fs/promises';
-import { resolve, sep } from 'path';
+import { existsSync } from 'fs';
+import { readdir, realpath } from 'fs/promises';
+import { join, resolve, sep } from 'path';
 
 import searchPattern from '../shared/searchPattern';
 import { pathFilter } from '../shared/globs';
 import gitEnvironment from './utils/gitEnvironment';
 
-const MAX_FILES = 20_000;
+const MAX_FILES = 50_000;
 const MAX_BYTES = 1024 * 1024;
 const MAX_RAW_BYTES = 50 * 1024 * 1024;
 const MAX_HITS = 300;
 const LISTING_TTL_MS = 2000;
 const SEARCH_TIMEOUT_MS = 10_000;
-// Outside git there's no ignore file to go by, so the usual heavy and private folders are skipped by name
-const SKIPPED_OUTSIDE_GIT = /(^|\/)(node_modules|\.git|build|dist|\.env[^/]*)(\/|$)/;
+// Outside git there's no ignore file to go by, so the usual heavy folders and anything hidden are skipped by name
+const SKIPPED_OUTSIDE_GIT = ['node_modules', '.git', 'build', 'dist'];
 // Secrets a project may not have told git to ignore stay out of every listing, for guests above all
 const SECRET =
 	/(^|\/)(\.env(\.[^/]*)?|\.mcp\.json|\.npmrc|\.netrc|id_(rsa|ed25519|ecdsa)[^/]*|[^/]*\.(pem|key|p12|pfx)|\.claude\/settings\.local\.json)$/;
 
 export const isSecret = path => SECRET.test(path);
 
-const SKIPPED_DIRECTORIES = ['node_modules', '.git', 'build', 'dist'].map(name => `--exclude-dir=${name}`);
+const SKIPPED_DIRECTORIES = SKIPPED_OUTSIDE_GIT.map(name => `--exclude-dir=${name}`);
 
 const listings = new Map();
 
@@ -38,17 +39,52 @@ const run = async (args, cwd) => {
 	return { code: child.exitCode, out };
 };
 
-const walk = async cwd => {
+// What git shows of a repo; a repo nested untracked inside it lists as its folder, so its files come from its own git
+const gitFiles = async cwd => {
+	const git = await run(['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'], cwd);
+
+	if (git.code !== 0) return null;
+
 	const files = [];
 
-	for await (const path of new Bun.Glob('**/*').scan({ cwd, onlyFiles: true, dot: false })) {
-		if (SKIPPED_OUTSIDE_GIT.test(path)) continue;
-
-		files.push(path);
-		if (files.length >= MAX_FILES) break;
+	for (const path of git.out.split('\0').filter(Boolean)) {
+		if (!path.endsWith('/')) files.push(path);
+		else for (const inner of (await gitFiles(join(cwd, path))) ?? []) files.push(path + inner);
 	}
 
 	return files;
+};
+
+// A folder that isn't a repo, often one holding several: each repo inside is listed by its own git, all at once,
+// the rest walked in name order so a listing that reaches the limit always leaves out the same files
+const walk = async cwd => {
+	const found = [];
+	let walked = 0;
+
+	const visit = async folder => {
+		const entries = (await readdir(join(cwd, folder), { withFileTypes: true }).catch(() => [])).sort((a, b) =>
+			a.name.localeCompare(b.name),
+		);
+
+		for (const entry of entries) {
+			if (walked >= MAX_FILES) return;
+			if (entry.name.startsWith('.') || SKIPPED_OUTSIDE_GIT.includes(entry.name)) continue;
+
+			const path = folder + entry.name;
+
+			if (entry.isFile()) {
+				found.push([path]);
+				walked += 1;
+			} else if (!entry.isDirectory()) continue;
+			else if (existsSync(join(cwd, path, '.git')))
+				found.push(gitFiles(join(cwd, path)).then(inner => (inner ?? []).map(file => `${path}/${file}`)));
+			else await visit(`${path}/`);
+		}
+	};
+
+	await visit('');
+
+	return (await Promise.all(found)).flat();
 };
 
 // The files a project shows: what git tracks plus untracked files it doesn't ignore, so .env files, build output
@@ -58,8 +94,7 @@ export const listFiles = async cwd => {
 
 	if (cached && Date.now() - cached.at < LISTING_TTL_MS) return cached.files;
 
-	const git = await run(['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'], cwd);
-	const files = (git.code === 0 ? git.out.split('\0').filter(Boolean) : await walk(cwd))
+	const files = ((await gitFiles(cwd)) ?? (await walk(cwd)))
 		.filter(path => !SECRET.test(path))
 		.slice(0, MAX_FILES)
 		.sort();

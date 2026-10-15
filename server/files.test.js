@@ -97,3 +97,36 @@ test('secret-looking files stay out of the listing even when git does not ignore
 		expect(files).not.toContain(secret);
 	expect(files).toContain('src/app.js');
 });
+
+test('a folder of repos lists each by its own git, its ignored files left out', async () => {
+	const folder = await mkdtemp(path.join(os.tmpdir(), 'paude-repos-'));
+
+	for (const repo of ['alpha', 'beta']) {
+		await Bun.write(path.join(folder, repo, 'src/main.java'), 'class Main {}\n');
+		await Bun.write(path.join(folder, repo, 'run/world.dat'), 'generated\n');
+		await Bun.write(path.join(folder, repo, '.gitignore'), 'run/\n');
+		Bun.spawnSync(['git', 'init', '-q'], { cwd: path.join(folder, repo), env: gitEnvironment() });
+	}
+	await Bun.write(path.join(folder, 'notes.md'), 'plans\n');
+	await Bun.write(path.join(folder, 'tools/release.sh'), 'echo\n');
+
+	expect(await listFiles(folder)).toEqual([
+		'alpha/.gitignore',
+		'alpha/src/main.java',
+		'beta/.gitignore',
+		'beta/src/main.java',
+		'notes.md',
+		'tools/release.sh',
+	]);
+});
+
+test('a repo untracked inside a repo shows its files, not just its folder', async () => {
+	const outer = await mkdtemp(path.join(os.tmpdir(), 'paude-outer-'));
+
+	await Bun.write(path.join(outer, 'readme.md'), 'outer\n');
+	await Bun.write(path.join(outer, 'inner/lib.js'), 'inner\n');
+	Bun.spawnSync(['git', 'init', '-q'], { cwd: outer, env: gitEnvironment() });
+	Bun.spawnSync(['git', 'init', '-q'], { cwd: path.join(outer, 'inner'), env: gitEnvironment() });
+
+	expect(await listFiles(outer)).toEqual(['inner/lib.js', 'readme.md']);
+});
