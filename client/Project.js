@@ -25,6 +25,7 @@ import { Places, composeBox, placePrompt, takeDraft } from './PromptHome';
 import LinksPanel from './Terminal/LinksPanel';
 import ArtifactsPanel from './Terminal/ArtifactsPanel';
 import { tabs } from './Tabs';
+import { updateTabTitle } from './tabTitle';
 
 // The repo's own create command, as it runs
 const Progress = styled(
@@ -46,6 +47,8 @@ export default class Project extends View {
 		const { project } = this.options;
 
 		this.bar = new Bar({ appendTo: this });
+		updateTabTitle({ page: project });
+		this.addCleanup('tabTitle', () => updateTabTitle({ page: '' }));
 		breadcrumbs({
 			appendTo: this.bar,
 			current: project,

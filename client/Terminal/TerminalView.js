@@ -37,6 +37,7 @@ import { closeMenu, openMenu } from '../menu';
 import { AskingCard, showAsking, showLimit } from '../Asking';
 import { ghostButton } from '../Bar';
 import { LIFETIMES, clockTime } from '../../shared/lifetimes';
+import { updateTabTitle } from '../tabTitle';
 import attach from './attach';
 import { startCatchUp, trackLastSeen } from './catchUp';
 import KeyBar from './KeyBar';
@@ -153,6 +154,7 @@ export default class TerminalView extends View {
 
 		this.stateDot = new Elem({ appendTo: title, addClass: 'state' });
 		this.titleLabel = new Elem({ appendTo: title, addClass: 'name' });
+		this.addCleanup('tabTitle', () => updateTabTitle({ page: '' }));
 		if (identity()?.owner) {
 			// The project's crumb is filled in once the session says which it is
 			const { links, setProject } = breadcrumbs({
@@ -477,7 +479,10 @@ export default class TerminalView extends View {
 			this.projectCrumb.previousSibling.style.display = '';
 			this.countWaitingIn(body.project, this.projectCrumb);
 		}
-		if (!this.titleLabel.elem.textContent) this.titleLabel.elem.textContent = body.title || body.project;
+		// The name may have come with the session's presence first, before the project to put beside it
+		this.title ??= body.title || body.project;
+		if (this.titleLabel.elem.textContent) this.nameTab();
+		else this.showTitle(this.title);
 	}
 
 	// The session's own color, in kitty-bg's tints: the screen, its text and cursor, and the bar's edge
@@ -685,7 +690,7 @@ export default class TerminalView extends View {
 		if (presence.limit) showLimit(this.limitCard, this.options.id, presence.limit, { canAct: canType() });
 		this.lastPresence = presence;
 		this.notes.myName = clients[you]?.name;
-		if (title && this.connectionState !== 'ended') this.titleLabel.elem.textContent = title;
+		if (title && this.connectionState !== 'ended') this.showTitle(title);
 
 		this.presence.empty();
 		this.stateDot.elem.className = `state${busy ? ' busy' : ''}${waiting ? ' waiting' : ''}${offline ? ' offline' : ''}`;
@@ -1583,7 +1588,19 @@ export default class TerminalView extends View {
 		// A session that isn't running has no presence to bring the new name, so the page fetches it
 		const { body: renamed } = await getSession(this.options.id);
 
-		if (renamed?.title) this.titleLabel.elem.textContent = renamed.title;
+		if (renamed?.title) this.showTitle(renamed.title);
+	}
+
+	showTitle(title) {
+		this.title = title;
+		this.titleLabel.elem.textContent = title;
+		this.nameTab();
+	}
+
+	nameTab() {
+		updateTabTitle({
+			page: this.title === this.project ? this.title : [this.title, this.project].filter(Boolean).join(' · '),
+		});
 	}
 
 	async deleteThisSession() {

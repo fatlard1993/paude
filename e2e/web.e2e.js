@@ -341,6 +341,37 @@ test(
 );
 
 test(
+	"the tab names the session and its project, then the project, then nothing past paude's own name",
+	async () => {
+		const { browser, page } = await openSession('dom', servers.turns);
+
+		try {
+			await page.waitForFunction(() => document.querySelector('.breadcrumbs a.trail')?.offsetParent, {
+				timeout: 20_000,
+			});
+
+			const [name, project] = await page.evaluate(() => [
+				document.querySelector('.title .name').textContent,
+				document.querySelector('.breadcrumbs a.trail').textContent,
+			]);
+
+			expect(await page.title()).toStartWith(name === project ? `${name} · ` : `${name} · ${project} · `);
+			expect(await page.title()).toEndWith('paude');
+
+			await page.evaluate(target => (window.location.hash = `#/projects/${encodeURIComponent(target)}`), project);
+			await wait(800);
+			expect(await page.title()).toStartWith(`${project} · `);
+
+			await page.evaluate(() => (window.location.hash = '#/'));
+			await wait(800);
+			expect(await page.title()).not.toContain(project);
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+test(
 	"the breadcrumb counts the sessions waiting for you on their project's crumb, and opens one",
 	async () => {
 		const server = servers.turns;
