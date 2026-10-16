@@ -6,7 +6,7 @@ import { transcriptFile } from './sessions/transcript';
 // What Claude did, turn by turn, from its transcript: each prompt, then the tools it used in order (what each was
 // about, whether it worked, a little of what it said back), how long the turn took, and how full the context was.
 // Transcripts run to tens of megabytes, so only their end is read: the turns worth looking back at.
-const TAIL_BYTES = 6 * 1024 * 1024;
+export const TAIL_BYTES = 6 * 1024 * 1024;
 const MAX_TURNS = 40;
 const OUTPUT_CHARACTERS = 2000;
 const PROMPT_PREVIEW = 200;
@@ -14,6 +14,7 @@ const PROMPT_PREVIEW = 200;
 const SAID_CHARACTERS = 800;
 
 const cache = new Map();
+const DECLINED = /doesn't want to proceed with this tool use/;
 
 export const lastLines = async file => {
 	const size = file.size;
@@ -77,14 +78,19 @@ export const describeTool = (name, input = {}, cwd = '') => {
 	}
 };
 
-const resultText = content =>
-	(typeof content === 'string'
-		? content
-		: (content ?? [])
-				.filter(block => block.type === 'text')
-				.map(block => block.text)
-				.join('\n')
-	).slice(0, OUTPUT_CHARACTERS);
+// What a tool printed, its start and its end when it said more: a test run's summary comes last
+const resultText = content => {
+	const text =
+		typeof content === 'string'
+			? content
+			: (content ?? [])
+					.filter(block => block.type === 'text')
+					.map(block => block.text)
+					.join('\n');
+	const half = OUTPUT_CHARACTERS / 2;
+
+	return text.length <= OUTPUT_CHARACTERS ? text : `${text.slice(0, half)}\n[...]\n${text.slice(-half)}`;
+};
 
 // How much of the context the request after this message carried: what was sent, cached or not
 const contextOf = usage =>
@@ -158,6 +164,8 @@ export const timelineFrom = (lines, cwd) => {
 
 				step.ok = !block.is_error;
 				step.output = resultText(block.content);
+				// Turned down at its permission prompt: a person steering, not a failure
+				if (step.ok === false && DECLINED.test(step.output)) step.declined = true;
 				step.endedAt = line.timestamp;
 				pending.delete(block.tool_use_id);
 			}
@@ -167,21 +175,22 @@ export const timelineFrom = (lines, cwd) => {
 	return turns;
 };
 
-// The latest turns, newest first, and how full the context is now
-export const sessionTimeline = async (id, cwd) => {
+// Every turn in the part of the transcript read, oldest first, read again only when it has grown
+export const sessionTurns = async (id, cwd) => {
 	const file = await transcriptFile(id, cwd);
 
-	if (!file) return { turns: [], context: null };
+	if (!file) return [];
 
 	const key = `${file.name}:${file.size}`;
 
-	if (cache.get(id)?.key !== key) {
-		const turns = timelineFrom(await lastLines(file), cwd);
+	if (cache.get(id)?.key !== key) cache.set(id, { key, turns: timelineFrom(await lastLines(file), cwd) });
 
-		cache.set(id, { key, turns });
-	}
+	return cache.get(id).turns;
+};
 
-	const { turns } = cache.get(id);
+// The latest turns, newest first, and how full the context is now
+export const sessionTimeline = async (id, cwd) => {
+	const turns = await sessionTurns(id, cwd);
 	const latest = turns.findLast(turn => turn.context !== null);
 
 	return {

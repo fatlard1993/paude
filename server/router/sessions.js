@@ -30,7 +30,17 @@ import {
 import { sessionRecord } from '../sessions/record';
 import { listAllSessions, listProjectSessions, toSummary } from '../sessions/stored';
 import { allRunning, openSession, runningSession, startFailureOf, startSession } from '../sessions/running';
-import { WorktreeError, checkoutsOf, createWorktree, joinWorktree, validWorktreeName } from '../worktrees';
+import {
+	WorktreeError,
+	checkoutsOf,
+	createWorktree,
+	joinWorktree,
+	pullRequestStartFiles,
+	startFilesWarning,
+	startingPoint,
+	validWorktreeName,
+	worktreeNameFrom,
+} from '../worktrees';
 import { markProjectLink, projectLinks } from '../links';
 import { projectArtifacts } from '../artifacts';
 import requestMatch from '../utils/requestMatch';
@@ -74,6 +84,8 @@ const worktreeNameFor = text => {
 // Making a worktree can take minutes (a repo's own setup), so the answer streams: { output } lines as the command
 // prints them, then { id } for the new session or { error }. A quiet stretch sends { waiting }, or the connection
 // would be dropped as idle. A reader who leaves doesn't stop the worktree being made; only the session waits.
+// A pull request that brings files Claude Code reads on start (its hooks among them) starts nothing: the answer is
+// { id: null, worktree, files, warning }, and joining that worktree is starting Claude in it anyway.
 const HEARTBEAT_MS = 5000;
 
 // A new session, kept warm or short-lived from the start when asked: mode is 'warm', 'brief' or anything else for
@@ -107,12 +119,15 @@ const creatingSession = (create, text, mode) => {
 				heartbeat = setInterval(() => send({ waiting: true }), HEARTBEAT_MS);
 
 				try {
-					const folder = await create(output => output && send({ output }));
+					const { folder, files = [] } = await create(output => output && send({ output }));
 
-					// Started whether or not anyone is still reading
-					const id = await startWith(folder, text, mode);
+					if (files.length) send({ id: null, worktree: folder, files, warning: startFilesWarning(files) });
+					else {
+						// Started whether or not anyone is still reading
+						const id = await startWith(folder, text, mode);
 
-					if (open) send({ id });
+						if (open) send({ id });
+					}
 				} catch (error) {
 					if (!(error instanceof WorktreeError)) console.error('A worktree could not be made', error);
 					send({ error: error instanceof WorktreeError ? error.message : 'The worktree could not be made.' });
@@ -414,8 +429,8 @@ const sessionsRoutes = async (request, server) => {
 		return Response.json({ checkouts: await checkoutsOf(cwd, runningFolders()) });
 	}
 
-	// `checkout` is { join: name } for a worktree in the project, { create: name } for a new one, or absent for the
-	// project folder itself
+	// `checkout` is { join: name } for a worktree in the project, { create: name } for a new one (with `from`, on
+	// that branch, ref or pull request), or absent for the project folder itself
 	match = requestMatch('POST', '/api/projects/:project/sessions', request);
 	if (match) {
 		const cwd = projectPath(match.project);
@@ -424,12 +439,25 @@ const sessionsRoutes = async (request, server) => {
 		if (!(await isFolder(cwd))) return new Response('Unknown project', { status: 404 });
 
 		if (checkout && 'create' in checkout) {
-			const name = checkout.create?.trim() || worktreeNameFor(text);
+			const start = checkout.from ? startingPoint(checkout.from) : undefined;
+
+			if (start === null)
+				return new Response('Start it from a branch, tag, commit or pull request number.', { status: 400 });
+
+			const name = checkout.create?.trim() || (start ? worktreeNameFrom(start) : worktreeNameFor(text));
 
 			if (!validWorktreeName(name))
 				return new Response('Name it with letters, digits, dots, dashes and underscores (up to 64).', { status: 400 });
 
-			return creatingSession(onOutput => createWorktree(cwd, match.project, name, { onOutput }), text, mode);
+			return creatingSession(
+				async onOutput => {
+					const folder = await createWorktree(cwd, match.project, name, { start, onOutput });
+
+					return { folder, files: start?.pr ? await pullRequestStartFiles(folder, start.pr) : [] };
+				},
+				text,
+				mode,
+			);
 		}
 
 		let folder = cwd;

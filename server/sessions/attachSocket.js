@@ -1,8 +1,11 @@
+import { anchorPlace } from '../../shared/attachText';
 import inputKind from '../../shared/inputKind';
 import { identityKey, markSeen, onActivity, recordChange, watchIfNew } from '../activity';
 import { credentialValid, identityOf } from '../auth';
 import { askClaude } from '../claudeInbox';
-import { addChat, addComment, addReply, deleteComment, getNotes, react, setResolved } from '../notes';
+import { keepShownText } from '../diffs';
+import { blobOf, hasObject, headCommit, inRepository, keepFile } from '../git';
+import { addChat, addComment, addReply, cleanAnchor, deleteComment, getNotes, react, setResolved } from '../notes';
 import { may, mayManage } from '../permissions';
 import { ownerName } from '../serverSettings';
 import { CLOSED } from '../../shared/protocol';
@@ -50,7 +53,7 @@ const shareChange = async (socket, change) => {
 // A message to Claude, as the prompt it gets: who it's from and where, and for a comment the output it's about
 const QUOTE_LINES = 40;
 
-const promptFor = ({ kind, author, text, quote }) => {
+export const promptFor = ({ kind, author, text, quote, anchor }) => {
 	if (kind === 'chat') return `[paude chat · ${author}] ${text}`;
 
 	const quoted = String(quote)
@@ -59,12 +62,48 @@ const promptFor = ({ kind, author, text, quote }) => {
 		.map(line => `> ${line}`)
 		.join('\n');
 
-	return `[paude comment · ${author}] On this output:\n${quoted}\n\n${text}`;
+	return `[paude comment · ${author}] On ${anchor ? anchorPlace(anchor) : 'this output'}:\n${quoted}\n\n${text}`;
+};
+
+// A comment on lines of a file records the text they were read in, so they can be found however the file changes
+// after: the file on disk, or, for a diff of a commit or the branch, the file there (`ref`, as the reader names it).
+// Lines before a change are numbered by the commit HEAD was on. Null for a file the comment can't name: outside the
+// repository, or a secret.
+export const anchored = async (session, anchor) => {
+	const clean = cleanAnchor(anchor);
+	const ref =
+		typeof anchor?.ref === 'string' && /^[\w./^~-]{1,100}$/.test(anchor.ref) && !anchor.ref.startsWith('-')
+			? anchor.ref
+			: undefined;
+
+	if (!clean || !(await inRepository(session.cwd, clean.path))) return null;
+
+	// Picked in a diff, its lines are numbered by the texts the diff showed, kept in git now if they aren't yet: the
+	// file on disk, or a text the diff was of (a turn's, a proposal's). Read in a file, by the file as it was read.
+	const shown = async blob => {
+		if (!blob) return undefined;
+		if (await hasObject(session.cwd, blob)) return blob;
+
+		return (
+			(await keepFile(session.cwd, clean.path, blob)) ??
+			(await keepShownText(session.id, session.cwd, clean.diff, clean.path, blob))
+		);
+	};
+	const read = () => (ref ? blobOf(session.cwd, clean.path, ref) : keepFile(session.cwd, clean.path));
+	const blob = (await shown(clean.blob)) ?? (clean.side === 'new' ? await read() : undefined);
+	const old = clean.old && { ...clean.old, blob: await shown(clean.old.blob) };
+
+	return {
+		...clean,
+		commit: await headCommit(session.cwd),
+		blob,
+		...(old && { old }),
+	};
 };
 
 // Said in the chat or a comment thread, and typed into Claude; its answer comes back to the same place as Claude's.
 // It's typing into Claude, so it takes the role that may.
-const askFromNotes = async (socket, { kind, text, quote, commentId }) => {
+const askFromNotes = async (socket, { kind, text, quote, anchor, commentId }) => {
 	const { session, client, identity } = socket.data;
 
 	if (!session || !['chat', 'comment', 'reply'].includes(kind) || !allowed(socket, 'type')) return;
@@ -73,7 +112,10 @@ const askFromNotes = async (socket, { kind, text, quote, commentId }) => {
 	const authorId = identityKey(identity);
 	const said = {
 		chat: () => addChat(session.id, author, text, { authorId, toClaude: true }),
-		comment: () => addComment(session.id, author, { quote, text }, authorId, { toClaude: true }),
+		comment: async () =>
+			addComment(session.id, author, { quote, text, anchor: await anchored(session, anchor) }, authorId, {
+				toClaude: true,
+			}),
 		reply: () => addReply(session.id, author, { commentId, text }, authorId, { toClaude: true }),
 	};
 	const update = await said[kind]();
@@ -96,7 +138,13 @@ const askFromNotes = async (socket, { kind, text, quote, commentId }) => {
 	};
 
 	askClaude(session.id, {
-		prompt: promptFor({ kind: kind === 'reply' ? 'comment' : kind, author, text, quote: thread?.quote ?? quote }),
+		prompt: promptFor({
+			kind: kind === 'reply' ? 'comment' : kind,
+			author,
+			text,
+			quote: thread?.quote ?? quote,
+			anchor: thread?.anchor,
+		}),
 		answer: answerAs,
 	});
 };
@@ -138,8 +186,15 @@ const handlers = {
 		await markSeen(identity, session.id);
 	},
 	chat: (socket, { text }) => shareChange(socket, (id, author) => addChat(id, author, text)),
-	comment: (socket, { quote, text }) =>
-		shareChange(socket, (id, author) => addComment(id, author, { quote, text }, identityKey(socket.data.identity))),
+	comment: (socket, { quote, text, anchor }) =>
+		shareChange(socket, async (id, author) =>
+			addComment(
+				id,
+				author,
+				{ quote, text, anchor: await anchored(socket.data.session, anchor) },
+				identityKey(socket.data.identity),
+			),
+		),
 	reply: (socket, { commentId, text }) =>
 		shareChange(socket, (id, author) => addReply(id, author, { commentId, text }, identityKey(socket.data.identity))),
 	// A reaction isn't news: it doesn't count as a change, and it doesn't start watching

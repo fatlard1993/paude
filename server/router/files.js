@@ -7,6 +7,8 @@ import { markLink, sessionLinks } from '../links';
 import { definitions, outline, searchSymbols } from '../symbols';
 import { sessionTimeline } from '../timeline';
 import { sessionFeed } from '../feed';
+import { codeTour, diffTour } from '../tours';
+import { verification } from '../verification';
 import { sessionEnvironmentView } from '../environment';
 import {
 	SearchError,
@@ -164,6 +166,45 @@ const artifacts = async (request, match) => {
 };
 
 // Reading a session's project needs at least the comment role; watchers see only the terminal
+// A guided tour of code, for anyone who may read the project: { file: { path, from, to, focus } } for a file, some of
+// its lines, or one function or class in it; { diff: source } for any diff the files panel shows
+const tour = async (request, sessionId) => {
+	if (!may(identityOf(credentialOf(request)), 'files', sessionId))
+		return new Response('Not part of your invite', { status: 403 });
+
+	const cwd = await sessionFolder(sessionId);
+
+	if (!cwd) return new Response('Session not found', { status: 404 });
+
+	const { file, diff } = await request.json().catch(() => ({}));
+	let told;
+
+	if (file && typeof file.path === 'string') {
+		const { status, text } = await readProjectFile(cwd, file.path);
+
+		if (status !== 200) return new Response(REFUSED[status], { status });
+
+		const focus = typeof file.focus?.name === 'string' && Number.isInteger(file.focus.line) ? file.focus : undefined;
+
+		told = await codeTour({
+			path: file.path,
+			text,
+			from: Number(file.from) || 1,
+			to: Number(file.to) || undefined,
+			focus,
+		});
+	} else if (diff && typeof diff === 'object') {
+		try {
+			told = await diffTour(await diffSet(sessionId, cwd, diff));
+		} catch (error) {
+			if (error instanceof DiffError) return new Response(error.message, { status: 404 });
+			throw error;
+		}
+	} else return new Response('A tour of what?', { status: 400 });
+
+	return told ? Response.json(told) : new Response("Haiku couldn't tell it just now", { status: 502 });
+};
+
 const filesRoutes = async request => {
 	const saving = requestMatch('PUT', '/api/sessions/:id/file', request);
 
@@ -197,6 +238,10 @@ const filesRoutes = async request => {
 
 	if (made) return artifacts(request, made);
 
+	const touring = requestMatch('POST', '/api/sessions/:id/tour', request);
+
+	if (touring) return tour(request, touring.id);
+
 	const environment = requestMatch('GET', '/api/sessions/:id/environment', request);
 
 	if (environment) return showEnvironment(request, environment.id);
@@ -206,6 +251,7 @@ const filesRoutes = async request => {
 		requestMatch('GET', '/api/sessions/:id/diffs', request) ||
 		requestMatch('GET', '/api/sessions/:id/turn-changes', request) ||
 		requestMatch('GET', '/api/sessions/:id/timeline', request) ||
+		requestMatch('GET', '/api/sessions/:id/verification', request) ||
 		requestMatch('GET', '/api/sessions/:id/feed', request) ||
 		requestMatch('GET', '/api/sessions/:id/symbols', request) ||
 		requestMatch('GET', '/api/sessions/:id/links', request) ||
@@ -228,6 +274,7 @@ const filesRoutes = async request => {
 	if (pathname.endsWith('/changes')) return Response.json(await listChanges(cwd));
 	if (pathname.endsWith('/turn-changes')) return Response.json(await turnsWithChanges(match.id, cwd));
 	if (pathname.endsWith('/timeline')) return Response.json(await sessionTimeline(match.id, cwd));
+	if (pathname.endsWith('/verification')) return Response.json(await verification(match.id, cwd));
 	if (pathname.endsWith('/feed')) return Response.json(await sessionFeed(match.id, cwd, match.after));
 	if (pathname.endsWith('/links'))
 		return Response.json(await sessionLinks(match.id, cwd, { withHidden: match.all === '1' }));

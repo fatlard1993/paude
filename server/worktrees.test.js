@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, realpath, rm } from 'fs/promises';
 import os from 'os';
-import { join } from 'path';
-import { beforeEach, expect, test } from 'bun:test';
+import { delimiter, join } from 'path';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { initProjects, listProjects, projectOf, setProjectsRoot } from './projects';
 import gitEnvironment from './utils/gitEnvironment';
@@ -11,8 +11,13 @@ import {
 	createWorktree,
 	joinWorktree,
 	normalizeRemote,
+	pullRequestStartFiles,
+	readOnStart,
 	releaseWorktree,
+	startFilesWarning,
+	startingPoint,
 	worktreeName,
+	worktreeNameFrom,
 } from './worktrees';
 
 let root;
@@ -187,4 +192,212 @@ test("a folder of the project's worktrees beside it isn't listed as a project ei
 	expect(await createWorktree(repo, 'app', 'feature-a')).toBe(join(root, 'projects', 'app-worktrees', 'feature-a'));
 	expect(await listProjects()).toEqual(['app']);
 	expect(projectOf(join(root, 'projects', 'app-worktrees', 'feature-a', 'src'))).toBe('app');
+});
+
+test('a start is a pull request or a ref, and names its folder', () => {
+	expect(startingPoint('#12')).toEqual({ pr: 12 });
+	expect(startingPoint(' 12 ')).toEqual({ pr: 12 });
+	expect(startingPoint('https://github.com/org/app/pull/34/files')).toEqual({ pr: 34 });
+	expect(startingPoint('alice/fix-auth')).toEqual({ ref: 'alice/fix-auth' });
+	expect(startingPoint('v1.2.0')).toEqual({ ref: 'v1.2.0' });
+	for (const bad of ['', '--force', 'origin/-x', 'a b', 'main..dev', 'HEAD~2', 'x:y'])
+		expect(startingPoint(bad)).toBeNull();
+
+	expect(worktreeNameFrom({ pr: 12 })).toBe('pr-12');
+	expect(worktreeNameFrom({ ref: 'origin/alice/fix-auth' })).toBe('alice-fix-auth');
+	expect(worktreeNameFrom({ ref: '_odd' })).toBe('odd');
+});
+
+test('the files Claude Code reads on start are its settings, MCP servers and memory, at any depth', () => {
+	for (const file of [
+		'.claude/settings.json',
+		'.claude/settings.local.json',
+		'packages/web/.claude/hooks/start.sh',
+		'.mcp.json',
+		'tools/.mcp.json',
+		'CLAUDE.md',
+		'docs/CLAUDE.local.md',
+		'src/claude.md',
+	])
+		expect(readOnStart(file)).toBe(true);
+	for (const file of ['README.md', 'src/claude.js', 'claude/settings.json', 'docs/CLAUDE.md.bak', 'my.claude/x'])
+		expect(readOnStart(file)).toBe(false);
+});
+
+test('the warning names the files, a few at most', () => {
+	expect(startFilesWarning(['.claude/settings.json', 'CLAUDE.md'])).toBe(
+		'This pull request adds or changes files Claude Code reads and can run on start: .claude/settings.json, CLAUDE.md. Look at them before starting Claude here.',
+	);
+	expect(startFilesWarning(Array.from({ length: 10 }, (_, index) => `${index}/CLAUDE.md`))).toContain(
+		'7/CLAUDE.md, and 2 more.',
+	);
+});
+
+test("a repo tool's worktree whose start can't be checked out goes again, by its remove command when there is one", async () => {
+	// Keyed by the project's folder, with no origin to fetch
+	const useWorkspaceTool = async commands => {
+		process.env.XDG_CONFIG_HOME = join(root, 'config');
+		await mkdir(join(root, 'config', 'paude'), { recursive: true });
+		await Bun.write(join(root, 'config', 'paude', 'worktrees.json'), JSON.stringify({ [repo]: commands }));
+	};
+
+	await useWorkspaceTool({ create: WORKSPACE_CREATE });
+	await expect(createWorktree(repo, 'app', 'nope', { start: startingPoint('nope') })).rejects.toThrow(
+		"There's no nope",
+	);
+	expect(await exists(join(root, 'projects', 'app-ws-nope'))).toBe(false);
+
+	await useWorkspaceTool({
+		create: WORKSPACE_CREATE,
+		remove: 'git worktree remove --force {path} && touch ../removed',
+	});
+	await expect(createWorktree(repo, 'app', 'gone', { start: startingPoint('gone') })).rejects.toThrow(
+		"There's no gone",
+	);
+	expect(await exists(join(root, 'projects', 'app-ws-gone'))).toBe(false);
+	expect(await Bun.file(join(root, 'projects', 'removed')).exists()).toBe(true);
+
+	await useWorkspaceTool({ create: WORKSPACE_CREATE, remove: 'exit 1' });
+	await expect(createWorktree(repo, 'app', 'stuck', { start: startingPoint('stuck') })).rejects.toThrow(
+		`The worktree is still at ${join(root, 'projects', 'app-ws-stuck')}.`,
+	);
+});
+
+describe('a worktree from where someone else is', () => {
+	let fix;
+
+	beforeEach(async () => {
+		const origin = join(root, 'origin.git');
+
+		git(['init', '-q', '--bare', origin], root);
+		git(['remote', 'add', 'origin', origin]);
+		git(['push', '-q', 'origin', 'main']);
+		git(['switch', '-q', '-c', 'alice/fix']);
+		git(['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'the fix']);
+		fix = git(['rev-parse', 'HEAD']);
+		git(['tag', 'v1']);
+		git(['push', '-q', 'origin', 'alice/fix', 'v1']);
+		git(['switch', '-q', 'main']);
+		git(['branch', '-q', '-D', 'alice/fix']);
+	});
+
+	test('starts on a branch only origin has, tracking it', async () => {
+		const path = await createWorktree(repo, 'app', 'alice-fix', { start: startingPoint('alice/fix') });
+
+		expect(git(['rev-parse', 'HEAD'], path)).toBe(fix);
+		expect(git(['rev-parse', '--abbrev-ref', 'HEAD'], path)).toBe('alice/fix');
+		expect(git(['rev-parse', '--abbrev-ref', '@{upstream}'], path)).toBe('origin/alice/fix');
+	});
+
+	test('starts detached on a tag', async () => {
+		const path = await createWorktree(repo, 'app', 'v1', { start: startingPoint('v1') });
+
+		expect(git(['rev-parse', 'HEAD'], path)).toBe(fix);
+		expect(git(['rev-parse', '--abbrev-ref', 'HEAD'], path)).toBe('HEAD');
+	});
+
+	test('says so, and leaves nothing behind, for a start that is nowhere', async () => {
+		await expect(createWorktree(repo, 'app', 'nope', { start: startingPoint('nope') })).rejects.toThrow(
+			"There's no nope here or on origin.",
+		);
+		expect(await exists(join(repo, '.paude', 'worktrees', 'nope'))).toBe(false);
+		expect(git(['branch', '--list'])).not.toContain('nope');
+	});
+
+	test('starts detached on a branch another checkout has, saying so', async () => {
+		let output = '';
+		const path = await createWorktree(repo, 'app', 'on-main', {
+			start: startingPoint('origin/main'),
+			onOutput: text => (output += text),
+		});
+
+		expect(git(['rev-parse', 'HEAD'], path)).toBe(git(['rev-parse', 'main']));
+		expect(git(['rev-parse', '--abbrev-ref', 'HEAD'], path)).toBe('HEAD');
+		expect(output).toContain(`main is checked out in ${repo}, so this worktree is on its commit, detached.`);
+	});
+
+	describe('a pull request', () => {
+		const commit = (message, files, parent = 'main') => {
+			git(['switch', '-q', '--detach', parent]);
+			for (const [file, text] of Object.entries(files)) {
+				Bun.spawnSync(['mkdir', '-p', join(repo, file, '..')]);
+				Bun.spawnSync(['sh', '-c', `printf %s "$1" > "$2"`, 'sh', text, join(repo, file)]);
+			}
+			git(['add', '-A']);
+			git(['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', message]);
+
+			const made = git(['rev-parse', 'HEAD']);
+
+			git(['switch', '-q', 'main']);
+
+			return made;
+		};
+		const pullRequest = (number, files) => {
+			const head = commit(`pr ${number}`, files);
+
+			git(['push', '-q', 'origin', `${head}:refs/pull/${number}/head`]);
+
+			return head;
+		};
+
+		const searchPath = process.env.PATH;
+
+		// Pull requests come from GitHub's own refs on origin, as they do where gh isn't installed
+		beforeEach(() => {
+			process.env.PATH = searchPath
+				.split(delimiter)
+				.filter(folder => !Bun.spawnSync(['test', '-e', join(folder, 'gh')]).success)
+				.join(delimiter);
+		});
+		afterEach(() => (process.env.PATH = searchPath));
+
+		beforeEach(() => {
+			// The repo's own memory and settings, there before any pull request
+			const base = commit('base', { 'CLAUDE.md': 'house rules', '.claude/settings.json': '{}' });
+
+			git(['merge', '-q', '--ff-only', base]);
+			git(['push', '-q', 'origin', 'main']);
+		});
+
+		test('starts on pr-N, naming the files it brings that Claude Code reads on start', async () => {
+			const head = pullRequest(7, {
+				'.claude/settings.json': '{"hooks":{}}',
+				'web/CLAUDE.md': 'more rules',
+				'.mcp.json': '{}',
+				'src/app.js': 'run()',
+			});
+			const path = await createWorktree(repo, 'app', 'pr-7', { start: startingPoint('#7') });
+
+			expect(git(['rev-parse', 'HEAD'], path)).toBe(head);
+			expect(git(['branch', '--show-current'], path)).toBe('pr-7');
+			expect((await pullRequestStartFiles(path, 7)).sort()).toEqual([
+				'.claude/settings.json',
+				'.mcp.json',
+				'web/CLAUDE.md',
+			]);
+		});
+
+		test("names nothing when it doesn't touch them, though the repo has its own", async () => {
+			pullRequest(8, { 'src/app.js': 'run()' });
+
+			expect(await pullRequestStartFiles(await createWorktree(repo, 'app', 'pr-8', { start: { pr: 8 } }), 8)).toEqual(
+				[],
+			);
+		});
+
+		test('reviewed again with its pr-N branch still here, it starts detached on the head', async () => {
+			const head = pullRequest(9, { 'src/app.js': 'run()' });
+			let output = '';
+
+			await createWorktree(repo, 'app', 'pr-9', { start: { pr: 9 } });
+			const again = await createWorktree(repo, 'app', 'pr-9-again', {
+				start: { pr: 9 },
+				onOutput: text => (output += text),
+			});
+
+			expect(git(['rev-parse', 'HEAD'], again)).toBe(head);
+			expect(git(['rev-parse', '--abbrev-ref', 'HEAD'], again)).toBe('HEAD');
+			expect(output).toContain("There's a pr-9 branch here already");
+		});
+	});
 });

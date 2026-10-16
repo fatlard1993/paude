@@ -66,3 +66,49 @@ export const diffLines = lines =>
 		.filter(({ kind }) => kind !== 'note')
 		.map(({ kind, text }) => `${MARK[kind]}${text}`)
 		.join('\n');
+
+const span = numbers => ({ from: Math.min(...numbers), to: Math.max(...numbers) });
+
+// Where picked diff lines are, for a comment: the lines as they are after the change, or, when the pick changes only
+// removed lines, as they were before it. A pick of removed lines and added ones (a change and what replaced it)
+// keeps the removed ones too, as `old`: from the first line it has before the change to the last removed, leading
+// when the pick starts there. Null for a pick of notes alone.
+export const diffAnchor = (path, lines) => {
+	const picked = lines.filter(line => line.kind !== 'note');
+	const after = picked.filter(line => line.new !== undefined).map(line => line.new);
+	const before = picked.filter(line => line.old !== undefined).map(line => line.old);
+	const lastRemoved = picked.findLastIndex(line => line.kind === 'removed');
+
+	if (!picked.length) return null;
+	if (!picked.some(line => line.kind === 'added') && lastRemoved !== -1) return { path, ...span(before), side: 'old' };
+	if (lastRemoved === -1) return { path, ...span(after), side: 'new' };
+
+	const leads = picked[0].old !== undefined;
+	const old = picked
+		.slice(leads ? 0 : picked.findIndex(line => line.kind === 'removed'), lastRemoved + 1)
+		.filter(line => line.old !== undefined)
+		.map(line => line.old);
+
+	return { path, ...span(after), side: 'new', old: { ...span(old), ...(leads && { leads }) } };
+};
+
+const ZERO_CONTEXT_HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm;
+
+// Lines carried through a change, from a zero-context diff of it (git diff -U0): moved by what was added or removed
+// above them, or null when the change touched them, or put something between them
+export const remapLines = (diff, { from, to }) => {
+	let offset = 0;
+
+	for (const [, oldStart, oldCount = '1', , newCount = '1'] of diff.matchAll(ZERO_CONTEXT_HUNK)) {
+		const start = Number(oldStart);
+		const removed = Number(oldCount);
+		// An insertion sits after its old line; a change covers the lines it replaces
+		const [first, last] = removed ? [start, start + removed - 1] : [start + 0.5, start + 0.5];
+
+		if (first > to) break;
+		if (last >= from) return null;
+		offset += Number(newCount) - removed;
+	}
+
+	return { from: from + offset, to: to + offset };
+};

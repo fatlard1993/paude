@@ -163,26 +163,35 @@ export const findProblems = async (text, cwd) => {
 	];
 };
 
-// A test run's counts, from the common runners' summaries: { passed, failed } or null
+// A test run's counts, from the common runners' summaries: { passed, failed, errors } or null. Errors are what broke
+// outside a test (a file that wouldn't load, a fixture that threw, a suite that never ran).
 export const testCounts = text => {
 	const plain = plainOutput(text);
 	const number = pattern => Number(pattern.exec(plain)?.[1] ?? 0);
 	const bun = /^\s*(\d+) pass$/m.test(plain) && {
 		passed: number(/^\s*(\d+) pass$/m),
 		failed: number(/^\s*(\d+) fail$/m),
+		errors: number(/^\s*(\d+) errors?$/m),
 	};
 	const jest = /Tests:\s+.*?(\d+) passed/.test(plain) && {
 		passed: number(/Tests:.*?(\d+) passed/),
 		failed: number(/Tests:.*?(\d+) failed/),
+		errors: number(/Test Suites:.*?(\d+) failed/),
 	};
-	const pytest = /=+ .*?(\d+) passed/.test(plain) && { passed: number(/(\d+) passed/), failed: number(/(\d+) failed/) };
+	const pytest = /=+ .*?(\d+) passed/.test(plain) && {
+		passed: number(/(\d+) passed/),
+		failed: number(/(\d+) failed/),
+		errors: number(/=+ .*?(\d+) errors?\b/),
+	};
 	const cargo = /test result: \w+\. (\d+) passed/.test(plain) && {
 		passed: number(/(\d+) passed/),
 		failed: number(/(\d+) failed/),
+		errors: 0,
 	};
 	const go = /^(ok|FAIL)\s+\S+/m.test(plain) && {
 		passed: (plain.match(/^ok\s+\S+/gm) ?? []).length,
 		failed: (plain.match(/^FAIL\s+\S+/gm) ?? []).length,
+		errors: 0,
 	};
 
 	return bun || jest || pytest || cargo || go || null;

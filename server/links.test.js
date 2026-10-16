@@ -118,5 +118,11 @@ test('lists the pinned first, then by the day each last came up, the most mentio
 		.sort(byPinnedThenRecent)
 		.map(({ url }) => url);
 
-	expect(sorted).toEqual(['pinned-old', 'thrice-today-early', 'once-today-late', 'once-today-early', 'often-yesterday']);
+	expect(sorted).toEqual([
+		'pinned-old',
+		'thrice-today-early',
+		'once-today-late',
+		'once-today-early',
+		'often-yesterday',
+	]);
 });

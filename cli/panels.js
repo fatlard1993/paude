@@ -261,6 +261,7 @@ const headerOf = panel => {
 
 		return outputOnly && !panel.withOutput ? [dim(`${outputOnly} more only a command printed (i shows them)`)] : [];
 	}
+	if (panel.kind === 'activity' && !panel.turn && panel.data?.checked) return [dim(printable(panel.data.checked))];
 	if (panel.kind === 'activity' && panel.turn)
 		return [
 			`${bold(clockTime(panel.turn.at))} ${firstLine(panel.turn.prompt)}`,
@@ -309,19 +310,21 @@ const tourView = (panel, width) => {
 		];
 	if (!panel.data) return [dim('Reading what happened...')];
 
-	const { overview, stops } = panel.data;
+	const { overview, stops, leftOut = [], checked } = panel.data;
 
 	if (panel.stop === 0)
 		return [
 			bold(`Since ${panel.since ? clockTime(panel.since) : 'lately'}: ${plural(stops.length, 'turn')}`),
 			'',
 			...words(overview),
+			...(checked ? ['', ...words(checked).map(dim)] : []),
+			...(leftOut.length ? ['', ...words(`Not in it: ${leftOut.join(' ')}`).map(dim)] : []),
 		];
 
 	const stop = stops[panel.stop - 1];
 
 	return [
-		bold(`${panel.stop} of ${stops.length} · ${clockTime(stop.at)}`),
+		bold([`${panel.stop} of ${stops.length}`, clockTime(stop.at), ...(stop.steered ?? [])].join(' · ')),
 		...words(`❯ ${firstLine(stop.prompt)}`).map(dim),
 		'',
 		...words(stop.text),
@@ -513,9 +516,10 @@ export const panelKey = (panel, key) => {
 			if (!is(key, 'enter')) break;
 			if (tab === 'pr' && gitData(panel)?.url) return { type: 'openUrl', url: gitData(panel).url };
 			if (tab === 'status' && item)
-				return item.where === 'untracked'
-					? { type: 'readFile', path: item.path }
-					: { type: 'readDiffSet', source: { source: 'changes', path: item.path } };
+				// The reader opens the folder's own files; an untracked one outside it shows as all added
+				return item.where === 'untracked' && !(item.here ?? '').startsWith('../')
+					? { type: 'readFile', path: item.here ?? item.path }
+					: { type: 'readDiffSet', source: { source: 'changes', path: item.here ?? item.path } };
 			if (tab === 'log' && item) return { type: 'readDiffSet', source: { source: 'commit', ref: item.hash } };
 			break;
 		}

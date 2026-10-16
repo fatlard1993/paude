@@ -45,7 +45,13 @@ const hex = (hue, saturation, lightness) => {
 	][Math.floor(hue / 60) % 6];
 	const m = lightness - chroma / 2;
 
-	return `#${[r, g, b].map(channel => Math.round((channel + m) * 255).toString(16).padStart(2, '0')).join('')}`;
+	return `#${[r, g, b]
+		.map(channel =>
+			Math.round((channel + m) * 255)
+				.toString(16)
+				.padStart(2, '0'),
+		)
+		.join('')}`;
 };
 
 // kitty-bg's three: a dark tinted background, a faintly tinted foreground, and a bright accent (its cursor); none for

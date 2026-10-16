@@ -12,7 +12,9 @@ const POP = '\x1b]30101\x1b\\';
 export const tintFor = hue => {
 	const tints = kitty && tintsOf(hue);
 
-	return tints ? `${PUSH}\x1b]11;${tints.background}\x07\x1b]10;${tints.foreground}\x07\x1b]12;${tints.accent}\x07` : '';
+	return tints
+		? `${PUSH}\x1b]11;${tints.background}\x07\x1b]10;${tints.foreground}\x07\x1b]12;${tints.accent}\x07`
+		: '';
 };
 
 export const UNTINT = POP;

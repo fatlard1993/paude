@@ -60,6 +60,10 @@ export const runGit = async (sessionId, action, body = {}) =>
 export const getTimeline = async sessionId =>
 	await GET('/api/sessions/:id/timeline', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 
+// Whether what changed was tested since: { state, run, edited, said }, or null
+export const getVerification = async sessionId =>
+	await GET('/api/sessions/:id/verification', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
+
 // Symbols: { q } names matching, { name, from } where one is defined, { file } a file's outline
 export const getSymbols = async (sessionId, searchParameters) =>
 	await GET('/api/sessions/:id/symbols', { urlParameters: { id: sessionId }, searchParameters, invalidateAfter: 0 });
@@ -194,6 +198,10 @@ export const getMeter = async sessionId =>
 // A tour of what happened in a session since a time (ms), or lately without one: { overview, stops }
 export const catchUpOn = async (sessionId, since) =>
 	await POST('/api/sessions/:id/catch-up', { urlParameters: { id: sessionId }, body: { since } });
+
+// A guided tour of code: { file: { path, from, to, focus } } or { diff: source }; { overview, stops, leftOut }
+export const tourOf = async (sessionId, subject) =>
+	await POST('/api/sessions/:id/tour', { urlParameters: { id: sessionId }, body: subject });
 
 // Where a prompt belongs: { matches: [{ session, why, meter }], fresh: { project, why } }; project keeps it to one
 export const findPromptHome = async (prompt, project) => await POST('/api/prompt-home', { body: { prompt, project } });

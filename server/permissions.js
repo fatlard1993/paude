@@ -27,7 +27,6 @@ const OWN_SESSION_ROUTES = [
 	'/asking',
 	'/answer',
 	'/continue',
-	'/catch-up',
 	'/artifacts',
 	'/artifact',
 	'/shell',
@@ -39,6 +38,7 @@ const OWN_SESSION_ROUTES = [
 	'/diffs',
 	'/turn-changes',
 	'/timeline',
+	'/verification',
 	'/feed',
 	'/symbols',
 	'/links',
@@ -61,6 +61,8 @@ export const guestMayRequest = (identity, method, pathname) => {
 		(method === 'GET' && pathname === '/api/watching') ||
 		(method === 'POST' && pathname === '/api/handoff') ||
 		(method === 'POST' && pathname === `${own}/replace`) ||
+		// Tours: catching up on the session, and walking through its code
+		(method === 'POST' && (pathname === `${own}/catch-up` || pathname === `${own}/tour`)) ||
 		(method === 'POST' && pathname === `${own}/links/mark`) ||
 		(method === 'GET' && pathname === `${own}/environment`) ||
 		(method === 'PUT' && (pathname === `${own}/watch` || pathname === `${own}/file`)) ||

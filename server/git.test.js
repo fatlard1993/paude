@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
@@ -11,8 +11,18 @@ import {
 	gitCompare,
 	gitLog,
 	gitStashes,
+	gitSince,
+	blobOf,
 	gitStatus,
+	inRepository,
+	keepFile,
+	keepText,
+	linesBetween,
+	linesInDiff,
+	linesNow,
+	movedSince,
 	parseStatus,
+	pathsFromFolder,
 	repoRoot,
 	splitPatch,
 } from './git';
@@ -263,6 +273,295 @@ describe('reviewing a branch, and conflicts', () => {
 		expect(compared.base).toBe('main');
 		expect(compared.commits.map(({ subject }) => subject)).toEqual(['add b']);
 		expect(compared.files).toMatchObject([{ path: 'b.txt', status: 'added' }]);
+
+		// With the work not committed yet: an edit and a new file join what the commits change
+		await write('a.txt', 'changed\n');
+		await write('c.txt', 'brand new\n');
+
+		const working = await gitCompare(repo, { working: true });
+
+		expect(working.uncommitted).toBe(2);
+		expect(working.files.map(({ path: file, status }) => [file, status])).toEqual([
+			['a.txt', 'modified'],
+			['b.txt', 'added'],
+			['c.txt', 'added'],
+		]);
+		expect((await gitCompare(repo, {})).files.map(({ path: file }) => file)).toEqual(['b.txt']);
+	});
+
+	test('with the work not committed: a file deleted in a commit and back on disk is shown once; a new file with a name past ASCII, and one too big to show, are named', async () => {
+		await write('gone.txt', 'old\n');
+		await firstCommit();
+		git('switch', '-q', '-c', 'idea');
+		git('rm', '-q', 'gone.txt');
+		git('commit', '-q', '-m', 'drop gone');
+		await write('gone.txt', 'back\n');
+		await write('café.txt', 'new\n');
+		await write('big.txt', 'x'.repeat(600 * 1024));
+
+		const working = await gitCompare(repo, { working: true });
+
+		expect(working.files.map(({ path: file, status, note }) => [file, status, note])).toEqual([
+			['café.txt', 'added', undefined],
+			['gone.txt', 'modified', undefined],
+			['big.txt', 'added', 'Too big to show here'],
+		]);
+		expect(working.files[1].diff).toContain('+back');
+		expect(working.uncommitted).toBe(3);
+		expect(working.leftOut).toBe(0);
+		// The checkout's own index is as it was: the new files are still untracked
+		expect((await gitStatus(repo)).untracked.map(({ path: file }) => file).sort()).toEqual([
+			'big.txt',
+			'café.txt',
+			'gone.txt',
+		]);
+	});
+
+	test('with the work not committed: new files past what is shown are counted as left out', async () => {
+		await firstCommit();
+		git('switch', '-q', '-c', 'idea');
+		await Promise.all(
+			Array.from({ length: 203 }, (_, index) => write(`n${String(index).padStart(3, '0')}.txt`, 'n\n')),
+		);
+
+		const working = await gitCompare(repo, { working: true });
+
+		expect(working.files).toHaveLength(200);
+		expect(working.uncommitted).toBe(200);
+		expect(working.leftOut).toBe(3);
+	});
+
+	test('since a rewritten review, a file named like a pattern is only itself', async () => {
+		await firstCommit();
+		git('switch', '-q', '-c', 'idea');
+		await write('*.txt', 'one\n');
+		git('add', '-A');
+		git('commit', '-q', '-m', 'add star');
+
+		const reviewed = git('rev-parse', 'HEAD');
+
+		git('switch', '-q', 'main');
+		await write('a.txt', 'main changed it\n');
+		git('commit', '-qam', 'main moves');
+		git('switch', '-q', 'idea');
+		git('rebase', '-q', 'main');
+		await write('*.txt', 'two\n');
+		git('commit', '-qam', 'change star');
+
+		const since = await gitSince(repo, reviewed);
+
+		expect(since.rewritten).toBe(true);
+		expect(since.files.map(({ path: file }) => file)).toEqual(['*.txt']);
+	});
+
+	test('a comment can only keep a plain file of the repository, not a secret, a pipe, a link out or a huge one', async () => {
+		await firstCommit();
+		await mkdir(path.join(repo, 'sub'));
+		await write('.env', 'TOKEN=1\n');
+		await writeFile(path.join(dir, 'outside.txt'), 'private\n');
+		await write('huge.txt', 'x'.repeat(5 * 1024 * 1024));
+		Bun.spawnSync(['mkfifo', path.join(repo, 'pipe')]);
+		Bun.spawnSync(['ln', '-s', path.join(dir, 'outside.txt'), path.join(repo, 'link.txt')]);
+		Bun.spawnSync(['ln', '-s', dir, path.join(repo, 'out')]);
+
+		const sub = path.join(repo, 'sub');
+
+		expect(await inRepository(sub, '../a.txt')).toBe(true);
+		expect(await keepFile(sub, '../a.txt')).toBe(git('hash-object', 'a.txt'));
+		for (const file of [path.join(dir, 'outside.txt'), '../outside.txt', '../../outside.txt', '.env', 'sub/../.env']) {
+			expect(await inRepository(repo, file)).toBe(false);
+			expect(await keepFile(repo, file)).toBeUndefined();
+		}
+		for (const file of ['pipe', 'link.txt', 'out/outside.txt', 'huge.txt', 'missing.txt'])
+			expect(await keepFile(repo, file)).toBeUndefined();
+
+		const kept = hash => Bun.spawnSync(['git', 'cat-file', '-e', hash], { cwd: repo, env }).exitCode === 0;
+
+		// Its id alone writes nothing; keeping it writes it, and only when it is still the text wanted
+		await write('a.txt', 'on disk now\n');
+
+		const id = await blobOf(repo, 'a.txt');
+
+		expect(kept(id)).toBe(false);
+		expect(await keepFile(repo, 'a.txt', 'f'.repeat(40))).toBeUndefined();
+		expect(kept(id)).toBe(false);
+		expect(await keepFile(repo, 'a.txt', id)).toBe(id);
+		expect(kept(id)).toBe(true);
+
+		const text = 'a turn wrote this\n';
+		const textId = Bun.spawnSync(['git', 'hash-object', '--stdin'], { cwd: repo, env, stdin: Buffer.from(text) })
+			.stdout.toString()
+			.trim();
+
+		expect(await keepText(repo, text, 'f'.repeat(40))).toBeUndefined();
+		expect(kept(textId)).toBe(false);
+		expect(await keepText(repo, text, textId)).toBe(textId);
+		expect(kept(textId)).toBe(true);
+		expect(await keepText(repo, 'x'.repeat(5 * 1024 * 1024), 'f'.repeat(40))).toBeUndefined();
+	});
+
+	test("a comment's lines are lost, not kept as they were, when its file is gone or the commit to carry them to isn't here", async () => {
+		await write('a.txt', 'one\ntwo\n');
+		git('add', '-A');
+		git('commit', '-q', '-m', 'first');
+
+		const anchor = {
+			path: 'a.txt',
+			from: 2,
+			to: 2,
+			commit: git('rev-parse', 'HEAD'),
+			blob: await keepFile(repo, 'a.txt'),
+		};
+
+		expect(await linesNow(repo, anchor)).toEqual({ from: 2, to: 2 });
+		expect(await linesNow(repo, anchor, 'f'.repeat(40))).toBeNull();
+		expect(await linesNow(repo, { ...anchor, blob: undefined }, 'f'.repeat(40))).toBeNull();
+		await rm(path.join(repo, 'a.txt'));
+		expect(await linesNow(repo, anchor)).toBeNull();
+		expect(await linesNow(repo, { ...anchor, blob: undefined })).toBeNull();
+	});
+
+	test('since a reviewed commit: the commits after it, or how its files differ once the branch was rewritten', async () => {
+		await firstCommit();
+		git('switch', '-q', '-c', 'idea');
+		await write('b.txt', 'one\n');
+		git('add', '-A');
+		git('commit', '-q', '-m', 'add b');
+
+		const reviewed = git('rev-parse', 'HEAD');
+
+		expect(await movedSince(repo, reviewed)).toEqual({ count: 0 });
+
+		await write('b.txt', 'two\n');
+		git('commit', '-qam', 'change b');
+		expect(await movedSince(repo, reviewed)).toEqual({ count: 1 });
+
+		const since = await gitSince(repo, reviewed);
+
+		expect(since.rewritten).toBe(false);
+		expect(since.commits.map(({ subject }) => subject)).toEqual(['change b']);
+		expect(since.files).toMatchObject([{ path: 'b.txt', status: 'modified' }]);
+
+		// main moves on elsewhere, and the branch is rebased onto it: only the branch's own file shows
+		git('switch', '-q', 'main');
+		await write('c.txt', 'main\n');
+		git('add', '-A');
+		git('commit', '-q', '-m', 'main moves');
+		git('switch', '-q', 'idea');
+		git('rebase', '-q', 'main');
+		expect(await movedSince(repo, reviewed)).toEqual({ rewritten: true });
+
+		const rewritten = await gitSince(repo, reviewed);
+
+		expect(rewritten.rewritten).toBe(true);
+		expect(rewritten.files.map(({ path: file }) => file)).toEqual(['b.txt']);
+
+		expect(await movedSince(repo, 'f'.repeat(40))).toEqual({ missing: true });
+		await expect(gitSince(repo, 'nope')).rejects.toThrow('That is not a commit');
+	});
+
+	test("a comment's lines are carried to the files as they are, or to a commit, and lost when changed", async () => {
+		await write('a.txt', 'one\ntwo\nthree\n');
+		git('add', '-A');
+		git('commit', '-q', '-m', 'first');
+
+		const written = git('rev-parse', 'HEAD');
+		const anchor = { path: 'a.txt', from: 2, to: 3, commit: written };
+
+		await write('a.txt', 'zero\none\ntwo\nthree\n');
+		expect(await linesNow(repo, anchor)).toEqual({ from: 3, to: 4 });
+		git('commit', '-qam', 'zero');
+		expect(await linesNow(repo, anchor, git('rev-parse', 'HEAD'))).toEqual({ from: 3, to: 4 });
+
+		await write('a.txt', 'zero\none\nTWO\nthree\n');
+		expect(await linesNow(repo, anchor)).toBeNull();
+		expect(await linesNow(repo, { ...anchor, commit: undefined })).toEqual({ from: 2, to: 3 });
+		expect(await linesNow(repo, { ...anchor, commit: 'f'.repeat(40) })).toEqual({ from: 2, to: 3 });
+	});
+
+	test('a comment on a file with uncommitted changes stays on the lines it was read in, through edits and a commit', async () => {
+		await write('a.txt', 'one\ntwo\n');
+		git('add', '-A');
+		git('commit', '-q', '-m', 'first');
+		// Lines added on disk, not committed: the comment is on line 3 of the file as read, not of HEAD
+		await write('a.txt', 'one\nnew\nthree\ntwo\n');
+
+		const anchor = {
+			path: 'a.txt',
+			from: 3,
+			to: 3,
+			commit: git('rev-parse', 'HEAD'),
+			blob: await keepFile(repo, 'a.txt'),
+		};
+
+		expect(await linesNow(repo, anchor)).toEqual({ from: 3, to: 3 });
+
+		await write('a.txt', 'zero\none\nnew\nthree\ntwo\n');
+		expect(await linesNow(repo, anchor)).toEqual({ from: 4, to: 4 });
+		git('commit', '-qam', 'more');
+		expect(await linesNow(repo, anchor, git('rev-parse', 'HEAD'))).toEqual({ from: 4, to: 4 });
+
+		await write('a.txt', 'zero\none\nnew\nTHREE\ntwo\n');
+		expect(await linesNow(repo, anchor)).toBeNull();
+		expect(await blobOf(repo, 'missing.txt')).toBeUndefined();
+	});
+
+	test('a comment picked in a diff is found in other diffs of the file, on the side of the change it is on', async () => {
+		await write('a.txt', 'one\ntwo\nthree\n');
+		git('add', '-A');
+		git('commit', '-q', '-m', 'first');
+		await write('a.txt', 'one\nTWO\nthree\n');
+
+		// Picked from the removed "two" down into the "TWO" that replaced it
+		const before = await blobOf(repo, 'a.txt', 'HEAD');
+		const after = await keepFile(repo, 'a.txt');
+		const anchor = { path: 'a.txt', from: 2, to: 2, side: 'new', blob: after, old: { from: 2, to: 2, blob: before } };
+
+		expect(await linesInDiff(repo, anchor, { old: before, new: after })).toEqual({
+			new: { from: 2, to: 2 },
+			old: { from: 2, to: 2 },
+		});
+
+		// A line goes in at the top: the diff of the file as it is now has the comment a line down after the change
+		await write('a.txt', 'zero\none\nTWO\nthree\n');
+		expect(await linesInDiff(repo, anchor, { old: before, new: await keepFile(repo, 'a.txt') })).toEqual({
+			new: { from: 3, to: 3 },
+			old: { from: 2, to: 2 },
+		});
+
+		// Committed: the next diff starts from it, where the removed line isn't
+		git('commit', '-qam', 'second');
+		expect(await linesInDiff(repo, anchor, { old: await blobOf(repo, 'a.txt', 'HEAD') })).toEqual({
+			new: null,
+			old: null,
+		});
+
+		// On removed lines alone, it's on that side only; a thread from GitHub, numbered by its commit
+		expect(await linesInDiff(repo, { ...anchor, side: 'old', blob: before, old: undefined }, { old: before })).toEqual({
+			old: { from: 2, to: 2 },
+			new: null,
+		});
+		expect(
+			await linesInDiff(
+				repo,
+				{ path: 'a.txt', from: 3, to: 3, side: 'new', commit: git('rev-parse', 'HEAD') },
+				{ new: await blobOf(repo, 'a.txt', 'HEAD') },
+			),
+		).toEqual({ new: { from: 3, to: 3 }, old: null });
+		expect(await linesBetween(repo, { from: 1, to: 1 }, before, 'f'.repeat(40))).toBeNull();
+	});
+
+	test("paths git names from the repository's top are named from a folder in it", async () => {
+		await write('a.txt', 'one\n');
+		git('add', '-A');
+		git('commit', '-q', '-m', 'first');
+		await mkdir(path.join(repo, 'app', 'src'), { recursive: true });
+
+		const local = await pathsFromFolder(path.join(repo, 'app'));
+
+		expect(local('app/src/x.js')).toBe('src/x.js');
+		expect(local('lib/y.js')).toBe('../lib/y.js');
+		expect((await pathsFromFolder(repo))('lib/y.js')).toBe('lib/y.js');
 	});
 
 	const conflicted = async () => {

@@ -22,12 +22,15 @@ const outcome = run => {
 
 	const time = seconds(run.startedAt, run.endedAt);
 	const tests = run.tests
-		? `${run.tests.passed} passed${run.tests.failed ? `, ${run.tests.failed} failed` : ''} · `
+		? `${run.tests.passed} passed${run.tests.failed ? `, ${run.tests.failed} failed` : ''}${run.tests.errors ? `, ${run.tests.errors} errors` : ''} · `
 		: '';
 
 	if (run.stopped) return { text: `stopped · ${time}`, state: 'stopped' };
 
-	return run.code === 0
+	// A runner can exit 0 with failures or errors (piped through grep, say); its own counts win
+	const counted = !run.tests || (!run.tests.failed && !run.tests.errors && run.tests.passed > 0);
+
+	return run.code === 0 && counted
 		? { text: `${tests}ok · ${time}`, state: 'ok' }
 		: { text: `${tests}failed · ${time}`, state: 'failed' };
 };

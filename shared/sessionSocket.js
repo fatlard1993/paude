@@ -76,10 +76,7 @@ const sessionSocket = ({
 	const connect = () => {
 		if (finished) return;
 
-		const own = new WebSocket(
-			`${url.replace(/^http/, 'ws')}/api/sessions/${sessionId}/attach`,
-			headers && { headers },
-		);
+		const own = new WebSocket(`${url.replace(/^http/, 'ws')}/api/sessions/${sessionId}/attach`, headers && { headers });
 
 		socket = own;
 		own.binaryType = 'arraybuffer';

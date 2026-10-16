@@ -68,12 +68,26 @@ test('finds problems in what compilers, linters and test runners print, in proje
 });
 
 test("reads a test run's counts from the usual runners", () => {
-	expect(testCounts('\n 41 pass\n 2 fail\n')).toEqual({ passed: 41, failed: 2 });
-	expect(testCounts('Tests:       1 failed, 30 passed, 31 total')).toEqual({ passed: 30, failed: 1 });
-	expect(testCounts('===== 3 failed, 10 passed in 0.5s =====')).toEqual({ passed: 10, failed: 3 });
-	expect(testCounts('test result: ok. 5 passed; 0 failed; 0 ignored')).toEqual({ passed: 5, failed: 0 });
-	expect(testCounts('ok  \texample.com/a\t0.1s\nFAIL\texample.com/b\t0.2s')).toEqual({ passed: 1, failed: 1 });
+	expect(testCounts('\n 41 pass\n 2 fail\n')).toEqual({ passed: 41, failed: 2, errors: 0 });
+	expect(testCounts('Tests:       1 failed, 30 passed, 31 total')).toEqual({ passed: 30, failed: 1, errors: 0 });
+	expect(testCounts('===== 3 failed, 10 passed in 0.5s =====')).toEqual({ passed: 10, failed: 3, errors: 0 });
+	expect(testCounts('test result: ok. 5 passed; 0 failed; 0 ignored')).toEqual({ passed: 5, failed: 0, errors: 0 });
+	expect(testCounts('ok  \texample.com/a\t0.1s\nFAIL\texample.com/b\t0.2s')).toEqual({
+		passed: 1,
+		failed: 1,
+		errors: 0,
+	});
 	expect(testCounts('built in 2s')).toBeNull();
+});
+
+test('counts what broke outside a test as errors', () => {
+	expect(testCounts('\n 12 pass\n 0 fail\n 1 error\n')).toEqual({ passed: 12, failed: 0, errors: 1 });
+	expect(testCounts('===== 10 passed, 2 errors in 0.5s =====')).toEqual({ passed: 10, failed: 0, errors: 2 });
+	expect(testCounts('Test Suites: 1 failed, 4 passed, 5 total\nTests:       30 passed, 30 total')).toEqual({
+		passed: 30,
+		failed: 0,
+		errors: 1,
+	});
 });
 
 test('runs a task, keeps what it prints, and stops one with what it started', async () => {

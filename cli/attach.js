@@ -16,7 +16,7 @@ import openLocally from './openLocally';
 import { createPanel } from './panels';
 import { lastSeen, loadPrefs, markSeen, savePrefs } from './prefs';
 import readSelection from './selection';
-import sessionData from './sessionData';
+import sessionData, { commentMarks } from './sessionData';
 import sessionFiles from './sessionFiles';
 import openSideShell, { LEAVE_SHELL } from './sideShell';
 import { UNTINT, tintFor } from './tint';
@@ -176,6 +176,44 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 
 			if (!state.files) return;
 			state.files.open = error ? { path: source.path ?? 'changes', error } : openDiffSet(set, source);
+			await loadCommentMarks(state.files.open);
+			redraw();
+		};
+
+		const openCommentsOn = (path, inDiff) =>
+			state.notes.comments.filter(
+				comment => !comment.resolved && comment.anchor?.path === path && (inDiff || comment.anchor.side === 'new'),
+			);
+
+		const data = sessionData(server, id);
+		const marks = commentMarks(data, { openOn: openCommentsOn, diffSet: files.diffSet });
+		const loadCommentMarks = marks.load;
+
+		// A comment's lines in the reader: in the diff it was written in, where they are in it now, else in the file
+		const openComment = async ({ comment }) => {
+			state.thread = null;
+			await openFiles();
+			if (!state.files) return redraw();
+
+			const found = await marks.locate(comment);
+
+			if (!state.files) return redraw();
+			if (found.hint) state.hint = found.hint;
+			if (found.diff) {
+				state.files.open = found.diff;
+
+				return redraw();
+			}
+			if (!found.from) return redraw();
+
+			await readFile(comment.anchor.path, found.from);
+
+			const opened = state.files?.open;
+
+			if (opened?.lines && opened.path === comment.anchor.path) {
+				opened.anchor = Math.min(found.from, opened.lines.length) - 1;
+				opened.cursor = Math.min(found.to, opened.lines.length) - 1;
+			}
 			redraw();
 		};
 
@@ -194,6 +232,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 
 			if (!state.files) return;
 			state.files.open = opened;
+			await loadCommentMarks(opened);
 			redraw();
 		};
 
@@ -212,8 +251,6 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			redraw();
 		};
 
-		const data = sessionData(server, id);
-
 		// How long the session lasts, whether you watch it, and its cache: the box's own line, read as it opens
 		const loadStatus = async () => {
 			const [detail, metered] = await Promise.all([data.detail(), role === 'owner' ? data.meter() : { meter: null }]);
@@ -226,7 +263,11 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 		const LOADERS = {
 			links: () => data.links(),
 			artifacts: () => data.artifacts(),
-			activity: () => data.timeline(),
+			activity: async () => {
+				const [timeline, checked] = await Promise.all([data.timeline(), data.verification()]);
+
+				return timeline.error ? timeline : { ...timeline, checked: checked?.said ?? null };
+			},
 			services: () => data.shares(),
 			lifetime: () => data.detail(),
 			git: async () => ({}),
@@ -273,6 +314,8 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 		const readFromPanel = async read => {
 			const opened = await read();
 
+			await loadCommentMarks(opened);
+
 			if (!state.panel) return;
 			state.files = Object.assign(createBrowser([], await loadPrefs()), { fromPanel: true, open: opened });
 			redraw();
@@ -309,6 +352,25 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 				state.panel = null;
 				state.hint = "Couldn't catch you up just now.";
 			} else panel.data = tour;
+			redraw();
+		};
+
+		// A tour of what the reader has open, above it; its first stop waits for → as catching up does. It's the open
+		// file's or diff's own, so it goes when another opens or that one closes.
+		const walk = async ({ subject, heading }) => {
+			const opened = state.files?.open;
+
+			if (!opened) return;
+			opened.tour = { subject, heading };
+			redraw();
+
+			const told = await data.tour(subject);
+
+			if (opened.tour?.subject !== subject) return;
+			if (told.error) {
+				opened.tour = null;
+				state.hint = told.error;
+			} else Object.assign(opened.tour, told, { index: 0 });
 			redraw();
 		};
 
@@ -444,6 +506,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			readArtifact: ({ path: made }) => readFromPanel(() => data.readArtifact(made)),
 			saveArtifact,
 			takeTour,
+			walk,
 			openUrl: ({ url: link }) => {
 				const absolute = new URL(link, server.url).href;
 
@@ -489,6 +552,16 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			attach: ({ text }) => {
 				send({ type: 'input', data: `\x1b[200~${text}\x1b[201~` });
 				closeOverlay();
+			},
+			// Written in the box's own line, as a comment on terminal output is
+			startComment: ({ quote, anchor }) => {
+				state.draft = { kind: 'comment', text: '', quote, anchor };
+				redraw();
+			},
+			openComment,
+			hint: ({ text }) => {
+				state.hint = text;
+				redraw();
 			},
 		};
 
@@ -559,6 +632,8 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 
 				if (arrived && !overlay && arrived.author !== displayName()) notify(`paude · ${arrived.author}`, arrived.text);
 
+				if (message.type !== 'chat' && message.type !== 'chatUpdate' && state.files?.open)
+					marks.soon(state.files.open, redraw);
 				redraw();
 			} else if (message.type === 'notice') notify('paude', message.text);
 		};

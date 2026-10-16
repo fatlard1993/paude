@@ -27,7 +27,14 @@ const freePort = () => {
 
 // A throwaway paude: its own data, settings and a git project ("demo") with a file the fake names. `claude` is the
 // real one when given; the fake otherwise, `fake` choosing how it behaves.
-export const startServer = async ({ claude = FAKE_CLAUDE, fake = 'turns' } = {}) => {
+// `noPullRequest`: a gh that finds no pull request for any branch, so the Review tab offers to open one
+// `noGh`: no gh at all, so a pull request comes from GitHub's own ref for it on origin
+export const startServer = async ({
+	claude = FAKE_CLAUDE,
+	fake = 'turns',
+	noPullRequest = false,
+	noGh = false,
+} = {}) => {
 	const dir = await mkdtemp(path.join(os.tmpdir(), 'paude-e2e-'));
 	const project = path.join(dir, 'projects', 'demo');
 	const port = freePort();
@@ -45,6 +52,18 @@ export const startServer = async ({ claude = FAKE_CLAUDE, fake = 'turns' } = {})
 	Bun.spawnSync(['git', 'add', '-A'], { cwd: project });
 
 	const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !CLAUDE_ENVIRONMENT.test(key)));
+
+	if (noGh)
+		env.PATH = env.PATH.split(':')
+			.filter(folder => !Bun.spawnSync(['test', '-e', path.join(folder, 'gh')]).success)
+			.join(':');
+	if (noPullRequest) {
+		await mkdir(path.join(dir, 'bin'));
+		await writeFile(path.join(dir, 'bin', 'gh'), '#!/bin/sh\necho "no pull requests found for branch" >&2\nexit 1\n', {
+			mode: 0o755,
+		});
+		env.PATH = `${path.join(dir, 'bin')}:${env.PATH}`;
+	}
 	const server = Bun.spawn(
 		[
 			'bun',

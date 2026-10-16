@@ -14,7 +14,7 @@ import {
 	getProjects,
 	markProjectLink,
 } from './api';
-import { confirmDeleteSession } from './confirmDialog';
+import confirmDialog, { confirmDeleteSession } from './confirmDialog';
 import { element } from './dom';
 import { Bar } from './Bar';
 import { breadcrumbs } from './Breadcrumbs';
@@ -84,12 +84,16 @@ export default class Project extends View {
 		this.startLabel = this.startButton.querySelector('.label');
 		this.checkoutChip = element('button', 'chip');
 		this.newName = Object.assign(element('input', 'chip-name'), { placeholder: 'worktree name (from the prompt)' });
+		this.fromInput = Object.assign(element('input', 'chip-name'), {
+			placeholder: 'branch, tag, commit or PR (#123)',
+		});
 		this.lifetimeChip = element('button', 'chip');
 		this.checkoutChip.style.display = 'none';
 		this.newName.style.display = 'none';
+		this.fromInput.style.display = 'none';
 		this.checkoutChip.addEventListener('click', () => this.openCheckouts());
 		this.lifetimeChip.addEventListener('click', () => this.openLifetimes());
-		compose.options.append(this.checkoutChip, this.newName, this.lifetimeChip);
+		compose.options.append(this.checkoutChip, this.newName, this.fromInput, this.lifetimeChip);
 		this.progress = new Progress({ appendTo: scroll, tag: 'pre', style: { display: 'none' } }).elem;
 		this.places = new Places({ appendTo: scroll });
 
@@ -216,16 +220,21 @@ export default class Project extends View {
 		this.pickCheckout(main.active ? 'new' : 'main');
 	}
 
-	// 'main', 'new', or 'join:<path>'
+	// 'main', 'new', 'from' (a new one on someone's branch or pull request), or 'join:<path>'
 	pickCheckout(value) {
 		this.checkout = value;
 		this.newName.style.display = value === 'new' ? '' : 'none';
+		this.fromInput.style.display = value === 'from' ? '' : 'none';
 		if (!this.checkouts) return;
 
 		const joined = value?.startsWith('join:') && this.checkouts.find(({ path }) => `join:${path}` === value);
 		const main = this.checkouts.find(checkout => checkout.main);
 		const label =
-			(value === 'new' && 'a new worktree') || (joined && joined.name) || main.branch || 'the project folder';
+			(value === 'new' && 'a new worktree') ||
+			(value === 'from' && 'a new worktree from') ||
+			(joined && joined.name) ||
+			main.branch ||
+			'the project folder';
 
 		this.checkoutChip.replaceChildren(element('i', 'fa-solid fa-code-branch'), ` ${label}`);
 		this.checkoutChip.title = `Where it works: ${label}. ${runningSummary(this.checkouts)} Click to change`;
@@ -239,6 +248,7 @@ export default class Project extends View {
 			onPress: () => {
 				this.pickCheckout(value);
 				if (value === 'new') this.newName.focus();
+				if (value === 'from') this.fromInput.focus();
 			},
 		});
 		const main = this.checkouts.find(checkout => checkout.main);
@@ -260,11 +270,17 @@ export default class Project extends View {
 					),
 				),
 			option('new', 'A new worktree', 'its own folder and branch, named from the prompt unless you name it'),
+			option(
+				'from',
+				'A new worktree from a branch or PR',
+				"someone's branch, a tag, a commit or a pull request, fresh from origin: to review it, or try it",
+			),
 		]);
 	}
 
 	choice() {
 		if (this.checkout === 'new') return { create: this.newName.value.trim() };
+		if (this.checkout === 'from') return { create: '', from: this.fromInput.value.trim() };
 		if (this.checkout?.startsWith('join:')) return { join: this.checkout.slice('join:'.length) };
 
 		return undefined;
@@ -281,6 +297,11 @@ export default class Project extends View {
 		const creating = Boolean(checkout && 'create' in checkout);
 
 		if (this.starting) return;
+		if (checkout?.from === '') {
+			this.fromInput.focus();
+
+			return new Notify({ type: 'warning', content: 'Name the branch, tag, commit or pull request to start from.' });
+		}
 
 		this.starting = true;
 		this.startButton.disabled = true;
@@ -300,7 +321,36 @@ export default class Project extends View {
 			return new Notify({ type: 'error', content: result.error, timeout: 10_000 });
 		}
 
+		if (result.files) return this.startAnyway(result, text, mode);
+
 		window.location.hash = `#/sessions/${result.id}`;
+	}
+
+	// A pull request that brings files Claude Code reads on start (hooks it would run among them) is checked out, but
+	// Claude starts in it only when asked. Otherwise the worktree stays, picked, to look over and start from later.
+	async startAnyway({ worktree, warning }, text, mode) {
+		const loading = this.loadCheckouts();
+		const confirmed = await confirmDialog({
+			header: 'Start Claude in this pull request?',
+			body: warning,
+			cancelLabel: "Don't start",
+			confirmLabel: 'Start anyway',
+		});
+
+		await loading;
+		if (this.checkouts?.some(({ path }) => path === worktree)) this.pickCheckout(`join:${worktree}`);
+
+		if (!confirmed)
+			return new Notify({
+				type: 'info',
+				content: `Claude wasn't started. The worktree is at ${worktree}; once you've looked, Start session starts Claude there.`,
+				timeout: 20_000,
+			});
+
+		const started = await this.startSession(text, { join: worktree }, mode);
+
+		if (started.error) return new Notify({ type: 'error', content: started.error, timeout: 10_000 });
+		window.location.hash = `#/sessions/${started.id}`;
 	}
 
 	async startSession(text, checkout, mode) {

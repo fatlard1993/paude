@@ -493,6 +493,315 @@ test(
 );
 
 test(
+	"a comment on a file's lines says where it is, marks them, follows them, and opens them again",
+	async () => {
+		const server = servers.turns;
+		const original = await Bun.file(`${server.project}/server/app.js`).text();
+
+		// A comment follows its lines from the commit it was written at
+		Bun.spawnSync(['git', 'commit', '-q', '--allow-empty', '-m', 'before the comment'], { cwd: server.project });
+		const { browser, page } = await openSession('dom', server);
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+
+		try {
+			await press('[title="Project files"]');
+			await page.type('.files .bar input', 'app.js');
+			await wait(500);
+			await press('.files .entry', 'app.js');
+			await press('.files .gutter div', '1');
+			await press('.files .head button', 'Comment');
+			await page.type('.notes .draft textarea', 'why here?');
+			await page.keyboard.press('Enter');
+			await wait(800);
+
+			expect(await page.$eval('.notes .comment .place', place => place.textContent)).toContain('server/app.js line 1');
+			expect(await page.$$eval('.files .comment-mark', marks => marks.length)).toBe(1);
+
+			// The bar is over the line numbers: pressing it opens the comment rather than picking the line
+			await press('.files .source .comment-mark');
+			expect(await page.$$eval('.notes .comment.flash', comments => comments.length)).toBe(1);
+
+			await press('.files .back');
+			await press('.notes .comment .place .where');
+			expect(await page.$eval('.files .viewer .path', path => path.textContent)).toBe('server/app.js');
+			expect(await page.$eval('.files .band', band => band.style.top)).toBe('0px');
+
+			// A line added above it: the comment moves down with its line
+			await Bun.write(`${server.project}/server/app.js`, `line 0\n${original}`);
+			await press('.notes .comment .place .where');
+			expect(await page.$eval('.files .band', band => band.style.top)).toBe('20px');
+			expect(await page.$eval('.files .comment-mark', mark => mark.style.top)).toBe('20px');
+
+			// Its own line changed: it no longer marks it
+			await Bun.write(
+				`${server.project}/server/app.js`,
+				`line 0\nline one\n${original.split('\n').slice(1).join('\n')}`,
+			);
+			await press('.notes .comment .place .where');
+			expect(await page.$$eval('.files .comment-mark', marks => marks.length)).toBe(0);
+		} finally {
+			await Bun.write(`${server.project}/server/app.js`, original);
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	'a comment on a change in a diff takes both sides, marks them, and opens in that diff again',
+	async () => {
+		const server = servers.turns;
+		const original = await Bun.file(`${server.project}/server/app.js`).text();
+		const { browser, page } = await openSession('dom', server);
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+
+		try {
+			Bun.spawnSync(['git', 'commit', '-q', '--allow-empty', '-m', 'before the change'], { cwd: server.project });
+			await Bun.write(`${server.project}/server/app.js`, original.replace('line 3', 'line three'));
+			await press('[title="Project files"]');
+			await page.type('.files .bar input', 'app.js');
+			await wait(500);
+			await press('.files .entry', 'app.js');
+			await press('.files .head button', 'Changes');
+
+			// From the removed line to the one that replaced it, side by side or unified as the panel's width has it
+			await press('.files .diff .side.removed .number, .files .diff .line.removed .numbers');
+			await page.keyboard.down('Shift');
+			await press('.files .diff .side.added .number, .files .diff .line.added .numbers');
+			await page.keyboard.up('Shift');
+			await press('.files .head button', 'Comment');
+			await page.type('.notes .draft textarea', 'why rename it?');
+			await page.keyboard.press('Enter');
+			await wait(1000);
+
+			expect(await page.$eval('.notes .comment .place', place => place.textContent)).toContain(
+				'server/app.js line 3, and line 3 before the change',
+			);
+			// A bar on each side of the change
+			expect(await page.$$eval('.files .diff .comment-mark', marks => marks.length)).toBe(2);
+
+			await press('.files .diff .added .comment-mark');
+			expect(await page.$$eval('.notes .comment.flash', comments => comments.length)).toBe(1);
+
+			// Opened from the comments, it's back in the diff with its lines picked, both sides of the change
+			await press('.files .back');
+			await press('.notes .comment .place .where');
+			expect(await page.$$eval('.files .diff', diffs => diffs.length)).toBe(1);
+			expect(await page.$$eval('.files .diff .picked', rows => rows.length)).toBe(2);
+		} finally {
+			await Bun.write(`${server.project}/server/app.js`, original);
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	'walking through a file: an overview with what it leaves out, then each stop on its lines',
+	async () => {
+		const server = servers.turns;
+		const { browser, page } = await openSession('dom', server);
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+
+		try {
+			await press('[title="Project files"]');
+			await page.type('.files .bar input', 'app.js');
+			await wait(500);
+			await press('.files .entry', 'app.js');
+			await press('.files .head button', 'Walk me through');
+			await press('button', 'This file');
+			await wait(1500);
+
+			const strip = () => page.$eval('.files .tour-strip', card => card.innerText);
+
+			expect(await strip()).toContain('It sets lines up, one after another.');
+			expect(await strip()).toContain('Not in it: No stop is on lines 6-20.');
+
+			await press('.files .tour-strip button', 'Start the tour');
+			expect(await strip()).toContain('The first two lines.');
+			expect(await page.$eval('.files .band', band => band.style.top)).toBe('0px');
+
+			await press('.files .tour-strip button', 'Next');
+			expect(await strip()).toContain('Two more, a little further on.');
+			expect(await page.$eval('.files .band', band => band.style.top)).toBe('60px');
+
+			await press('.files .tour-strip button', 'Done');
+			expect(await page.$$eval('.files .tour-strip', strips => strips.length)).toBe(0);
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	"walking through a change picks each stop's lines in the diff",
+	async () => {
+		const server = servers.turns;
+		const original = await Bun.file(`${server.project}/server/app.js`).text();
+		const { browser, page } = await openSession('dom', server);
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+
+		try {
+			Bun.spawnSync(['git', 'commit', '-q', '--allow-empty', '-m', 'before the change'], { cwd: server.project });
+			await Bun.write(`${server.project}/server/app.js`, original.replace('line 3', 'line three'));
+			await press('[title="Project files"]');
+			await page.type('.files .bar input', 'app.js');
+			await wait(500);
+			await press('.files .entry', 'app.js');
+			await press('.files .head button', 'Changes');
+			await press('.files .head button', 'Walk me through');
+			await wait(1500);
+			await press('.files .tour-strip button', 'Start the tour');
+
+			expect(await page.$eval('.files .tour-strip', card => card.innerText)).toContain('server/app.js');
+			expect(await page.$$eval('.files .body .picked', rows => rows.length)).toBeGreaterThan(0);
+		} finally {
+			await Bun.write(`${server.project}/server/app.js`, original);
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	"a commit's files read in reading order, each saying what it is, the lock file folded until asked",
+	async () => {
+		const server = servers.turns;
+		const { browser, page } = await openSession('dom', server);
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+		const git = (...args) => Bun.spawnSync(['git', ...args], { cwd: server.project });
+
+		try {
+			git('commit', '-q', '--allow-empty', '-m', 'before the web app');
+			await Bun.write(`${server.project}/web/app.js`, "import { twice } from './lib.js';\ntwice(2);\n");
+			await Bun.write(`${server.project}/web/lib.js`, 'export const twice = n => n * 2;\n');
+			await Bun.write(`${server.project}/web/lib.test.js`, "import { twice } from './lib.js';\n");
+			await Bun.write(`${server.project}/bun.lock`, 'one\ntwo\nthree\n');
+			git('add', 'web', 'bun.lock');
+			git('commit', '-q', '-m', 'add the web app');
+
+			await press('[title^="Git"]');
+			await press('.git .tabs button', 'History');
+			await press('.git .history-item', 'add the web app');
+
+			const heads = () =>
+				page.$$eval('.files .diff .file-head', rows =>
+					rows.map(row => [
+						row.querySelector('.file-path').textContent,
+						row.querySelector('.file-label')?.textContent ?? '',
+					]),
+				);
+
+			expect(await heads()).toEqual([
+				['web/lib.js', ''],
+				['web/lib.test.js', 'tests lib.js'],
+				['web/app.js', ''],
+				['bun.lock', 'generated'],
+			]);
+			expect(await page.$eval('.files .diff', diff => diff.textContent)).not.toContain('three');
+
+			await press('.files .diff .file-head button', 'Show 3 changed lines');
+			expect(await page.$eval('.files .diff', diff => diff.textContent)).toContain('three');
+
+			await press('.files .head button', 'Reading order');
+			await press('button', 'Alphabetical');
+			expect((await heads()).map(([path]) => path)).toEqual([
+				'bun.lock',
+				'web/app.js',
+				'web/lib.js',
+				'web/lib.test.js',
+			]);
+		} finally {
+			await page.evaluate(() => localStorage.removeItem('paude.diffOrder'));
+			await browser.close();
+			// The project is shared with the tests after this one
+			git('rm', '-rq', 'web', 'bun.lock');
+			git('commit', '-q', '-m', 'without the web app');
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	'a rename swept across files is told once, and a change reads function by function',
+	async () => {
+		const server = servers.turns;
+		const { browser, page } = await openSession('dom', server);
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+		const git = (...args) => Bun.spawnSync(['git', ...args], { cwd: server.project });
+		const write = (file, text) => Bun.write(`${server.project}/kit/${file}`, text);
+		const groups = () => page.$$eval('.files .diff .group-head', heads => heads.map(head => head.textContent));
+
+		try {
+			await write('lib.js', 'export const scale = (n, by) => n * by;\n');
+			await write('app.js', "import { scale } from './lib.js';\nscale(2, 3);\n");
+			await write('one.js', 'const total = sumUp(1);\n');
+			await write('two.js', 'const total = sumUp(2);\n');
+			git('add', 'kit');
+			git('commit', '-q', '-m', 'the kit');
+			await write('lib.js', 'export const scale = (n, by = 2) => n * by;\n');
+			await write('app.js', "import { scale } from './lib.js';\nscale(2);\n");
+			await write('one.js', 'const total = addUp(1);\n');
+			await write('two.js', 'const total = addUp(2);\n');
+			git('add', 'kit');
+			git('commit', '-q', '-m', 'scale by two, and addUp');
+
+			await press('[title^="Git"]');
+			await press('.git .tabs button', 'History');
+			await press('.git .history-item', 'scale by two, and addUp');
+
+			expect(await groups()).toEqual(['Renamed sumUp → addUp in 2 files']);
+			expect(await page.$eval('.files .diff', diff => diff.textContent)).not.toContain('addUp(1)');
+
+			await press('.files .head button', 'Reading order');
+			await press('button', 'By function');
+			expect(await groups()).toEqual([
+				'scale in kit/lib.js: its signature changed',
+				'Renamed sumUp → addUp in 2 files',
+			]);
+			expect(await page.$eval('.files .diff', diff => diff.textContent)).toContain('uses scale');
+		} finally {
+			await page.evaluate(() => localStorage.removeItem('paude.diffOrder'));
+			await browser.close();
+			git('rm', '-rq', 'kit');
+			git('commit', '-q', '-m', 'without the kit');
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
 	'a found service is named for its project and port, and can be renamed',
 	async () => {
 		const server = servers.turns;
@@ -739,6 +1048,56 @@ test(
 			await press('.git .output button', 'Continue');
 			expect(await Bun.file(`${server.project}/server/app.js`).text()).toBe('theirs\n');
 			expect(git('log', '-1', '--format=%s').stdout.toString()).toContain('Merge');
+		} finally {
+			await browser.close();
+			await server.stop();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	"before opening a pull request: the work not committed (in the branch's diff, left out of the pull request), open comments, and tests",
+	async () => {
+		const server = await startServer({ noPullRequest: true });
+		const git = (...args) => Bun.spawnSync(['git', ...args], { cwd: server.project });
+
+		git('commit', '-qm', 'first');
+		git('switch', '-q', '-c', 'feature');
+		await Bun.write(`${server.project}/server/app.js`, 'mine\n');
+		git('commit', '-qam', 'my change');
+		await Bun.write(`${server.project}/server/extra.js`, 'not committed\n');
+
+		const { browser, page } = await openSession('dom', server);
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(1000);
+		};
+		const body = () => page.$eval('.git .body', node => node.textContent);
+
+		try {
+			await press('[title^="Git"]');
+			await press('.git .tabs button', 'Review');
+			expect(await body()).toContain('1 commit beyond main, and 1 file not committed');
+			expect(await body()).toContain('1 file changed and not committed, which it leaves out: server/extra.js');
+			expect(await body()).toContain('No comments open.');
+			expect(await page.$$eval('.git .ready-item.todo', items => items.length)).toBeGreaterThan(0);
+
+			// The branch's diff reads with the work not committed
+			await press('.git .body button', 'Show the changes');
+			expect(await page.$eval('.files .viewer', viewer => viewer.textContent)).toContain(
+				'1 commit beyond main, and 1 file changed and not committed',
+			);
+			expect(await page.$eval('.files .viewer', viewer => viewer.textContent)).toContain('server/extra.js');
+
+			// Committed, it's ready on that count
+			git('add', '-A');
+			git('commit', '-qm', 'extra');
+			await press('.git .tabs button', 'Changes');
+			await press('.git .tabs button', 'Review');
+			expect(await body()).toContain('Everything is committed.');
 		} finally {
 			await browser.close();
 			await server.stop();
@@ -1114,6 +1473,70 @@ test(
 			await browser.close();
 			await server.stop();
 			await rm(folder, { recursive: true, force: true });
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	"a pull request that brings Claude Code's own files asks before starting Claude, and Don't start leaves the worktree",
+	async () => {
+		const server = await startServer({ noGh: true });
+		const origin = await mkdtemp(path.join(os.tmpdir(), 'paude-origin-'));
+		const git = (...args) => Bun.spawnSync(['git', ...args], { cwd: server.project });
+
+		git('commit', '-q', '-m', 'start');
+		Bun.spawnSync(['git', 'init', '-q', '--bare', origin]);
+		git('remote', 'add', 'origin', origin);
+		git('push', '-q', 'origin', 'main');
+		git('switch', '-q', '-c', 'theirs');
+		await Bun.write(path.join(server.project, '.claude', 'settings.json'), '{"hooks":{}}');
+		git('add', '-A');
+		git('commit', '-q', '-m', 'a hook');
+		git('push', '-q', 'origin', 'theirs:refs/pull/5/head');
+		git('switch', '-q', 'main');
+		git('branch', '-q', '-D', 'theirs');
+
+		const { browser, page } = await openBrowser('dom');
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+		const sessions = async () => (await (await server.api('/api/projects/demo/sessions')).json()).length;
+		const worktree = path.join(server.project, '.paude', 'worktrees', 'pr-5');
+
+		try {
+			await page.goto(await server.loginLink('/projects/demo'));
+			await page.waitForSelector('button.chip:has(.fa-code-branch)', { visible: true });
+			await press('button.chip:has(.fa-code-branch)');
+			await press('button', 'A new worktree from a branch or PR');
+			await page.type('input[placeholder^="branch, tag"]', '#5');
+			await press('button', 'Start session');
+			await page.waitForFunction(() => document.body.innerText.includes('Start Claude in this pull request?'), {
+				timeout: 20_000,
+			});
+			expect(await page.evaluate(() => document.body.innerText)).toContain(
+				'This pull request adds or changes files Claude Code reads and can run on start: .claude/settings.json.',
+			);
+			expect(await sessions()).toBe(0);
+
+			await press('button', "Don't start");
+			expect(await page.evaluate(() => document.body.innerText)).toContain(
+				`Claude wasn't started. The worktree is at ${worktree}`,
+			);
+			expect(await Bun.file(path.join(worktree, '.claude', 'settings.json')).exists()).toBe(true);
+			expect(await sessions()).toBe(0);
+
+			// The worktree is picked, so starting is one press away once it's been looked over
+			await press('button', 'Start session');
+			await page.waitForFunction(() => window.location.hash.startsWith('#/sessions/'), { timeout: 10_000 });
+			expect(await sessions()).toBe(1);
+		} finally {
+			await browser.close();
+			await server.stop();
+			await rm(origin, { recursive: true, force: true });
 		}
 	},
 	TIMEOUT_MS,

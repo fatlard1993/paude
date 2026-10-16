@@ -20,6 +20,7 @@ import {
 	printable,
 	rawInput,
 	size,
+	wrap,
 	write,
 } from './screen';
 import { api } from './servers';
@@ -135,6 +136,7 @@ const pickCheckout = async (server, project) => {
 				value: { checkout: { join: path } },
 			})),
 		{ label: '＋ A new worktree', value: 'new' },
+		{ label: '＋ A new worktree from a branch or PR', detail: 'to review it, or try it', value: 'from' },
 	];
 	const picked = await choose({
 		title: `paude · ${project}`,
@@ -142,8 +144,19 @@ const pickCheckout = async (server, project) => {
 		hint: '↑↓ move · enter start here · esc back',
 		rows,
 		// The main checkout is already busy: a worktree is the likelier want
-		initial: main.active ? rows.length - 1 : 0,
+		initial: main.active ? rows.length - 2 : 0,
 	});
+
+	if (picked === 'from') {
+		const from = await askLine({
+			title: `paude · ${project}`,
+			subtitle: dim('a new worktree from a branch or pull request'),
+			prompt: 'From:',
+			hint: 'a branch, tag, commit or PR number (#123) · enter create it · esc back',
+		});
+
+		return from?.trim() ? { checkout: { create: '', from: from.trim() } } : null;
+	}
 
 	if (picked !== 'new') return picked;
 
@@ -155,6 +168,44 @@ const pickCheckout = async (server, project) => {
 	});
 
 	return name === null ? null : { checkout: { create: name } };
+};
+
+// A pull request that brings files Claude Code reads on start (hooks it would run among them) is checked out, but
+// Claude starts in it only when asked: the warning, then Don't start (first, so a reflexive Enter is the safe one)
+// and Start anyway
+export const startAnywayRows = ({ warning }, width) => [
+	...wrap(printable(warning), width).map(note => ({ note })),
+	{ label: "Don't start", detail: 'leave the worktree to look over', value: 'leave' },
+	{ label: 'Start anyway', value: 'start' },
+];
+
+export const leftWorktree = worktree =>
+	`Claude wasn't started. The worktree is at ${printable(worktree)}; once you've looked, start a session in it from here.`;
+
+const startAnyway = async (server, project, route, result) => {
+	const title = `paude · ${project}`;
+	const picked = await choose({
+		title,
+		subtitle: colored('Claude is not started yet', 179),
+		hint: "↑↓ move · enter pick · esc don't start",
+		rows: startAnywayRows(result, size().cols - 4),
+	});
+
+	if (picked === 'start')
+		return (await api(server, route, { method: 'POST', body: JSON.stringify({ checkout: { join: result.worktree } }) }))
+			.id;
+
+	await choose({
+		title,
+		subtitle: dim('nothing started'),
+		hint: 'enter back',
+		rows: [
+			...wrap(leftWorktree(result.worktree), size().cols - 4).map(note => ({ note })),
+			{ label: 'Back', value: true },
+		],
+	});
+
+	return null;
 };
 
 // Making a worktree streams the repo's own setup, shown here as it runs
@@ -188,6 +239,7 @@ const startSession = async (server, project, checkout) => {
 	});
 
 	if (result.error) throw new Error(result.error);
+	if (result.files) return startAnyway(server, project, route, result);
 
 	return result.id;
 };

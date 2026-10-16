@@ -3,10 +3,28 @@
 // lines, a URL, a file path, and a prompt box. PAUDE_E2E_FAKE=busy keeps printing too, as Claude does mid-turn.
 const write = text => process.stdout.write(text);
 
-// claude -p: reads its prompt, answers once: links described (as the Links panel asks Haiku), or a commit message
+// A tour of code, as the files panel asks Haiku for one: two stops, on the first lines shown and three lines on
+const tourOf = prompt => {
+	const first = Number(/^[+ -]? ?(\d+) \|/m.exec(prompt)?.[1] ?? 1);
+	const file = /^File (\S+) \(/m.exec(prompt)?.[1];
+	const stop = (from, text) => ({ ...(file && { file, side: 'new' }), from, to: from + 1, text });
+
+	return JSON.stringify({
+		overview: 'It sets lines up, one after another.',
+		stops: [stop(first, 'The first two lines.'), stop(first + 3, 'Two more, a little further on.')],
+	});
+};
+
+// claude -p: reads its prompt, answers once: a tour, links described (as the Links panel asks Haiku), or a commit
+// message
 if (process.argv.includes('-p')) {
 	const prompt = await Bun.stdin.text();
 	const links = [...prompt.matchAll(/^(\d+)\. (\S+)/gm)];
+
+	if (prompt.includes('as a guided tour')) {
+		write(tourOf(prompt));
+		process.exit(0);
+	}
 
 	write(
 		process.argv.includes('haiku')

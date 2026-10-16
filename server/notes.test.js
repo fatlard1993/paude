@@ -3,7 +3,18 @@ import os from 'os';
 import path from 'path';
 import { beforeEach, describe, expect, test } from 'bun:test';
 
-import { addChat, addComment, addReply, deleteComment, getNotes, initNotes, setResolved } from './notes';
+import {
+	addChat,
+	addComment,
+	addReply,
+	cleanAnchor,
+	deleteComment,
+	getNotes,
+	initNotes,
+	markPosted,
+	mergeGithubThread,
+	setResolved,
+} from './notes';
 
 let sessionId;
 
@@ -33,9 +44,78 @@ describe('chat', () => {
 });
 
 describe('comments', () => {
+	test('keep where in a file they are, when that makes sense', async () => {
+		const { comment } = await addComment(sessionId, 'ana', {
+			quote: 'const x = 1;',
+			text: 'why one?',
+			anchor: { path: 'src/a.js', from: 3, to: 4, side: 'old', commit: 'a'.repeat(40), blob: 'b'.repeat(40) },
+		});
+
+		expect(comment.anchor).toEqual({
+			path: 'src/a.js',
+			from: 3,
+			to: 4,
+			side: 'old',
+			commit: 'a'.repeat(40),
+			blob: 'b'.repeat(40),
+		});
+		expect(cleanAnchor({ path: 'a.js', from: 2 })).toEqual({ path: 'a.js', from: 2, to: 2, side: 'new' });
+		expect(cleanAnchor({ path: 'a.js', from: 5, to: 4 })).toBeNull();
+		expect(cleanAnchor({ path: '', from: 1 })).toBeNull();
+		expect(cleanAnchor({ path: 'a.js', from: 0 })).toBeNull();
+		expect(
+			cleanAnchor({
+				path: 'a.js',
+				from: 2,
+				old: { from: 1, to: 2, blob: 'c'.repeat(40), leads: true, extra: 1 },
+				diff: { source: 'commit', ref: 'abc', evil: 'x' },
+			}),
+		).toEqual({
+			path: 'a.js',
+			from: 2,
+			to: 2,
+			side: 'new',
+			old: { from: 1, to: 2, blob: 'c'.repeat(40), leads: true },
+			diff: { source: 'commit', ref: 'abc' },
+		});
+		// Removed lines alone have no other side; a diff of no known kind isn't kept
+		expect(
+			cleanAnchor({ path: 'a.js', from: 2, side: 'old', old: { from: 1, to: 1 }, diff: { source: 'rm -rf' } }),
+		).toEqual({ path: 'a.js', from: 2, to: 2, side: 'old' });
+		expect(cleanAnchor({ path: 'a.js', from: 1, commit: 'nope' })).toEqual({
+			path: 'a.js',
+			from: 1,
+			to: 1,
+			side: 'new',
+		});
+	});
+
+	test('on terminal output have no anchor', async () => {
+		const { comment } = await addComment(sessionId, 'ana', { quote: 'out', text: 'hm', anchor: 'junk' });
+
+		expect(comment.anchor).toBeUndefined();
+	});
+
 	test('need both a quote and a comment', async () => {
 		expect(await addComment(sessionId, 'ana', { quote: 'some output', text: '' })).toBeNull();
 		expect(await addComment(sessionId, 'ana', { quote: '', text: 'why?' })).toBeNull();
+	});
+
+	test('on blank lines of a file quote where they are, rather than being dropped', async () => {
+		const { comment } = await addComment(sessionId, 'ana', {
+			quote: '\n  \n',
+			text: 'add a test here',
+			anchor: { path: 'src/a.js', from: 4, to: 5 },
+		});
+
+		expect(comment.quote).toBe('src/a.js lines 4-5');
+		expect(comment.anchor).toMatchObject({ path: 'src/a.js', from: 4, to: 5 });
+	});
+
+	test('never name a file from the root, or a secret', () => {
+		for (const where of ['/home/u/.aws/credentials', 'C:\\Users\\u\\x', '\\\\host\\share', '.env', 'config/server.pem'])
+			expect(cleanAnchor({ path: where, from: 1 })).toBeNull();
+		expect(cleanAnchor({ path: '../lib/b.js', from: 1 })).toMatchObject({ path: '../lib/b.js' });
 	});
 
 	test('thread replies and resolve', async () => {
@@ -135,4 +215,91 @@ test('reactions toggle per person, on comments, replies and chat, and only take 
 	for (const emoji of ['👍🏽', '🧑‍💻', '❤️']) expect(validEmoji(emoji)).toBe(true);
 	for (const emoji of ['a', '<b>', '👍x', '', '👍'.repeat(9)]) expect(validEmoji(emoji)).toBe(false);
 	expect(await as(bob, { chatId: message.id, emoji: 'nope' })).toBeNull();
+});
+
+describe("a pull request's threads", () => {
+	const thread = (comments, extra = {}) => ({
+		id: 'T1',
+		resolved: false,
+		outdated: false,
+		quote: '+x',
+		comments,
+		...extra,
+	});
+	const said = (id, author, text) => ({ id, author, text, at: 1, url: `https://github.com/o/r/pull/1#r${id}` });
+	const anchor = { path: 'a.js', from: 2, to: 2, side: 'new' };
+
+	test('come in as comments on their lines, and catch up with replies without doubling', async () => {
+		const { comment } = await mergeGithubThread(sessionId, thread([said(1, 'cam', 'why?')]), anchor);
+
+		expect(comment).toMatchObject({
+			author: 'cam',
+			authorId: 'github:cam',
+			text: 'why?',
+			anchor,
+			github: { threadId: 'T1' },
+		});
+		expect(await mergeGithubThread(sessionId, thread([said(1, 'cam', 'why?')]), anchor)).toBeNull();
+
+		const caught = await mergeGithubThread(
+			sessionId,
+			thread([said(1, 'cam', 'why?'), said(2, 'dee', 'because')]),
+			anchor,
+		);
+
+		expect(caught.comment.replies).toMatchObject([{ author: 'dee', text: 'because' }]);
+		expect((await getNotes(sessionId)).comments).toHaveLength(1);
+	});
+
+	test("follow GitHub's resolution only when it changes there", async () => {
+		const { comment } = await mergeGithubThread(sessionId, thread([said(1, 'cam', 'why?')]), anchor);
+
+		await setResolved(sessionId, { commentId: comment.id, resolved: true });
+		expect(await mergeGithubThread(sessionId, thread([said(1, 'cam', 'why?')]), anchor)).toBeNull();
+
+		const reopened = await mergeGithubThread(sessionId, thread([said(1, 'cam', 'why?')], { resolved: true }), anchor);
+
+		expect(reopened.comment.resolved).toBe(true);
+	});
+
+	test('find a comment posted from here, and bring its replies back to it', async () => {
+		const { comment } = await addComment(sessionId, 'ana', { quote: 'x', text: 'rename this', anchor }, 'owner');
+
+		await markPosted(sessionId, comment.id, { url: 'https://github.com/o/r/pull/1#r9', githubId: 9 });
+
+		const { comment: back } = await mergeGithubThread(
+			sessionId,
+			thread([said(9, 'ana-gh', 'rename this'), said(10, 'cam', 'done')]),
+			anchor,
+		);
+
+		expect(back.id).toBe(comment.id);
+		expect(back.replies).toMatchObject([{ author: 'cam', text: 'done' }]);
+		expect((await getNotes(sessionId)).comments).toHaveLength(1);
+	});
+
+	test('find a comment posted from here whose GitHub id never came back, by its file and what it said', async () => {
+		const { comment } = await addComment(sessionId, 'ana', { quote: 'x', text: 'rename this', anchor }, 'invite:ana');
+
+		await addReply(sessionId, 'ben', { commentId: comment.id, text: 'agreed' }, 'invite:ben');
+		await markPosted(sessionId, comment.id, { url: 'https://github.com/o/r/pull/1#pullrequestreview-5' });
+
+		const elsewhere = await mergeGithubThread(
+			sessionId,
+			thread([said(20, 'ana-gh', '**ana:** rename this\n\n**ben:** agreed')], { id: 'T2' }),
+			{ ...anchor, path: 'b.js' },
+		);
+
+		expect(elsewhere.comment.id).not.toBe(comment.id);
+
+		const { comment: back } = await mergeGithubThread(
+			sessionId,
+			thread([said(21, 'ana-gh', '**ana:** rename this\n\n**ben:** agreed'), said(22, 'cam', 'done')]),
+			anchor,
+		);
+
+		expect(back.id).toBe(comment.id);
+		expect(back.replies.map(({ text }) => text)).toEqual(['agreed', 'done']);
+		expect((await getNotes(sessionId)).comments).toHaveLength(2);
+	});
 });

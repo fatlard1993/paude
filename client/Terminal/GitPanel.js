@@ -1,6 +1,6 @@
 import { Notify } from '@vanilla-bean/components';
 
-import { getGit, runGit } from '../api';
+import { getGit, getVerification, runGit } from '../api';
 import confirmDialog from '../confirmDialog';
 import { button, closeButton, element, icon } from '../dom';
 import { canType } from '../identity';
@@ -15,6 +15,11 @@ const TABS = [
 	['branches', 'Branches'],
 	['stashes', 'Stashes'],
 ];
+// Uncommitted files named before opening a pull request; the rest are counted
+const NAMED_FILES = 4;
+
+const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+
 const IN_PROGRESS = {
 	merging: 'A merge is half done.',
 	rebasing: 'A rebase is half done.',
@@ -177,7 +182,7 @@ export default class GitPanel extends Panel {
 		const name = element('button', 'path', file.from ? `${file.from} → ${file.path}` : file.path);
 
 		name.title = 'Show the change';
-		name.addEventListener('click', () => this.options.openDiff({ source: 'changes', path: file.path }));
+		name.addEventListener('click', () => this.options.openDiff({ source: 'changes', path: file.here ?? file.path }));
 		row.append(element('span', `status ${file.status}`, STATUS_LETTERS[file.status] ?? ''), name, ...controls);
 
 		return row;
@@ -332,24 +337,37 @@ export default class GitPanel extends Panel {
 
 	// What this branch adds to the main line, and its pull request: opened here, its checks watched here
 	async renderReview() {
-		const [compare, pr] = await Promise.all([
+		const [compare, pr, reviewed, checked, ready] = await Promise.all([
 			getGit(this.options.sessionId, 'compare'),
 			getGit(this.options.sessionId, 'pr'),
+			getGit(this.options.sessionId, 'reviewed'),
+			getVerification(this.options.sessionId),
+			getGit(this.options.sessionId, 'ready'),
 		]);
+		const uncommitted = ready.response?.ok ? ready.body.uncommitted.length : 0;
 
+		// The comments' way to the pull request shows once one is found, made here or since they were opened
+		if (pr.body?.number) this.options.pullRequestFound?.(pr.body);
 		if (this.tab !== 'review') return;
 
-		const nodes = [];
+		const nodes = [
+			...(checked.response?.ok && checked.body
+				? [element('div', `verdict ${checked.body.state}`, checked.body.said)]
+				: []),
+			...this.reviewedNodes(reviewed.body),
+		];
 
 		if (compare.response?.ok) {
 			const { base, commits } = compare.body;
 			const head = element(
 				'div',
 				'section-head',
-				`${commits.length} commit${commits.length === 1 ? '' : 's'} beyond ${base}`,
+				`${commits.length} commit${commits.length === 1 ? '' : 's'} beyond ${base}${uncommitted ? `, and ${plural(uncommitted, 'file')} not committed` : ''}`,
 			);
 
-			if (commits.length) head.append(button('Show the changes', () => this.options.openDiff({ source: 'compare' })));
+			// The work not committed reads with the rest, as what the branch would propose once it is
+			if (commits.length || uncommitted)
+				head.append(button('Show the changes', () => this.options.openDiff({ source: 'compare' })));
 			nodes.push(
 				head,
 				...commits.map(commit => element('div', 'meta review-commit', `${commit.short} ${commit.subject}`)),
@@ -359,9 +377,49 @@ export default class GitPanel extends Panel {
 
 		nodes.push(
 			element('div', 'section-head', 'Pull request'),
-			...this.pullRequestNodes(pr.body, compare.body?.commits?.length),
+			...this.pullRequestNodes(pr.body, compare.body?.commits?.length, ready.response?.ok ? ready.body : null),
 		);
 		this.body.replaceChildren(...nodes);
+	}
+
+	// How far you've reviewed this branch, wherever you did it: what came since, and marking it read up to here
+	reviewedNodes(state) {
+		if (!state?.branch || !state.head) return [];
+
+		const short = commit => commit.slice(0, 7);
+		const head = element('div', 'section-head', 'Your review');
+		const mark = button(`Reviewed up to ${short(state.head)}`, async () => {
+			mark.disabled = true;
+
+			const { body } = await runGit(this.options.sessionId, 'reviewed');
+
+			if (!body?.ok) return this.say('Could not mark it.', { error: true });
+			this.renderReview();
+		});
+		const since = label => button(label, () => this.options.openDiff({ source: 'since', ref: state.commit }));
+		const when = state.at && `${short(state.commit)}, ${relativeTime(state.at)}`;
+		let line;
+
+		mark.title = "Remember that you've read it up to what's checked out now; next time, see only what comes after";
+
+		if (!state.commit) line = element('div', 'meta', `You haven't marked ${state.branch} reviewed yet.`);
+		else if (state.missing)
+			line = element('div', 'meta', `You reviewed up to ${when}, but that commit isn't here. Fetch, or read it whole.`);
+		else if (state.rewritten) {
+			line = element('div', 'meta', `Rewritten since you reviewed up to ${when} (a rebase or a force push).`);
+			head.append(since('Show how it differs'));
+		} else if (state.count) {
+			line = element(
+				'div',
+				'meta',
+				`${state.count} commit${state.count === 1 ? '' : 's'} since you reviewed up to ${when}.`,
+			);
+			head.append(since("Show what's new"));
+		} else line = element('div', 'meta', `Reviewed up to ${when}: nothing new since.`);
+
+		if (state.commit !== state.head) head.append(mark);
+
+		return [head, line];
 	}
 
 	checkLine(check) {
@@ -379,7 +437,7 @@ export default class GitPanel extends Panel {
 		return line;
 	}
 
-	pullRequestNodes(pr, ahead) {
+	pullRequestNodes(pr, ahead, ready) {
 		if (pr?.unavailable) return [element('div', 'empty', pr.unavailable)];
 
 		if (pr) {
@@ -399,10 +457,53 @@ export default class GitPanel extends Panel {
 			];
 		}
 
-		if (!ahead) return [element('div', 'empty', 'Nothing on this branch to propose yet.')];
+		if (!ahead)
+			return [
+				element(
+					'div',
+					'empty',
+					ready?.uncommitted.length
+						? 'Nothing committed on this branch to propose yet; commit what you have first.'
+						: 'Nothing on this branch to propose yet.',
+				),
+			];
 		if (!canType()) return [element('div', 'empty', 'None open for this branch.')];
 
-		return [this.pullRequestForm()];
+		return [...this.readyNodes(ready), this.pullRequestForm()];
+	}
+
+	// What to know before proposing it, each a line marked done or not, with a way to see to what isn't: work not
+	// committed (left out of the pull request), comments still open, and tests not passing since the last change
+	readyNodes(ready) {
+		if (!ready) return [];
+
+		const line = (done, text, action) => {
+			const row = element('div', `ready-item ${done ? 'done' : 'todo'}`);
+
+			row.append(icon(done ? 'circle-check' : 'circle-exclamation'), element('span', 'text', text));
+			if (!done && action) row.append(action);
+
+			return row;
+		};
+		const { uncommitted, comments, tests } = ready;
+		const named = uncommitted.slice(0, NAMED_FILES).join(', ') + (uncommitted.length > NAMED_FILES ? ', …' : '');
+
+		return [
+			element('div', 'meta', 'Before you open it'),
+			line(
+				!uncommitted.length,
+				uncommitted.length
+					? `${plural(uncommitted.length, 'file')} changed and not committed, which it leaves out: ${named}`
+					: 'Everything is committed.',
+				button('Commit', () => this.showTab('changes')),
+			),
+			line(
+				!comments,
+				comments ? `${plural(comments, 'comment')} still open.` : 'No comments open.',
+				this.options.showComments && button('Show them', () => this.options.showComments()),
+			),
+			line(!tests || tests.state === 'current', tests?.said ?? 'No changes or test runs in this session.'),
+		];
 	}
 
 	pullRequestForm() {

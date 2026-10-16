@@ -91,6 +91,28 @@ describe('git', () => {
 		expect(panelKey(panel, '\r')).toEqual({ type: 'readFile', path: 'new.js' });
 	});
 
+	test("in a session in a subfolder, files open by the folder's name for them, one outside it as a diff", () => {
+		const panel = loaded('git', {
+			status: {
+				...status,
+				staged: [{ path: 'app/a.js', here: 'a.js', status: 'modified' }],
+				untracked: [
+					{ path: 'app/new.js', here: 'new.js', status: 'untracked' },
+					{ path: 'lib/other.js', here: '../lib/other.js', status: 'untracked' },
+				],
+			},
+		});
+
+		expect(panelKey(panel, '\r')).toEqual({ type: 'readDiffSet', source: { source: 'changes', path: 'a.js' } });
+		panelKey(panel, DOWN);
+		expect(panelKey(panel, '\r')).toEqual({ type: 'readFile', path: 'new.js' });
+		panelKey(panel, DOWN);
+		expect(panelKey(panel, '\r')).toEqual({
+			type: 'readDiffSet',
+			source: { source: 'changes', path: '../lib/other.js' },
+		});
+	});
+
 	test('a tab not read yet is read as it opens; a commit opens its diff', () => {
 		const panel = loaded('git', { status });
 

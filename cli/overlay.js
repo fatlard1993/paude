@@ -1,3 +1,4 @@
+import { anchorPlace } from '../shared/attachText';
 import inputKind from '../shared/inputKind';
 import { REACTION_PALETTE } from '../shared/reactions';
 import { roleAllows } from '../shared/roles';
@@ -130,7 +131,7 @@ const threadView = (state, width) => {
 	];
 
 	return [
-		`${comment.resolved ? dim('Resolved comment') : 'Comment'} on:`,
+		`${comment.resolved ? dim('Resolved comment') : 'Comment'} on${comment.anchor ? ` ${printable(anchorPlace(comment.anchor))}` : ''}:`,
 		...shownQuote,
 		...(quote.length > QUOTE_LINES ? [dim(`│ ... ${quote.length - QUOTE_LINES} more lines`)] : []),
 		'',
@@ -151,9 +152,9 @@ const keysFor = (state, canNote) => {
 			`${keyCap('k')} end it, back to Claude`,
 			`${keyCap('esc')} back to the terminal`,
 		];
-	if (state.files) return browserKeys(state.files, canTypeIn(state), keyCap);
-	if (state.panel) return panelKeys(state.panel, keyCap);
 	if (state.draft) return [`${keyCap('enter')} send`, `${keyCap('esc')} cancel`];
+	if (state.files) return browserKeys(state.files, canTypeIn(state), keyCap, canNote);
+	if (state.panel) return panelKeys(state.panel, keyCap);
 
 	if (state.reacting)
 		return [...PALETTE.map((emoji, index) => `${keyCap(String(index + 1))} ${emoji}`), `${keyCap('esc')} cancel`];
@@ -162,6 +163,7 @@ const keysFor = (state, canNote) => {
 		const comment = threadComment(state);
 
 		return [
+			comment?.anchor && canBrowse(state) && `${keyCap('o')} open its lines`,
 			canNote && comment && `${keyCap('r')} reply`,
 			canNote && comment && canTypeIn(state) && `${keyCap('A')} ask Claude`,
 			canNote && comment && `${keyCap('+')} react`,
@@ -277,7 +279,7 @@ const send = draft => {
 	if (!text) return { type: 'redraw' };
 	// Typed into Claude too; its answer comes back to the chat or the thread
 	if (draft.ask) return { type: 'ask', kind: draft.kind, text, commentId: draft.commentId };
-	if (draft.kind === 'comment') return { type: 'comment', quote: draft.quote, text };
+	if (draft.kind === 'comment') return { type: 'comment', quote: draft.quote, text, anchor: draft.anchor };
 	if (draft.kind === 'reply') return { type: 'reply', commentId: draft.commentId, text };
 
 	return { type: 'chat', text };
@@ -308,6 +310,7 @@ const threadKey = (state, key, canNote) => {
 		return { type: 'redraw' };
 	}
 
+	if (key === 'o' && comment?.anchor && canBrowse(state)) return { type: 'openComment', comment };
 	if (!canNote || !comment) return { type: 'ignore' };
 
 	// Pressed twice, as it takes the replies too
@@ -384,7 +387,7 @@ export const overlayKey = (state, rawKey, { readSelection = () => null } = {}) =
 	if (state.draft) return draftKey(state, key);
 	if (state.shell) return shellKey(state, key, readSelection);
 	if (state.files) {
-		const action = browserKey(state.files, key, { canType: canTypeIn(state) });
+		const action = browserKey(state.files, key, { canType: canTypeIn(state), canNote });
 
 		// A file read from a panel goes back to the panel when it closes, not on to the project's files
 		if (action.type !== 'leave' && !(state.files.fromPanel && !state.files.open)) return action;

@@ -4,7 +4,7 @@ import { join } from 'path';
 import { beforeEach, expect, test } from 'bun:test';
 
 import { parseDiff } from '../shared/diff';
-import { diffSet, diffTexts, turnsWithChanges } from './diffs';
+import { diffSet, diffTexts, keepShownText, turnsWithChanges } from './diffs';
 import { trackProposals } from './sessions/proposals';
 
 const ID = 'session-1';
@@ -131,4 +131,111 @@ test('two project files compare, and anything else is refused', async () => {
 	]);
 	await expect(diffSet(ID, cwd, { source: 'files', a: 'a.js', b: '../../etc/hosts' })).rejects.toThrow('text files');
 	await expect(diffSet(ID, cwd, { source: 'whatever' })).rejects.toThrow('Unknown');
+});
+
+test('in git, each file of a diff names the two texts it is between, from any source, without writing them into git', async () => {
+	const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')));
+	const git = (...args) =>
+		Bun.spawnSync(['git', ...args], { cwd, env: { ...env, GIT_CONFIG_NOSYSTEM: '1', HOME: home } })
+			.stdout.toString()
+			.trim();
+	const blobOfText = text =>
+		Bun.spawnSync(['git', 'hash-object', '--stdin'], { cwd, env, stdin: new TextEncoder().encode(text) })
+			.stdout.toString()
+			.trim();
+	const kept = hash => Bun.spawnSync(['git', 'cat-file', '-e', hash], { cwd, env }).exitCode === 0;
+
+	git('init', '-q');
+	git('-c', 'user.name=t', '-c', 'user.email=t@t', 'add', '-A');
+	git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'first');
+	await Bun.write(join(cwd, 'a.js'), 'four\n');
+
+	const [working] = (await diffSet(ID, cwd, { source: 'changes', path: 'a.js' })).files;
+
+	expect(working.blobs).toEqual({ old: blobOfText('three\n'), new: blobOfText('four\n') });
+	expect(kept(working.blobs.new)).toBe(false);
+
+	const turn = await diffSet(ID, cwd, { source: 'turn', turn: 'p1' });
+
+	expect(turn.files.map(({ path, blobs }) => [path, blobs])).toEqual([
+		['a.js', { old: blobOfText('one\n'), new: blobOfText('two\n') }],
+		// Added in the turn: nothing before it
+		['b.js', { new: blobOfText('new\n') }],
+	]);
+	expect(kept(blobOfText('one\n'))).toBe(false);
+	expect(kept(blobOfText('two\n'))).toBe(false);
+
+	// A comment on lines picked in it keeps the text they were picked in, read again from the turn, and only that one
+	expect(await keepShownText(ID, cwd, { source: 'turn', turn: 'p1' }, 'a.js', blobOfText('two\n'))).toBe(
+		blobOfText('two\n'),
+	);
+	expect(kept(blobOfText('two\n'))).toBe(true);
+	expect(kept(blobOfText('one\n'))).toBe(false);
+	expect(await keepShownText(ID, cwd, { source: 'turn', turn: 'p1' }, 'a.js', 'f'.repeat(40))).toBeUndefined();
+	expect(await keepShownText(ID, cwd, { source: 'turn', turn: 'nope' }, 'a.js', blobOfText('one\n'))).toBeUndefined();
+	expect(await keepShownText(ID, cwd, { source: 'commit', ref: 'HEAD' }, 'a.js', blobOfText('one\n'))).toBeUndefined();
+});
+
+test("the branch's diff with its work says how many files it leaves out", async () => {
+	const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')));
+	const repo = join(home, 'repo');
+	const git = (...args) =>
+		Bun.spawnSync(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], {
+			cwd: repo,
+			env: { ...env, GIT_CONFIG_NOSYSTEM: '1', HOME: home },
+		});
+
+	await Bun.write(join(repo, 'a.js'), 'one\n');
+	git('init', '-q', '-b', 'main');
+	git('add', '-A');
+	git('commit', '-qm', 'first');
+	git('switch', '-q', '-c', 'idea');
+	await Promise.all(
+		Array.from({ length: 201 }, (_, index) => Bun.write(join(repo, `n${String(index).padStart(3, '0')}.js`), 'n\n')),
+	);
+
+	const { title, files } = await diffSet(ID, repo, { source: 'compare' });
+
+	expect(files).toHaveLength(200);
+	expect(title).toBe(
+		'0 commits beyond main, and 200 files changed and not committed (1 more file left out, past what fits here)',
+	);
+});
+
+test("a commit's files are named from the session's folder, as comments and the files panel name them", async () => {
+	const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')));
+	const repo = join(home, 'repo');
+	const git = (...args) =>
+		Bun.spawnSync(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], {
+			cwd: repo,
+			env: { ...env, GIT_CONFIG_NOSYSTEM: '1', HOME: home },
+		});
+
+	await Bun.write(join(repo, 'app', 'a.js'), 'one\n');
+	await Bun.write(join(repo, 'lib', 'b.js'), 'two\n');
+	git('init', '-q');
+	git('add', '-A');
+	git('commit', '-qm', 'first');
+
+	const { files } = await diffSet(ID, join(repo, 'app'), { source: 'commit', ref: 'HEAD' });
+
+	expect(files.map(({ path }) => path)).toEqual(['a.js', '../lib/b.js']);
+	expect(Object.keys(files[0].blobs)).toEqual(['new']);
+
+	// The Git panel lists the whole repository's changes; one outside the folder opens by its name from the folder
+	await Bun.write(join(repo, 'lib', 'b.js'), 'three\n');
+	await Bun.write(join(repo, 'lib', 'c.js'), 'new\n');
+
+	const outside = await diffSet(ID, join(repo, 'app'), { source: 'changes', path: '../lib/b.js' });
+
+	expect(outside.files.map(({ path, status, diff }) => [path, status, changed(diff)])).toEqual([
+		['../lib/b.js', 'modified', ['-two', '+three']],
+	]);
+	expect(Object.keys(outside.files[0].blobs)).toEqual(['old', 'new']);
+	expect(
+		(await diffSet(ID, join(repo, 'app'), { source: 'changes', path: '../lib/c.js' })).files.map(f => f.status),
+	).toEqual(['untracked']);
+	await expect(diffSet(ID, join(repo, 'app'), { source: 'changes', path: '../../etc/hosts' })).rejects.toThrow(
+		'no changes',
+	);
 });

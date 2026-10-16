@@ -15,11 +15,18 @@ import { setClaudePath } from './sessions/running';
 
 test('asks for each link by number, with what was said around it', () => {
 	const prompt = describePrompt([
-		{ url: 'https://bun.sh/docs/spawn', title: 'the spawn docs', turn: 'why does it hang', passages: ['read the spawn docs'] },
+		{
+			url: 'https://bun.sh/docs/spawn',
+			title: 'the spawn docs',
+			turn: 'why does it hang',
+			passages: ['read the spawn docs'],
+		},
 		{ url: 'https://acme.dev', title: '', turn: null, passages: ['see acme.dev'] },
 	]);
 
-	expect(prompt).toContain('1. https://bun.sh/docs/spawn\n   Called: the spawn docs\n   Asked at the time: why does it hang');
+	expect(prompt).toContain(
+		'1. https://bun.sh/docs/spawn\n   Called: the spawn docs\n   Asked at the time: why does it hang',
+	);
 	expect(prompt).toContain('2. https://acme.dev\n   Said around it: see acme.dev');
 });
 

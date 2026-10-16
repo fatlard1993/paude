@@ -102,7 +102,8 @@ export default class LinksPanel extends Panel {
 		const list = shown.filter(
 			link =>
 				(this.kind === 'all' || link.kind === this.kind) &&
-				(!query || [link.url, link.title, link.description, link.context].some(text => text?.toLowerCase().includes(query))),
+				(!query ||
+					[link.url, link.title, link.description, link.context].some(text => text?.toLowerCase().includes(query))),
 		);
 		const toggle = button(
 			this.withOutput ? 'Leave out what only commands printed' : `Include what only commands printed (${outputOnly})`,

@@ -1,31 +1,14 @@
 import os from 'os';
 
+import { gh } from './gh';
 import { GitError, defaultBase, gitAction, gitLog } from './git';
 import { sessionEnvironment } from './sessions/PtySession';
 import { claudeCommand } from './sessions/running';
 
 // Pull requests through GitHub's own command, gh: the one for this branch with its checks, and opening one with a
-// title and description Claude drafts. Whatever gh says when it can't (not installed, not logged in, not GitHub)
-// comes back to show.
-const GH_TIMEOUT_MS = 60_000;
+// title and description Claude drafts.
 const DRAFT_TIMEOUT_MS = 180_000;
-const FIELDS = 'number,title,url,state,isDraft,baseRefName,headRefName,statusCheckRollup';
-
-const gh = async (args, root) => {
-	if (!Bun.which('gh', { PATH: sessionEnvironment().PATH }))
-		throw new GitError("GitHub's gh command isn't installed here");
-
-	const child = Bun.spawn(['gh', ...args], {
-		cwd: root,
-		env: { ...sessionEnvironment(), GH_PROMPT_DISABLED: '1', NO_COLOR: '1' },
-		stdout: 'pipe',
-		stderr: 'pipe',
-		timeout: GH_TIMEOUT_MS,
-	});
-	const [out, err] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
-
-	return { code: await child.exited, out, err: err.trim() };
-};
+const FIELDS = 'number,title,url,state,isDraft,baseRefName,headRefName,headRefOid,statusCheckRollup';
 
 // One check, whichever kind GitHub reports it as (a workflow run, or a commit status)
 const checkOf = check => ({
@@ -78,9 +61,57 @@ export const openPullRequest = async (root, { title, body, draft, base }) => {
 	return { url: out.trim().split('\n').at(-1) };
 };
 
+// How a walk-through of the change reads, for the description to follow
+const walkThrough = tour =>
+	[
+		tour.overview,
+		...tour.stops.map(
+			stop =>
+				`- ${stop.path} ${stop.from === stop.to ? `line ${stop.from}` : `lines ${stop.from}-${stop.to}`}${stop.side === 'old' ? ' (removed)' : ''}: ${stop.text}`,
+		),
+	].join('\n');
+
+// The prompt for a draft: the commits and what they change, and where they're known, a walk-through of the change
+// (`tour`) and whether it was tested (`tested`, a sentence)
+export const draftPrompt = ({ commits, stat, tour, tested }) =>
+	[
+		'Write a pull request title and description for this branch.',
+		'Reply with the title on the first line, a blank line, then the description in Markdown. Nothing before or after.',
+		[
+			'The description: what changes and why, briefly.',
+			tour &&
+				'Then a short "How to review it" list that follows the walk-through below, in its order, naming the files.',
+			tested &&
+				'Then "Testing": only what the testing line below says, in plain words; where it says no test ran or tests are stale or failing, say so rather than claiming they pass.',
+		]
+			.filter(Boolean)
+			.join(' '),
+		`Its commits:\n${commits.map(commit => `- ${commit.subject}`).join('\n')}`,
+		`What it changes:\n${stat}`,
+		tour && `A walk-through of the change, in the order that makes sense of it:\n${walkThrough(tour)}`,
+		tested && `Testing, as seen in the session that made it: ${tested}`,
+	]
+		.filter(Boolean)
+		.join('\n\n');
+
+// How the drafting Claude runs: on its default model, as haiku.js runs Haiku, with no tools, none of the owner's
+// settings (their hooks, permissions, MCP servers) and nothing saved, so a prompt made of commit subjects can only get
+// text back
+export const draftCommand = () => [
+	claudeCommand(),
+	'-p',
+	'--output-format',
+	'text',
+	'--no-session-persistence',
+	'--setting-sources',
+	'',
+	'--tools',
+	'',
+];
+
 // A title and description for this branch's pull request, from its commits and what it changes, written by a Claude
 // of its own (the session's conversation is left alone): { title, body }
-export const draftPullRequest = async root => {
+export const draftPullRequest = async (root, { tour, tested } = {}) => {
 	const base = await defaultBase(root);
 
 	if (!base) throw new GitError('There is no branch to compare with');
@@ -90,13 +121,8 @@ export const draftPullRequest = async root => {
 	if (!commits.length) throw new GitError(`This branch has nothing ${base} doesn't`);
 
 	const stat = Bun.spawnSync(['git', 'diff', '--stat', `${base}...HEAD`], { cwd: root }).stdout.toString();
-	const prompt = [
-		'Write a pull request title and description for this branch.',
-		'Reply with the title on the first line, a blank line, then the description in Markdown: what changes and why, briefly. Nothing before or after.',
-		`Its commits:\n${commits.map(commit => `- ${commit.subject}`).join('\n')}`,
-		`What it changes:\n${stat}`,
-	].join('\n\n');
-	const child = Bun.spawn([claudeCommand(), '-p', '--output-format', 'text'], {
+	const prompt = draftPrompt({ commits, stat, tour, tested });
+	const child = Bun.spawn(draftCommand(), {
 		cwd: os.tmpdir(),
 		env: sessionEnvironment(),
 		stdin: new TextEncoder().encode(prompt),

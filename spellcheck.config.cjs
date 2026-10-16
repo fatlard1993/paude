@@ -1,6 +1,10 @@
 module.exports = {
 	skipWords: [
 		'ttl',
+		'mcp',
+		'nul',
+		'pathspec',
+		'pathspecs',
 		'favicon',
 		'tsv',
 		'visibilitychange',
@@ -36,6 +40,11 @@ module.exports = {
 		'dotenv',
 		'cancelled',
 		'gh',
+		'oid',
+		'graphql',
+		'textconv',
+		'jq',
+		'heredoc',
 		'rollup',
 		'selectionchange',
 		'extern',

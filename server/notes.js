@@ -1,14 +1,19 @@
 import { mkdir, rm } from 'fs/promises';
 import path from 'path';
 
+import { anchorPlace } from '../shared/attachText';
 import writeJsonFile from '../shared/writeJsonFile';
 import readJsonFile from '../shared/readJsonFile';
+import { isSecret } from './files';
 
-// The collaborators' side of a session: a chat and comments on quoted terminal text. None of it is ever typed into
-// Claude, and it outlives the Claude process, so it's kept per session id rather than on the running session.
+// The collaborators' side of a session: a chat and comments, each on quoted text: terminal output, or lines of a
+// file (its anchor says where). None of it is ever typed into Claude, and it outlives the Claude process, so it's kept
+// per session id rather than on the running session.
 const MAX_TEXT = 4000;
 const MAX_QUOTE = 2000;
 const MAX_AUTHOR = 40;
+const MAX_PATH = 1024;
+const MAX_LINE = 10_000_000;
 // The oldest chat drops off past this; new comments stop being accepted past their cap
 const MAX_CHAT = 2000;
 const MAX_COMMENTS = 500;
@@ -64,10 +69,70 @@ export const addChat = async (sessionId, author, text, { authorId, ...flags } = 
 	return { type: 'chat', message };
 };
 
-export const addComment = async (sessionId, author, { quote, text }, authorId, flags) => {
+const lineNumber = value => Number.isInteger(value) && value >= 1 && value <= MAX_LINE;
+const hash = value => typeof value === 'string' && /^[0-9a-f]{40}$/.test(value);
+const name = value =>
+	typeof value === 'string' && value.length > 0 && value.length <= MAX_PATH && !value.includes('\0');
+const DIFF_SOURCES = new Set(['changes', 'turn', 'proposal', 'files', 'commit', 'compare', 'since']);
+const DIFF_FIELDS = ['path', 'turn', 'a', 'b', 'ref', 'base'];
+
+// The diff a comment was written in, to open it there again: its source, as the diff view asks for it
+const cleanDiff = diff =>
+	diff && typeof diff === 'object' && DIFF_SOURCES.has(diff.source)
+		? Object.fromEntries([
+				['source', diff.source],
+				...DIFF_FIELDS.filter(field => name(diff[field])).map(field => [field, diff[field]]),
+			])
+		: null;
+
+// Removed lines a comment covers along with lines after the change: their place before it, its blob, and whether
+// the comment starts on them (picked from a removed line down into the lines that replaced it)
+const cleanOld = old =>
+	old && typeof old === 'object' && lineNumber(old.from) && lineNumber(old.to) && old.to >= old.from
+		? {
+				from: old.from,
+				to: old.to,
+				...(hash(old.blob) && { blob: old.blob }),
+				...(old.leads === true && { leads: true }),
+			}
+		: null;
+
+// Where in the project a comment's quote comes from: { path, from, to, side, commit, blob, old, diff }. The path is the
+// session folder's; side is 'old' for lines a change removed; commit, what HEAD was when it was written; blob, the
+// text its lines are numbered by (the file exactly as it was read, or that side of the diff); old, the removed lines
+// it also covers when it's on both sides of a change; diff, the diff it was written in. Null when it isn't one, so the
+// comment is on terminal output. A path from the root or a secret is never one; whether it's inside the repository
+// takes the session's folder to tell (inRepository).
+export const cleanAnchor = anchor => {
+	if (!anchor || typeof anchor !== 'object') return null;
+
+	const { path: where, from, to = from, side, commit, blob } = anchor;
+
+	if (!name(where) || path.isAbsolute(where) || /^[a-zA-Z]:|^\\/.test(where) || isSecret(where)) return null;
+	if (!lineNumber(from) || !lineNumber(to) || to < from) return null;
+
+	const old = side !== 'old' && cleanOld(anchor.old);
+	const diff = cleanDiff(anchor.diff);
+
+	return {
+		path: where,
+		from,
+		to,
+		side: side === 'old' ? 'old' : 'new',
+		...(hash(commit) && { commit }),
+		...(hash(blob) && { blob }),
+		...(old && { old }),
+		...(diff && { diff }),
+	};
+};
+
+// A comment on blank lines quotes nothing, so it quotes where it is instead
+export const addComment = async (sessionId, author, { quote, text, anchor }, authorId, flags) => {
+	const place = cleanAnchor(anchor);
 	const comment = {
 		...entry(author, text, authorId, flags),
-		quote: clean(quote, MAX_QUOTE),
+		quote: clean(quote, MAX_QUOTE) || (place ? anchorPlace(place) : ''),
+		...(place && { anchor: place }),
 		replies: [],
 		resolved: false,
 	};
@@ -179,6 +244,101 @@ export const deleteComment = async (sessionId, { commentId, replyId, allowed = (
 	await save(sessionId);
 
 	return { type: 'commentDeleted', commentId };
+};
+
+// A comment posted to a pull request: where it went, so it isn't posted twice and GitHub's replies find it again
+export const markPosted = (sessionId, commentId, { url, githubId }) =>
+	updateComment(sessionId, commentId, comment => {
+		comment.posted = { url: clean(url, MAX_PATH), at: Date.now(), ...(Number.isInteger(githubId) && { githubId }) };
+
+		return true;
+	});
+
+// The text a comment is posted to GitHub as: it, and the replies to it not from Claude, each by its author unless the
+// owner (who posts it as their own login). prReviews posts it, so the two can't drift.
+export const postedBody = comment =>
+	[comment, ...comment.replies.filter(reply => !reply.fromClaude)]
+		.map(said => (said.authorId === 'owner' ? said.text : `**${said.author}:** ${said.text}`))
+		.join('\n\n');
+
+// A comment posted from here whose GitHub id never came back: on the same file, its text as posted then
+const postedWithoutId = (found, anchor, first) =>
+	found.posted &&
+	!found.posted.githubId &&
+	!found.github &&
+	found.anchor?.path === anchor?.path &&
+	(found.posted.url === first.url ||
+		postedBody({ ...found, replies: found.replies.filter(reply => reply.at <= found.posted.at) }).trim() ===
+			String(first.text ?? '').trim());
+
+const fromGithub = said => ({
+	id: crypto.randomUUID(),
+	author: clean(said.author, MAX_AUTHOR) || 'someone',
+	authorId: `github:${clean(said.author, MAX_AUTHOR)}`,
+	text: clean(said.text, MAX_TEXT),
+	at: Number.isFinite(said.at) ? said.at : Date.now(),
+	githubId: said.id,
+});
+
+// A pull request's review thread brought in: a new comment on its lines, or one already here (brought in before, or
+// posted from here) caught up with the replies since. Its resolution follows GitHub's only when GitHub's changed, so
+// resolving it here stays. `anchor` is where it is in the session's folder.
+export const mergeGithubThread = async (sessionId, thread, anchor) => {
+	const notes = await getNotes(sessionId);
+	const [first, ...rest] = thread.comments;
+	let comment =
+		notes.comments.find(found => found.github?.threadId === thread.id) ??
+		notes.comments.find(found => found.posted?.githubId && found.posted.githubId === first.id) ??
+		notes.comments.find(found => postedWithoutId(found, anchor, first));
+	let changed = false;
+
+	if (!comment) {
+		if (notes.comments.length >= MAX_COMMENTS || !cleanAnchor(anchor)) return null;
+
+		const opening = fromGithub(first);
+
+		comment = {
+			...opening,
+			quote: clean(thread.quote, MAX_QUOTE) || `${anchor.path}`,
+			anchor: cleanAnchor(anchor),
+			replies: [],
+			resolved: thread.resolved,
+			github: { threadId: thread.id, url: first.url, resolved: thread.resolved },
+		};
+		notes.comments.push(comment);
+		changed = true;
+	} else if (!comment.github) {
+		comment.github = { threadId: thread.id, url: first.url, resolved: thread.resolved };
+		changed = true;
+	} else if (!comment.posted && !comment.anchor?.blob && cleanAnchor(anchor)?.blob) {
+		// Brought in before threads knew the text their lines are numbered by
+		comment.anchor = cleanAnchor(anchor);
+		changed = true;
+	}
+
+	if (comment.github.resolved !== thread.resolved) {
+		comment.github.resolved = thread.resolved;
+		comment.resolved = thread.resolved;
+		changed = true;
+	}
+
+	if (Boolean(comment.github.outdated) !== Boolean(thread.outdated)) {
+		comment.github.outdated = Boolean(thread.outdated);
+		changed = true;
+	}
+
+	const known = new Set([comment.githubId, ...comment.replies.map(reply => reply.githubId)].filter(Boolean));
+
+	for (const said of rest) {
+		if (known.has(said.id) || comment.replies.length >= MAX_COMMENTS) continue;
+		comment.replies.push(fromGithub(said));
+		changed = true;
+	}
+
+	if (!changed) return null;
+	await save(sessionId);
+
+	return { type: 'comment', comment };
 };
 
 export const deleteNotes = async sessionId => {

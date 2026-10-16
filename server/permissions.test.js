@@ -26,6 +26,14 @@ test('comments are resolved by their author or the owner', () => {
 });
 
 describe('guestMayRequest', () => {
+	test('takes the tours of its own session: catching up, and walking through code', () => {
+		const ana = guest('comment');
+
+		expect(guestMayRequest(ana, 'POST', '/api/sessions/s1/catch-up')).toBe(true);
+		expect(guestMayRequest(ana, 'POST', '/api/sessions/s1/tour')).toBe(true);
+		expect(guestMayRequest(ana, 'POST', '/api/sessions/s2/tour')).toBe(false);
+	});
+
 	test('reaches only its own session', () => {
 		const ana = guest('drive');
 

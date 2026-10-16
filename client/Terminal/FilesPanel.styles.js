@@ -528,6 +528,30 @@ const Panel = styled(
 			font-weight: bold;
 		}
 
+		.diff .group-head {
+			margin-top: 18px;
+			padding: 4px 8px;
+			color: ${colors.light(colors.blue)};
+			font-weight: bold;
+		}
+
+		.diff .file-head .file-label.part {
+			color: ${colors.light(colors.blue)};
+		}
+
+		.diff .file-head .file-label {
+			padding: 1px 6px;
+			border-radius: 4px;
+			background: ${colors.alpha(colors.white, 0.08)};
+			color: ${colors.light(colors.gray)};
+			font-size: 0.8em;
+			white-space: nowrap;
+		}
+
+		.diff .file-head .show {
+			margin-left: auto;
+		}
+
 		.diff .file-head .status {
 			margin-left: 0;
 		}
@@ -599,6 +623,59 @@ const Panel = styled(
 			gap: 8px;
 			padding: 6px 8px;
 			background: ${colors.alpha(colors.orange, 0.2)};
+		}
+
+		.tour-strip {
+			flex-shrink: 0;
+			margin: 6px 8px;
+			max-height: 40%;
+			overflow: auto;
+		}
+
+		.tour-strip .question {
+			font-weight: normal;
+			line-height: 1.4;
+		}
+
+		.tour-strip .answers {
+			flex-direction: row;
+			flex-wrap: wrap;
+		}
+
+		.tour-strip .answers button {
+			padding: 4px 10px;
+		}
+
+		.comment-mark {
+			position: absolute;
+			left: 0;
+			width: 4px;
+			min-height: ${LINE_HEIGHT}px;
+			padding: 0;
+			border: none;
+			border-radius: 2px;
+			background: ${colors.blue};
+			cursor: pointer;
+			z-index: 1;
+		}
+
+		.comment-mark:hover {
+			width: 8px;
+		}
+
+		.diff .line,
+		.diff.split .side {
+			position: relative;
+		}
+
+		.diff .comment-mark {
+			top: 0;
+			bottom: 0;
+		}
+
+		/* Over the gutter, which is also above the text and would take the click as picking the line */
+		.source .comment-mark {
+			z-index: 2;
 		}
 
 		.band {

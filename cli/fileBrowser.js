@@ -1,6 +1,7 @@
 import { pathFilter } from '../shared/globs';
 import { attachDiffText, attachFileText, attachLinesText } from '../shared/attachText';
-import { diffLines, parseDiff, sideBySide } from '../shared/diff';
+import { diffAnchor, diffLines, parseDiff, sideBySide } from '../shared/diff';
+import { ORDERS, describeFiles, fileLabel, folds, orderFiles } from '../shared/reviewOrder';
 import relativeTime from '../shared/relativeTime';
 import { extensionOf, kindOf, matchNames } from '../shared/projectFiles';
 import searchPattern from '../shared/searchPattern';
@@ -8,7 +9,7 @@ import { fitCells } from './graphics';
 import { highlightLines } from './highlight';
 import { renderMarkdown } from './markdown';
 import { DEFAULT_PREFS } from './prefs';
-import { ACCENT, bold, colored, dim, fit, onBackground, orange, printable, visibleLength } from './screen';
+import { ACCENT, bold, colored, dim, fit, onBackground, orange, printable, visibleLength, wrap } from './screen';
 
 const PAGE = 10;
 const CURSOR_BACKGROUND = 238;
@@ -53,6 +54,7 @@ const ADDED_COLOR = 114;
 const REMOVED_COLOR = 167;
 const HUNK_COLOR = 75;
 const PROPOSAL_COLOR = 179;
+const COMMENT_COLOR = 75;
 // Narrower than this, side by side leaves too little of each line
 const SPLIT_MIN_COLUMNS = 140;
 const SEARCH_FIELDS = ['query', 'include', 'exclude'];
@@ -110,18 +112,33 @@ export const openDiffSet = (set, source) => ({
 	anchor: null,
 });
 
-// The set laid out as rows: file and hunk headings, then lines, each knowing its file and its place in it. Side by
-// side, a removed run sits beside the added run that replaced it, and a row is both its sides.
-const diffRows = (set, layout) =>
-	set.files.flatMap(file => {
+// The set laid out as rows, its files in the order asked for: file and hunk headings, then lines, each knowing its
+// file and its place in it. Side by side, a removed run sits beside the added run that replaced it, and a row is both
+// its sides. In a set of several, a generated file is folded to one row until it's in `shown`.
+const diffRows = (set, layout, { order = 'reading', shown = new Set() } = {}) => {
+	const about = describeFiles(set.files);
+
+	let group = null;
+
+	return orderFiles(set.files, order, set).flatMap(file => {
 		const { binary, hunks } = parseDiff(file.diff ?? '');
-		let order = 0;
+		const what = about.get(file.path);
+		const folded = folds(what) && set.files.length > 1 && !shown.has(file.path);
+		const heading = file.group && file.group !== group ? [{ kind: 'group', text: file.group }] : [];
+		const label = [file.part, fileLabel(what)].filter(Boolean).join(' · ');
+		let place = 0;
+
+		group = file.group ?? null;
 
 		return [
-			...(set.files.length > 1 || set.title !== file.path ? [{ kind: 'file', file }] : []),
+			...heading,
+			...(set.files.length > 1 || set.title !== file.path || file.part ? [{ kind: 'file', file, label }] : []),
 			...(file.note || binary ? [{ kind: 'message', text: file.note ?? 'a binary file changed' }] : []),
-			...hunks.flatMap(hunk => {
-				const lines = hunk.lines.map(line => ({ ...line, order: order++ }));
+			...(folded
+				? [{ kind: 'folded', path: file.path, text: `${what.changed} changed lines, folded: enter shows them` }]
+				: []),
+			...(folded ? [] : hunks).flatMap(hunk => {
+				const lines = hunk.lines.map(line => ({ ...line, order: place++ }));
 				const heading = { kind: 'hunk', text: `@@ -${hunk.oldStart} +${hunk.newStart} @@ ${hunk.heading}` };
 
 				if (layout !== 'split')
@@ -140,6 +157,7 @@ const diffRows = (set, layout) =>
 			}),
 		];
 	});
+};
 
 // Marked rows (or all of them) as each file's lines, in the order the diff has them
 const linesByFile = rows => {
@@ -234,6 +252,10 @@ const MOVES = {
 };
 const FORWARD = ['\r', '\n', 'l', '\x1b[C', '\x1bOC'];
 const BACK = ['h', '\x1b[D', '\x1bOD'];
+const NEXT_STOP = ['\x1b[C', '\x1bOC', 'n'];
+const PREVIOUS_STOP = ['\x1b[D', '\x1bOD', 'p'];
+// A tour's text above the lines it's about, at most this many rows of it
+const TOUR_ROWS = 6;
 const ESCAPE = ['\x1b', 'q'];
 const ERASE = ['\x7f', '\b'];
 
@@ -390,7 +412,32 @@ const markedRows = diff =>
 		? null
 		: diff.rows.slice(Math.min(diff.anchor, diff.cursor), Math.max(diff.anchor, diff.cursor) + 1);
 
-const diffKey = (browser, key, canType) => {
+// A comment on the marked lines of one file in the diff (or the line the cursor is on), numbered by the texts the diff
+// is between, and knowing the diff to open it in again
+const commentOnDiff = diff => {
+	const groups = linesByFile(markedRows(diff) ?? [diff.rows[diff.cursor]].filter(Boolean));
+
+	if (groups.length !== 1) return { type: 'hint', text: 'Mark lines in one file to comment on them.' };
+
+	const [{ path, lines }] = groups;
+	const anchor = diffAnchor(path, lines);
+	const blobs = diff.set.files.find(file => file.path === path)?.blobs ?? {};
+
+	if (!anchor) return { type: 'hint', text: 'Move to a changed line, or mark some, to comment on them.' };
+
+	return {
+		type: 'startComment',
+		quote: diffLines(lines),
+		anchor: {
+			...anchor,
+			blob: blobs[anchor.side],
+			...(anchor.old && { old: { ...anchor.old, blob: blobs.old } }),
+			diff: diff.source,
+		},
+	};
+};
+
+const diffKey = (browser, key, { canType, canNote }) => {
 	const diff = browser.open;
 	const last = Math.max(diff.rows.length - 1, 0);
 	const marked = markedRows(diff);
@@ -399,7 +446,16 @@ const diffKey = (browser, key, canType) => {
 	const opens = here && diff.set.files.find(file => file.path === here)?.status !== 'deleted';
 
 	if (ESCAPE.includes(key) || BACK.includes(key)) browser.open = null;
-	else if (key in MOVES) diff.cursor = clamp(diff.cursor + MOVES[key], 0, last);
+	else if ((key === '\r' || key === '\n') && diff.rows[diff.cursor]?.kind === 'folded')
+		diff.shown = new Set([...(diff.shown ?? []), diff.rows[diff.cursor].path]);
+	else if (key === 'O') {
+		const orders = Object.keys(ORDERS);
+
+		browser.prefs.diffOrder = orders[(orders.indexOf(browser.prefs.diffOrder ?? 'reading') + 1) % orders.length];
+		diff.anchor = null;
+
+		return { type: 'savePrefs' };
+	} else if (key in MOVES) diff.cursor = clamp(diff.cursor + MOVES[key], 0, last);
 	else if (key === 'g') diff.cursor = 0;
 	else if (key === 'G') diff.cursor = last;
 	else if (key === 'v') diff.anchor = diff.anchor === null ? diff.cursor : null;
@@ -408,6 +464,7 @@ const diffKey = (browser, key, canType) => {
 
 		return { type: 'savePrefs' };
 	} else if (key === 'o' && opens) return { type: 'readFile', path: here };
+	else if (key === 'M' && canNote) return commentOnDiff(diff);
 	else if (key === 'a' && canType && groups.length)
 		return { type: 'attach', text: groups.map(({ path, lines }) => attachDiffText(path, diffLines(lines))).join('') };
 	else if (key === 'y' && groups.length)
@@ -421,7 +478,90 @@ const diffKey = (browser, key, canType) => {
 	return { type: 'redraw' };
 };
 
-const fileKey = (browser, key, canType) => {
+const lineRange = ({ from, to }) => (from === to ? `line ${from}` : `lines ${from}-${to}`);
+
+// A guided tour of what's open: the diff, the lines marked, or the whole file
+const walkOf = file => {
+	if (file.diff) return { type: 'walk', subject: { diff: file.source }, heading: file.set.title };
+
+	const marked = markedRange(file);
+
+	return {
+		type: 'walk',
+		subject: { file: { path: file.path, ...marked } },
+		heading: marked ? `${file.path}, ${lineRange(marked)}` : file.path,
+	};
+};
+
+// The tour's stop marked on its lines, in the file or the diff it's about
+export const placeStop = browser => {
+	const { open: file } = browser;
+	const tour = file?.tour;
+	const stop = tour?.stops?.[tour.index - 1];
+
+	if (!stop || !file) return;
+	if (!file.diff) {
+		if (file.path !== stop.path || !file.lines) return;
+		file.anchor = clamp(stop.from - 1, 0, file.lines.length - 1);
+		file.cursor = clamp(stop.to - 1, 0, file.lines.length - 1);
+
+		return;
+	}
+
+	markInDiff(file, { path: stop.path, [stop.side]: stop });
+};
+
+// Lines of a file in the diff marked, on either side of the change or both ({ path, new, old }, each { from, to }),
+// as far as its rows show them; true when they do
+const markInDiff = (diff, { path, ...sides }) => {
+	const on = row =>
+		row.path === path &&
+		row.lines?.some(line =>
+			['new', 'old'].some(side => sides[side] && sides[side].from <= line[side] && line[side] <= sides[side].to),
+		);
+	const first = diff.rows.findIndex(on);
+
+	if (first === -1) return false;
+	diff.anchor = first;
+	diff.cursor = Math.max(first, diff.rows.findLastIndex(on));
+
+	return true;
+};
+
+// While a tour is open: → and ← (or n and p) step through it, Esc ends it; anything else moves as ever. The tour is
+// the open file's or diff's own, so it goes when that does.
+const tourKey = (browser, key) => {
+	const { tour } = browser.open;
+
+	if (ESCAPE.includes(key)) browser.open.tour = null;
+	else if (!tour.stops) return { type: 'ignore' };
+	else if (NEXT_STOP.includes(key)) tour.index = Math.min(tour.index + 1, tour.stops.length);
+	else if (PREVIOUS_STOP.includes(key)) tour.index = Math.max(tour.index - 1, 0);
+	else return null;
+
+	placeStop(browser);
+
+	return { type: 'redraw' };
+};
+
+// A comment on the marked lines (or the line the cursor is on) of the file as it was read. Blank lines quote where
+// they are instead, since a comment needs something to quote.
+const commentOnFile = file => {
+	const { from, to } = markedRange(file) ?? { from: file.cursor + 1, to: file.cursor + 1 };
+	const quote = file.text
+		.replace(/\n$/, '')
+		.split('\n')
+		.slice(from - 1, to)
+		.join('\n');
+
+	return {
+		type: 'startComment',
+		quote: quote.trim() ? quote : `${file.path} ${lineRange({ from, to })} (blank)`,
+		anchor: { path: file.path, from, to },
+	};
+};
+
+const fileKey = (browser, key, { canType, canNote }) => {
 	const file = browser.open;
 
 	if (key === 'z') {
@@ -430,7 +570,16 @@ const fileKey = (browser, key, canType) => {
 		return { type: 'redraw' };
 	}
 
-	if (file.diff) return diffKey(browser, key, canType);
+	if (file.tour) {
+		const toured = tourKey(browser, key);
+
+		if (toured) return toured;
+	}
+
+	if (key === 'w' && (file.diff ? file.set.files.length : file.lines && !showsRendered(browser, file)))
+		return walkOf(file);
+
+	if (file.diff) return diffKey(browser, key, { canType, canNote });
 	// Edited with the person's own editor, in the side terminal, on the machine the file is on
 	if (key === 'e' && canType && !file.error && !file.image) return { type: 'editFile', path: file.path };
 	if (key === 'c' && changeOf(browser, file.path))
@@ -481,6 +630,7 @@ const fileKey = (browser, key, canType) => {
 	else if (key === 'g') file.cursor = 0;
 	else if (key === 'G') file.cursor = last;
 	else if (key === 'v') file.anchor = file.anchor === null ? file.cursor : null;
+	else if (key === 'M' && canNote && !file.outside) return commentOnFile(file);
 	else if (key === 'a' && canType)
 		return { type: 'attach', text: marked ? attachLines(file, marked.from, marked.to) : attachFileText(file.path) };
 	else if (key === 'y') {
@@ -496,8 +646,8 @@ const fileKey = (browser, key, canType) => {
 	return { type: 'redraw' };
 };
 
-export const browserKey = (browser, key, { canType }) => {
-	if (browser.open) return fileKey(browser, key, canType);
+export const browserKey = (browser, key, { canType, canNote = false }) => {
+	if (browser.open) return fileKey(browser, key, { canType, canNote });
 	if (browser.search) return searchKey(browser, key);
 
 	return listKey(browser, key, canType);
@@ -634,11 +784,31 @@ const diffLine = (line, numbers) => {
 	return `${numbers}   ${body}`;
 };
 
+// Whether open comments are on a diff line: `comments` is where each is in the diff ({ [path]: { [id]: { new, old } } }),
+// and `only`, the one side of it a side-by-side half shows
+const commented = (comments, path, line, only) =>
+	Object.values(comments?.[path] ?? {}).some(where =>
+		['new', 'old'].some(
+			side =>
+				(!only || only === side) &&
+				line[side] !== undefined &&
+				where?.[side] &&
+				where[side].from <= line[side] &&
+				line[side] <= where[side].to,
+		),
+	);
+
+// A column beside each line, a bar where comments are on it
+const commentBar = on => (on ? colored('▌', COMMENT_COLOR) : ' ');
+
 // One side of a side-by-side row, cut or padded to its half
-const diffSide = (line, side, width) => {
+const diffSide = (line, side, width, bar = ' ') => {
 	if (!line) return dim('·'.repeat(Math.max(width, 0)));
 
-	const text = fit(diffLine(line, dim(String((side === 'left' ? line.old : line.new) ?? '').padStart(4))), width);
+	const text = fit(
+		`${bar}${diffLine(line, dim(String((side === 'left' ? line.old : line.new) ?? '').padStart(4)))}`,
+		width,
+	);
 
 	return `${text}${' '.repeat(Math.max(width - visibleLength(text), 0))}`;
 };
@@ -647,11 +817,24 @@ const diffView = (browser, width, room) => {
 	const diff = browser.open;
 	const layout = width >= SPLIT_MIN_COLUMNS && browser.prefs.diffLayout !== 'unified' ? 'split' : 'unified';
 
-	if (diff.layout !== layout) {
-		diff.rows = diffRows(diff.set, layout);
+	const order = browser.prefs.diffOrder ?? 'reading';
+
+	// A comment asked for in a folded file unfolds it, so its lines have rows to mark
+	if (diff.focus && !diff.shown?.has(diff.focus.path)) diff.shown = new Set([...(diff.shown ?? []), diff.focus.path]);
+
+	const laidOut = `${layout} ${order} ${[...(diff.shown ?? [])].join(' ')}`;
+
+	if (diff.laidOut !== laidOut) {
+		diff.rows = diffRows(diff.set, layout, { order, shown: diff.shown });
 		diff.layout = layout;
+		diff.laidOut = laidOut;
 		diff.cursor = clamp(diff.cursor, 0, Math.max(diff.rows.length - 1, 0));
 		diff.anchor = null;
+	}
+	// Lines asked for (a comment's), marked once the rows are laid out with its file unfolded
+	if (diff.focus && diff.rows.length) {
+		markInDiff(diff, diff.focus);
+		diff.focus = null;
 	}
 
 	const header = `${colored(printable(diff.set.title), ACCENT)} ${dim(`${diff.set.files.length === 1 ? '1 file' : `${diff.set.files.length} files`} · ${layout === 'split' ? 'side by side' : 'unified'}`)}`;
@@ -668,17 +851,20 @@ const diffView = (browser, width, room) => {
 		let text;
 
 		if (row.kind === 'file')
-			text = bold(
+			text = `${bold(
 				`${colored(STATUS_LETTERS[row.file.status] ?? ' ', STATUS_MARKS[row.file.status]?.[1] ?? 252)} ${printable(row.file.from ? `${row.file.from} → ${row.file.path}` : row.file.path)}`,
-			);
-		else if (row.kind === 'message') text = dim(printable(row.text));
+			)}${row.label ? `  ${dim(row.label)}` : ''}`;
+		else if (row.kind === 'message' || row.kind === 'folded') text = dim(printable(row.text));
+		else if (row.kind === 'group') text = bold(colored(printable(row.text), HUNK_COLOR));
 		else if (row.kind === 'hunk') text = colored(printable(row.text), HUNK_COLOR);
-		else if (row.kind === 'pair')
-			text = `${diffSide(row.left, 'left', half)} ${dim('│')} ${diffSide(row.right, 'right', half)}`;
-		else {
+		else if (row.kind === 'pair') {
+			const bar = (line, side) => commentBar(line && commented(diff.comments, row.path, line, side));
+
+			text = `${diffSide(row.left, 'left', half, bar(row.left, 'old'))} ${dim('│')} ${diffSide(row.right, 'right', half, bar(row.right, 'new'))}`;
+		} else {
 			const [line] = row.lines;
 
-			text = diffLine(line, dim(`${String(line.old ?? '').padStart(4)} ${String(line.new ?? '').padStart(4)}`));
+			text = `${commentBar(commented(diff.comments, row.path, line))}${diffLine(line, dim(`${String(line.old ?? '').padStart(4)} ${String(line.new ?? '').padStart(4)}`))}`;
 		}
 
 		if (index === diff.cursor) return highlight(text, width, CURSOR_BACKGROUND);
@@ -727,7 +913,11 @@ const fileView = (browser, width, room) => {
 		const index = top + offset;
 		const inMark = marked && index + 1 >= marked.from && index + 1 <= marked.to;
 		const number = String(index + 1).padStart(gutter);
-		const text = `${inMark ? orange(number) : dim(number)} ${dim('│')} ${file.highlighted?.[index] ?? line}`;
+		const commentedHere = Object.values(file.comments ?? {}).some(
+			where => where && where.from <= index + 1 && index + 1 <= where.to,
+		);
+		const rule = commentedHere ? colored('▌', COMMENT_COLOR) : dim('│');
+		const text = `${inMark ? orange(number) : dim(number)} ${rule} ${file.highlighted?.[index] ?? line}`;
 
 		if (index === file.cursor) return highlight(text, width, CURSOR_BACKGROUND);
 
@@ -737,15 +927,46 @@ const fileView = (browser, width, room) => {
 	return [fileHeader(file, `${file.cursor + 1}/${file.lines.length}`), ...rows];
 };
 
+// The tour over what it's about: its overview (with what it leaves out), or the stop it's on
+const tourView = (tour, width) => {
+	const words = text => wrap(printable(text), width);
+
+	if (!tour.stops) return [bold(printable(tour.heading)), dim('Haiku is reading it...'), ''];
+
+	const stop = tour.stops[tour.index - 1];
+	const told = stop
+		? [
+				bold(
+					`${tour.index} of ${tour.stops.length} · ${printable(stop.path)} ${lineRange(stop)}${stop.side === 'old' ? ' (before)' : ''}`,
+				),
+				...words(stop.text),
+			]
+		: [
+				bold(`${printable(tour.heading)}: ${tour.stops.length} stop${tour.stops.length === 1 ? '' : 's'}`),
+				...words(tour.overview),
+				...(tour.leftOut?.length ? words(`Not in it: ${tour.leftOut.join(' ')}`).map(dim) : []),
+			];
+
+	return [...told.slice(0, TOUR_ROWS), ''];
+};
+
 export const browserView = (browser, width, room) => {
+	if (browser.open?.tour) {
+		const tour = tourView(browser.open.tour, width);
+
+		return [...tour, ...fileView(browser, width, Math.max(room - tour.length, 3))];
+	}
 	if (browser.open) return fileView(browser, width, room);
 	if (browser.search) return searchView(browser, width, room);
 
 	return listView(browser, width, room);
 };
 
-export const browserKeys = (browser, canType, keyCap) => {
+export const browserKeys = (browser, canType, keyCap, canNote = false) => {
 	const file = browser.open;
+
+	if (file?.tour)
+		return [`${keyCap('→')} next stop`, `${keyCap('←')} back`, `${keyCap('↑↓')} move`, `${keyCap('esc')} end the tour`];
 
 	if (file?.diff) {
 		const marked = file.anchor !== null;
@@ -754,9 +975,13 @@ export const browserKeys = (browser, canType, keyCap) => {
 			`${keyCap('↑↓')} move`,
 			`${keyCap('v')} ${marked ? 'clear marks' : 'mark lines'}`,
 			canType && `${keyCap('a')} attach ${marked ? 'marked lines' : 'all'}`,
+			canNote && `${keyCap('M')} comment`,
 			`${keyCap('y')} copy`,
 			`${keyCap('o')} open file`,
 			`${keyCap('s')} switch layout`,
+			(file.set.files.length > 1 || Object.values(file.set.outlines ?? {}).some(outline => outline.length)) &&
+				`${keyCap('O')} ${ORDERS[browser.prefs.diffOrder ?? 'reading'].label.toLowerCase()}`,
+			`${keyCap('w')} walk me through`,
 			`${keyCap('z')} full screen`,
 			`${keyCap('esc')} back`,
 		].filter(Boolean);
@@ -784,10 +1009,12 @@ export const browserKeys = (browser, canType, keyCap) => {
 			`${keyCap('↑↓')} move`,
 			`${keyCap('v')} ${marked ? 'clear marks' : 'mark lines'}`,
 			canType && `${keyCap('a')} attach ${marked ? 'marked lines' : 'file'}`,
+			canNote && !file.outside && `${keyCap('M')} comment on ${marked ? 'marked lines' : 'line'}`,
 			`${keyCap('y')} copy ${marked ? 'marked lines' : 'file'}`,
 			canType && `${keyCap('e')} edit`,
 			changeOf(browser, file.path) && `${keyCap('c')} changes`,
 			file.isMarkdown && `${keyCap('m')} rendered`,
+			`${keyCap('w')} walk me through ${marked ? 'marked lines' : 'file'}`,
 			`${keyCap('z')} full screen`,
 			`${keyCap('esc')} back`,
 		].filter(Boolean);

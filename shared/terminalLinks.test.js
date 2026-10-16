@@ -34,10 +34,9 @@ test('a URL that ends short of the edge is not joined to the next row', () => {
 });
 
 test('keeps brackets a URL opened, and drops the ones around it', () => {
-	expect(findUrls(['https://en.wikipedia.org/wiki/Bun_(software) and (https://bun.sh)'], 80).map(({ url }) => url)).toEqual([
-		'https://en.wikipedia.org/wiki/Bun_(software)',
-		'https://bun.sh',
-	]);
+	expect(
+		findUrls(['https://en.wikipedia.org/wiki/Bun_(software) and (https://bun.sh)'], 80).map(({ url }) => url),
+	).toEqual(['https://en.wikipedia.org/wiki/Bun_(software)', 'https://bun.sh']);
 });
 
 test('a URL inside another one, or in the rest of a broken one, is not a second link', () => {

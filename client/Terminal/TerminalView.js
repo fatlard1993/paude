@@ -8,6 +8,7 @@ import {
 	attachFile,
 	deleteSession,
 	forkSession,
+	getGit,
 	getSession,
 	getLinks,
 	getTurns,
@@ -52,6 +53,7 @@ import TasksPanel from './TasksPanel';
 import LinksPanel from './LinksPanel';
 import ArtifactsPanel from './ArtifactsPanel';
 import NotesPanel from './NotesPanel';
+import { pullRequestActions } from './pullRequestReview';
 import SideShell from './SideShell';
 import { Body, NARROW, Presence, SelectHint, SelectionActions, TopBar } from './TerminalView.styles';
 
@@ -60,6 +62,8 @@ const BACKGROUND = '#1b1b1b';
 const TAP_SLOP = 8;
 // How far above and below a row to look for the rest of a URL Claude broke across rows
 const URL_ROWS = 6;
+// How long after finding no pull request to look again, in ms
+const PULL_REQUEST_RECHECK = 60_000;
 // Room kept for the new-session button after a done line, in cells
 // Between the selection and its buttons, and the buttons and the edges
 const GAP = 6;
@@ -343,6 +347,9 @@ export default class TerminalView extends View {
 			attach: text => {
 				if (this.attachToPrompt(text)) this.toggleFiles(false);
 			},
+			comment: ({ quote, anchor }) => this.notes.startComment(quote, anchor),
+			commentsOn: (path, options) => this.notes.commentsOn(path, options),
+			showComment: commentId => this.notes.showComment(commentId),
 		});
 		if (canBrowse()) {
 			this.git = new GitPanel({
@@ -358,6 +365,12 @@ export default class TerminalView extends View {
 					this.files.openDiffSet(source);
 				},
 				changed: () => this.files.changesMayHaveChanged(),
+				pullRequestFound: pr => this.pullRequestFound(pr),
+				showComments: () => {
+					if (window.matchMedia(NARROW).matches) this.toggleGit(false);
+					this.toggleNotes(true, { focus: false });
+					this.notes?.showTab('comments');
+				},
 			});
 			this.addResizeHandle(this.git.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
 		}
@@ -442,6 +455,14 @@ export default class TerminalView extends View {
 			sessionId: this.options.id,
 			send: message => Boolean(this.connection?.send(message)),
 			jump: quote => this.jumpTo(quote),
+			openComment: comment => {
+				if (window.matchMedia(NARROW).matches) this.toggleNotes(false);
+				this.toggleFiles(true);
+				this.files.openComment(comment);
+			},
+			attach: text => this.attachToPrompt(text),
+			commentsChanged: () => this.files.commentsChanged(),
+			commentActions: () => this.pullRequestActions(),
 			reveal: () => this.toggleNotes(true, { focus: false }),
 			close: () => this.toggleNotes(false),
 			announce: arrived => this.announce(arrived),
@@ -965,6 +986,27 @@ export default class TerminalView extends View {
 		this.toggleShell(true);
 		this.shell.paste(text);
 		this.terminal.clearSelection();
+	}
+
+	// The comments' way to the branch's pull request, once there's known to be one: looked up when they show, again a
+	// minute after none was found (one may have been opened since, or gh failed), and whenever the Git panel finds one
+	pullRequestActions() {
+		if (!canBrowse()) return [];
+		if (!this.pullRequest && Date.now() - (this.pullRequestLookedUp ?? 0) >= PULL_REQUEST_RECHECK) {
+			this.pullRequestLookedUp = Date.now();
+			getGit(this.options.id, 'pr').then(({ body }) => {
+				if (body?.number) this.pullRequestFound(body);
+			});
+		}
+
+		return this.pullRequest ? pullRequestActions(this.options.id) : [];
+	}
+
+	pullRequestFound(pr) {
+		const had = this.pullRequest;
+
+		this.pullRequest = pr;
+		if (!had) this.notes?.renderList();
 	}
 
 	commentOnSelection() {

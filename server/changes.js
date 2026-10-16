@@ -7,7 +7,12 @@ const MAX_DIFF_BYTES = 1024 * 1024;
 const STATUS = { M: 'modified', A: 'added', D: 'deleted', R: 'renamed', C: 'added', T: 'modified' };
 
 const git = async (args, cwd) => {
-	const child = Bun.spawn(['git', ...args], { cwd, env: gitEnvironment(), stdout: 'pipe', stderr: 'ignore' });
+	const child = Bun.spawn(['git', '-c', 'core.quotePath=false', ...args], {
+		cwd,
+		env: gitEnvironment(),
+		stdout: 'pipe',
+		stderr: 'ignore',
+	});
 	const out = await new Response(child.stdout).text();
 
 	return { code: await child.exited, out };
@@ -51,12 +56,13 @@ export const diffOf = async (cwd, path) => {
 
 	const { out } =
 		change.status === 'untracked'
-			? await git(['diff', '--no-color', '--no-index', '--', '/dev/null', path], cwd)
+			? await git(['diff', '--no-color', '--full-index', '--no-index', '--', '/dev/null', path], cwd)
 			: await git(
 					[
 						'diff',
 						await base(cwd),
 						'--no-color',
+						'--full-index',
 						'--relative',
 						'--find-renames',
 						'--',

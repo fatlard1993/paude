@@ -424,6 +424,23 @@ const Panel = styled(
 			background: transparent;
 		}
 
+		.ready-item {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			padding: 3px 0;
+			font-size: 0.9em;
+		}
+
+		.ready-item .text {
+			flex: 1;
+			min-width: 0;
+			overflow-wrap: anywhere;
+		}
+
+		.ready-item.done i { color: ${colors.light(colors.green)}; }
+		.ready-item.todo i { color: ${colors.light(colors.yellow)}; }
+
 		.outcome.ok { color: ${colors.light(colors.green)}; }
 		.outcome.failed { color: ${colors.light(colors.red)}; }
 		.outcome.running { color: ${colors.light(colors.yellow)}; }
@@ -588,6 +605,27 @@ const Panel = styled(
 			font-size: 0.8em;
 			border-radius: 4px;
 			background: rgba(0, 0, 0, 0.35);
+		}
+
+		.verdict {
+			margin: 4px 0 8px;
+			padding: 6px 10px;
+			border-left: 3px solid ${colors.gray};
+			border-radius: 4px;
+			background: ${colors.alpha(colors.white, 0.04)};
+			font-size: 0.9em;
+		}
+
+		.verdict.current {
+			border-color: ${colors.green};
+		}
+
+		.verdict.stale, .verdict.untested {
+			border-color: ${colors.yellow};
+		}
+
+		.verdict.failing {
+			border-color: ${colors.red};
 		}
 
 		.empty {

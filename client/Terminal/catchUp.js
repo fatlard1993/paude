@@ -4,6 +4,7 @@ import { catchUpOn } from '../api';
 import confirmDialog from '../confirmDialog';
 import { button, element } from '../dom';
 import { recall, remember } from '../storage';
+import stepThrough from './tour';
 
 // When this browser last had the session open, so catching up starts there
 const LAST_SEEN_KEY = 'paude.lastSeen.';
@@ -85,40 +86,39 @@ export const startCatchUp = async ({ card, sessionId, since, terminal, openActiv
 		return;
 	}
 
-	const { overview, stops } = body;
-	const show = index => {
-		const stop = stops[index - 1];
-		const answers = element('div', 'answers');
-		const where = stop && terminal ? promptRow(terminal, stop.prompt) : null;
+	const { overview, stops, leftOut, checked } = body;
 
-		into.replaceChildren(
-			element(
-				'div',
-				'title',
-				index === 0
-					? `Since ${since ? clock(since) : 'lately'}: ${stops.length} turn${stops.length === 1 ? '' : 's'}`
-					: `${index} of ${stops.length} · ${clock(stop.at)}`,
-			),
-			element('div', 'question', index === 0 ? overview : stop.text),
-		);
-		terminal?.clearSelection();
-		if (where !== null) {
-			terminal.scrollToLine(Math.max(0, where - 2));
-			terminal.select(0, where, terminal.cols);
-		} else if (stop) {
-			into.append(element('div', 'details', 'Before what the terminal keeps: the Activity panel has it'));
-			if (openActivity) answers.append(button('Open in Activity', () => openActivity(stop.turnId)));
-		}
-		if (index > 0) answers.append(button('Back', () => show(index - 1)));
-		if (index < stops.length) answers.append(button(index === 0 ? 'Start the tour' : 'Next', () => show(index + 1)));
-		answers.append(
-			button(index === stops.length && index > 0 ? 'Done' : 'Close', () => {
-				close();
-				if (index > 0) terminal?.scrollToBottom();
-			}),
-		);
-		into.append(answers);
-	};
+	stepThrough({
+		into,
+		heading: `Since ${since ? clock(since) : 'lately'}: ${stops.length} turn${stops.length === 1 ? '' : 's'}`,
+		overview,
+		stops,
+		leftOut,
+		checked,
+		stopTitle: (stop, index) => [`${index} of ${stops.length}`, clock(stop.at), ...(stop.steered ?? [])].join(' · '),
+		// A stop scrolls the terminal to where its turn began, or, once that's older than the terminal keeps, offers it
+		// in Activity
+		place: stop => {
+			terminal?.clearSelection();
+			if (!stop) return {};
 
-	show(0);
+			const where = terminal ? promptRow(terminal, stop.prompt) : null;
+
+			if (where !== null) {
+				terminal.scrollToLine(Math.max(0, where - 2));
+				terminal.select(0, where, terminal.cols);
+
+				return {};
+			}
+
+			return {
+				details: 'Before what the terminal keeps: the Activity panel has it',
+				actions: openActivity ? [button('Open in Activity', () => openActivity(stop.turnId))] : [],
+			};
+		},
+		close: toured => {
+			close();
+			if (toured) terminal?.scrollToBottom();
+		},
+	});
 };

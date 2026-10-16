@@ -5,7 +5,8 @@ import { marked } from 'marked';
 import { pathFilter } from '../../shared/globs';
 import { attachDiffText, attachFileText, attachLinesText } from '../../shared/attachText';
 import relativeTime from '../../shared/relativeTime';
-import { diffLines } from '../../shared/diff';
+import { diffAnchor, diffLines } from '../../shared/diff';
+import { ORDERS, describeFiles, orderFiles } from '../../shared/reviewOrder';
 import { extensionOf, kindOf, matchNames } from '../../shared/projectFiles';
 import searchPattern from '../../shared/searchPattern';
 import {
@@ -20,14 +21,18 @@ import {
 	readFile,
 	saveFile,
 	searchFiles,
+	tourOf,
 } from '../api';
-import { canType } from '../identity';
+import { AskingCard } from '../Asking';
+import { openMenu } from '../menu';
+import { canNote, canType } from '../identity';
 import { recall, remember } from '../storage';
 import confirmDialog from '../confirmDialog';
 import { button, closeButton, dragHandle, element } from '../dom';
 import { opensInViewer, viewImage } from '../imageViewer';
 import { artifactUrl } from './ArtifactsPanel';
 import renderDiffSet from './DiffView';
+import stepThrough from './tour';
 import Panel, { LINE_HEIGHT } from './FilesPanel.styles';
 
 const MAX_MATCHES = 200;
@@ -39,6 +44,7 @@ const LIST_WIDTH_KEY = 'paude.filesListWidth';
 const MIN_LIST_WIDTH = 140;
 const MIN_VIEWER_WIDTH = 200;
 const DIFF_LAYOUT_KEY = 'paude.diffLayout';
+const DIFF_ORDER_KEY = 'paude.diffOrder';
 // Narrower than this, side by side leaves too little of each line
 const SPLIT_MIN_WIDTH = 700;
 
@@ -300,6 +306,8 @@ export default class FilesPanel extends Panel {
 		this.selection = null;
 		this.searchOptions = savedOptions();
 		this.markdownView = recall(MARKDOWN_KEY) === 'source' ? 'source' : 'rendered';
+		this.tour = null;
+		this.tourCard = new AskingCard({ addClass: 'tour-strip' });
 
 		const bar = element('div', 'bar');
 		const search = element('div', 'search');
@@ -926,12 +934,14 @@ export default class FilesPanel extends Panel {
 
 		const single = source.path ?? source.b ?? null;
 
+		this.leaveTour(subject => JSON.stringify(subject.diff) === JSON.stringify(source));
 		this.current = single;
 		this.outside = false;
 		this.view = 'diff';
 		this.kind = single ? kindOf(single) : 'text';
 		this.diffSource = source;
 		this.diffSet = null;
+		this.diffShown = new Set();
 		this.diffSelection = null;
 		this.failure = null;
 		this.panes.classList.add('reading');
@@ -942,9 +952,42 @@ export default class FilesPanel extends Panel {
 
 		if (this.diffSource !== source) return;
 
-		if (response?.ok) this.diffSet = body;
-		else this.failure = typeof body === 'string' ? body : 'Could not show the changes.';
+		if (response?.ok) {
+			this.diffSet = body;
+			await this.loadDiffComments();
+			if (this.diffSource !== source) return;
+		} else this.failure = typeof body === 'string' ? body : 'Could not show the changes.';
 		this.renderViewer();
+	}
+
+	// Where the open comments on the diff's files are on each side of it: { [path]: { [comment id]: { new, old } } }
+	async loadDiffComments() {
+		const set = this.diffSet;
+		const files = [...new Map((set?.files ?? []).map(file => [file.path, file])).values()].filter(
+			file => (file.blobs?.old || file.blobs?.new) && this.options.commentsOn?.(file.path, { inDiff: true }).length,
+		);
+		const found = await Promise.all(
+			files.map(async ({ path, blobs }) => {
+				const { body, response } = await getGit(this.options.sessionId, 'anchors', { path, ...blobs });
+
+				return [path, response?.ok ? body : {}];
+			}),
+		);
+
+		if (this.diffSet === set) this.diffComments = Object.fromEntries(found);
+	}
+
+	// The open comments on a line of the diff, on its side of the change
+	diffCommentsAt(path, side, number) {
+		const where = this.diffComments?.[path];
+
+		if (!where) return [];
+
+		return this.options.commentsOn(path, { inDiff: true }).filter(comment => {
+			const lines = where[comment.id]?.[side];
+
+			return lines && lines.from <= number && number <= lines.to;
+		});
 	}
 
 	markCurrent(path) {
@@ -964,6 +1007,7 @@ export default class FilesPanel extends Panel {
 	async open(path, line, lastLine = line, { outside = false } = {}) {
 		if (!(await this.leaveEditing())) return;
 
+		this.leaveTour(subject => !outside && subject.file?.path === path);
 		this.current = path;
 		this.outside = outside;
 		this.view = 'file';
@@ -998,6 +1042,9 @@ export default class FilesPanel extends Panel {
 		this.hash = response.headers.get('x-content-hash');
 		this.text = body;
 		this.lines = body.replace(/\n$/, '').split('\n');
+		this.commentLines = null;
+		await this.loadCommentLines();
+		if (this.current !== path) return;
 		this.renderViewer();
 
 		if (line) this.body.scrollTop = (line - 1) * LINE_HEIGHT - this.body.clientHeight / 2;
@@ -1123,6 +1170,7 @@ export default class FilesPanel extends Panel {
 		}
 		if (this.lines && !this.outside)
 			head.append(button('Compare...', () => this.startComparing(), { title: 'Compare it with another file' }));
+		if (this.lines && this.showingSource && !this.outside) head.append(this.walkButton(walk => this.walkMenu(walk)));
 
 		if (canType()) {
 			if (this.lines && this.showingSource && !this.outside)
@@ -1138,7 +1186,10 @@ export default class FilesPanel extends Panel {
 			}
 		}
 
-		if (this.selection && this.lines && this.showingSource) head.append(button('Copy', () => this.copyLines()));
+		if (this.selection && this.lines && this.showingSource) {
+			if (canNote() && !this.outside) head.append(button('Comment', () => this.commentOnLines(), { icon: 'comment' }));
+			head.append(button('Copy', () => this.copyLines()));
+		}
 		// What made outside the project may be a page: opened as it is (in a sandbox), beside its source here
 		if ((this.kind !== 'text' && this.kind !== 'markdown') || this.outside) {
 			const link = element('a', '', 'Open');
@@ -1151,6 +1202,34 @@ export default class FilesPanel extends Panel {
 		}
 
 		return head;
+	}
+
+	// How a set of several files is ordered: reading order unless another was picked
+	get diffOrder() {
+		const picked = recall(DIFF_ORDER_KEY);
+
+		return Object.hasOwn(ORDERS, picked) ? picked : 'reading';
+	}
+
+	orderButton() {
+		const order = button(ORDERS[this.diffOrder].label, () =>
+			openMenu(
+				order,
+				Object.entries(ORDERS).map(([key, { label, detail }]) => ({
+					label: key === this.diffOrder ? `✓ ${label}` : label,
+					detail,
+					onPress: () => {
+						remember(DIFF_ORDER_KEY, key);
+						this.diffSelection = null;
+						this.renderViewer();
+					},
+				})),
+			),
+		);
+
+		order.title = 'The order the files are read in';
+
+		return order;
 	}
 
 	get diffLayout() {
@@ -1171,6 +1250,8 @@ export default class FilesPanel extends Panel {
 		title.title = set?.title ?? '';
 		head.append(back, ...(single ? [fileIcon(single.path)] : []), title);
 
+		if (set?.files.length > 1 || Object.values(set?.outlines ?? {}).some(outline => outline.length))
+			head.append(this.orderButton());
 		if (wide)
 			head.append(
 				button(this.diffLayout === 'split' ? 'Unified' : 'Side by side', () => {
@@ -1181,6 +1262,14 @@ export default class FilesPanel extends Panel {
 
 		if (single && single.status !== 'deleted' && this.paths.includes(single.path))
 			head.append(button('Open file', () => this.open(single.path)));
+		if (set?.files.length) {
+			const source = this.diffSource;
+
+			head.append(this.walkButton(() => this.startTour({ diff: source }, set.title || 'this change')));
+		}
+
+		if (canNote() && this.diffSelection)
+			head.append(button('Comment', () => this.commentOnPickedLines(), { icon: 'comment' }));
 
 		if (canType() && set?.files.length) {
 			head.append(button('Attach all', () => this.attachDiffSet()));
@@ -1228,7 +1317,12 @@ export default class FilesPanel extends Panel {
 			this.body.append(this.source());
 		}
 
-		this.viewer.replaceChildren(this.viewerHead(), ...(this.conflict ? [this.conflictNotice()] : []), this.body);
+		this.viewer.replaceChildren(
+			this.viewerHead(),
+			...(this.tour ? [this.tourCard.elem] : []),
+			...(this.conflict ? [this.conflictNotice()] : []),
+			this.body,
+		);
 		this.body.scrollTop = scroll;
 	}
 
@@ -1238,7 +1332,13 @@ export default class FilesPanel extends Panel {
 		this.renderedLayout = this.diffLayout;
 
 		const { container, files } = renderDiffSet({
-			set: this.diffSet,
+			set: { ...this.diffSet, files: orderFiles(this.diffSet.files, this.diffOrder, this.diffSet) },
+			about: describeFiles(this.diffSet.files),
+			shown: this.diffShown,
+			onShow: path => {
+				this.diffShown.add(path);
+				this.renderViewer();
+			},
 			layout: this.renderedLayout,
 			languageOf,
 			selection: this.diffSelection,
@@ -1252,6 +1352,8 @@ export default class FilesPanel extends Panel {
 				this.renderViewer();
 			},
 			onAttachLines: canType() ? (file, lines) => this.attachDiffLines(this.diffFiles[file].path, lines) : null,
+			commentsAt: (path, side, number) => this.diffCommentsAt(path, side, number),
+			onComment: commentId => this.options.showComment(commentId),
 		});
 
 		this.diffFiles = files;
@@ -1267,6 +1369,25 @@ export default class FilesPanel extends Panel {
 		const { file, from, to } = this.diffSelection;
 
 		this.attachDiffLines(this.diffFiles[file].path, this.diffFiles[file].lines.slice(from, to + 1));
+	}
+
+	// A comment on the lines picked, numbered by the texts the diff is between, and knowing the diff to open it in again
+	commentOnPickedLines() {
+		const { file, from, to } = this.diffSelection;
+		const { path, lines, blobs } = this.diffFiles[file];
+		const picked = lines.slice(from, to + 1);
+		const anchor = diffAnchor(path, picked);
+
+		if (!anchor) return;
+		this.options.comment({
+			quote: diffLines(picked),
+			anchor: {
+				...anchor,
+				blob: blobs[anchor.side],
+				...(anchor.old && { old: { ...anchor.old, blob: blobs.old } }),
+				diff: this.diffSource,
+			},
+		});
 	}
 
 	attachDiffSet() {
@@ -1512,7 +1633,7 @@ export default class FilesPanel extends Panel {
 			else this.goToDefinition(name);
 		});
 		code.title = 'Ctrl+click a name to go to where it is defined (with Shift, to where it is used)';
-		wrapper.append(...(this.blame ? [this.blameColumn()] : []), gutter, pre);
+		wrapper.append(...(this.blame ? [this.blameColumn()] : []), ...this.commentMarks(), gutter, pre);
 
 		return wrapper;
 	}
@@ -1532,6 +1653,222 @@ export default class FilesPanel extends Panel {
 		const { from, to } = this.selection;
 
 		this.options.attach(attachLinesText(this.current, from, to, this.selectedText()));
+	}
+
+	walkButton(onPress) {
+		const walk = button('Walk me through', () => onPress(walk), {
+			icon: 'route',
+			title: 'A guided tour: Haiku explains it, stop by stop',
+		});
+
+		return walk;
+	}
+
+	// The file, the lines picked, or one of its functions or classes
+	async walkMenu(anchor) {
+		const path = this.current;
+		const { body: symbols } = await getSymbols(this.options.sessionId, { file: path });
+		const { from, to } = this.selection ?? {};
+
+		openMenu(anchor, [
+			{ label: 'This file', detail: path, onPress: () => this.startTour({ file: { path } }, path) },
+			...(this.selection
+				? [
+						{
+							label: from === to ? `Line ${from}` : `Lines ${from}-${to}`,
+							detail: 'the lines picked',
+							onPress: () => this.startTour({ file: { path, from, to } }, `${path}, lines ${from}-${to}`),
+						},
+					]
+				: []),
+			...(Array.isArray(symbols) && symbols.length
+				? [
+						{ heading: 'A function, class or type' },
+						...symbols.map(({ name, kind, line }) => ({
+							label: name,
+							detail: `${kind}, line ${line}`,
+							onPress: () => this.startTour({ file: { path, focus: { name, line } } }, `${name} in ${path}`),
+						})),
+					]
+				: []),
+		]);
+	}
+
+	// A tour of code (a file, some of its lines, a function, a diff), shown above what it's about: each stop takes the
+	// reader to its lines
+	async startTour(subject, heading) {
+		const into = this.tourCard.elem;
+		const close = () => {
+			this.tour = null;
+			this.renderViewer();
+		};
+		const answers = element('div', 'answers');
+
+		this.tour = { subject };
+		answers.append(button('Close', close));
+		into.replaceChildren(
+			element('div', 'title', heading),
+			element('div', 'question', 'Haiku is reading it...'),
+			answers,
+		);
+		this.renderViewer();
+
+		const { body, response } = await tourOf(this.options.sessionId, subject);
+
+		if (this.tour?.subject !== subject) return;
+		if (!response?.ok) {
+			close();
+
+			return new Notify({ type: 'warning', content: typeof body === 'string' ? body : "Couldn't walk you through it" });
+		}
+
+		stepThrough({
+			into,
+			heading: `${heading}: ${body.stops.length} stop${body.stops.length === 1 ? '' : 's'}`,
+			overview: body.overview,
+			stops: body.stops,
+			leftOut: body.leftOut,
+			stopTitle: (stop, index) =>
+				`${index} of ${body.stops.length} · ${subject.diff ? `${stop.path} ` : ''}${stop.from === stop.to ? `line ${stop.from}` : `lines ${stop.from}-${stop.to}`}${stop.side === 'old' ? ' (before)' : ''}`,
+			place: stop => {
+				if (stop) this.goToStop(stop, subject);
+			},
+			close,
+		});
+	}
+
+	// Another file or diff opened: a tour of something else ends, so its bar doesn't stay with Next going nowhere
+	leaveTour(stillOn) {
+		if (this.tour && !stillOn(this.tour.subject)) this.tour = null;
+	}
+
+	async goToStop(stop, subject) {
+		if (!subject.diff) {
+			if (this.view !== 'file' || this.current !== stop.path) await this.open(stop.path, stop.from, stop.to);
+			else this.selection = { anchor: stop.from, from: stop.from, to: stop.to };
+			this.renderViewer();
+			this.body.scrollTop = (stop.from - 1) * LINE_HEIGHT - this.body.clientHeight / 3;
+
+			return;
+		}
+
+		// A file read function by function is in several parts: the stop is in the one holding its lines
+		// A stop before the change is on removed lines, numbered as they were; any other, on lines as they are now
+		const numberOf = line => {
+			if (stop.side === 'new') return line.new;
+
+			return line.kind === 'removed' ? line.old : undefined;
+		};
+		const file = (this.diffFiles ?? []).findIndex(
+			({ path, lines }) => path === stop.path && lines.some(line => numberOf(line) === stop.from),
+		);
+		const lines = file === -1 ? [] : this.diffFiles[file].lines;
+		const first = lines.findIndex(line => numberOf(line) === stop.from);
+		const last = lines.findLastIndex(line => numberOf(line) === stop.to);
+
+		this.diffSelection = first === -1 ? null : { file, anchor: first, from: first, to: Math.max(first, last) };
+		this.renderViewer();
+		this.body.querySelector('.picked')?.scrollIntoView({ block: 'center' });
+	}
+
+	// Comments came or went: the marks beside an open file follow, unless it's being edited
+	async commentsChanged() {
+		if (this.view === 'diff' && this.diffSet) {
+			await this.loadDiffComments();
+
+			return this.view === 'diff' && this.renderViewer();
+		}
+		if (!this.current || !this.lines || this.view === 'diff' || this.editing) return;
+
+		await this.loadCommentLines();
+		this.renderViewer();
+	}
+
+	// Where the open file's comments are in it now, carried through what changed since each was written; a comment
+	// whose lines changed has none
+	async loadCommentLines() {
+		const path = this.current;
+
+		if (!this.options.commentsOn?.(path).length) return (this.commentLines = null);
+
+		const { body, response } = await getGit(this.options.sessionId, 'anchors', { path });
+
+		if (this.current === path) this.commentLines = response?.ok ? body : null;
+	}
+
+	// A comment's lines, opened where they are now: in the diff it was written in, or the file. Lines before a change
+	// are only in a diff of it.
+	async openComment({ id, anchor }) {
+		if (anchor.diff && (await this.openInDiff(id, anchor))) return;
+		if (anchor.side === 'old')
+			return new Notify({
+				type: 'warning',
+				content: anchor.diff
+					? 'The change it is on is not in that diff any more.'
+					: 'It is on lines before a change, which no diff here shows.',
+			});
+
+		const { body, response } = await getGit(this.options.sessionId, 'anchors', { path: anchor.path });
+		const now = response?.ok && id in body ? body[id] : anchor;
+
+		if (now === null)
+			new Notify({ type: 'warning', content: 'Its lines have changed since; this is where they were.' });
+		await this.open(anchor.path, (now ?? anchor).from, (now ?? anchor).to);
+	}
+
+	// The comment's lines picked in its diff, where they are in it now; false when the diff or its lines are gone
+	async openInDiff(id, anchor) {
+		await this.openDiffSet(anchor.diff);
+
+		const where = this.diffComments?.[anchor.path]?.[id];
+
+		if (this.view !== 'diff' || !(where?.new || where?.old)) return false;
+
+		const on = line =>
+			['new', 'old'].some(side => where[side] && where[side].from <= line[side] && line[side] <= where[side].to);
+		const file = this.diffFiles.findIndex(found => found.path === anchor.path && found.lines.some(on));
+
+		if (file === -1) return false;
+
+		const { lines } = this.diffFiles[file];
+		const from = lines.findIndex(on);
+
+		this.diffSelection = { file, anchor: from, from, to: lines.findLastIndex(on) };
+		this.renderViewer();
+		this.body.querySelector('.picked')?.scrollIntoView({ block: 'center' });
+
+		return true;
+	}
+
+	commentOnLines() {
+		const { from, to } = this.selection;
+
+		this.options.comment({ quote: this.selectedText(), anchor: { path: this.current, from, to } });
+	}
+
+	// A mark beside the lines each open comment is on, which opens it
+	commentMarks() {
+		return (this.options.commentsOn?.(this.current) ?? []).flatMap(comment => {
+			const now = this.commentLines && comment.id in this.commentLines ? this.commentLines[comment.id] : comment.anchor;
+
+			if (!now) return [];
+
+			// Not a button: the panel's button look would cover the line number it sits beside
+			const mark = Object.assign(element('div', 'comment-mark'), { role: 'button', tabIndex: 0 });
+			const { from, to } = now;
+
+			mark.style.top = `${(from - 1) * LINE_HEIGHT}px`;
+			mark.style.height = `${(Math.min(to, this.lines.length) - from + 1) * LINE_HEIGHT}px`;
+			mark.title = `${comment.author}: ${comment.text}`;
+			mark.addEventListener('click', () => this.options.showComment(comment.id));
+			mark.addEventListener('keydown', event => {
+				if (event.key !== 'Enter' && event.key !== ' ') return;
+				event.preventDefault();
+				this.options.showComment(comment.id);
+			});
+
+			return mark;
+		});
 	}
 
 	async copyLines() {

@@ -110,6 +110,22 @@ describe('overlayKey', () => {
 		expect(state.thread).toBeNull();
 	});
 
+	test('a comment on lines says where, opens there on o, and one started in the reader goes with its lines', () => {
+		const anchor = { path: 'src/a.js', from: 2, to: 3, side: 'new', old: { from: 2, to: 2 } };
+		const comments = [{ ...thread()[0], anchor }];
+		const state = fresh({ id: 's', presence: { clients: [] }, notes: { chat: [], comments }, thread: 'a' });
+
+		expect(overlayBox(state, 100, 40).lines.join('\n')).toContain(
+			'Comment on src/a.js lines 2-3, and line 2 before the change:',
+		);
+		expect(overlayKey(state, 'o')).toEqual({ type: 'openComment', comment: comments[0] });
+
+		const drafting = fresh({ draft: { kind: 'comment', text: '', quote: '+two', anchor } });
+
+		typeAll(drafting, ['o', 'k']);
+		expect(overlayKey(drafting, '\r')).toEqual({ type: 'comment', quote: '+two', text: 'ok', anchor });
+	});
+
 	test('the thread view shows the whole quote, the comment and its replies', () => {
 		const state = fresh({ id: 's', presence: { clients: [] }, notes: { chat: [], comments: thread() }, thread: 'c' });
 		const screen = overlayBox(state, 100, 40).lines.join('\n');

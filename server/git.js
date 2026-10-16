@@ -1,5 +1,9 @@
-import { basename } from 'path';
+import { constants } from 'fs';
+import { copyFile, mkdtemp, open, realpath, rm, stat } from 'fs/promises';
+import os from 'os';
+import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from 'path';
 
+import { remapLines } from '../shared/diff';
 import { isSecret } from './files';
 import gitEnvironment from './utils/gitEnvironment';
 
@@ -8,6 +12,13 @@ import gitEnvironment from './utils/gitEnvironment';
 const MAX_OUTPUT_BYTES = 256 * 1024;
 const MAX_PATCH_BYTES = 1024 * 1024;
 const LOG_PAGE = 50;
+// New files a branch diff with its uncommitted work shows, at most, and the size past which one is only named
+const MAX_UNTRACKED = 200;
+const MAX_UNTRACKED_BYTES = 512 * 1024;
+// A file kept as a blob for a comment's lines, at most
+const MAX_BLOB_BYTES = 4 * 1024 * 1024;
+// Paths named to one git command at a time
+const PATHS_AT_ONCE = 500;
 const NETWORK_TIMEOUT_MS = 120_000;
 const LOCAL_TIMEOUT_MS = 30_000;
 const UNIT = '\x1f';
@@ -23,18 +34,42 @@ const environment = () => ({
 	GIT_EDITOR: 'true',
 });
 
-const run = async (args, cwd, { input, timeout = LOCAL_TIMEOUT_MS } = {}) => {
-	const child = Bun.spawn(['git', ...args], {
+// Paths as they are, not quoted and escaped (which splitPatch can't read) when they aren't plain ASCII
+// What a command prints, up to `limit` bytes, past which it is stopped (`cut`)
+const readUpTo = async (child, limit) => {
+	if (!limit) return { text: await new Response(child.stdout).text(), cut: false };
+
+	const reader = child.stdout.getReader();
+	const chunks = [];
+	let size = 0;
+
+	while (size < limit) {
+		const { done, value } = await reader.read();
+
+		if (done) return { text: Buffer.concat(chunks).toString(), cut: false };
+		chunks.push(value);
+		size += value.length;
+	}
+
+	await reader.cancel();
+	child.kill();
+
+	return { text: Buffer.concat(chunks).subarray(0, limit).toString(), cut: true };
+};
+
+const run = async (args, cwd, { input, timeout = LOCAL_TIMEOUT_MS, env, limit } = {}) => {
+	const child = Bun.spawn(['git', '-c', 'core.quotePath=false', ...args], {
 		cwd,
-		env: environment(),
-		stdin: input === undefined ? 'ignore' : new TextEncoder().encode(input),
+		env: { ...environment(), ...env },
+		stdin: typeof input === 'string' ? new TextEncoder().encode(input) : (input ?? 'ignore'),
 		stdout: 'pipe',
 		stderr: 'pipe',
 		timeout,
 	});
-	const [out, err] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
+	const [{ text: out, cut }, err] = await Promise.all([readUpTo(child, limit), new Response(child.stderr).text()]);
+	const code = await child.exited;
 
-	return { code: await child.exited, out, err };
+	return { code: cut ? 0 : code, out, err };
 };
 
 const refused = (args, { out, err }) => new GitError((err || out).trim() || `git ${args[0]} failed`);
@@ -62,6 +97,33 @@ export const repoRoot = async cwd => {
 	const { code, out } = await run(['rev-parse', '--show-toplevel'], cwd);
 
 	return code === 0 ? out.trim() : null;
+};
+
+const folderPrefix = async cwd => {
+	const { code, out } = await run(['rev-parse', '--show-prefix'], cwd);
+
+	return code === 0 ? out.trim() : '';
+};
+
+// Paths git names from the top of the repository, named from a folder in it instead (`../` for one outside it)
+export const pathsFromFolder = async cwd => {
+	const prefix = await folderPrefix(cwd);
+
+	return file => (prefix ? posix.relative(prefix, file) : file);
+};
+
+// And back: paths named from a folder in the repository, as git names them from its top
+export const pathsFromTop = async cwd => {
+	const prefix = await folderPrefix(cwd);
+
+	return file => posix.normalize(posix.join(prefix, file));
+};
+
+// The commit checked out where a session works; undefined outside git or before the first commit
+export const headCommit = async cwd => {
+	const { code, out } = await run(['rev-parse', '--verify', '-q', 'HEAD'], cwd);
+
+	return code === 0 ? out.trim() : undefined;
 };
 
 const STATUS = { M: 'modified', A: 'added', D: 'deleted', R: 'renamed', C: 'copied', T: 'modified', U: 'conflicted' };
@@ -220,7 +282,10 @@ export const gitCommit = async (root, ref) => {
 	const [subject, body, author, date, short] = (
 		await must(['show', '-s', `--format=%s${UNIT}%b${UNIT}%an${UNIT}%aI${UNIT}%h`, hash], root)
 	).split(UNIT);
-	let patch = await must(['show', '--format=', '--no-color', '--find-renames', '--first-parent', hash], root);
+	let patch = await must(
+		['show', '--format=', '--no-color', '--full-index', '--find-renames', '--first-parent', hash],
+		root,
+	);
 
 	if (patch.length > MAX_PATCH_BYTES) patch = patch.slice(0, MAX_PATCH_BYTES);
 
@@ -316,16 +381,371 @@ export const defaultBase = async root => {
 };
 
 // What this branch adds to the base: its commits, and its changes as the diff view's files (since they parted)
-export const gitCompare = async (root, { base } = {}) => {
+export const gitCompare = async (root, { base, working = false } = {}) => {
 	const against = base || (await defaultBase(root));
 
 	if (!against || against.startsWith('-')) throw new GitError('There is no branch to compare with');
 
-	let patch = await must(['diff', '--no-color', '--find-renames', `${against}...HEAD`], root);
+	const commits = await gitLog(root, { ref: `${against}..HEAD` });
 
-	if (patch.length > MAX_PATCH_BYTES) patch = patch.slice(0, MAX_PATCH_BYTES);
+	if (!working) {
+		const patch = await must(['diff', '--no-color', '--full-index', '--find-renames', `${against}...HEAD`], root);
 
-	return { base: against, commits: await gitLog(root, { ref: `${against}..HEAD` }), files: splitPatch(patch) };
+		return { base: against, commits, files: splitPatch(patch.slice(0, MAX_PATCH_BYTES)) };
+	}
+
+	return { base: against, commits, ...(await withWork(root, against)) };
+};
+
+// Each item through `work`, no more than `limit` at a time, the results in order
+const eachAtMost = async (items, limit, work) => {
+	const results = [];
+	let next = 0;
+	const worker = async () => {
+		while (next < items.length) {
+			const index = next++;
+
+			results[index] = await work(items[index]);
+		}
+	};
+
+	await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+
+	return results;
+};
+
+// `work` given an index of its own, the checkout's with `files` (new ones) marked as to be added, so a diff with the
+// files on disk shows them as git shows any change: once, a file a commit deleted and that is back on disk as changed
+const withIntentToAdd = async (root, files, work) => {
+	const folder = await mkdtemp(join(os.tmpdir(), 'paude-index-'));
+	const env = { GIT_INDEX_FILE: join(folder, 'index') };
+
+	try {
+		const index = resolve(root, (await must(['rev-parse', '--git-path', 'index'], root)).trim());
+
+		await copyFile(index, env.GIT_INDEX_FILE).catch(() => {});
+		if (files.length)
+			await must(['--literal-pathspecs', 'add', '-N', '--pathspec-from-file=-', '--pathspec-file-nul'], root, {
+				env,
+				input: files.join('\0'),
+			});
+
+		return await work(env);
+	} finally {
+		await rm(folder, { recursive: true, force: true });
+	}
+};
+
+// Paths `git status --porcelain -z` names (a rename's both)
+const statusPaths = text => {
+	const fields = text.split('\0');
+	const paths = new Set();
+
+	for (let index = 0; index < fields.length; index++) {
+		const field = fields[index];
+
+		if (!/^.. ./.test(field)) continue;
+		paths.add(field.slice(3));
+		if (/[RC]/.test(field.slice(0, 2)) && fields[index + 1]) paths.add(fields[++index]);
+	}
+
+	return paths;
+};
+
+// What the branch would propose with the work not committed yet: from where it parted from the base to the files as
+// they are, new files among them. A new file too big to show is named with a note; past MAX_UNTRACKED of them, or
+// past the patch's budget, files are left out, and `leftOut` says how many.
+const withWork = async (root, against) => {
+	const parted = (await must(['merge-base', against, 'HEAD'], root)).trim();
+	const untracked = (await must(['ls-files', '--others', '--exclude-standard', '-z'], root))
+		.split('\0')
+		.filter(file => file && !file.endsWith('/') && !isSecret(file));
+	const listed = untracked.slice(0, MAX_UNTRACKED);
+	const sizes = await eachAtMost(listed, 8, file =>
+		stat(join(root, file)).then(
+			({ size }) => size,
+			() => 0,
+		),
+	);
+	const big = listed.filter((file, index) => sizes[index] > MAX_UNTRACKED_BYTES);
+	const small = listed.filter((file, index) => sizes[index] <= MAX_UNTRACKED_BYTES);
+	const shown = ['.', ...big.map(file => `:(exclude,literal)${file}`)];
+	const [patch, names] = await withIntentToAdd(root, small, env =>
+		Promise.all([
+			must(['diff', '--no-color', '--full-index', '--find-renames', parted, '--', ...shown], root, {
+				env,
+				limit: MAX_PATCH_BYTES,
+			}),
+			must(['diff', '--name-only', '-z', '--find-renames', parted, '--', ...shown], root, { env }),
+		]),
+	);
+	const before = big.length
+		? new Set(
+				(await must(['--literal-pathspecs', 'ls-tree', '-z', '--name-only', parted, '--', ...big], root))
+					.split('\0')
+					.filter(Boolean),
+			)
+		: new Set();
+	const whole = names.split('\0').filter(file => file && !isSecret(file));
+	const fitted = splitPatch(patch);
+	const files = [
+		...fitted,
+		...big.map(file => ({
+			path: file,
+			status: before.has(file) ? 'modified' : 'added',
+			diff: '',
+			note: 'Too big to show here',
+		})),
+	];
+	const changed = statusPaths(await must(['status', '--porcelain', '-z', '--untracked-files=all'], root));
+
+	return {
+		uncommitted: files.filter(file => changed.has(file.path) || (file.from && changed.has(file.from))).length,
+		leftOut: untracked.length - listed.length + whole.length - fitted.length,
+		files,
+	};
+};
+
+const COMMIT = /^[0-9a-f]{40}$/;
+
+// What changed on this branch since a commit someone looked at: { commits, rewritten, files }. A commit still in its
+// history gives the commits since and what they changed. One it no longer holds (a rebase, a force push) gives how the
+// branch's own files differ from it, leaving out what the base changed elsewhere.
+export const gitSince = async (root, commit) => {
+	if (!COMMIT.test(commit ?? '')) throw new GitError('That is not a commit');
+	if ((await run(['cat-file', '-e', `${commit}^{commit}`], root)).code !== 0)
+		throw new GitError('The commit you reviewed is not here any more; fetch, or review it whole again');
+
+	const kept = (await run(['merge-base', '--is-ancestor', commit, 'HEAD'], root)).code === 0;
+	const base = !kept && (await defaultBase(root));
+	const names = async range =>
+		(await must(['diff', '--name-only', '--no-renames', '-z', ...range], root)).split('\0').filter(Boolean);
+	// The branch's own files, among those that differ: named a few hundred at a time, each as it is (not a pattern)
+	const touched = base
+		? [
+				...new Set([...(await names([`${base}...HEAD`])), ...(await names([`${base}...${commit}`]))]).intersection(
+					new Set(await names([commit, 'HEAD'])),
+				),
+			].sort()
+		: null;
+	const parts = touched
+		? Array.from({ length: Math.ceil(touched.length / PATHS_AT_ONCE) }, (_, index) =>
+				touched.slice(index * PATHS_AT_ONCE, (index + 1) * PATHS_AT_ONCE),
+			)
+		: [[]];
+	let patch = '';
+
+	for (const part of parts) {
+		if (patch.length >= MAX_PATCH_BYTES) break;
+		patch += await must(
+			[
+				'--literal-pathspecs',
+				'diff',
+				'--no-color',
+				'--full-index',
+				'--find-renames',
+				commit,
+				'HEAD',
+				...(part.length ? ['--', ...part] : []),
+			],
+			root,
+			{ limit: MAX_PATCH_BYTES - patch.length },
+		);
+	}
+
+	const since = (kept && `${commit}..HEAD`) || (base && `${base}..HEAD`) || 'HEAD';
+
+	return {
+		rewritten: !kept,
+		commits: await gitLog(root, { ref: since, limit: 100 }),
+		files: splitPatch(patch.slice(0, MAX_PATCH_BYTES)),
+	};
+};
+
+const ZERO_CONTEXT = ['diff', '-U0', '--no-color', '--no-ext-diff', '--no-textconv'];
+
+// Where `path` is, if inside `top` (or `top` itself)
+const isWithin = (top, path) => {
+	const within = relative(top, path);
+
+	return !isAbsolute(within) && within.split(sep)[0] !== '..';
+};
+
+// A file a comment may name, from the session's folder: inside its repository (the folder itself outside git),
+// never a secret. Its place on disk and the repository's, or null. `../` names a file elsewhere in the repository.
+const placeOf = async (cwd, file) => {
+	if (typeof file !== 'string' || !file || file.includes('\0') || isAbsolute(file)) return null;
+
+	const [top, here] = await Promise.all([
+		realpath((await repoRoot(cwd)) ?? cwd).catch(() => null),
+		realpath(cwd).catch(() => null),
+	]);
+	const full = top && here && resolve(here, file);
+
+	if (!full || full === top || !isWithin(top, full) || isSecret(relative(top, full).split(sep).join('/'))) return null;
+
+	return { full, top };
+};
+
+export const inRepository = async (cwd, file) => Boolean(await placeOf(cwd, file));
+
+// A file's bytes as they are on disk, if it may be kept: a plain file (not a link, a pipe or a device) inside the
+// repository, not too big. Undefined otherwise.
+const fileBytes = async (cwd, file) => {
+	const place = await placeOf(cwd, file);
+	const folder = place && (await realpath(dirname(place.full)).catch(() => null));
+
+	if (!folder || !isWithin(place.top, folder)) return undefined;
+
+	let handle;
+
+	try {
+		handle = await open(place.full, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+
+		const stats = await handle.stat();
+
+		return stats.isFile() && stats.size <= MAX_BLOB_BYTES ? await handle.readFile() : undefined;
+	} catch {
+		return undefined;
+	} finally {
+		await handle?.close();
+	}
+};
+
+const hashBytes = async (cwd, file, bytes, write) => {
+	const hashed = await run(
+		['hash-object', ...(write ? ['-w'] : []), '--stdin', ...(file ? [`--path=${file}`] : [])],
+		cwd,
+		{
+			input: bytes,
+		},
+	);
+
+	return hashed.code === 0 && COMMIT.test(hashed.out.trim()) ? hashed.out.trim() : undefined;
+};
+
+// A file's text as git names it (a blob id), so lines read in it can be found again however the file changes after:
+// at a commit (`rev`), or as it is on disk now (not kept: keepFile keeps it). Undefined outside git, or for a file
+// that isn't there or can't be kept.
+export const blobOf = async (cwd, file, rev) => {
+	if (rev) {
+		const found = await run(['rev-parse', '--verify', '-q', `${rev}:./${file}`], cwd);
+
+		return found.code === 0 && COMMIT.test(found.out.trim()) ? found.out.trim() : undefined;
+	}
+
+	const bytes = await fileBytes(cwd, file);
+
+	return bytes && hashBytes(cwd, file, bytes, false);
+};
+
+// The file on disk kept in git as a blob, for a comment on its lines: its id, or undefined when it can't be kept, or
+// isn't the text `wanted` (a blob id) any more
+export const keepFile = async (cwd, file, wanted) => {
+	const bytes = await fileBytes(cwd, file);
+
+	if (!bytes || (wanted && (await hashBytes(cwd, file, bytes, false)) !== wanted)) return undefined;
+
+	return hashBytes(cwd, file, bytes, true);
+};
+
+// Where a comment's lines are now: carried from the text they were read in to `target` (a commit, or the file on disk
+// when absent), or null when what changed since touched them, the file is gone, or `target` isn't here to read. That
+// text is the comment's blob (the file exactly as it was read), else its commit (a GitHub thread's lines are numbered
+// by one); with neither here to compare with, its lines are taken as they are.
+export const linesNow = async (cwd, { path: file, from, to, commit, blob }, target) => {
+	if (COMMIT.test(blob ?? '') && (await run(['cat-file', '-e', blob], cwd)).code === 0) {
+		const now = target ? await blobOf(cwd, file, target) : await keepFile(cwd, file);
+
+		if (!now) return null;
+		if (now === blob) return { from, to };
+
+		const diff = await run([...ZERO_CONTEXT, blob, now], cwd);
+
+		return diff.code === 0 ? remapLines(diff.out, { from, to }) : null;
+	}
+
+	if (!COMMIT.test(commit ?? '') || (await run(['cat-file', '-e', `${commit}^{commit}`], cwd)).code !== 0)
+		return { from, to };
+	if (target && !(await hasRef(cwd, target))) return null;
+
+	const diff = await run([...ZERO_CONTEXT, commit, ...(target ? [target] : []), '--', file], cwd);
+
+	if (diff.code !== 0) return target ? null : { from, to };
+
+	return remapLines(diff.out, { from, to });
+};
+
+export const hasObject = async (cwd, hash) =>
+	COMMIT.test(hash ?? '') && (await run(['cat-file', '-e', hash], cwd)).code === 0;
+
+// A text that isn't a file on disk (a turn's, a proposal's) kept in git as a blob, so lines read in it can be found
+// again, when it is the text `wanted` (a blob id): its id, or undefined outside git, past the size a blob is kept at,
+// or for another text
+export const keepText = async (cwd, text, wanted) => {
+	if (typeof text !== 'string' || text.length > MAX_BLOB_BYTES) return undefined;
+
+	const bytes = new TextEncoder().encode(text);
+
+	return (await hashBytes(cwd, '', bytes, false)) === wanted ? hashBytes(cwd, '', bytes, true) : undefined;
+};
+
+// Lines of one text of a file carried to another (both blobs), or null when what changed between them touched the
+// lines, or either text isn't here to compare
+export const linesBetween = async (cwd, { from, to }, before, after) => {
+	if (before === after) return { from, to };
+	if (!(await hasObject(cwd, before)) || !(await hasObject(cwd, after))) return null;
+
+	const diff = await run([...ZERO_CONTEXT, before, after], cwd);
+
+	return diff.code === 0 ? remapLines(diff.out, { from, to }) : null;
+};
+
+// Where a comment's lines are in a diff of its file, given the two texts the diff is between ({ old, new }, blobs):
+// { new, old }, its lines on each side, or null on a side without them (no such text, or the change touched them). A
+// comment without a blob of its own (a GitHub thread on lines after the change) is numbered by its commit.
+export const linesInDiff = async (cwd, anchor, blobs) => {
+	const carry = async (range, from, side) => (blobs[side] && from ? linesBetween(cwd, range, from, blobs[side]) : null);
+	const own =
+		anchor.blob ??
+		(anchor.side === 'new' && COMMIT.test(anchor.commit ?? '')
+			? await blobOf(cwd, anchor.path, anchor.commit)
+			: undefined);
+	const lines = await carry(anchor, own, anchor.side);
+
+	if (anchor.side === 'old') return { old: lines, new: null };
+
+	return { new: lines, old: anchor.old ? await carry(anchor.old, anchor.old.blob, 'old') : null };
+};
+
+export const hasRef = async (root, name) =>
+	!name.startsWith('-') && (await run(['rev-parse', '--verify', '-q', `${name}^{commit}`], root)).code === 0;
+
+export const mergeBase = async (root, first, second) => {
+	const found = await run(['merge-base', first, second], root);
+
+	return found.code === 0 && COMMIT.test(found.out.trim()) ? found.out.trim() : null;
+};
+
+// How far HEAD has moved from a commit, cheaply: { count } commits on from it, { rewritten } when HEAD no longer holds
+// it, { missing } when it isn't here at all
+export const movedSince = async (root, commit) => {
+	if (!COMMIT.test(commit ?? '') || (await run(['cat-file', '-e', `${commit}^{commit}`], root)).code !== 0)
+		return { missing: true };
+	if ((await run(['merge-base', '--is-ancestor', commit, 'HEAD'], root)).code !== 0) return { rewritten: true };
+
+	return { count: Number((await must(['rev-list', '--count', `${commit}..HEAD`], root)).trim()) };
+};
+
+// What a branch tracks (origin/someone/fix), else its own name; null on a detached HEAD
+export const branchName = async root => {
+	const branch = await run(['symbolic-ref', '--short', '-q', 'HEAD'], root);
+
+	if (branch.code !== 0) return null;
+
+	const upstream = await run(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], root);
+
+	return (upstream.code === 0 && upstream.out.trim()) || branch.out.trim();
 };
 
 // Paths an action names: each a string inside the repository, never an option

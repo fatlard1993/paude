@@ -8,7 +8,11 @@ test('checksums a path as cksum does', () => {
 	expect(cksum('')).toBe(4294967295);
 	// Past 255 bytes the length takes more than one byte
 	expect(cksum('x'.repeat(300))).toBe(
-		Number(Bun.spawnSync(['cksum'], { stdin: Buffer.from('x'.repeat(300)) }).stdout.toString().split(' ')[0]),
+		Number(
+			Bun.spawnSync(['cksum'], { stdin: Buffer.from('x'.repeat(300)) })
+				.stdout.toString()
+				.split(' ')[0],
+		),
 	);
 });
 

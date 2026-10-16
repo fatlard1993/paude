@@ -1,4 +1,4 @@
-import { getTimeline } from '../api';
+import { getTimeline, getVerification } from '../api';
 import { button, closeButton, element, icon } from '../dom';
 import relativeTime from '../../shared/relativeTime';
 import Panel from './GitPanel.styles';
@@ -54,7 +54,10 @@ export default class ActivityPanel extends Panel {
 	}
 
 	async refresh() {
-		const { body, response } = await getTimeline(this.options.sessionId);
+		const [{ body, response }, checked] = await Promise.all([
+			getTimeline(this.options.sessionId),
+			getVerification(this.options.sessionId),
+		]);
 
 		if (!response?.ok) {
 			this.body.replaceChildren(element('div', 'empty', 'Could not read what Claude did.'));
@@ -68,6 +71,7 @@ export default class ActivityPanel extends Panel {
 			: '';
 		// Open the newest turn, unless a turn was opened by hand
 		if (!this.opened.size && body.turns[0]) this.opened.add(body.turns[0].id);
+		this.verdict = checked.response?.ok ? checked.body : null;
 		this.renderTurns(body.turns);
 	}
 
@@ -94,6 +98,7 @@ export default class ActivityPanel extends Panel {
 		const scroll = this.body.scrollTop;
 
 		this.body.replaceChildren(
+			...(this.verdict ? [element('div', `verdict ${this.verdict.state}`, this.verdict.said)] : []),
 			...(turns.length ? turns.map(turn => this.turn(turn)) : [element('div', 'empty', 'Nothing yet.')]),
 		);
 		this.body.scrollTop = scroll;
@@ -105,13 +110,14 @@ export default class ActivityPanel extends Panel {
 		node.dataset.turn = turn.id;
 		const head = element('button', 'turn-head');
 		const edited = new Set(turn.steps.filter(step => step.edits).map(step => step.file));
-		const failed = turn.steps.filter(step => step.ok === false).length;
+		const failed = turn.steps.filter(step => step.ok === false && !step.declined).length;
 		const meta = [
 			relativeTime(Date.parse(turn.at)),
 			duration(turn.at, turn.endedAt),
 			`${turn.steps.length} step${turn.steps.length === 1 ? '' : 's'}`,
 			edited.size && `${edited.size} file${edited.size === 1 ? '' : 's'} edited`,
 			failed && `${failed} failed`,
+			turn.steps.some(step => step.declined) && 'a step turned down',
 			turn.interrupted && 'interrupted',
 		].filter(Boolean);
 

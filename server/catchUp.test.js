@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { didOf, parseTour, tourPrompt } from './catchUp';
+import { didOf, leftOutOf, markInterruptions, parseTour, steeringOf, tourPrompt } from './catchUp';
 
 const turns = [
 	{
@@ -44,4 +44,45 @@ test('each stop lands on its turn, and a stop Haiku skipped falls back to the pr
 		],
 	});
 	expect(parseTour('no idea', turns)).toBeNull();
+});
+
+test('a tour says what it leaves out: turns cut short, sent again, past what it holds, or before what it read', () => {
+	const turn = (prompt, at, extra = {}) => ({ prompt, at: new Date(at).toISOString(), ...extra });
+	const read = [
+		turn('fix it', 2000),
+		turn('fix it', 3000),
+		turn('[Request interrupted by user]', 4000, { interrupted: true }),
+		turn('ship it', 5000),
+	];
+	const told = [read[1], read[3]];
+
+	expect(leftOutOf({ read, told, picked: told.slice(-1), since: 1000, reachesBack: true })).toEqual([
+		"The 1 earliest turn since then isn't in it; Activity has every turn.",
+		'1 prompt sent again is told once.',
+	]);
+	expect(leftOutOf({ read: told, told, picked: told, since: 1000, reachesBack: false })).toEqual([
+		'It reads only the latest part of a long session, so anything before that is missing.',
+	]);
+	expect(leftOutOf({ read: told, told, picked: told, since: 1000, reachesBack: true })).toEqual([]);
+	expect(leftOutOf({ read: told, told, picked: told, reachesBack: false })).toEqual([]);
+});
+
+test('where the person steered is marked and told: a turn stopped, the one that redirected it, a step turned down', () => {
+	const turns = markInterruptions([
+		{ prompt: 'make it blue', steps: [] },
+		{ prompt: '[Request interrupted by user]', interrupted: true, steps: [] },
+		{ prompt: 'no, green', steps: [{ tool: 'Edit', summary: 'a.css', ok: false, declined: true }] },
+	]);
+
+	expect(turns.map(steeringOf)).toEqual([['stopped partway'], [], ['redirected', 'a step turned down']]);
+	expect(didOf(turns[2].steps)).toBe('the person turned down Edit a.css');
+
+	const prompt = tourPrompt([turns[0], turns[2]].map(turn => ({ ...turn, at: 'now' })));
+
+	expect(prompt).toContain('The person stopped Claude partway through this.');
+	expect(prompt).toContain('This redirected the turn before, which the person had stopped.');
+	expect(parseTour('{"overview": "o", "stops": {"1": "a", "2": "b"}}', [turns[0], turns[2]]).stops[1].steered).toEqual([
+		'redirected',
+		'a step turned down',
+	]);
 });

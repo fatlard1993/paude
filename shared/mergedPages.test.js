@@ -2,10 +2,12 @@ import { expect, test } from 'bun:test';
 
 import mergedPages from './mergedPages';
 
-const source = (name, times) => async ({ offset, limit }) => ({
-	sessions: times.slice(offset, offset + limit).map(lastModified => ({ id: `${name}${lastModified}`, lastModified })),
-	total: times.length,
-});
+const source =
+	(name, times) =>
+	async ({ offset, limit }) => ({
+		sessions: times.slice(offset, offset + limit).map(lastModified => ({ id: `${name}${lastModified}`, lastModified })),
+		total: times.length,
+	});
 
 test('pages through several sources newest first, each read only as far as it needs to be', async () => {
 	const fetchPage = mergedPages([source('a', [9, 6, 3, 1]), source('b', [8, 7, 2])]);

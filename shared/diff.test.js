@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import { attachDiffText } from './attachText';
-import { diffLines, parseDiff, sideBySide } from './diff';
+import { diffAnchor, diffLines, parseDiff, remapLines, sideBySide } from './diff';
 
 const DIFF = `diff --git a/src/math.js b/src/math.js
 index 1111111..2222222 100644
@@ -59,4 +59,59 @@ test('side by side, a removed run sits beside the added run that replaced it', (
 
 	expect(shape(sideBySide(parseDiff(DIFF).hunks[0].lines))).toEqual(['c0 c0', 'r1 a2', '- a3', 'c4 c4', 'r5 -']);
 	expect(shape(sideBySide(parseDiff(DIFF).hunks[1].lines))).toEqual(['r0 a1', 'note:2']);
+});
+
+test('a comment on picked diff lines is on the lines after the change, or before it for removals alone', () => {
+	const { hunks } = parseDiff('@@ -1,3 +1,3 @@\n a\n-b\n+B\n c');
+	const [context, removed, added] = hunks[0].lines;
+
+	const [, , , after] = hunks[0].lines;
+
+	expect(diffAnchor('x.js', [context])).toEqual({ path: 'x.js', from: 1, to: 1, side: 'new' });
+	expect(diffAnchor('x.js', [context, removed])).toEqual({ path: 'x.js', from: 1, to: 2, side: 'old' });
+	expect(diffAnchor('x.js', [removed])).toEqual({ path: 'x.js', from: 2, to: 2, side: 'old' });
+	expect(diffAnchor('x.js', [added, after])).toEqual({ path: 'x.js', from: 2, to: 3, side: 'new' });
+});
+
+test('a pick of a change and what replaced it keeps both sides, the removed lines leading when it starts on them', () => {
+	const { hunks } = parseDiff('@@ -1,4 +1,4 @@\n a\n-b\n+B\n c\n-d\n+D');
+	const [context, removed, added, middle, removedLater] = hunks[0].lines;
+
+	expect(diffAnchor('x.js', [removed, added])).toEqual({
+		path: 'x.js',
+		from: 2,
+		to: 2,
+		side: 'new',
+		old: { from: 2, to: 2, leads: true },
+	});
+	expect(diffAnchor('x.js', [context, removed, added])).toEqual({
+		path: 'x.js',
+		from: 1,
+		to: 2,
+		side: 'new',
+		old: { from: 1, to: 2, leads: true },
+	});
+	// Starting on an added line, the removed lines further down don't lead
+	expect(diffAnchor('x.js', [added, middle, removedLater])).toEqual({
+		path: 'x.js',
+		from: 2,
+		to: 3,
+		side: 'new',
+		old: { from: 4, to: 4 },
+	});
+	expect(diffAnchor('x.js', [])).toBeNull();
+});
+
+test('lines carried through a change move with what was added or removed above them, and are lost when touched', () => {
+	// two lines inserted after 2, line 5 changed, lines 9-10 removed
+	const diff = '@@ -2,0 +3,2 @@\n+a\n+b\n@@ -5 +7 @@\n-x\n+y\n@@ -9,2 +10,0 @@\n-p\n-q\n';
+
+	expect(remapLines(diff, { from: 1, to: 2 })).toEqual({ from: 1, to: 2 });
+	expect(remapLines(diff, { from: 3, to: 4 })).toEqual({ from: 5, to: 6 });
+	expect(remapLines(diff, { from: 5, to: 5 })).toBeNull();
+	expect(remapLines(diff, { from: 2, to: 3 })).toBeNull();
+	expect(remapLines(diff, { from: 6, to: 8 })).toEqual({ from: 8, to: 10 });
+	expect(remapLines(diff, { from: 9, to: 9 })).toBeNull();
+	expect(remapLines(diff, { from: 11, to: 12 })).toEqual({ from: 11, to: 12 });
+	expect(remapLines('', { from: 4, to: 7 })).toEqual({ from: 4, to: 7 });
 });

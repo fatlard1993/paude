@@ -3,6 +3,7 @@ import { Notify } from '@vanilla-bean/components';
 import { DESKTOP_KEY, desktopNotificationsOn, remember } from '../storage';
 import confirmDialog from '../confirmDialog';
 
+import { anchorPlace, attachCommentText, attachCommentsText } from '../../shared/attachText';
 import { applyNote } from '../../shared/protocol';
 import { REACTION_PALETTE } from '../../shared/reactions';
 import { canNote, canType, identity, identityKey } from '../identity';
@@ -188,6 +189,7 @@ export default class NotesPanel extends Panel {
 
 		if (arrived) this.noteUnread(arrived.tab);
 		if (arrived && arrived.author !== this.myName) this.options.announce?.(arrived);
+		if (message.type !== 'chat' && message.type !== 'chatUpdate') this.options.commentsChanged?.();
 
 		if (this.tab !== 'people') this.renderList();
 	}
@@ -229,30 +231,41 @@ export default class NotesPanel extends Panel {
 	renderComments() {
 		if (!this.notes.comments.length) {
 			return [
+				...this.commentsToolbar(),
 				element(
 					'div',
 					'empty',
-					'No comments yet. Drag over the terminal to select some text (on a phone: Select on the key bar), then press Comment.',
+					'No comments yet. Drag over the terminal to select some text (on a phone: Select on the key bar), or pick lines in a file or a diff, then press Comment.',
 				),
 			];
 		}
 
 		const ordered = [...this.notes.comments].sort((a, b) => a.resolved - b.resolved || b.at - a.at);
 
-		return ordered.map(comment => {
+		const nodes = ordered.map(comment => {
 			const node = element('div', noteClass(`comment${comment.resolved ? ' resolved' : ''}`, comment));
 			const quote = element('pre', 'quote', comment.quote);
 			const actions = element('div', 'actions');
 			const resolve = element('button', '', comment.resolved ? 'Reopen' : 'Resolve');
+			const open = () => (comment.anchor ? this.options.openComment(comment) : this.options.jump(comment.quote));
 
-			quote.title = 'Find in the terminal';
-			quote.addEventListener('click', () => this.options.jump(comment.quote));
+			node.dataset.commentId = comment.id;
+			quote.title = comment.anchor ? 'Open these lines' : 'Find in the terminal';
+			quote.addEventListener('click', open);
 			resolve.addEventListener('click', () =>
 				this.options.send({ type: 'resolve', commentId: comment.id, resolved: !comment.resolved }),
 			);
+			if (canType()) {
+				const attach = element('button', '', 'Attach');
+
+				attach.title = "Put this thread in Claude's prompt";
+				attach.addEventListener('click', () => this.options.attach(attachCommentText(comment)));
+				actions.append(attach);
+			}
 			if (yours(comment)) actions.append(resolve, this.deleteButton(comment, { commentId: comment.id }));
 
 			node.append(
+				...(comment.anchor ? [this.placeLine(comment, open)] : []),
 				quote,
 				meta(comment),
 				element('div', 'text', comment.text),
@@ -293,6 +306,71 @@ export default class NotesPanel extends Panel {
 
 			return node;
 		});
+
+		return [...this.commentsToolbar(), ...nodes];
+	}
+
+	// Where an anchored comment is, and where it came from or went: GitHub, for a review brought in or posted
+	placeLine(comment, open) {
+		const line = element('div', 'place');
+		const where = element('button', 'where', anchorPlace(comment.anchor));
+
+		where.title = 'Open these lines';
+		where.addEventListener('click', open);
+		line.append(where);
+
+		const github = comment.github?.url ?? comment.posted?.url;
+
+		if (github) {
+			const link = element('a', 'github', comment.github ? 'on GitHub' : 'posted');
+
+			Object.assign(link, { href: github, target: '_blank', rel: 'noopener' });
+			if (comment.github?.outdated) link.textContent = 'on GitHub, outdated';
+			line.append(link);
+		}
+
+		return line;
+	}
+
+	// The open comments, all at once into Claude's prompt
+	commentsToolbar() {
+		const open = this.notes.comments.filter(comment => !comment.resolved);
+		const bar = element('div', 'comments-toolbar');
+
+		if (canType() && open.length) {
+			const attach = element(
+				'button',
+				'',
+				open.length === 1 ? 'Attach the open one' : `Attach all ${open.length} open`,
+			);
+
+			attach.title = "Put every open thread in Claude's prompt, to address them";
+			attach.addEventListener('click', () => this.options.attach(attachCommentsText(open)));
+			bar.append(attach);
+		}
+
+		for (const extra of this.options.commentActions?.() ?? []) bar.append(extra);
+
+		return bar.childElementCount ? [bar] : [];
+	}
+
+	// Open comments on lines of this file, as it is now
+	// The open comments on a file's lines: those on it as it is (after any change), or `inDiff`, on either side of one
+	commentsOn(path, { inDiff = false } = {}) {
+		return this.notes.comments.filter(
+			comment => !comment.resolved && comment.anchor?.path === path && (inDiff || comment.anchor.side === 'new'),
+		);
+	}
+
+	showComment(commentId) {
+		this.showTab('comments');
+		this.options.reveal?.();
+
+		const node = this.list.querySelector(`[data-comment-id="${CSS.escape(commentId)}"]`);
+
+		node?.scrollIntoView({ block: 'center' });
+		node?.classList.add('flash');
+		setTimeout(() => node?.classList.remove('flash'), 1500);
 	}
 
 	// Asked first: a comment goes with its replies, other people's among them
@@ -364,13 +442,14 @@ export default class NotesPanel extends Panel {
 		if (this.tab === 'people') this.list.replaceChildren(...rendered);
 	}
 
-	startComment(quote) {
+	startComment(quote, anchor) {
 		if (!canNote()) return;
 
 		this.showTab('comments');
 		this.options.reveal?.();
 
 		const preview = element('pre', 'quote', quote);
+		const place = anchor && element('div', 'place', anchorPlace(anchor));
 		const cancel = element('button', '', 'Cancel');
 		const close = () => {
 			this.draft.style.display = 'none';
@@ -380,14 +459,14 @@ export default class NotesPanel extends Panel {
 			placeholder: 'Comment on this selection',
 			label: 'Comment',
 			onSend: text => {
-				const sent = this.options.send({ type: 'comment', quote, text });
+				const sent = this.options.send({ type: 'comment', quote, anchor, text });
 
 				if (sent) close();
 
 				return sent;
 			},
 			onAsk: text => {
-				const sent = this.options.send({ type: 'ask', kind: 'comment', quote, text });
+				const sent = this.options.send({ type: 'ask', kind: 'comment', quote, anchor, text });
 
 				if (sent) close();
 
@@ -397,7 +476,7 @@ export default class NotesPanel extends Panel {
 
 		cancel.addEventListener('click', close);
 		box.append(cancel);
-		this.draft.replaceChildren(preview, box);
+		this.draft.replaceChildren(...(place ? [place] : []), preview, box);
 		this.draft.style.display = '';
 		box.querySelector('textarea').focus();
 	}

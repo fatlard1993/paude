@@ -9,6 +9,8 @@ export const DEFAULT_PREFS = {
 	markdownView: 'rendered',
 	// Side by side where the box is wide enough, unless set to 'unified'
 	diffLayout: 'split',
+	// How a diff of several files is ordered: 'reading', 'size' or 'alphabetical' (shared/reviewOrder.js)
+	diffOrder: 'reading',
 	search: { caseSensitive: false, wholeWord: false, regex: false, include: '', exclude: '' },
 };
 

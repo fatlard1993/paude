@@ -155,6 +155,50 @@ const Panel = styled(
 			cursor: pointer;
 		}
 
+		.place {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: baseline;
+			gap: 8px;
+			font-size: 0.85em;
+		}
+
+		.place .where {
+			padding: 0;
+			border: none;
+			background: none;
+			color: ${colors.light(colors.blue)};
+			font: inherit;
+			font-family: ui-monospace, monospace;
+			text-align: left;
+			word-break: break-all;
+			cursor: pointer;
+		}
+
+		.place .github {
+			color: ${colors.gray};
+		}
+
+		.comment.flash {
+			outline: 2px solid ${colors.alpha(colors.blue, 0.7)};
+		}
+
+		.comments-toolbar {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 6px;
+		}
+
+		.comments-toolbar button {
+			padding: 4px 10px;
+			border: none;
+			border-radius: 4px;
+			background: ${colors.alpha(colors.white, 0.1)};
+			color: inherit;
+			font: inherit;
+			font-size: 0.9em;
+		}
+
 		.reactions {
 			display: flex;
 			flex-wrap: wrap;
