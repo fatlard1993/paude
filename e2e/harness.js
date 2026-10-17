@@ -162,6 +162,8 @@ export const openBrowser = async variant => {
 	const executablePath = CHROMES.find(candidate => candidate && Bun.file(candidate).size);
 	const browser = await puppeteer.launch({
 		executablePath,
+		// Over a pipe, Chrome quits when the test process dies however it dies; over a port, a killed run leaves it
+		pipe: true,
 		args:
 			variant === 'webgl'
 				? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']
