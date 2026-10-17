@@ -1151,6 +1151,8 @@ test(
 			);
 
 			await press('[title^="Tasks"]');
+			// The replace's toast stacks in the corner the Show button sits in; a tap clears it, as a person would
+			await press('[popover]', 'Replaced');
 			await press('.tasks .section-head button', 'Show');
 
 			const shown = await page.$eval('.tasks .body', body => body.textContent);
