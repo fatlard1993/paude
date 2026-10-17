@@ -59,6 +59,7 @@ export default class Project extends View {
 		const scroll = new Scroll({ appendTo: this });
 		const compose = composeBox({
 			appendTo: scroll,
+			keep: `paude.prompt.${project}`,
 			placeholder: `What should Claude do in ${project}? (or leave empty to just open Claude)`,
 			actions: [
 				{
@@ -73,6 +74,7 @@ export default class Project extends View {
 								this.pickLifetime(lifetime);
 								this.start();
 							},
+							onSent: () => this.sent(),
 						}),
 				},
 				{ label: 'Start session', onPress: () => this.start() },
@@ -80,6 +82,7 @@ export default class Project extends View {
 		});
 
 		this.prompt = compose.prompt;
+		this.sent = compose.sent;
 		this.startButton = compose.buttons[1];
 		this.startLabel = this.startButton.querySelector('.label');
 		this.checkoutChip = element('button', 'chip');
@@ -97,10 +100,13 @@ export default class Project extends View {
 		this.progress = new Progress({ appendTo: scroll, tag: 'pre', style: { display: 'none' } }).elem;
 		this.places = new Places({ appendTo: scroll });
 
-		// Brought here from home to start in this project
+		// Brought here from home to start in this project, in place of what was left typed here
 		const draft = takeDraft(project);
 
-		this.prompt.value = draft?.text ?? '';
+		if (draft) {
+			this.prompt.value = draft.text;
+			this.prompt.dispatchEvent(new Event('input'));
+		}
 		this.pickLifetime(draft?.lifetime);
 
 		this.holdings(scroll);
@@ -323,6 +329,7 @@ export default class Project extends View {
 
 		if (result.files) return this.startAnyway(result, text, mode);
 
+		this.sent();
 		window.location.hash = `#/sessions/${result.id}`;
 	}
 
@@ -350,6 +357,7 @@ export default class Project extends View {
 		const started = await this.startSession(text, { join: worktree }, mode);
 
 		if (started.error) return new Notify({ type: 'error', content: started.error, timeout: 10_000 });
+		this.sent();
 		window.location.hash = `#/sessions/${started.id}`;
 	}
 

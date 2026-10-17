@@ -456,6 +456,76 @@ test(
 );
 
 test(
+	'the breadcrumb counts a watched session with news since you looked, beside the ones asking',
+	async () => {
+		const server = servers.turns;
+		const answered = await server.newSession();
+
+		await server.api(`/api/sessions/${answered}/watch`, { method: 'PUT', body: JSON.stringify({ watching: true }) });
+		await server.hook(answered, { hook_event_name: 'Stop' });
+
+		const { browser, page } = await openSession('dom', server);
+
+		try {
+			await page.waitForFunction(() => document.querySelector('.breadcrumbs a.trail + .waiting')?.offsetParent, {
+				timeout: 20_000,
+			});
+
+			const badge = await centerOf(page, '.breadcrumbs a.trail + .waiting');
+
+			await page.mouse.click(badge.x, badge.y);
+			await wait(400);
+
+			const details = await page.$$eval('button .detail', rows => rows.map(row => row.textContent));
+
+			expect(details.some(detail => detail.startsWith('1 new · demo'))).toBe(true);
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	"a prompt typed on home or a project page is still there after leaving, until it's sent",
+	async () => {
+		const server = servers.turns;
+		const { browser, page } = await openBrowser('dom');
+		const box = () => page.$eval('textarea', area => area.value);
+
+		try {
+			await page.goto(await server.loginLink('/projects/demo'));
+			await page.waitForSelector('textarea');
+			await page.type('textarea', 'rename the widget');
+			await page.evaluate(() => (window.location.hash = '#/'));
+			await page.waitForSelector('textarea');
+			expect(await box()).toBe('');
+			await page.type('textarea', 'where does this go?');
+			await page.evaluate(() => (window.location.hash = '#/projects/demo'));
+			await wait(500);
+			expect(await box()).toBe('rename the widget');
+			await page.reload();
+			await page.waitForSelector('textarea');
+			expect(await box()).toBe('rename the widget');
+			await page.evaluate(() => (window.location.hash = '#/'));
+			await wait(500);
+			expect(await box()).toBe('where does this go?');
+
+			await page.evaluate(() => (window.location.hash = '#/projects/demo'));
+			await wait(500);
+			await page.click('button.primary');
+			await page.waitForFunction(() => window.location.hash.startsWith('#/sessions/'), { timeout: 20_000 });
+			await page.evaluate(() => (window.location.hash = '#/projects/demo'));
+			await wait(500);
+			expect(await box()).toBe('');
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
 	"the files viewer shows a file's history and blame; Claude drafts the commit message",
 	async () => {
 		const server = servers.turns;

@@ -3,6 +3,7 @@ import { Elem, Notify, styled } from '@vanilla-bean/components';
 import tokens from '../shared/tokenCount';
 import { findPromptHome, openRemote, sendPrompt, sendRemotePrompt } from './api';
 import { serverName } from './identity';
+import { forget, recall, remember } from './storage';
 import { button, element } from './dom';
 import { sessionCard } from './Layout';
 
@@ -145,10 +146,11 @@ const Compose = styled(
 const SEND_KEYS = /Mac/.test(navigator.platform) ? '⌘↵' : 'Ctrl ↵';
 
 // A prompt's box: write what Claude should do, then send it with its actions, the last of them the main one (Ctrl or
-// Command with Enter presses it). Returns the textarea, the row for options, and each action's button.
-export const composeBox = ({ appendTo, placeholder, actions }) => {
+// Command with Enter presses it). What's typed is kept in this browser under `keep` until sent() says it went, so
+// leaving the page doesn't lose it. Returns the textarea, the row for options, each action's button, and sent().
+export const composeBox = ({ appendTo, placeholder, actions, keep }) => {
 	const box = new Compose({ appendTo });
-	const prompt = Object.assign(element('textarea'), { placeholder });
+	const prompt = Object.assign(element('textarea'), { placeholder, value: recall(keep) });
 	const options = element('div', 'options');
 	const row = element('div', 'actions');
 	const buttons = actions.map(({ label, title, onPress }, index) => {
@@ -172,8 +174,9 @@ export const composeBox = ({ appendTo, placeholder, actions }) => {
 		event.preventDefault();
 		buttons.at(-1).click();
 	});
+	prompt.addEventListener('input', () => (prompt.value ? remember(keep, prompt.value) : forget(keep)));
 
-	return { prompt, options, buttons };
+	return { prompt, options, buttons, sent: () => forget(keep) };
 };
 
 export const Places = styled(
@@ -223,12 +226,14 @@ export const Places = styled(
 	`,
 );
 
-// Another server's session or project page, opened there already logged in
+// Another server's session or project page, opened there already logged in; true once it's on its way
 const openThere = async (url, to) => {
 	const { body, response } = await openRemote(url, to);
 
 	if (response?.ok) window.location.href = body.link;
 	else new Notify({ type: 'error', content: 'Could not reach that server' });
+
+	return Boolean(response?.ok);
 };
 
 // What the lifetime suggested for a new session means
@@ -250,8 +255,8 @@ const costOf = meter => {
 };
 
 // Finds where `prompt` belongs and shows it in `places`: the sessions it carries on, each with what sending costs, and
-// a new session (startFresh(project) starts it)
-export const placePrompt = async ({ places, prompt, project, startFresh }) => {
+// a new session (startFresh(project) starts it). onSent once it has gone to a session or another server.
+export const placePrompt = async ({ places, prompt, project, startFresh, onSent }) => {
 	const into = places.elem;
 
 	if (!prompt) return new Notify({ type: 'warning', content: 'Say what Claude should do first' });
@@ -291,6 +296,7 @@ export const placePrompt = async ({ places, prompt, project, startFresh }) => {
 					: await sendPrompt(session.id, prompt);
 
 				if (!sent?.ok) return new Notify({ type: 'error', content: 'Could not send it there' });
+				onSent?.();
 				if (!remote) return (window.location.hash = `#/sessions/${session.id}`);
 				await openThere(remote.url, { sessionId: session.id });
 			}),
@@ -305,8 +311,11 @@ export const placePrompt = async ({ places, prompt, project, startFresh }) => {
 		place.append(element('div', 'cost', LIFETIME_NOTES[fresh.lifetime]));
 	if (fresh.remote)
 		place.append(
-			button(`Start it in ${fresh.project} on ${fresh.remote.name}`, () =>
-				openThere(fresh.remote.url, { project: fresh.project, draft: prompt, lifetime: fresh.lifetime }),
+			button(
+				`Start it in ${fresh.project} on ${fresh.remote.name}`,
+				async () =>
+					(await openThere(fresh.remote.url, { project: fresh.project, draft: prompt, lifetime: fresh.lifetime })) &&
+					onSent?.(),
 			),
 		);
 	else if (fresh.project || project)

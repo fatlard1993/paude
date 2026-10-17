@@ -1,4 +1,5 @@
-// The watched sessions that need someone, here and on other servers, as the watch alerts last found them
+// The watched sessions that need someone (asking, or with news since they looked), here and on other servers, most
+// urgent first, as the watch alerts last found them
 let waiting = [];
 const listeners = new Set();
 

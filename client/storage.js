@@ -17,5 +17,13 @@ export const remember = (key, value) => {
 	}
 };
 
+export const forget = key => {
+	try {
+		localStorage.removeItem(key);
+	} catch {
+		// Nothing was kept
+	}
+};
+
 export const desktopNotificationsOn = () =>
 	'Notification' in window && Notification.permission === 'granted' && recall(DESKTOP_KEY) === 'yes';

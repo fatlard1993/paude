@@ -1,5 +1,6 @@
 import { Notify } from '@vanilla-bean/components';
 
+import byUrgency from '../shared/urgency';
 import watchChanges from '../shared/watchChanges';
 import { getRemotes, getWatching } from './api';
 import { showNotification } from './notify';
@@ -50,7 +51,7 @@ export const startWatchAlerts = ({ remotes }) => {
 		const waiting = all.filter(session => session.status === 'waiting');
 
 		updateTabTitle({ waiting: waiting.length });
-		setWaitingSessions(waiting);
+		setWaitingSessions(all.filter(session => session.status === 'waiting' || session.unseen > 0).sort(byUrgency));
 
 		const onScreen = session =>
 			!session.remote && window.location.hash === `#/sessions/${session.id}` && !document.hidden;

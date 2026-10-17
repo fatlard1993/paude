@@ -171,17 +171,22 @@ export default class Home extends View {
 
 	// A prompt placed before it's sent: in a conversation it carries on, or a new session in the project that fits
 	promptBox(appendTo) {
-		const { prompt } = composeBox({
+		const { prompt, sent } = composeBox({
 			appendTo,
 			placeholder: 'What should Claude do? paude finds the session it carries on, or the project to start one in',
 			actions: [{ label: 'Find where it goes', onPress: () => place() }],
+			keep: 'paude.prompt',
 		});
 		const places = new Places({ appendTo });
 		const place = () =>
 			placePrompt({
 				places,
 				prompt: prompt.value.trim(),
-				startFresh: (project, lifetime) => carryDraft(project, prompt.value.trim(), lifetime),
+				startFresh: (project, lifetime) => {
+					sent();
+					carryDraft(project, prompt.value.trim(), lifetime);
+				},
+				onSent: sent,
 			});
 	}
 

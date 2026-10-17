@@ -83,6 +83,11 @@ const Trail = styled(
 			cursor: pointer;
 		}
 
+		/* Only news, nothing asking: worth a look, not a wait */
+		.waiting.news {
+			background: ${colors.lightest(colors.teal)};
+		}
+
 		/* Which paude this is, in the color its cards carry, and a press away from the others */
 		.server-switch {
 			display: flex;
@@ -122,7 +127,7 @@ const Trail = styled(
 	`,
 );
 
-// A session waiting on someone: opened here, or on its own server already logged in
+// A session that needs someone: opened here, or on its own server already logged in
 const openWaiting = async session => {
 	if (!session.remote) {
 		window.location.hash = `#/sessions/${session.id}`;
@@ -190,8 +195,8 @@ const serverSwitch = addCleanup => {
 };
 
 // Where this page sits: paude (the bucket, home) / each page above this one / this page, with the watched sessions
-// waiting on you counted where they live: the project's on its crumb, the rest (other projects, other servers) beside
-// paude, each a press away. The open session (sessionId) isn't counted. trail: [{ label, href }]; current: what this
+// that need you (asking, or with news since you looked) counted where they live: the project's on its crumb, the rest
+// (other projects, other servers) beside paude, each a press away. The open session (sessionId) isn't counted. trail: [{ label, href }]; current: what this
 // page is (text, or a node to keep updating); project: the project this page is in, when it's known up front.
 // Returns the elements and setProject(name, crumb), for a page that learns its project later. addCleanup(name, stop)
 // ends the counting with the page.
@@ -246,7 +251,13 @@ export const breadcrumbs = ({ appendTo, trail = [], current, project, sessionId,
 				{ heading },
 				...counted.list.map(session => ({
 					label: session.title || session.project,
-					detail: [session.project, session.remote?.name ?? serverName()].filter(Boolean).join(' · '),
+					detail: [
+						session.status === 'waiting' ? 'asking' : `${session.unseen} new`,
+						session.project,
+						session.remote?.name ?? serverName(),
+					]
+						.filter(Boolean)
+						.join(' · '),
 					accent: tintsOf(session.hue)?.accent,
 					onPress: () => openWaiting(session),
 				})),
@@ -255,12 +266,19 @@ export const breadcrumbs = ({ appendTo, trail = [], current, project, sessionId,
 
 		return counted;
 	};
-	const elsewhere = badge(servers, 'Waiting for you');
+	const elsewhere = badge(servers, 'For you');
 	let projectBadge = null;
 	const show = (counted, list, what) => {
+		const asking = list.filter(session => session.status === 'waiting').length;
+		const news = list.length - asking;
+
 		counted.list = list;
 		counted.button.textContent = list.length;
-		counted.button.title = `${list.length} waiting for you${what}`;
+		counted.button.title = [asking && `${asking} asking`, news && `${news} with news`]
+			.filter(Boolean)
+			.join(', ')
+			.concat(what);
+		counted.button.classList.toggle('news', !asking);
 		counted.button.style.display = list.length ? '' : 'none';
 	};
 	const render = () => {
@@ -277,7 +295,7 @@ export const breadcrumbs = ({ appendTo, trail = [], current, project, sessionId,
 		inProject = name;
 		if (!projectBadge || projectBadge.after !== crumb) {
 			projectBadge?.button.remove();
-			projectBadge = badge(crumb, `Waiting for you in ${name}`);
+			projectBadge = badge(crumb, `For you in ${name}`);
 		}
 		render();
 	};
