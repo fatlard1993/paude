@@ -1,6 +1,8 @@
 import os from 'os';
 import { forkSession } from '@anthropic-ai/claude-agent-sdk';
 
+import { requestMatch } from '@vanilla-bean/components/app';
+
 import { activitySummary, setWatching, watchedBy } from '../activity';
 import { credentialOf, identityOf } from '../auth';
 import { folderHue, sessionHue } from '../../shared/hues';
@@ -43,7 +45,6 @@ import {
 } from '../worktrees';
 import { markProjectLink, projectLinks } from '../links';
 import { projectArtifacts } from '../artifacts';
-import requestMatch from '../utils/requestMatch';
 
 const isFolder = async path =>
 	Boolean(

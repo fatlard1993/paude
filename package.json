@@ -20,7 +20,6 @@
 		"prepare:githooks": "[ -n \"$CI\" ] && exit 0 || (git config --local core.hooksPath .githooks || echo 'Cannot set core.hooksPath -- pre-commit checks will not run')",
 		"build": "bun run build:clean && bun run client/build.js",
 		"build:clean": "rm -rf ./client/build/",
-		"build:watch": "bun run build -- --watch",
 		"start": "NODE_ENV=production bun server/index.js",
 		"dev": "NODE_ENV=development bun --hot server/index.js",
 		"lint": "bun --bun eslint",
@@ -33,7 +32,7 @@
 	},
 	"dependencies": {
 		"@anthropic-ai/claude-agent-sdk": "^0.3.289",
-		"@vanilla-bean/components": "2.0.6",
+		"@vanilla-bean/components": "2.1.0",
 		"@vanilla-bean/hypertether": "^1.0.2",
 		"@xterm/addon-fit": "^0.11.0",
 		"@xterm/addon-serialize": "^0.14.0",

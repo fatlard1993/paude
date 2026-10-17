@@ -1,13 +1,14 @@
 import { stat } from 'fs/promises';
 import path from 'path';
 
+import { requestMatch } from '@vanilla-bean/components/app';
+
 import { credentialOf, identityOf } from '../auth';
 import { isSecret } from '../files';
 import { may } from '../permissions';
 import { serverSettings } from '../serverSettings';
 import { sessionRecord } from '../sessions/record';
 import { ShareError, addShare, removeShare, renameShare, sharesOf } from '../shares';
-import requestMatch from '../utils/requestMatch';
 
 // Behind Caddy, the preview listener's public port; Caddy's paude site is on 443, its preview site on this
 const PUBLIC_PREVIEW_PORT = 8444;

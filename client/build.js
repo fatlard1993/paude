@@ -1,47 +1,5 @@
-import { watch } from 'fs';
+import { buildClient } from '@vanilla-bean/components/app';
 
-const build = async () => {
-	console.log('Building...');
+const { success } = await buildClient(process.env.NODE_ENV === 'production' ? { drop: ['console'] } : {});
 
-	const buildResults = await Bun.build({
-		entrypoints: ['client/index.html'],
-		outdir: 'client/build',
-		minify: true,
-		define: {
-			// Only bun run dev builds the hot-reload socket in
-			'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
-			'process.env.AUTOPREFIXER_GRID': 'undefined',
-			'process.cwd': 'String',
-		},
-		...(process.env.NODE_ENV === 'production' && { drop: ['console'] }),
-	});
-
-	console.log(buildResults.success ? 'build.success' : buildResults.logs);
-
-	return buildResults;
-};
-
-const enableWatcher = process.argv[2] === '--watch';
-const watcherIgnore = /^client\/build|^\./;
-
-if (enableWatcher) {
-	console.log(`Initializing watcher`);
-
-	let buildTimeout;
-
-	const watcher = watch(`${import.meta.dir}/..`, { recursive: true }, (event, filename) => {
-		if (watcherIgnore.test(filename)) return;
-
-		console.log(`Detected ${event} in ${filename}`);
-
-		clearTimeout(buildTimeout);
-		buildTimeout = setTimeout(build, 100);
-	});
-
-	process.on('SIGINT', () => {
-		watcher.close();
-		process.exit(0);
-	});
-}
-
-await build();
+if (!success) process.exit(1);

@@ -1,3 +1,5 @@
+import { requestMatch } from '@vanilla-bean/components/app';
+
 import { credentialOf, identityOf } from '../auth';
 import { MAX_ATTACHMENT, saveAttachment } from '../attachments';
 import { sessionArtifacts } from '../artifacts';
@@ -23,7 +25,6 @@ import { searchOptionsFrom } from '../../shared/searchQuery';
 import { may } from '../permissions';
 import { projectOf, projectPath } from '../projects';
 import { sessionRecord } from '../sessions/record';
-import requestMatch from '../utils/requestMatch';
 
 const REFUSED = {
 	404: 'No such file in this project',

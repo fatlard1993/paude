@@ -3,6 +3,7 @@
 import os from 'os';
 import path from 'path';
 
+import { hotReload } from '@vanilla-bean/components/app';
 import Argi from 'argi';
 
 import { ensureLocalToken, initAuth, initServerId, passwordIsSet } from './auth';
@@ -31,7 +32,7 @@ import { meterOf } from './cacheMeter';
 import removeSession from './removeSession';
 import { sessionRecord } from './sessions/record';
 import { setPreviewPort } from './router/shares';
-import server, { spawnBuild } from './server';
+import server from './server';
 
 import './exit';
 
@@ -110,7 +111,7 @@ await initBriefSessions(options.data, {
 	remove: removeSession,
 });
 
-server.init({ host: options.host, port: options.port, data: options.data });
+server.init({ host: options.host, port: options.port });
 
 const previewPort = options['preview-port'] ?? options.port + 1;
 
@@ -137,7 +138,7 @@ if (process.env.NODE_ENV === 'development') {
 			if (['stop', 'close', 'exit'].includes(line)) process.kill(process.pid, 'SIGTERM');
 			else if (line === 'b') {
 				console.log('>> Building...');
-				spawnBuild(options.data);
+				hotReload.rebuild();
 			}
 		}
 	} catch (error) {

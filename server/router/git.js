@@ -1,5 +1,7 @@
 import path from 'path';
 
+import { requestMatch } from '@vanilla-bean/components/app';
+
 import { credentialOf, identityOf } from '../auth';
 import {
 	GitError,
@@ -30,7 +32,6 @@ import { postReview, pullRequestThreads, reviewPlan, threadAnchor } from '../prR
 import { runningSession } from '../sessions/running';
 import { markReviewed, reviewState } from '../reviews';
 import { sessionRecord } from '../sessions/record';
-import requestMatch from '../utils/requestMatch';
 
 // The files panel names a path from the session's folder; git, from the top of the repository
 const fromRoot = (root, cwd, wanted) => wanted && path.relative(root, path.resolve(cwd, wanted));

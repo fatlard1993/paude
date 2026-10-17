@@ -1,3 +1,5 @@
+import { requestMatch } from '@vanilla-bean/components/app';
+
 import { watchIfNew } from '../activity';
 import { mayListRemotes, ownerName, serverName } from '../serverSettings';
 import {
@@ -20,7 +22,6 @@ import {
 	setPassword,
 } from '../auth';
 import { ROLES, guestMayRequest } from '../permissions';
-import requestMatch from '../utils/requestMatch';
 
 const OPEN_ROUTES = new Set(['/api/auth', '/api/login', '/api/tokens', '/api/join', '/api/handoff/redeem']);
 const INVITE_HOURS = [1, 24, 24 * 7];

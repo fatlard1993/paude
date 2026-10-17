@@ -1,3 +1,5 @@
+import { requestMatch } from '@vanilla-bean/components/app';
+
 import { recordChange, setStatus } from '../activity';
 import { turnEnded } from '../claudeInbox';
 import { projectOf } from '../projects';
@@ -8,7 +10,6 @@ import { claudeActive } from '../keepWarm';
 import { limitHook } from '../usageLimit';
 import { trackProposals } from '../sessions/proposals';
 import { runningSession } from '../sessions/running';
-import requestMatch from '../utils/requestMatch';
 
 // The checks a project runs after each of Claude's turns, when the turn edited something: the problems they find
 // are then about what Claude just did

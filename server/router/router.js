@@ -1,6 +1,4 @@
-import { nanoid } from 'nanoid';
-
-import requestMatch from '../utils/requestMatch';
+import { hotReload, requestMatch, serveStatic } from '@vanilla-bean/components/app';
 
 import { setPeerAddress } from '../auth';
 import authRoutes, { guard } from './auth';
@@ -10,7 +8,6 @@ import sharesRoutes from './shares';
 import tasksRoutes from './tasks';
 import hooksRoutes from './hooks';
 import sessionsRoutes from './sessions';
-import staticRoutes from './static';
 
 // Every other build asset is content-hashed; the document must always revalidate, or a cached copy
 // points at chunk hashes that no longer exist.
@@ -47,11 +44,7 @@ const router = async (request, server) => {
 				headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' },
 			});
 
-		if (process.env.NODE_ENV === 'development' && requestMatch('GET', '/ws', request)) {
-			const success = server.upgrade(request, { data: { clientId: nanoid() } });
-
-			return success ? undefined : new Response('WebSocket upgrade error', { status: 400 });
-		}
+		if (hotReload.upgrade(request, server)) return;
 
 		response = await hooksRoutes(request);
 		if (response) return response;
@@ -77,7 +70,7 @@ const router = async (request, server) => {
 		response = await sessionsRoutes(request, server);
 		if (response !== null) return response;
 
-		response = await staticRoutes(request);
+		response = await serveStatic(request);
 		if (response) return response;
 
 		if (request.method === 'GET') return indexResponse();

@@ -1,3 +1,5 @@
+import { requestMatch } from '@vanilla-bean/components/app';
+
 import { credentialOf, identityOf } from '../auth';
 import { may } from '../permissions';
 import { projectOf } from '../projects';
@@ -14,7 +16,6 @@ import {
 	stopProcess,
 	stopRun,
 } from '../tasks';
-import requestMatch from '../utils/requestMatch';
 
 // The Tasks panel: what's there and what's running is reading the project ('files'); starting or stopping anything,
 // or choosing what runs after each turn, is as much a write as typing into Claude ('type')
