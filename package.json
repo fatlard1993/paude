@@ -55,7 +55,6 @@
 		"eslint-plugin-jsdoc": "^65.1.0",
 		"eslint-plugin-spellcheck": "0.0.20",
 		"eslint-plugin-testing-library": "^7.16.2",
-		"eslint-plugin-unicorn": "^77.0.0",
 		"eslint-plugin-write-good-comments": "^0.2.0",
 		"globals": "^17.13.0",
 		"prettier": "^3.9.9",
