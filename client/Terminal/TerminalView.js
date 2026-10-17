@@ -130,6 +130,7 @@ const bufferLines = terminal => {
 };
 
 const METER_AFTER_TURN_MS = 4000;
+const REFRESH_WHILE_BUSY_MS = 3000;
 // A cold conversation this big gets a word before the next message caches it all again
 const COLD_WARNING_TOKENS = 50_000;
 
@@ -678,7 +679,22 @@ export default class TerminalView extends View {
 			new Notify({ type: 'warning', content: message.text });
 		} else if (NOTE_TYPES.includes(message.type)) {
 			this.notes.receive(message);
+			// The chat brings links too
+			if (this.links?.elem.classList.contains('open')) this.links.refresh();
 		}
+	}
+
+	// While Claude works, what it did, linked and made grows: an open panel of them is read again until it's done, and
+	// once more then
+	followTurn(busy) {
+		const refreshOpen = () =>
+			[this.activity, this.links, this.artifacts]
+				.filter(panel => panel?.elem.classList.contains('open'))
+				.forEach(panel => panel.refresh());
+
+		this.replaceCleanup('turnTimer', () => clearInterval(this.turnTimer));
+		if (busy) this.turnTimer = setInterval(refreshOpen, REFRESH_WHILE_BUSY_MS);
+		refreshOpen();
 	}
 
 	renderPresence(presence) {
@@ -688,7 +704,7 @@ export default class TerminalView extends View {
 		if (this.lastPresence && (waiting !== this.lastPresence.waiting || busy !== this.lastPresence.busy)) {
 			this.files?.changesMayHaveChanged();
 			if (this.git?.elem.classList.contains('open')) this.git.refresh();
-			this.activity?.busy(busy);
+			this.followTurn(busy);
 			// The turn's usage lands in the transcript a moment after Claude stops: read now, and again then
 			if (!busy) {
 				this.loadMeter();

@@ -55,12 +55,19 @@ export default class LinksPanel extends Panel {
 
 		if (!response?.ok) {
 			this.body.replaceChildren(element('div', 'empty', 'Could not gather the links.'));
+			this.read = null;
 
 			return;
 		}
 
-		this.links = body;
-		this.renderLinks();
+		// Read again while Claude works: drawn again only when something changed, so a quiet one holds still
+		const read = JSON.stringify(body);
+
+		if (read !== this.read) {
+			this.read = read;
+			this.links = body;
+			this.renderLinks();
+		}
 		// Haiku is still writing some: look again shortly, while the panel is showing
 		clearTimeout(this.again);
 		if (body.some(link => link.describing))

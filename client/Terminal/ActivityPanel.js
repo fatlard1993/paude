@@ -18,7 +18,6 @@ const TOOL_ICONS = {
 	Agent: 'diagram-project',
 	TodoWrite: 'list-check',
 };
-const REFRESH_WHILE_BUSY_MS = 3000;
 
 const tokens = count => (count >= 1000 ? `${Math.round(count / 1000)}k` : String(count));
 
@@ -84,14 +83,6 @@ export default class ActivityPanel extends Panel {
 		const node = this.body.querySelector(`[data-turn="${CSS.escape(id)}"]`);
 
 		node?.scrollIntoView({ block: 'start' });
-	}
-
-	// While Claude works the newest turn grows; it's read again until Claude is done
-	busy(working) {
-		clearInterval(this.timer);
-		if (working)
-			this.timer = setInterval(() => this.elem.classList.contains('open') && this.refresh(), REFRESH_WHILE_BUSY_MS);
-		if (this.elem.classList.contains('open')) this.refresh();
 	}
 
 	renderTurns(turns) {

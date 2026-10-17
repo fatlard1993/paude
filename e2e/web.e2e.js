@@ -1341,6 +1341,48 @@ test(
 );
 
 test(
+	'an open links panel takes in the links Claude brings up while it works',
+	async () => {
+		const server = servers.turns;
+		const id = await server.newSession();
+		const said = (text, at) => ({
+			type: 'assistant',
+			timestamp: `2026-10-07T12:00:0${at}.000Z`,
+			message: { content: [{ type: 'text', text }] },
+		});
+		const first = said('Per https://docs.acme.dev/api the call changed.', 1);
+
+		await server.writeTranscript(id, [first]);
+
+		const { browser, page } = await openBrowser('dom');
+		const shown = () => page.$$eval('.links .link a', anchors => anchors.map(anchor => anchor.textContent));
+
+		try {
+			await page.goto(await server.loginLink(`/sessions/${id}`));
+			await page.waitForSelector('.xterm-screen');
+			await wait(1000);
+
+			const links = await centerOf(page, '[title^="Links"]');
+
+			await page.mouse.click(links.x, links.y);
+			await page.waitForSelector('.links .link a');
+			expect(await shown()).toEqual(['docs.acme.dev/api']);
+
+			await page.click('.xterm-screen');
+			await page.keyboard.type('work\n');
+			await page.waitForSelector('.state.busy', { timeout: 10_000 });
+			await server.writeTranscript(id, [first, said('Opened https://github.com/acme/shop/issues/12 for it.', 2)]);
+			await page.waitForFunction(() => document.querySelectorAll('.links .link a').length === 2, { timeout: 10_000 });
+			expect(await shown()).toEqual(['github.com/acme/shop/issues/12', 'docs.acme.dev/api']);
+			await page.keyboard.type('rest\n');
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
 	"a project's page lists the links all its sessions brought up, each naming where",
 	async () => {
 		const server = await startServer();

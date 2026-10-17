@@ -75,12 +75,19 @@ export default class ArtifactsPanel extends Panel {
 
 		if (!response?.ok) {
 			this.body.replaceChildren(element('div', 'empty', 'Could not gather what was made.'));
+			this.read = null;
 
 			return;
 		}
 
-		this.artifacts = body;
-		this.renderArtifacts();
+		// Read again while Claude works: drawn again only when something changed, so a quiet one holds still
+		const read = JSON.stringify(body);
+
+		if (read !== this.read) {
+			this.read = read;
+			this.artifacts = body;
+			this.renderArtifacts();
+		}
 		// Haiku is still writing some: look again shortly, while the panel is showing
 		clearTimeout(this.again);
 		if (body.some(made => made.describing))

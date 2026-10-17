@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 // Stands in for Claude Code in the browser tests, drawing the way it does now: on the alternate screen, with done
 // lines, a URL, a file path, and a prompt box. PAUDE_E2E_FAKE=busy keeps printing too, as Claude does mid-turn.
+// Typing work or rest titles the terminal as Claude does while working or idle.
 const write = text => process.stdout.write(text);
 
 // A tour of code, as the files panel asks Haiku for one: two stops, on the first lines shown and three lines on
@@ -59,4 +60,9 @@ if (busy) {
 	}, 100);
 }
 
-for await (const line of console) if (line === 'exit') process.exit(0);
+const TITLES = { work: '◐ Working', rest: '✳ Resting' };
+
+for await (const line of console) {
+	if (line === 'exit') process.exit(0);
+	if (TITLES[line]) write(`\x1b]0;${TITLES[line]}\x07`);
+}
