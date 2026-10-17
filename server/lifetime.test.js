@@ -1,6 +1,9 @@
-import { expect, test } from 'bun:test';
+import { afterAll, expect, test } from 'bun:test';
 
 import { UNDO_MS, lastSwitch, lifetimeOf, switchLifetime } from './lifetime';
+
+// Every test file in a run shares briefSessions; a session left brief here gets swept in its tests
+afterAll(() => Promise.all(['switched', 'walked-back', 'unchanged'].map(id => switchLifetime(id, 'ordinary'))));
 
 test('a switch by hand keeps what it was for an hour, to put back', async () => {
 	const now = Date.now();
