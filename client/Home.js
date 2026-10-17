@@ -101,7 +101,6 @@ export default class Home extends View {
 	constructor(options) {
 		const refresh = () => this.load();
 
-		// A cleanup, not onDisconnected: the router destroys the view, and a destroyed view never hears its removal
 		super({
 			...options,
 			onConnected: () => {

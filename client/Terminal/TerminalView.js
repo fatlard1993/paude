@@ -529,7 +529,6 @@ export default class TerminalView extends View {
 	open() {
 		if (this.terminal) return;
 
-		// A cleanup, not onDisconnected: the router destroys the view, and a destroyed view never hears its removal
 		this.addCleanup('connections', () => {
 			this.connection?.close();
 			this.shell?.stop();

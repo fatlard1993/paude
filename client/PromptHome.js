@@ -1,4 +1,4 @@
-import { Elem, Notify, styled } from '@vanilla-bean/components';
+import { Elem, isMac, Notify, styled } from '@vanilla-bean/components';
 
 import tokens from '../shared/tokenCount';
 import { findPromptHome, openRemote, sendPrompt, sendRemotePrompt } from './api';
@@ -143,7 +143,7 @@ const Compose = styled(
 	`,
 );
 
-const SEND_KEYS = /Mac/.test(navigator.platform) ? '⌘↵' : 'Ctrl ↵';
+const SEND_KEYS = isMac() ? '⌘↵' : 'Ctrl ↵';
 
 // A prompt's box: write what Claude should do, then send it with its actions, the last of them the main one (Ctrl or
 // Command with Enter presses it). What's typed is kept in this browser under `keep` until sent() says it went, so
