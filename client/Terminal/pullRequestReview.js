@@ -62,14 +62,12 @@ const reviewDialog = plan =>
 		if (items.some(item => !item.mine)) body.append(note("Other people's go with their names on, from your login."));
 		body.append(summary, event);
 
-		let answered = false;
-		const dialog = new Dialog({
+		new Dialog({
 			size: 'large',
 			header: `Post a review to #${plan.pr.number}`,
 			body,
 			buttons: ['Cancel', 'Post'],
 			onButtonPress: ({ button, closeDialog }) => {
-				answered = true;
 				resolve(
 					button === 'Post'
 						? {
@@ -81,10 +79,8 @@ const reviewDialog = plan =>
 				);
 				closeDialog();
 			},
-			onClose: () => {
-				if (!answered) resolve(null);
-				setTimeout(() => dialog.elem.remove(), 400);
-			},
+			// After a button's answer this resolves nothing: a promise settles once
+			onClose: () => resolve(null),
 		});
 	});
 
