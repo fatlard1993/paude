@@ -1553,7 +1553,7 @@ export default class FilesPanel extends Panel {
 	// Someone else's markdown shown on paude's own page: the HTML is sanitized, and its relative images and links
 	// point back into the project
 	renderedMarkdown() {
-		const container = element('div', 'markdown');
+		const container = element('div', 'markdown vbc-elements');
 
 		// No forms, inputs or inline styles: a README could otherwise paint a convincing password prompt over the page
 		container.innerHTML = DOMPurify.sanitize(marked.parse(this.text), {
