@@ -252,7 +252,8 @@ test('reading the feed from somewhere named is being here; a guest is here under
 test('package files are served from the allowed packages only', async () => {
 	const escaped = await call('/@fortawesome/fontawesome-free/..%2f..%2fmarked/package.json');
 
-	expect(await escaped.text()).not.toContain('"name": "marked"');
+	// Refused, it gets the page instead: told by its type, so the test needs no built client to read
+	expect(escaped.headers.get('content-type')).not.toContain('json');
 });
 
 test('a session that never got a prompt still deletes cleanly', async () => {
