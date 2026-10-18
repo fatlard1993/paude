@@ -1,4 +1,4 @@
-import { Page, Router } from '@vanilla-bean/components';
+import { Page, Router, fitToKeyboard } from '@vanilla-bean/components';
 
 import Home from './Home';
 import { setIdentity, setServerName } from './identity';
@@ -10,7 +10,6 @@ import { keepDraft } from './PromptHome';
 import TerminalView from './Terminal/TerminalView';
 import { updateTabTitle } from './tabTitle';
 import { startWatchAlerts } from './watchAlerts';
-import fitToKeyboard from './viewport';
 
 import '@vanilla-bean/components/app/reloadOnBuild';
 
