@@ -24,6 +24,7 @@ import {
 import { searchOptionsFrom } from '../../shared/searchQuery';
 import { may } from '../permissions';
 import { projectOf, projectPath } from '../projects';
+import { readingFeed } from '../sessions/attachSocket';
 import { sessionRecord } from '../sessions/record';
 
 const REFUSED = {
@@ -276,7 +277,11 @@ const filesRoutes = async request => {
 	if (pathname.endsWith('/turn-changes')) return Response.json(await turnsWithChanges(match.id, cwd));
 	if (pathname.endsWith('/timeline')) return Response.json(await sessionTimeline(match.id, cwd));
 	if (pathname.endsWith('/verification')) return Response.json(await verification(match.id, cwd));
-	if (pathname.endsWith('/feed')) return Response.json(await sessionFeed(match.id, cwd, match.after));
+	if (pathname.endsWith('/feed')) {
+		await readingFeed(identityOf(credentialOf(request)), match.id, match);
+
+		return Response.json(await sessionFeed(match.id, cwd, match.after));
+	}
 	if (pathname.endsWith('/links'))
 		return Response.json(await sessionLinks(match.id, cwd, { withHidden: match.all === '1' }));
 	// A file's outline, where a name is defined, or the names matching what's typed

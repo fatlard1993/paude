@@ -157,8 +157,31 @@ onActivity(sessionId => {
 	if (!session) return;
 
 	for (const { socket } of session.clients) markSeen(socket.data.identity, sessionId);
+	for (const { identity } of session.readers.values()) markSeen(identity, sessionId);
 	session.broadcastPresence();
 });
+
+// A guest is the name on their invite, not whatever their client says; the owner is the name their client gives
+// (the paude command's user), or this server's for them
+const presentAs = async (identity, name) => ({
+	name: identity.owner ? (typeof name === 'string' && name.trim()) || (await ownerName()) : identity.name,
+	role: identity.owner ? 'owner' : identity.role,
+});
+
+// Reading the feed while saying who and where from (a game relaying the session to a player) counts as being here,
+// for as long as they keep reading
+export const readingFeed = async (identity, sessionId, { label, name }) => {
+	const session = runningSession(sessionId);
+
+	if (!session || typeof label !== 'string' || !label.trim()) return;
+
+	session.read(`${identityKey(identity)}\n${label}\n${name ?? ''}`, {
+		identity,
+		label,
+		...(await presentAs(identity, name)),
+	});
+	await markSeen(identity, sessionId);
+};
 
 // The first message on a socket must be hello; anything sent before it is dropped
 const handlers = {
@@ -172,16 +195,7 @@ const handlers = {
 		const { identity } = socket.data;
 
 		socket.data.session = session;
-		// A guest is the name on their invite, not whatever their client says; the owner is the name their client gives
-		// (the paude command's user), or this server's for them
-		socket.data.client = session.attach(socket, {
-			kind,
-			label,
-			name: identity.owner ? (typeof name === 'string' && name.trim()) || (await ownerName()) : identity.name,
-			role: identity.owner ? 'owner' : identity.role,
-			cols,
-			rows,
-		});
+		socket.data.client = session.attach(socket, { kind, label, ...(await presentAs(identity, name)), cols, rows });
 		socket.send(JSON.stringify({ type: 'notes', ...(await getNotes(session.id)) }));
 		await markSeen(identity, session.id);
 	},

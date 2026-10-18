@@ -26,6 +26,9 @@ const BUSY_RECHECK_MS = 10 * 60 * 1000;
 // How long the size is off by a row when a session taken back is asked to redraw, and how soon after
 const REDRAW_NUDGE_MS = 300;
 const SCROLLBACK_LINES = 5000;
+// Someone who follows the feed instead of attaching is here while they keep reading it; this long without a read,
+// they've gone
+const READER_GONE_MS = 20 * 1000;
 const SIZE_LIMITS = { cols: [20, 500], rows: [5, 200] };
 
 // Markers a Claude Code process sets for its children, and a multiplexer's own markers. Passed on, they make each
@@ -61,6 +64,8 @@ const send = (socket, message) => socket.send(typeof message === 'string' ? mess
 // screen; whoever typed last sets its size. A headless xterm mirrors the screen so late joiners start in sync.
 export default class PtySession {
 	clients = new Set();
+	// Here without a socket: whoever reads the feed (a game's chat relaying the session), by who and from where
+	readers = new Map();
 	// The client whose size the session takes (the last to type), not the Drive role
 	driver = null;
 	busy = false;
@@ -201,6 +206,32 @@ export default class PtySession {
 		});
 	}
 
+	// A read of the feed, by someone saying who they are and from where; it keeps them here a while
+	read(key, { identity, label, name, role }) {
+		const known = this.readers.get(key);
+		const device = String(label ?? '').slice(0, 40) || 'somewhere';
+		const reader = { kind: 'feed', label: device, name: clientName(name, device), role, identity };
+
+		clearTimeout(known?.timer);
+		clearTimeout(this.idleTimer);
+		reader.timer = setTimeout(() => this.unread(key), READER_GONE_MS);
+		reader.timer.unref?.();
+		this.readers.set(key, reader);
+
+		if (known?.name !== reader.name || known?.label !== reader.label || known?.role !== reader.role) {
+			this.broadcastPresence();
+		}
+	}
+
+	unread(key) {
+		this.readers.delete(key);
+
+		if (this.ended) return;
+		if (!this.clients.size && !this.readers.size) this.resetIdle();
+
+		this.broadcastPresence();
+	}
+
 	broadcast(message) {
 		for (const { socket } of this.clients) send(socket, message);
 	}
@@ -212,7 +243,7 @@ export default class PtySession {
 
 		if (this.driver === client) this.driver = [...this.clients].findLast(canDrive) ?? null;
 		this.fitSize();
-		if (!this.clients.size) this.resetIdle();
+		if (!this.clients.size && !this.readers.size) this.resetIdle();
 
 		this.broadcastPresence();
 	}
@@ -305,7 +336,7 @@ export default class PtySession {
 	}
 
 	broadcastPresence() {
-		const clients = [...this.clients].map(client => ({
+		const clients = [...this.clients, ...this.readers.values()].map(client => ({
 			kind: client.kind,
 			label: client.label,
 			name: client.name,
@@ -351,6 +382,8 @@ export default class PtySession {
 		}
 
 		this.clients.clear();
+		for (const { timer } of this.readers.values()) clearTimeout(timer);
+		this.readers.clear();
 		this.mirror.dispose();
 		releaseHeld(this.id);
 		this.onExit?.(this);

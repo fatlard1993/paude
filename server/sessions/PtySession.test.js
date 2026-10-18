@@ -96,3 +96,27 @@ test('a typed answer clears needs you, and the session ending is reported', asyn
 	session.input([...session.clients][0], '\rexit\r');
 	expect(await until(() => exits.length === 1)).toBe(true);
 });
+
+test('someone reading the feed is here with those attached, under their name and where they read from, until they stop', async () => {
+	const { session } = start();
+	const owner = socket();
+	const lastPresence = () => owner.sent.findLast(message => message.type === 'presence');
+
+	session.attach(owner, { kind: 'web', label: 'laptop', name: 'chase', role: 'owner', cols: 100, rows: 30 });
+	session.read('owner\nMinecraft\nSteve', {
+		identity: { owner: true },
+		label: 'Minecraft',
+		name: 'Steve',
+		role: 'owner',
+	});
+	expect(lastPresence().clients).toEqual([
+		{ kind: 'web', label: 'laptop', name: 'chase', role: 'owner', sizer: true },
+		{ kind: 'feed', label: 'Minecraft', name: 'Steve', role: 'owner', sizer: false },
+	]);
+	expect(lastPresence().you).toBe(0);
+
+	session.unread('owner\nMinecraft\nSteve');
+	expect(lastPresence().clients.map(client => client.kind)).toEqual(['web']);
+
+	session.process.kill();
+});

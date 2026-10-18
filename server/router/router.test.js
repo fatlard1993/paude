@@ -228,6 +228,27 @@ test('hooks need the secret, and report on the session in their address', async 
 	expect(statusOf(session.id)).toBe('waiting');
 });
 
+test('reading the feed from somewhere named is being here; a guest is here under their invite name', async () => {
+	const feed = query => call(`/api/sessions/${session.id}/feed${query}`, { token: tokens.owner });
+	const readers = () =>
+		[...session.readers.values()].map(({ kind, label, name, role }) => ({ kind, label, name, role }));
+
+	expect((await feed('')).status).toBe(200);
+	expect(readers()).toEqual([]);
+
+	expect((await feed('?label=Minecraft&name=Steve')).status).toBe(200);
+	const asGuest = token => call(`/api/sessions/${session.id}/feed?label=Minecraft&name=Steve`, { token });
+
+	expect((await asGuest(tokens.comment)).status).toBe(200);
+	expect((await asGuest(tokens.watch)).status).toBe(403);
+	expect(readers()).toEqual([
+		{ kind: 'feed', label: 'Minecraft', name: 'Steve', role: 'owner' },
+		{ kind: 'feed', label: 'Minecraft', name: 'comment', role: 'comment' },
+	]);
+
+	for (const key of [...session.readers.keys()]) session.unread(key);
+});
+
 test('package files are served from the allowed packages only', async () => {
 	const escaped = await call('/@fortawesome/fontawesome-free/..%2f..%2fmarked/package.json');
 

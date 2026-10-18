@@ -97,7 +97,7 @@ const Screen = styled.Component`
 	}
 `;
 
-const ICONS = { web: 'globe', terminal: 'terminal' };
+const ICONS = { web: 'globe', terminal: 'terminal', feed: 'tower-broadcast' };
 const SOFTWARE_GL = /swiftshader|llvmpipe|softpipe|software/i;
 
 const hardwareWebgl = () => {

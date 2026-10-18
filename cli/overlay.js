@@ -88,7 +88,7 @@ const listView = state => {
 	const here = presence.clients.map((client, index) => {
 		const who = index === presence.you ? 'you' : printable(client.name);
 
-		return `  ${client.sizer ? orange('●') : ' '} ${who} ${dim(`(${KIND_LABELS[client.kind] ?? 'unknown'})`)}`;
+		return `  ${client.sizer ? orange('●') : ' '} ${who} ${dim(`(${KIND_LABELS[client.kind] ?? (printable(client.label) || 'unknown')})`)}`;
 	});
 	const chat = notes.chat
 		.slice(-CHAT_LINES)
