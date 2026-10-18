@@ -10,11 +10,8 @@ module.exports = [
 		},
 	},
 	{
-		// Beyond the profile's server/, scripts/, cli/ and client/build.js: the launcher, the e2e harness, and the shared
-		// modules only the server and the cli import
+		// Beyond the profile's server/, scripts/, cli/, bin/ and e2e/: the shared modules only the server and the cli import
 		files: [
-			'bin/**/*.js',
-			'e2e/**/*.js',
 			'shared/writeJsonFile.js',
 			'shared/updateJsonFile*.js',
 			'shared/readJsonFile.js',
