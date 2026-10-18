@@ -150,7 +150,7 @@ test("the manifest's icons are served without a login, and nothing else beside t
 
 	expect(icon.status).toBe(200);
 	expect(icon.headers.get('content-type')).toBe('image/png');
-	expect((await call('/build.js')).headers.get('content-type')).not.toContain('javascript');
+	expect((await call('/build.js')).status).toBe(404);
 });
 
 test('a write from another site is refused', async () => {
@@ -162,6 +162,16 @@ test('a write from another site is refused', async () => {
 	});
 
 	expect(response.status).toBe(403);
+
+	// A sandboxed frame or a file: page sends "null"; that was a server error, and is refused like any other site
+	const sandboxed = await call('/api/projects', {
+		token: tokens.owner,
+		method: 'POST',
+		body: { path: '/tmp' },
+		headers: { origin: 'null' },
+	});
+
+	expect(sandboxed.status).toBe(403);
 });
 
 test('guests reach their own session only, and what their role allows', async () => {
@@ -252,8 +262,8 @@ test('reading the feed from somewhere named is being here; a guest is here under
 test('package files are served from the allowed packages only', async () => {
 	const escaped = await call('/@fortawesome/fontawesome-free/..%2f..%2fmarked/package.json');
 
-	// Refused, it gets the page instead: told by its type, so the test needs no built client to read
-	expect(escaped.headers.get('content-type')).not.toContain('json');
+	// Refused: a path naming a file that isn't served is a 404, not the page under its name
+	expect(escaped.status).toBe(404);
 });
 
 test('a session that never got a prompt still deletes cleanly', async () => {
