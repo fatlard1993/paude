@@ -79,7 +79,7 @@ const sessionList = ({ appendTo, fetchPage, renderCard, placeholder, pageSize = 
 		const all = listed();
 
 		list.replaceChildren();
-		if (!shown.length) new Empty({ appendTo: list, textContent: query() ? 'No sessions match.' : empty });
+		if (!shown.length) new Empty({ appendTo: list, message: query() ? 'No sessions match.' : empty });
 		for (const session of shown) renderCard(session, list);
 
 		count.textContent = query() ? `${total} matching` : '';

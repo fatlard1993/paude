@@ -306,7 +306,7 @@ export default class Home extends View {
 
 		this.unreachable.empty();
 		for (const remote of (remotes ?? []).filter(({ error }) => error))
-			new Empty({ appendTo: this.unreachable, textContent: `${remote.name}: ${remote.error}` });
+			new Empty({ appendTo: this.unreachable, message: `${remote.name}: ${remote.error}` });
 
 		// What's under Needs you and Watching isn't listed again, unless a search asks for it
 		this.fetchRecent = this.recentFrom(reachable.map(({ url, name }) => ({ url, name })));

@@ -1,4 +1,4 @@
-import { Component, Elem, styled } from '@vanilla-bean/components';
+import { Component, Elem, EmptyState, SectionLabel, styled } from '@vanilla-bean/components';
 
 import { tintsOf } from '../shared/hues';
 import relativeTime from '../shared/relativeTime';
@@ -41,22 +41,26 @@ export const Scroll = styled.Component`
 	gap: 8px;
 `;
 
+// The library's section label and empty state, set as paude's: a tighter label, and a plain line where nothing is
 export const SectionTitle = styled(
-	Elem,
-	({ colors }) => `
-		margin: 16px 0 4px;
+	SectionLabel,
+	() => `
+		margin-bottom: 4px;
 		font-size: 0.8em;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: ${colors.gray};
 	`,
 );
 
 export const Empty = styled(
-	Elem,
-	({ colors }) => `
-		color: ${colors.gray};
+	EmptyState,
+	() => `
+		display: block;
+		flex: none;
 		padding: 8px 0;
+		text-align: left;
+
+		& > .message {
+			max-width: none;
+		}
 	`,
 );
 
