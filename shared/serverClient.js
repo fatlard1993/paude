@@ -1,5 +1,5 @@
 import { trustedCertificates } from './certificates';
-import { byRecentActivity } from './projects';
+import { byWatchedThenRecent } from './projects';
 
 const TIMEOUT_MS = 8000;
 
@@ -54,7 +54,7 @@ export const visitServer = async server => {
 			serverApi(server, '/api/projects'),
 		]);
 
-		return { identity, serverId, name, watching, sessions, projects: projects.sort(byRecentActivity) };
+		return { identity, serverId, name, watching, sessions, projects: projects.sort(byWatchedThenRecent) };
 	} catch (error) {
 		return { error: error.name === 'TimeoutError' ? 'not answering' : error.message };
 	}

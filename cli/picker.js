@@ -1,7 +1,7 @@
 import { runningSummary } from '../shared/checkouts';
 import { matchesQuery } from '../shared/sessionSearch';
 import { readProgress, recentLines } from '../shared/progress';
-import { projectSummary } from '../shared/projects';
+import { byWatchedThenRecent, projectSummary } from '../shared/projects';
 import sessionUrgency from '../shared/urgency';
 import relativeTime from '../shared/relativeTime';
 import { visitServer } from '../shared/serverClient';
@@ -364,21 +364,41 @@ const pickInProject = async (server, project) => {
 	}
 };
 
-const pickProject = async (server, projects) => {
+const pickProject = async (server, listed) => {
+	let projects = listed;
+	let at = null;
+
 	while (true) {
 		const picked = await choose({
 			title: 'paude · projects',
 			subtitle: dim(server.label),
-			hint: '↑↓ move · enter open · esc back',
+			hint: '↑↓ move · enter open · w watch every session in it or stop · esc back',
 			rows: projects.map(project => ({
-				label: printable(project.name),
+				label: `${printable(project.name)}${project.watching ? dim(' 👁') : ''}`,
 				detail: projectSummary(project),
 				marker: project.liveCount ? green('●') : ' ',
 				value: project.name,
 			})),
+			keys: ['w'],
+			initial: Math.max(
+				projects.findIndex(({ name }) => name === at),
+				0,
+			),
 		});
 
 		if (!picked) return null;
+
+		if (picked.key === 'w') {
+			const project = projects.find(({ name }) => name === picked.row);
+
+			at = picked.row;
+			await api(server, `/api/projects/${encodeURIComponent(picked.row)}/watch`, {
+				method: 'PUT',
+				body: JSON.stringify({ watching: !project.watching }),
+			}).catch(() => {});
+			projects = (await api(server, '/api/projects').catch(() => projects)).sort(byWatchedThenRecent);
+			continue;
+		}
 
 		const id = await pickInProject(server, picked);
 

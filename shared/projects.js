@@ -1,9 +1,13 @@
 import relativeTime from './relativeTime';
 
-// Most recently active first; projects never used follow, alphabetically
-export const byRecentActivity = (a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0) || a.name.localeCompare(b.name);
+// Watched ones first, then most recently active; projects never used follow, alphabetically
+export const byWatchedThenRecent = (a, b) =>
+	Boolean(b.watching) - Boolean(a.watching) ||
+	(b.lastActivity ?? 0) - (a.lastActivity ?? 0) ||
+	a.name.localeCompare(b.name);
 
+// A project emptied out still shows when it was last active
 export const projectSummary = ({ sessionCount, lastActivity }) =>
-	sessionCount
-		? `${sessionCount} session${sessionCount === 1 ? '' : 's'} · ${relativeTime(lastActivity)}`
-		: 'no sessions yet';
+	[sessionCount ? `${sessionCount} session${sessionCount === 1 ? '' : 's'}` : 'no sessions', relativeTime(lastActivity)]
+		.filter(Boolean)
+		.join(' · ');

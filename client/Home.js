@@ -1,7 +1,7 @@
 import { Elem, Notify, View, styled } from '@vanilla-bean/components';
 
 import { tintsOf } from '../shared/hues';
-import { byRecentActivity, projectSummary } from '../shared/projects';
+import { byWatchedThenRecent, projectSummary } from '../shared/projects';
 import mergedPages from '../shared/mergedPages';
 import byUrgency from '../shared/urgency';
 import {
@@ -14,6 +14,7 @@ import {
 	getWatching,
 	openRemote,
 	removeFolder,
+	setProjectWatching,
 } from './api';
 import confirmDialog, { confirmDeleteSession } from './confirmDialog';
 import { identity, serverName } from './identity';
@@ -322,7 +323,7 @@ export default class Home extends View {
 		const remoteProjects = reachable.flatMap(remote =>
 			(remote.projects ?? []).map(project => ({ ...project, remote })),
 		);
-		const ordered = [...(projects ?? []), ...remoteProjects].sort(byRecentActivity);
+		const ordered = [...(projects ?? []), ...remoteProjects].sort(byWatchedThenRecent);
 
 		for (const project of ordered) {
 			if (project.remote) {
@@ -333,6 +334,7 @@ export default class Home extends View {
 					server: project.remote.name,
 					meta: [projectSummary(project)],
 					live: project.liveCount > 0,
+					watching: project.watching,
 					accent: tintsOf(project.hue)?.accent,
 					onOpen: () => this.openThere(project.remote, { project: project.name }),
 				});
@@ -346,6 +348,13 @@ export default class Home extends View {
 				server: this.otherServers ? hereName() : undefined,
 				meta: [projectSummary(project)],
 				live: project.liveCount > 0,
+				watching: project.watching,
+				onWatch: async () => {
+					const { response } = await setProjectWatching(project.name, !project.watching);
+
+					if (response?.ok) this.load();
+					else new Notify({ type: 'error', content: `Could not change watching ${project.name}.` });
+				},
 				accent: tintsOf(project.hue)?.accent,
 				removeLabel: project.registered
 					? `Stop treating ${project.path} as a project (nothing is deleted)`

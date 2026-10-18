@@ -227,6 +227,9 @@ export const addFolder = async path => await POST('/api/projects', { body: { pat
 
 export const removeFolder = async name => await DELETE('/api/projects/:name', { urlParameters: { name } });
 
+export const setProjectWatching = async (name, watching) =>
+	await PUT('/api/projects/:name/watch', { urlParameters: { name }, body: { watching } });
+
 export const getRemotes = async () => await GET('/api/remotes', { invalidateAfter: 0 });
 
 export const getRemoteSessions = async (url, { searchParameters: page }) =>

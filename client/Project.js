@@ -13,10 +13,11 @@ import {
 	getProjectSessions,
 	getProjects,
 	markProjectLink,
+	setProjectWatching,
 } from './api';
 import confirmDialog, { confirmDeleteSession } from './confirmDialog';
 import { element } from './dom';
-import { Bar } from './Bar';
+import { Bar, ghostButton } from './Bar';
 import { breadcrumbs } from './Breadcrumbs';
 import sessionList from './SessionList';
 import { Scroll, sessionCard } from './Layout';
@@ -55,6 +56,7 @@ export default class Project extends View {
 			project,
 			addCleanup: (name, stop) => this.addCleanup(name, stop),
 		});
+		this.watchButton = ghostButton(this.bar, { icon: 'eye-slash', onPress: () => this.toggleWatching() });
 
 		const scroll = new Scroll({ appendTo: this });
 		const compose = composeBox({
@@ -183,12 +185,32 @@ export default class Project extends View {
 
 	// The bar underlined in the project's folder color, as its card on home is, and the open tab with it
 	async paint() {
-		const hue = (await getProjects()).body?.find(({ name }) => name === this.options.project)?.hue;
+		const { hue, watching } = (await getProjects()).body?.find(({ name }) => name === this.options.project) ?? {};
 		const accent = tintsOf(hue)?.accent;
+
+		this.showWatching(watching);
 
 		if (!accent) return;
 		this.bar.elem.classList.add('accented');
 		this.elem.style.setProperty('--bar-accent', accent);
+	}
+
+	showWatching(watching) {
+		this.watching = Boolean(watching);
+		this.watchButton.classList.toggle('active', this.watching);
+		this.watchButton.firstChild.className = `fa-solid fa-${this.watching ? 'eye' : 'eye-slash'}`;
+		this.watchButton.title = this.watching
+			? 'Watching every session here, new ones too. Click to stop watching them all.'
+			: 'Not watching. Click to watch every session here, new ones too.';
+	}
+
+	async toggleWatching() {
+		const { response } = await setProjectWatching(this.options.project, !this.watching);
+
+		if (!response?.ok) return new Notify({ type: 'error', content: 'Could not change watching.' });
+
+		this.showWatching(!this.watching);
+		this.load();
 	}
 
 	// How long the session lasts, as the session's own bar shows it: as the prompt's router suggested, 'warm' or

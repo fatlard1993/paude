@@ -17,6 +17,7 @@ export const toSummary =
 	identity =>
 	({ sessionId, summary, customTitle, firstPrompt, lastModified, gitBranch, cwd }) => {
 		const running = runningSession(sessionId);
+		const project = projectOf(cwd);
 
 		return {
 			id: sessionId,
@@ -24,13 +25,13 @@ export const toSummary =
 			lastModified,
 			gitBranch,
 			firstPrompt: firstPrompt?.slice(0, FIRST_PROMPT_PREVIEW),
-			project: projectOf(cwd),
-			worktree: worktreeName(projectPath(projectOf(cwd)), cwd),
+			project,
+			worktree: worktreeName(projectPath(project), cwd),
 			hue: sessionHue(sessionId),
 			live: Boolean(running),
 			busy: Boolean(running?.busy),
 			attached: running?.clients.size ?? 0,
-			...activitySummary(identity, sessionId, { running: Boolean(running), busy: running?.busy }),
+			...activitySummary(identity, sessionId, { running: Boolean(running), busy: running?.busy, project }),
 			asking: running?.asking() ?? undefined,
 			limit: limitOf(sessionId) ?? undefined,
 			lifetime: lifetimeOf(sessionId),

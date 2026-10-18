@@ -4,7 +4,7 @@ import { forgetActivity } from './activity';
 import { revokeInvitesFor } from './auth';
 import { pinName } from './names';
 import { deleteNotes } from './notes';
-import { projectOf, projectPath } from './projects';
+import { noteProjectActivity, projectOf, projectPath } from './projects';
 import { sessionRecord } from './sessions/record';
 import { allRunning, stopSession } from './sessions/running';
 import { releaseWorktree } from './worktrees';
@@ -17,8 +17,10 @@ const removeSession = async id => {
 
 	if (!record) return null;
 
-	const { cwd } = record;
+	const { cwd, stored } = record;
 
+	// Its project remembers it was active, even once nothing in it is left
+	await noteProjectActivity({ [projectOf(cwd)]: stored?.lastModified });
 	await stopSession(id);
 	// A session that never got a prompt has no transcript to delete
 	await deleteSession(id, { dir: cwd }).catch(error => {

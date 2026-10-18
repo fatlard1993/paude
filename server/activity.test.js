@@ -8,6 +8,7 @@ import {
 	initActivity,
 	markSeen,
 	recordChange,
+	setProjectWatching,
 	setStatus,
 	setWatching,
 	watchIfNew,
@@ -64,4 +65,36 @@ test('watches and counts survive a restart', async () => {
 	await initActivity(dataDir);
 
 	expect(activitySummary(owner, 's', running)).toMatchObject({ watching: true, unseen: 1 });
+});
+
+test('a watched project watches each session it has and gains; one turned off by hand stays off', async () => {
+	await recordChange('old');
+	await setProjectWatching(owner, 'app', true, ['old']);
+	expect(activitySummary(owner, 'old', { ...running, project: 'app' })).toMatchObject({ watching: true, unseen: 0 });
+
+	await recordChange('new');
+	expect(activitySummary(owner, 'new', { ...running, project: 'app' })).toMatchObject({ watching: true, unseen: 1 });
+	expect(activitySummary(owner, 'new', { ...running, project: 'other' }).watching).toBe(false);
+
+	await markSeen(owner, 'new');
+	expect(activitySummary(owner, 'new', { ...running, project: 'app' }).unseen).toBe(0);
+
+	await setWatching(owner, 'new', false);
+	expect(activitySummary(owner, 'new', { ...running, project: 'app' }).watching).toBe(false);
+});
+
+test('unwatching a project unwatches its sessions, and joining one again does not watch it', async () => {
+	await watchIfNew(owner, 's');
+	await setProjectWatching(owner, 'app', false, ['s']);
+	await watchIfNew(owner, 's');
+
+	expect(activitySummary(owner, 's', { ...running, project: 'app' }).watching).toBe(false);
+	expect(watchedBy(owner)).toEqual([]);
+});
+
+test('a session only seen, never watched, is still watched the first time someone joins', async () => {
+	await markSeen(owner, 's');
+	await watchIfNew(owner, 's');
+
+	expect(watchedBy(owner)).toEqual(['s']);
 });

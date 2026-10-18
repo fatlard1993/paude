@@ -8,6 +8,8 @@ import {
 	addFolders,
 	initProjects,
 	listProjects,
+	noteProjectActivity,
+	projectActivity,
 	projectOf,
 	projectPath,
 	registerFolder,
@@ -77,4 +79,18 @@ test('removing takes a project off the list without touching it: an added folder
 	// Adding it again brings it back, under its own name
 	expect(await addFolders(path.join(base, 'root/kept'))).toEqual(['kept']);
 	expect(await listProjects()).toContain('kept');
+});
+
+test("a project keeps when it was last active after its sessions are gone, until its folder's name goes to another", async () => {
+	expect(await registerFolder(path.join(base, 'work/tool'))).toBe('tool');
+	await noteProjectActivity({ tool: 2000, app: undefined });
+	await noteProjectActivity({ tool: 1000 });
+	expect(projectActivity('tool')).toBe(2000);
+	expect(projectActivity('app')).toBeNull();
+
+	await initProjects(path.join(base, 'data'));
+	expect(projectActivity('tool')).toBe(2000);
+
+	await unregisterFolder('tool');
+	expect(projectActivity('tool')).toBeNull();
 });

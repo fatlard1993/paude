@@ -17,6 +17,10 @@ let worktrees = [];
 // Folders under the projects root taken off the list (their names, in hidden-projects.json); adding one brings it back
 let hiddenFile;
 let hidden = [];
+// When each project's sessions were last active, kept after the sessions are gone: { [name]: time } in
+// project-activity.json
+let activityFile;
+let lastActive = {};
 
 export const setProjectsRoot = path => {
 	root = resolve(path);
@@ -29,6 +33,20 @@ export const initProjects = async dataDir => {
 	worktrees = await readJsonFile(worktreesFile, []);
 	hiddenFile = join(dataDir, 'hidden-projects.json');
 	hidden = await readJsonFile(hiddenFile, []);
+	activityFile = join(dataDir, 'project-activity.json');
+	lastActive = await readJsonFile(activityFile, {});
+};
+
+export const projectActivity = name => lastActive[name] ?? null;
+
+// Takes { [name]: time } and keeps whichever times are later than the ones held
+export const noteProjectActivity = async times => {
+	const later = Object.entries(times).filter(([name, time]) => time > (lastActive[name] ?? 0));
+
+	if (!later.length) return;
+
+	for (const [name, time] of later) lastActive[name] = time;
+	await writeJsonFile(activityFile, () => lastActive);
 };
 
 const rootProjects = async () => {
@@ -225,7 +243,11 @@ export const unregisterFolder = async name => {
 	const before = folders.length;
 
 	folders = folders.filter(folder => folder.name !== name);
-	if (folders.length !== before) await writeJsonFile(foldersFile, () => folders);
+	if (folders.length === before) return false;
 
-	return folders.length !== before;
+	// The name is free for another folder now, which shouldn't inherit this one's history
+	delete lastActive[name];
+	await Promise.all([writeJsonFile(foldersFile, () => folders), writeJsonFile(activityFile, () => lastActive)]);
+
+	return true;
 };

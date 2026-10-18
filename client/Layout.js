@@ -125,7 +125,7 @@ const Card = styled(
 			background: hsl(var(--server-hue) 60% 50% / 0.18);
 		}
 
-		.remove {
+		.remove, .watch {
 			flex-shrink: 0;
 			border: none;
 			background: transparent;
@@ -134,16 +134,16 @@ const Card = styled(
 			font-size: 1em;
 		}
 
-		&:hover .remove, .remove:focus-visible {
+		&:hover :is(.remove, .watch), :is(.remove, .watch):focus-visible, .watch.active {
 			opacity: 0.7;
 		}
 
-		.remove:hover {
+		:is(.remove, .watch):hover {
 			opacity: 1;
 		}
 
 		@media (pointer: coarse) {
-			.remove {
+			.remove, .watch {
 				opacity: 0.6;
 			}
 		}
@@ -204,6 +204,21 @@ const Card = styled(
 	`,
 );
 
+// Inside the link, so it has to stop the click from also opening the card
+const cardButton = (card, { className, icon, title, onPress }) => {
+	const button = document.createElement('button');
+
+	button.className = className;
+	button.append(Object.assign(document.createElement('i'), { className: `fa-solid fa-${icon}` }));
+	button.title = title;
+	button.addEventListener('click', event => {
+		event.preventDefault();
+		event.stopPropagation();
+		onPress();
+	});
+	card.elem.append(button);
+};
+
 export const LinkCard = ({
 	href,
 	title,
@@ -216,6 +231,7 @@ export const LinkCard = ({
 	waiting,
 	unseen,
 	watching,
+	onWatch,
 	remove,
 	removeLabel = 'Delete',
 	removeIcon = 'trash-can',
@@ -242,7 +258,7 @@ export const LinkCard = ({
 
 	heading.elem.prepend(...marks);
 
-	if (watching)
+	if (watching && !onWatch)
 		heading.elem.append(
 			Object.assign(document.createElement('i'), { className: 'fa-solid fa-eye watching', title: 'Watching' }),
 		);
@@ -275,20 +291,16 @@ export const LinkCard = ({
 		});
 	}
 
-	// Inside the link, so it has to stop the click from also opening the card
-	if (remove) {
-		const button = document.createElement('button');
-
-		button.className = 'remove';
-		button.append(Object.assign(document.createElement('i'), { className: `fa-solid fa-${removeIcon}` }));
-		button.title = removeLabel;
-		button.addEventListener('click', event => {
-			event.preventDefault();
-			event.stopPropagation();
-			remove();
+	if (onWatch)
+		cardButton(card, {
+			className: watching ? 'watch active' : 'watch',
+			icon: watching ? 'eye' : 'eye-slash',
+			title: watching
+				? 'Watching every session in it, new ones too. Click to stop watching them all.'
+				: 'Click to watch every session in it, new ones too.',
+			onPress: onWatch,
 		});
-		card.elem.append(button);
-	}
+	if (remove) cardButton(card, { className: 'remove', icon: removeIcon, title: removeLabel, onPress: remove });
 
 	return card;
 };

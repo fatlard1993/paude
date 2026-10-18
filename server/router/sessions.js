@@ -3,7 +3,15 @@ import { forkSession } from '@anthropic-ai/claude-agent-sdk';
 
 import { requestMatch } from '@vanilla-bean/components/app';
 
-import { activitySummary, setWatching, watchedBy } from '../activity';
+import {
+	activitySummary,
+	forgetProjectWatches,
+	setProjectWatching,
+	setWatching,
+	watchedBy,
+	watchesAnyProject,
+	watchesProject,
+} from '../activity';
 import { credentialOf, identityOf } from '../auth';
 import { folderHue, sessionHue } from '../../shared/hues';
 import { matchesQuery } from '../../shared/sessionSearch';
@@ -27,6 +35,8 @@ import {
 	projectPath,
 	addFolders,
 	registeredFolders,
+	noteProjectActivity,
+	projectActivity,
 	removeProject,
 } from '../projects';
 import { sessionRecord } from '../sessions/record';
@@ -155,16 +165,23 @@ const sessionsRoutes = async (request, server) => {
 		const [projects, sessions] = await Promise.all([listProjects(), listAllSessions(identity)]);
 		const registered = new Map(registeredFolders().map(folder => [folder.name, folder.path]));
 
+		await noteProjectActivity(
+			Object.fromEntries(
+				projects.map(name => [name, sessions.find(session => session.project === name)?.lastModified]),
+			),
+		);
+
 		return Response.json(
 			projects.map(name => {
 				const own = sessions.filter(session => session.project === name);
 
 				return {
 					name,
-					lastActivity: own[0]?.lastModified ?? null,
+					lastActivity: projectActivity(name),
 					sessionCount: own.length,
 					liveCount: own.filter(session => session.live).length,
 					hue: folderHue(projectPath(name), os.homedir()),
+					watching: watchesProject(identity, name),
 					...(registered.has(name) && { registered: true, path: registered.get(name) }),
 				};
 			}),
@@ -185,6 +202,8 @@ const sessionsRoutes = async (request, server) => {
 	match = requestMatch('DELETE', '/api/projects/:project', request);
 	if (match) {
 		const removed = await removeProject(match.project);
+
+		if (removed) await forgetProjectWatches(match.project);
 
 		return removed ? Response.json({ removed }) : new Response('No such project', { status: 404 });
 	}
@@ -241,15 +260,37 @@ const sessionsRoutes = async (request, server) => {
 	if (match) return sessionPage(await listAllSessions(identity), match, 8);
 
 	if (requestMatch('GET', '/api/watching', request)) {
-		const watched = await Promise.all(
+		const byHand = await Promise.all(
 			watchedBy(identity).map(async id => {
 				const record = await sessionRecord(id);
 
 				return record && toSummary(identity)({ sessionId: id, ...record.stored, cwd: record.cwd });
 			}),
 		);
+		const watched = byHand.filter(Boolean);
+		const listed = new Set(watched.map(({ id }) => id));
+		// The sessions a watched project covers that nobody set by hand
+		const covered = watchesAnyProject(identity)
+			? (await listAllSessions(identity)).filter(session => session.watching && !listed.has(session.id))
+			: [];
 
-		return Response.json(watched.filter(Boolean));
+		return Response.json([...watched, ...covered]);
+	}
+
+	match = requestMatch('PUT', '/api/projects/:project/watch', request);
+	if (match) {
+		if (!(await listProjects()).includes(match.project)) return new Response('No such project', { status: 404 });
+
+		const sessions = (await listAllSessions(identity)).filter(session => session.project === match.project);
+
+		await setProjectWatching(
+			identity,
+			match.project,
+			Boolean((await request.json()).watching),
+			sessions.map(({ id }) => id),
+		);
+
+		return new Response(null, { status: 204 });
 	}
 
 	match = requestMatch('PUT', '/api/sessions/:id/watch', request);
@@ -572,7 +613,11 @@ const sessionsRoutes = async (request, server) => {
 			warmUntil: identity.owner ? warmUntil(match.id) : undefined,
 			lifetime: lifetimeOf(match.id),
 			switched: identity.owner ? lastSwitch(match.id) : undefined,
-			...activitySummary(identity, match.id, { running: Boolean(running), busy: running?.busy }),
+			...activitySummary(identity, match.id, {
+				running: Boolean(running),
+				busy: running?.busy,
+				project: projectOf(cwd),
+			}),
 		});
 	}
 

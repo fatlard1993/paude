@@ -72,6 +72,26 @@ test('the api needs a login; the owner gets in', async () => {
 	expect(projects.map(({ name }) => name)).toEqual(['app']);
 });
 
+test('watching a project watches its sessions, the ones it gains too, and leads the projects', async () => {
+	const watch = watching => ({ token: tokens.owner, method: 'PUT', body: { watching } });
+	const watchedIds = async () =>
+		(await (await call('/api/watching', { token: tokens.owner })).json()).map(({ id }) => id);
+
+	expect((await call('/api/projects/app/watch', { ...watch(true), token: tokens.comment })).status).toBe(403);
+	expect((await call('/api/projects/nowhere/watch', watch(true))).status).toBe(404);
+	expect((await call('/api/projects/app/watch', watch(true))).status).toBe(204);
+
+	const [app] = await (await call('/api/projects', { token: tokens.owner })).json();
+	const later = startSession(session.cwd);
+
+	expect(app.watching).toBe(true);
+	expect(await watchedIds()).toEqual(expect.arrayContaining([session.id, other.id, later.id]));
+
+	expect((await call('/api/projects/app/watch', watch(false))).status).toBe(204);
+	expect(await watchedIds()).toEqual([]);
+	later.process.kill();
+});
+
 test("git: reading takes the files role, changing takes the typing role, and a guest's own session only", async () => {
 	const status = `/api/sessions/${session.id}/git/status`;
 	const stage = { method: 'POST', body: { all: true } };

@@ -5,22 +5,28 @@ import readJsonFile from '../shared/readJsonFile';
 
 // What happens in each session, counted, and who watches which: { [sessionId]: { seq, status, at } } and
 // { [identity]: { [sessionId]: { watching, seen } } }. A watcher's unseen count is the session's count past the
-// one they last saw.
+// one they last saw. A watched project, { [identity]: { [project]: true } }, watches each of its sessions that wasn't
+// set by hand.
 let activityFile;
 let watchesFile;
+let projectWatchesFile;
 let activity = {};
 let watches = {};
+let projectWatches = {};
 const listeners = new Set();
 
 export const initActivity = async dataDir => {
 	activityFile = path.join(dataDir, 'activity.json');
 	watchesFile = path.join(dataDir, 'watches.json');
+	projectWatchesFile = path.join(dataDir, 'project-watches.json');
 	activity = await readJsonFile(activityFile, {});
 	watches = await readJsonFile(watchesFile, {});
+	projectWatches = await readJsonFile(projectWatchesFile, {});
 };
 
 const saveActivity = () => writeJsonFile(activityFile, () => activity);
 const saveWatches = () => writeJsonFile(watchesFile, () => watches);
+const saveProjectWatches = () => writeJsonFile(projectWatchesFile, () => projectWatches);
 
 // The owner on every device is one person; each invite is its own guest
 export const identityKey = identity => {
@@ -77,28 +83,61 @@ export const setWatching = async (identity, sessionId, watching) => {
 
 // Watching starts on its own the first time someone joins, posts or prompts; turning it off by hand sticks
 export const watchIfNew = async (identity, sessionId) => {
-	if (identityKey(identity) && !entryFor(identity, sessionId)) await setWatching(identity, sessionId, true);
+	if (identityKey(identity) && entryFor(identity, sessionId)?.watching === undefined)
+		await setWatching(identity, sessionId, true);
 };
 
+// Seen is kept even for a session only its project's watch covers, so its count starts over from here
 export const markSeen = async (identity, sessionId) => {
-	const entry = entryFor(identity, sessionId);
+	const key = identityKey(identity);
 	const { seq } = record(sessionId);
 
-	if (!entry || entry.seen === seq) return;
+	if (!key || entryFor(identity, sessionId)?.seen === seq) return;
 
-	entry.seen = seq;
+	(watches[key] ??= {})[sessionId] = { ...entryFor(identity, sessionId), seen: seq };
 	await saveWatches();
 };
 
+export const watchesProject = (identity, project) =>
+	Boolean(project && projectWatches[identityKey(identity)]?.[project]);
+
+export const watchesAnyProject = identity => Object.keys(projectWatches[identityKey(identity)] ?? {}).length > 0;
+
+// Watching a project, or not, sets each of its sessions the same way; the ones it gains later follow the project
+export const setProjectWatching = async (identity, project, watching, sessionIds) => {
+	const key = identityKey(identity);
+
+	if (!key) return;
+
+	const projects = (projectWatches[key] ??= {});
+
+	if (watching) projects[project] = true;
+	else delete projects[project];
+
+	for (const sessionId of sessionIds) {
+		const entry = (watches[key] ??= {})[sessionId] ?? { seen: record(sessionId).seq };
+
+		watches[key][sessionId] = { ...entry, watching };
+	}
+	await Promise.all([saveProjectWatches(), saveWatches()]);
+};
+
+export const forgetProjectWatches = async project => {
+	for (const projects of Object.values(projectWatches)) delete projects[project];
+	await saveProjectWatches();
+};
+
+// The sessions watched by hand; those a project's watch covers are found by listing the project
 export const watchedBy = identity =>
 	Object.entries(watches[identityKey(identity)] ?? {})
 		.filter(([, entry]) => entry.watching)
 		.map(([sessionId]) => sessionId);
 
 // A session that isn't running is 'stopped'; reopening it resumes it
-export const activitySummary = (identity, sessionId, { running, busy }) => {
+export const activitySummary = (identity, sessionId, { running, busy, project }) => {
 	const { seq, status, at } = record(sessionId);
 	const entry = entryFor(identity, sessionId);
+	const watching = entry?.watching ?? watchesProject(identity, project);
 	let shown = 'stopped';
 
 	if (running) shown = busy ? 'working' : 'ready';
@@ -107,8 +146,8 @@ export const activitySummary = (identity, sessionId, { running, busy }) => {
 
 	return {
 		status: shown,
-		watching: Boolean(entry?.watching),
-		unseen: entry?.watching ? Math.max(seq - entry.seen, 0) : 0,
+		watching,
+		unseen: watching ? Math.max(seq - (entry?.seen ?? 0), 0) : 0,
 		activeAt: at,
 	};
 };
