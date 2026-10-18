@@ -2,7 +2,7 @@ import { Button, Elem, Input, View, styled } from '@vanilla-bean/components';
 
 const Card = styled(
 	Elem,
-	({ colors }) => `
+	({ colors, fonts }) => `
 		margin: auto;
 		width: min(340px, calc(100% - 32px));
 		display: flex;
@@ -24,6 +24,7 @@ const Card = styled(
 		}
 
 		code {
+			${fonts.code}
 			white-space: nowrap;
 		}
 	`,

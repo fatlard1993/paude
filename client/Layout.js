@@ -204,11 +204,43 @@ const Card = styled(
 	`,
 );
 
+// The theme's checkbox look, which the library gives only to bare inputs: a box in the text's color, filled when checked
+const Checkbox = styled(
+	Component,
+	({ colors }) => `
+		appearance: none;
+		margin: 0;
+		margin-right: 6px;
+		font: inherit;
+		color: currentColor;
+		width: 1.15em;
+		height: 1.15em;
+		border: 0.15em solid currentColor;
+		border-radius: 3px;
+		transform: translateY(-0.075em);
+		display: inline-grid;
+		place-content: center;
+		cursor: pointer;
+
+		&:before {
+			content: '';
+			width: 0.65em;
+			height: 0.65em;
+			border-radius: 2px;
+		}
+
+		&:checked:before {
+			box-shadow: inset 1em 1em ${colors.selected};
+		}
+	`,
+);
+
+export const checkbox = checked => Object.assign(new Checkbox({ tag: 'input' }).elem, { type: 'checkbox', checked });
+
 // Inside the link, so it has to stop the click from also opening the card
 const cardButton = (card, { className, icon, title, onPress }) => {
-	const button = document.createElement('button');
+	const button = element('button', className);
 
-	button.className = className;
 	button.append(Object.assign(document.createElement('i'), { className: `fa-solid fa-${icon}` }));
 	button.title = title;
 	button.addEventListener('click', event => {

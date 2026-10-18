@@ -3,6 +3,7 @@ import { Notify } from '@vanilla-bean/components';
 import { getGit, getVerification, runGit } from '../api';
 import confirmDialog from '../confirmDialog';
 import { button, closeButton, element, icon } from '../dom';
+import { checkbox } from '../Layout';
 import { canType } from '../identity';
 import relativeTime from '../../shared/relativeTime';
 import Panel from './GitPanel.styles';
@@ -256,7 +257,7 @@ export default class GitPanel extends Panel {
 		const options = element('div', 'commit-options');
 		const message = element('textarea');
 		const amend = element('label', 'amend');
-		const amending = element('input');
+		const amending = checkbox(false);
 		const commit = button('Commit', async () => {
 			const ok = await this.act(
 				'commit',
@@ -275,7 +276,6 @@ export default class GitPanel extends Panel {
 		message.addEventListener('keydown', event => {
 			if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) commit.click();
 		});
-		amending.type = 'checkbox';
 		amend.append(amending, ' Amend the last commit');
 		amend.hidden = !this.status.hasCommits;
 		commit.classList.add('primary');
@@ -511,7 +511,7 @@ export default class GitPanel extends Panel {
 		const title = element('input');
 		const body = element('textarea');
 		const draft = element('label', 'amend');
-		const drafting = element('input');
+		const drafting = checkbox(false);
 		const options = element('div', 'commit-options');
 		const write = button('Claude, write it', async () => {
 			write.disabled = true;
@@ -546,7 +546,6 @@ export default class GitPanel extends Panel {
 		title.placeholder = 'Title';
 		body.placeholder = 'What it changes, and why';
 		body.rows = 6;
-		drafting.type = 'checkbox';
 		draft.append(drafting, ' As a draft');
 		options.append(draft, write, open);
 		form.append(title, body, options);

@@ -1,5 +1,7 @@
 import { Dialog, Notify } from '@vanilla-bean/components';
 
+import { element } from './dom';
+
 // Resolves to whether the confirming button was pressed
 const confirmDialog = ({ header, body, cancelLabel = 'Cancel', confirmLabel }) =>
 	Dialog.confirm({ size: 'small', header, body, cancelLabel, confirmLabel });
@@ -32,7 +34,7 @@ export const confirmDeleteSession = async (session, deleteSession) => {
 // Resolves to the new name, '' to go back to the automatic one, or null when left as it was
 export const nameDialog = ({ current, pinned, header = 'Name this session', placeholder = 'Session name' }) =>
 	new Promise(resolve => {
-		const input = document.createElement('input');
+		const input = element('input');
 		const AUTOMATIC = 'Use automatic name';
 		const finish = value => {
 			resolve(value);

@@ -1,6 +1,6 @@
 import { Component, styled } from '@vanilla-bean/components';
 
-import { icon } from '../dom';
+import { element, icon } from '../dom';
 
 // The keys a phone keyboard lacks but Claude Code leans on. Arrows and Enter are icons: a phone draws ⏎ and ↑ from
 // whatever font has them, at its own size and height.
@@ -48,7 +48,7 @@ const Bar = styled(
 // Fires on click, which a swipe along the bar cancels, so scrolling to a key doesn't press the ones it passes.
 // Canceling pointerdown keeps focus, and the phone keyboard, on the terminal.
 const keyButton = ({ label, icon: name, title }, press) => {
-	const button = document.createElement('button');
+	const button = element('button');
 
 	if (name) button.append(icon(name));
 	else button.textContent = label;

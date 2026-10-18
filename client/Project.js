@@ -221,7 +221,8 @@ export default class Project extends View {
 		const { icon, label, detail } = LIFETIMES[this.lifetime];
 
 		this.lifetimeChip.replaceChildren(element('i', `fa-solid fa-${icon}`), ` ${label}`);
-		this.lifetimeChip.className = `chip lifetime ${this.lifetime}`;
+		this.lifetimeChip.classList.remove('ordinary', 'warm', 'brief');
+		this.lifetimeChip.classList.add('lifetime', this.lifetime);
 		this.lifetimeChip.title = `How long it lasts: ${label}, ${detail}. Click to change`;
 	}
 

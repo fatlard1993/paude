@@ -3,6 +3,7 @@ import { Dialog, Notify } from '@vanilla-bean/components';
 import { anchorPlace } from '../../shared/attachText';
 import { getGit, runGit } from '../api';
 import { element } from '../dom';
+import { checkbox } from '../Layout';
 import { canType, identity } from '../identity';
 
 const EVENTS = [
@@ -21,7 +22,7 @@ const heading = text => styled(element('div', 'review-heading', text), { fontWei
 
 const choiceRow = (item, detail) => {
 	const row = styled(element('label', 'review-item'), { display: 'flex', gap: '8px', alignItems: 'flex-start' });
-	const box = Object.assign(element('input'), { type: 'checkbox', checked: item.mine });
+	const box = checkbox(item.mine);
 	const text = styled(element('div', 'review-text'), { minWidth: 0, flex: '1' });
 
 	box.dataset.commentId = item.commentId;

@@ -5,7 +5,7 @@ const LAYER = 'rgba(16, 16, 19, 0.5)';
 
 const Panel = styled(
 	Component,
-	({ colors }) => `
+	({ colors, elements }) => `
 		display: flex;
 		flex-direction: column;
 		height: 100%;
@@ -684,6 +684,11 @@ const Panel = styled(
 			right: 0;
 			background: ${colors.alpha(colors.yellow, 0.16)};
 			pointer-events: none;
+		}
+
+		/* A rendered document keeps the theme's look for headings, code, tables and quotes, which the page no longer gives */
+		:where(.markdown) {
+			${elements}
 		}
 
 		.markdown {

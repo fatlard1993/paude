@@ -1,7 +1,11 @@
+// The page styles no bare elements, so buttons and fields carry the library's look by class, as its own components do
+const LOOKS = { button: 'vbc-button', input: 'vbc-input', textarea: 'vbc-input', select: 'vbc-input' };
+
 export const element = (tag, className, text) => {
 	const node = document.createElement(tag);
+	const look = [LOOKS[tag], className].filter(Boolean).join(' ');
 
-	if (className) node.className = className;
+	if (look) node.className = look;
 	if (text !== undefined) node.textContent = text;
 
 	return node;

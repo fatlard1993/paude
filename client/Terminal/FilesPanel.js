@@ -1135,7 +1135,7 @@ export default class FilesPanel extends Panel {
 		const back = button('←', () => this.panes.classList.remove('reading'));
 		const change = this.changedPaths?.get(this.current);
 
-		back.className = 'back';
+		back.classList.add('back');
 		const path = element('div', 'path', this.current);
 
 		path.title = this.current;
@@ -1246,7 +1246,7 @@ export default class FilesPanel extends Panel {
 		const title = element('div', 'path', set?.title ?? '');
 		const wide = !this.viewer.clientWidth || this.viewer.clientWidth >= SPLIT_MIN_WIDTH;
 
-		back.className = 'back';
+		back.classList.add('back');
 		title.title = set?.title ?? '';
 		head.append(back, ...(single ? [fileIcon(single.path)] : []), title);
 

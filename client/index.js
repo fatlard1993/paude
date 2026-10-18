@@ -93,4 +93,5 @@ const content = () => {
 };
 
 fitToKeyboard();
-new Page({ appendTo: document.body, append: content() });
+// paude styles its own elements; its buttons and fields take the library's look through dom.js
+new Page({ themeElements: false, appendTo: document.body, append: content() });
