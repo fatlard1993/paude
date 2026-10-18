@@ -24,13 +24,11 @@ const MenuBox = styled(
 			align-items: flex-start;
 			gap: 2px;
 			padding: 6px 10px;
-			border: none;
 			border-radius: 6px;
 			background: transparent;
 			color: inherit;
 			font: inherit;
 			text-align: left;
-			cursor: pointer;
 		}
 
 		button:hover, button:focus-visible {

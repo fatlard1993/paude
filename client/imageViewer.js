@@ -93,12 +93,10 @@ const Viewer = styled.Component`
 		width: 44px;
 		height: 64px;
 		padding: 0;
-		border: none;
 		border-radius: 8px;
 		background: rgba(0, 0, 0, 0.4);
 		color: inherit;
 		font-size: 1.2em;
-		cursor: pointer;
 		opacity: 0.7;
 	}
 

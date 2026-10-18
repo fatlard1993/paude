@@ -45,13 +45,10 @@ const Panel = styled(
 
 		button {
 			padding: 4px 10px;
-			border: none;
 			border-radius: 4px;
 			background: ${colors.alpha(colors.white, 0.1)};
 			color: inherit;
 			font: inherit;
-			cursor: pointer;
-			white-space: nowrap;
 		}
 
 		button.icon-only {
@@ -124,7 +121,6 @@ const Panel = styled(
 			flex: 1 1 auto;
 			min-width: 0;
 			overflow: hidden;
-			text-overflow: ellipsis;
 			padding: 4px 6px;
 			font-size: 0.9em;
 			background: transparent;

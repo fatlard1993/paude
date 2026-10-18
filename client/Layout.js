@@ -127,10 +127,8 @@ const Card = styled(
 
 		.remove, .watch {
 			flex-shrink: 0;
-			border: none;
 			background: transparent;
 			opacity: 0;
-			cursor: pointer;
 			font-size: 1em;
 		}
 

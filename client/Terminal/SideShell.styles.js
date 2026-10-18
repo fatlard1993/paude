@@ -40,12 +40,10 @@ const Panel = styled(
 			gap: 6px;
 			align-items: center;
 			padding: 4px 10px;
-			border: none;
 			border-radius: 4px;
 			background: ${colors.alpha(colors.white, 0.08)};
 			color: ${colors.white};
 			font: inherit;
-			cursor: pointer;
 		}
 
 		button:hover:not(:disabled) {

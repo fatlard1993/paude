@@ -60,13 +60,10 @@ const Panel = styled(
 
 		button {
 			padding: 4px 10px;
-			border: none;
 			border-radius: 4px;
 			background: ${colors.alpha(colors.white, 0.1)};
 			color: inherit;
 			font: inherit;
-			cursor: pointer;
-			white-space: nowrap;
 		}
 
 		button.toggle {

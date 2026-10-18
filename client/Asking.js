@@ -46,7 +46,6 @@ export const AskingCard = styled(
 
 		.answers button {
 			padding: 8px 10px;
-			border: none;
 			border-radius: 6px;
 			background: ${colors.alpha(colors.white, 0.1)};
 			color: inherit;

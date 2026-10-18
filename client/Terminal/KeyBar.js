@@ -36,7 +36,6 @@ const Bar = styled(
 			flex: 1 0 auto;
 			min-width: 40px;
 			padding: 8px 6px;
-			border: none;
 			border-radius: 4px;
 			background: ${colors.alpha(colors.white, 0.08)};
 			color: inherit;

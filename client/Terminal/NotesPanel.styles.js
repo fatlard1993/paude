@@ -43,7 +43,6 @@ const Panel = styled(
 		.tabs button {
 			flex: 1;
 			padding: 6px;
-			border: none;
 			border-radius: 4px;
 			background: transparent;
 			color: inherit;
@@ -92,18 +91,14 @@ const Panel = styled(
 		/* Matches the files panel's */
 		.who button.close {
 			padding: 4px 8px;
-			border: none;
 			border-radius: 4px;
 			background: ${colors.alpha(colors.white, 0.1)};
 			color: inherit;
-			cursor: pointer;
 		}
 
 		.who .bell {
-			border: none;
 			background: transparent;
 			font-size: 1.1em;
-			cursor: pointer;
 		}
 
 		.list {
@@ -191,7 +186,6 @@ const Panel = styled(
 
 		.comments-toolbar button {
 			padding: 4px 10px;
-			border: none;
 			border-radius: 4px;
 			background: ${colors.alpha(colors.white, 0.1)};
 			color: inherit;
@@ -218,7 +212,6 @@ const Panel = styled(
 			color: inherit;
 			font: inherit;
 			font-size: 0.85em;
-			cursor: pointer;
 		}
 
 		.reactions .chip.mine {
@@ -249,12 +242,10 @@ const Panel = styled(
 		}
 
 		.reactions .palette button {
-			border: none;
 			background: transparent;
 			font-size: 1.15em;
 			padding: 2px 4px;
 			border-radius: 4px;
-			cursor: pointer;
 		}
 
 		.reactions .palette button:hover {
@@ -291,7 +282,6 @@ const Panel = styled(
 
 		.actions button, .composer button {
 			padding: 4px 10px;
-			border: none;
 			border-radius: 4px;
 			background: ${colors.alpha(colors.white, 0.1)};
 			color: inherit;
