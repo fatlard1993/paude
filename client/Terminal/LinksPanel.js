@@ -1,9 +1,8 @@
-import { Notify } from '@vanilla-bean/components';
-
 import { button, closeButton, element, icon } from '../dom';
 import { canNote } from '../identity';
 import relativeTime from '../../shared/relativeTime';
 import Panel from './GitPanel.styles';
+import { copyWithNotice } from './copySelection';
 
 const KINDS = [
 	['all', 'All'],
@@ -143,8 +142,7 @@ export default class LinksPanel extends Panel {
 			button(
 				'',
 				async () => {
-					await navigator.clipboard.writeText(link.url).catch(() => null);
-					new Notify({ type: 'success', content: 'Link copied', timeout: 1500 });
+					await copyWithNotice(link.url, 'Link copied');
 				},
 				{ icon: 'copy', title: 'Copy it', className: 'icon-only' },
 			),

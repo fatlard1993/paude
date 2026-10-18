@@ -1,10 +1,9 @@
-import { Notify } from '@vanilla-bean/components';
-
 import { addShare, getShares, renameShare, stopShare } from '../api';
 import { nameDialog } from '../confirmDialog';
 import { button, closeButton, element, icon } from '../dom';
 import { canType } from '../identity';
 import Panel from './GitPanel.styles';
+import { copyWithNotice } from './copySelection';
 
 const KIND_ICONS = { port: 'plug', file: 'file-arrow-down', folder: 'file-zipper', site: 'globe' };
 
@@ -70,8 +69,7 @@ export default class SharesPanel extends Panel {
 		const copy = button(
 			'',
 			async () => {
-				await navigator.clipboard.writeText(share.url).catch(() => null);
-				new Notify({ type: 'success', content: 'Link copied', timeout: 1500 });
+				await copyWithNotice(share.url, 'Link copied');
 			},
 			{ icon: 'link', title: 'Copy the link', className: 'icon-only' },
 		);

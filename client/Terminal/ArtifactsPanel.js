@@ -1,9 +1,8 @@
-import { Notify } from '@vanilla-bean/components';
-
 import relativeTime from '../../shared/relativeTime';
 import { button, closeButton, element, icon } from '../dom';
 import { opensInViewer } from '../imageViewer';
 import Panel from './GitPanel.styles';
+import { copyWithNotice } from './copySelection';
 
 const KINDS = [
 	['all', 'All'],
@@ -182,8 +181,7 @@ export default class ArtifactsPanel extends Panel {
 			button(
 				'',
 				async () => {
-					await navigator.clipboard.writeText(made.path).catch(() => null);
-					new Notify({ type: 'success', content: 'Path copied', timeout: 1500 });
+					await copyWithNotice(made.path, 'Path copied');
 				},
 				{ icon: 'copy', title: 'Copy its path', className: 'icon-only' },
 			),

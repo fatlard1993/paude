@@ -1,3 +1,5 @@
+import { copyToClipboard } from '@vanilla-bean/components';
+
 import { createInvite, getInvites, revokeInvite } from '../api';
 import confirmDialog from '../confirmDialog';
 import { element } from '../dom';
@@ -32,14 +34,9 @@ const remaining = expires => {
 	return hours < 24 ? `${hours}h left` : `${Math.round(hours / 24)}d left`;
 };
 
+// Refused, the link is still selectable in its field
 const copyLink = async (link, button) => {
-	try {
-		await navigator.clipboard.writeText(link);
-		button.textContent = 'Copied';
-	} catch {
-		// No clipboard outside https or without permission; the link is selectable in its field
-		button.textContent = 'Select and copy it';
-	}
+	button.textContent = (await copyToClipboard(link)) ? 'Copied' : 'Select and copy it';
 };
 
 const renderPeople = async sessionId => {

@@ -34,6 +34,7 @@ import { artifactUrl } from './ArtifactsPanel';
 import renderDiffSet from './DiffView';
 import stepThrough from './tour';
 import Panel, { LINE_HEIGHT } from './FilesPanel.styles';
+import { copyWithNotice } from './copySelection';
 
 const MAX_MATCHES = 200;
 const TOUCH = window.matchMedia('(pointer: coarse)');
@@ -1877,12 +1878,7 @@ export default class FilesPanel extends Panel {
 		});
 	}
 
-	async copyLines() {
-		try {
-			await navigator.clipboard.writeText(this.selectedText());
-			new Notify({ type: 'success', content: 'Copied', timeout: 1500 });
-		} catch {
-			new Notify({ type: 'warning', content: 'The browser would not allow copying here.' });
-		}
+	copyLines() {
+		return copyWithNotice(this.selectedText(), 'Copied');
 	}
 }
