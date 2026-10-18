@@ -440,12 +440,12 @@ test(
 			await page.mouse.click(badge.x, badge.y);
 			await wait(400);
 
-			const rows = await page.$$eval('button', buttons =>
-				buttons.filter(row => row.querySelector('.detail')).map(row => row.textContent),
+			const rows = await page.$$eval('[role=menu] li', items =>
+				items.filter(row => row.querySelector('.detail')).map(row => row.textContent),
 			);
 
 			expect(rows.length).toBe(1);
-			await page.click('button:has(.detail)');
+			await page.click('[role=menu] li:has(.detail)');
 			await wait(800);
 			expect(await page.evaluate(() => window.location.hash)).toBe(`#/sessions/${waiting}`);
 		} finally {
@@ -476,7 +476,7 @@ test(
 			await page.mouse.click(badge.x, badge.y);
 			await wait(400);
 
-			const details = await page.$$eval('button .detail', rows => rows.map(row => row.textContent));
+			const details = await page.$$eval('[role=menu] li .detail', rows => rows.map(row => row.textContent));
 
 			expect(details.some(detail => detail.startsWith('1 new · demo'))).toBe(true);
 		} finally {
@@ -694,7 +694,7 @@ test(
 			await wait(500);
 			await press('.files .entry', 'app.js');
 			await press('.files .head button', 'Walk me through');
-			await press('button', 'This file');
+			await press('[role=menu] li', 'This file');
 			await wait(1500);
 
 			const strip = () => page.$eval('.files .tour-strip', card => card.innerText);
@@ -800,7 +800,7 @@ test(
 			expect(await page.$eval('.files .diff', diff => diff.textContent)).toContain('three');
 
 			await press('.files .head button', 'Reading order');
-			await press('button', 'Alphabetical');
+			await press('[role=menu] li', 'Alphabetical');
 			expect((await heads()).map(([path]) => path)).toEqual([
 				'bun.lock',
 				'web/app.js',
@@ -855,7 +855,7 @@ test(
 			expect(await page.$eval('.files .diff', diff => diff.textContent)).not.toContain('addUp(1)');
 
 			await press('.files .head button', 'Reading order');
-			await press('button', 'By function');
+			await press('[role=menu] li', 'By function');
 			expect(await groups()).toEqual([
 				'scale in kit/lib.js: its signature changed',
 				'Renamed sumUp → addUp in 2 files',
@@ -1262,7 +1262,7 @@ test(
 			await page.touchscreen.tap(menu.x, menu.y);
 			await wait(400);
 
-			const chat = await centerOf(page, 'button', 'Chat and comments');
+			const chat = await centerOf(page, '[role=menu] li', 'Chat and comments');
 
 			await page.touchscreen.tap(chat.x, chat.y);
 			await wait(600);
@@ -1491,12 +1491,12 @@ test(
 			await page.goto(await here.loginLink('/projects/demo'));
 			await page.waitForSelector('.server-switch:not([style*="none"])');
 			await page.click('.server-switch');
-			await page.waitForSelector('button .label');
+			await page.waitForSelector('[role=menu] li .label');
 
-			const items = await page.$$eval('button .label', labels => labels.map(label => label.textContent));
+			const items = await page.$$eval('[role=menu] li .label', labels => labels.map(label => label.textContent));
 
 			expect(items.at(-1)).toBe('workshop');
-			await (await page.$$('button .label')).at(-1).click();
+			await (await page.$$('[role=menu] li .label')).at(-1).click();
 			await page.waitForFunction(origin => window.location.origin === origin, {}, there.url);
 			await page.waitForSelector('.breadcrumbs span.root');
 			expect(new URL(page.url()).hash).toBe('#/');
@@ -1625,7 +1625,7 @@ test(
 			await page.goto(await server.loginLink('/projects/demo'));
 			await page.waitForSelector('button.chip:has(.fa-code-branch)', { visible: true });
 			await press('button.chip:has(.fa-code-branch)');
-			await press('button', 'A new worktree from a branch or PR');
+			await press('[role=menu] li', 'A new worktree from a branch or PR');
 			await page.type('input[placeholder^="branch, tag"]', '#5');
 			await press('button', 'Start session');
 			await page.waitForFunction(() => document.body.innerText.includes('Start Claude in this pull request?'), {
