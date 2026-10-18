@@ -55,10 +55,6 @@ const Viewer = styled.Component`
 		opacity: 0.75;
 	}
 
-	.viewer-bar button::after {
-		display: none;
-	}
-
 	.viewer-bar button:hover,
 	.viewer-bar a:hover {
 		opacity: 1;
@@ -106,10 +102,6 @@ const Viewer = styled.Component`
 		opacity: 0.7;
 	}
 
-	.step::after {
-		display: none;
-	}
-
 	.step:hover {
 		opacity: 1;
 	}
@@ -149,9 +141,13 @@ export const viewImage = (images, at = 0) => {
 	const previous = button('', () => show(index - 1), {
 		icon: 'chevron-left',
 		title: 'Previous (←)',
-		className: 'step previous',
+		className: 'step previous variant-flat',
 	});
-	const next = button('', () => show(index + 1), { icon: 'chevron-right', title: 'Next (→)', className: 'step next' });
+	const next = button('', () => show(index + 1), {
+		icon: 'chevron-right',
+		title: 'Next (→)',
+		className: 'step next variant-flat',
+	});
 	let index = at;
 
 	Object.assign(newTab, { target: '_blank', rel: 'noopener noreferrer', title: 'Open in a new tab' });
@@ -163,7 +159,7 @@ export const viewImage = (images, at = 0) => {
 		count,
 		newTab,
 		download,
-		button('', () => close(), { icon: 'xmark', title: 'Close (Esc)' }),
+		button('', () => close(), { icon: 'xmark', title: 'Close (Esc)', className: 'variant-flat' }),
 	);
 	viewer.elem.tabIndex = -1;
 	viewer.elem.append(bar, stage, ...(list.length > 1 ? [previous, next] : []));

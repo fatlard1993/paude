@@ -14,17 +14,10 @@ const Strip = styled(
 		button {
 			margin-bottom: -1px;
 			padding: 6px 12px;
-			border: none;
 			border-bottom: 2px solid transparent;
 			border-radius: 0;
-			background: transparent;
 			color: ${colors.light(colors.gray)};
 			font: inherit;
-			cursor: pointer;
-		}
-
-		button::after {
-			display: none;
 		}
 
 		button:hover {
@@ -62,7 +55,7 @@ export const tabs = ({ appendTo, key, names }) => {
 
 	for (const { name, label } of names) {
 		const count = element('span', 'count');
-		const node = button(label, () => show(name));
+		const node = button(label, () => show(name), { className: 'variant-flat' });
 
 		node.append(count);
 		node.dataset.tab = name;

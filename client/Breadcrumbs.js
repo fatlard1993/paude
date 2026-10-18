@@ -95,17 +95,11 @@ const Trail = styled(
 			gap: 6px;
 			flex-shrink: 0;
 			padding: 2px 8px;
-			border: none;
 			border-radius: 10px;
 			background: hsl(var(--server-hue) 60% 50% / 0.18);
 			color: hsl(var(--server-hue) 70% 75%);
 			font: inherit;
 			font-size: 0.85em;
-			cursor: pointer;
-		}
-
-		.server-switch::after {
-			display: none;
 		}
 
 		.server-switch:hover {
@@ -162,7 +156,7 @@ const summaryOf = server => {
 // Which paude this is, shown once this machine knows of others, and a menu of them: each opens at its home page,
 // logged in
 const serverSwitch = addCleanup => {
-	const switcher = element('button', 'server-switch');
+	const switcher = element('button', 'server-switch variant-flat');
 	const here = serverName() ?? 'this machine';
 	const accent = name => `hsl(${hueOf(name)} 60% 60%)`;
 	let others = [];

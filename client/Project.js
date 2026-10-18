@@ -87,12 +87,12 @@ export default class Project extends View {
 		this.sent = compose.sent;
 		this.startButton = compose.buttons[1];
 		this.startLabel = this.startButton.querySelector('.label');
-		this.checkoutChip = element('button', 'chip');
+		this.checkoutChip = element('button', 'chip variant-flat');
 		this.newName = Object.assign(element('input', 'chip-name'), { placeholder: 'worktree name (from the prompt)' });
 		this.fromInput = Object.assign(element('input', 'chip-name'), {
 			placeholder: 'branch, tag, commit or PR (#123)',
 		});
-		this.lifetimeChip = element('button', 'chip');
+		this.lifetimeChip = element('button', 'chip variant-flat');
 		this.checkoutChip.style.display = 'none';
 		this.newName.style.display = 'none';
 		this.fromInput.style.display = 'none';

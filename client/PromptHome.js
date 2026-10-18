@@ -61,22 +61,13 @@ const Compose = styled(
 			padding: 3px 10px;
 			border: 1px solid ${colors.alpha(colors.white, 0.12)};
 			border-radius: 999px;
-			background: transparent;
 			color: ${colors.alpha(colors.white, 0.75)};
 			font: inherit;
 			font-size: 0.85em;
 			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
-			cursor: pointer;
-		}
-
-		.chip::after {
-			display: none;
 		}
 
 		.chip:hover {
-			background: ${colors.alpha(colors.white, 0.08)};
 			color: ${colors.white};
 		}
 
@@ -116,17 +107,11 @@ const Compose = styled(
 
 		/* The lesser action reads as an option, not a second send */
 		.actions button.secondary {
-			background: transparent;
 			color: ${colors.alpha(colors.white, 0.75)};
 		}
 
 		.actions button.secondary:hover {
-			background: ${colors.alpha(colors.white, 0.08)};
 			color: ${colors.white};
-		}
-
-		.actions button.secondary::after {
-			display: none;
 		}
 
 		.keys {
@@ -157,7 +142,7 @@ export const composeBox = ({ appendTo, placeholder, actions, keep }) => {
 		const main = index === actions.length - 1;
 		const node = button(element('span', 'label', label), onPress, {
 			title,
-			className: main ? 'primary' : 'secondary',
+			className: main ? 'primary' : 'secondary variant-flat',
 		});
 
 		if (main) node.append(element('span', 'keys', SEND_KEYS));

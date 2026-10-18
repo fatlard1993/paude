@@ -46,14 +46,8 @@ const AddFolder = styled(
 			align-self: stretch;
 			border: 1px dashed ${colors.alpha(colors.white, 0.18)};
 			border-radius: 6px;
-			background: transparent;
 			color: ${colors.light(colors.gray)};
 			font: inherit;
-			cursor: pointer;
-		}
-
-		.open-form::after {
-			display: none;
 		}
 
 		.open-form:hover {
@@ -192,7 +186,7 @@ export default class Home extends View {
 
 	addFolderCard() {
 		const card = new AddFolder({});
-		const opener = element('button', 'open-form', '+ Add a folder');
+		const opener = element('button', 'open-form variant-flat', '+ Add a folder');
 		const form = element('form');
 		const input = element('input');
 		const add = element('button', '', 'Add');

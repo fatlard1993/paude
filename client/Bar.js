@@ -21,26 +21,16 @@ export const Bar = styled(
 		}
 
 		.ghost {
-			position: relative;
 			flex-shrink: 0;
 			min-width: 32px;
 			height: 32px;
 			padding: 0 8px;
-			border: none;
 			border-radius: 6px;
-			background: transparent;
 			color: ${colors.alpha(colors.white, 0.7)};
 			font: inherit;
-			cursor: pointer;
-		}
-
-		/* Flat: the theme's bevel would make an icon read as a raised button */
-		.ghost::after {
-			display: none;
 		}
 
 		.ghost:hover {
-			background: ${colors.alpha(colors.white, 0.08)};
 			color: ${colors.white};
 		}
 
@@ -69,7 +59,7 @@ export const Bar = styled(
 );
 
 export const ghostButton = (appendTo, { icon, label, title, onPress, className = '' }) => {
-	const node = button(label, onPress, { icon, title: title ?? '', className: `ghost ${className}` });
+	const node = button(label, onPress, { icon, title: title ?? '', className: `ghost variant-flat ${className}` });
 
 	appendTo.elem.append(node);
 
