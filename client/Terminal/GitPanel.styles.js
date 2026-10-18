@@ -115,21 +115,41 @@ const Panel = styled(
 			display: flex;
 			gap: 4px;
 			padding: 4px;
+			border-bottom: none;
+			overflow: visible;
 		}
 
 		.tabs button {
 			flex: 1 1 auto;
 			min-width: 0;
 			overflow: hidden;
+			margin-bottom: 0;
 			padding: 4px 6px;
+			border-bottom: none;
+			border-radius: 4px;
+			color: inherit;
 			font-size: 0.9em;
 			background: transparent;
 			opacity: 0.7;
 		}
 
-		.tabs button.active {
+		/* The git tabs mark the open one for the reader; the links and artifacts filters, by class */
+		.tabs button[aria-selected='true'], .tabs button.active {
 			background: ${colors.alpha(colors.white, 0.08)};
+			color: inherit;
+			font-weight: normal;
 			opacity: 1;
+		}
+
+		/* A count reads as part of the label: "Changes 3" */
+		.tabs .count {
+			margin-left: 0;
+			color: inherit;
+			font-size: inherit;
+		}
+
+		.tabs .count:not(:empty)::before {
+			content: ' ';
 		}
 
 		.body {

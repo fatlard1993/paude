@@ -1,4 +1,4 @@
-import { Notify } from '@vanilla-bean/components';
+import { Notify, Tabs } from '@vanilla-bean/components';
 
 import { DESKTOP_KEY, desktopNotificationsOn, remember } from '../storage';
 import confirmDialog from '../confirmDialog';
@@ -84,21 +84,17 @@ export default class NotesPanel extends Panel {
 			closeButton(() => this.options.close()),
 		);
 
-		this.tabButtons = {};
+		this.tabStrip = new Tabs({
+			addClass: 'tabs',
+			tabs: [
+				{ id: 'chat', label: 'Chat' },
+				{ id: 'comments', label: 'Comments' },
+				...(identity()?.owner ? [{ id: 'people', label: 'People' }] : []),
+			],
+			onChange: id => this.showTab(id),
+		});
 
-		const tabs = element('div', 'tabs');
-
-		for (const [key, label] of [
-			['chat', 'Chat'],
-			['comments', 'Comments'],
-			...(identity()?.owner ? [['people', 'People']] : []),
-		]) {
-			const button = element('button', 'variant-flat', label);
-
-			button.addEventListener('click', () => this.showTab(key));
-			this.tabButtons[key] = button;
-			tabs.append(button);
-		}
+		const tabs = this.tabStrip.elem;
 
 		this.list = element('div', 'list');
 		this.draft = element('div', 'draft');
@@ -161,7 +157,7 @@ export default class NotesPanel extends Panel {
 		this.tab = tab;
 		this.unread[tab] = 0;
 
-		for (const [key, button] of Object.entries(this.tabButtons)) button.classList.toggle('active', key === tab);
+		this.tabStrip.options.selected = tab;
 
 		this.chatComposer.style.display = tab === 'chat' && canNote() ? '' : 'none';
 		this.renderList();
@@ -175,11 +171,7 @@ export default class NotesPanel extends Panel {
 	}
 
 	renderBadges() {
-		for (const [key, button] of Object.entries(this.tabButtons)) {
-			button.querySelector('.badge')?.remove();
-
-			if (this.unread[key]) button.append(element('span', 'badge', String(this.unread[key])));
-		}
+		for (const [key, count] of Object.entries(this.unread)) this.tabStrip.count(key, count);
 
 		this.options.showUnread?.(this.unread.chat + this.unread.comments);
 	}

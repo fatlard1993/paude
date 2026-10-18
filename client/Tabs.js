@@ -1,38 +1,22 @@
-import { Elem, styled } from '@vanilla-bean/components';
+import { Tabs, styled } from '@vanilla-bean/components';
 
-import { button, element } from './dom';
 import { recall, remember } from './storage';
 
+// The library's tabs, underlined in the bar's accent
 const Strip = styled(
-	Elem,
+	Tabs,
 	({ colors }) => `
-		display: flex;
-		gap: 4px;
 		margin-top: 16px;
+		overflow: visible;
 		border-bottom: 1px solid ${colors.alpha(colors.white, 0.08)};
 
-		button {
-			margin-bottom: -1px;
-			padding: 6px 12px;
-			border-bottom: 2px solid transparent;
+		& > .vbc-button {
 			border-radius: 0;
-			color: ${colors.light(colors.gray)};
-			font: inherit;
 		}
 
-		button:hover {
-			color: ${colors.white};
-		}
-
-		button.active {
+		& > .vbc-button[aria-selected='true'] {
 			border-bottom-color: var(--bar-accent, ${colors.blue});
-			color: ${colors.white};
-		}
-
-		.count {
-			margin-left: 6px;
-			color: ${colors.light(colors.gray)};
-			font-size: 0.8em;
+			font-weight: normal;
 		}
 	`,
 );
@@ -41,31 +25,28 @@ const Strip = styled(
 // is remembered under `key`. Returns { pane(name, elem), count(name, n), show(name) }; show the first once the panes
 // are in.
 export const tabs = ({ appendTo, key, names }) => {
-	const strip = new Strip({ appendTo });
 	const panes = {};
-	const counts = {};
 
-	const show = name => {
-		const shown = name in panes ? name : names[0].name;
-
-		remember(key, shown);
-		for (const [pane, elem] of Object.entries(panes)) elem.style.display = pane === shown ? '' : 'none';
-		for (const node of strip.elem.children) node.classList.toggle('active', node.dataset.tab === shown);
+	// By display rather than the hidden attribute, which a pane's own display: flex would override
+	const showPanes = name => {
+		remember(key, name);
+		for (const [pane, elem] of Object.entries(panes)) elem.style.display = pane === name ? '' : 'none';
 	};
 
-	for (const { name, label } of names) {
-		const count = element('span', 'count');
-		const node = button(label, () => show(name), { className: 'variant-flat' });
-
-		node.append(count);
-		node.dataset.tab = name;
-		strip.elem.append(node);
-		counts[name] = count;
-	}
+	const strip = new Strip({
+		appendTo,
+		tabs: names.map(({ name, label }) => ({ id: name, label })),
+		onChange: showPanes,
+	});
 
 	return {
 		pane: (name, elem) => (panes[name] = elem),
-		count: (name, n) => (counts[name].textContent = n || ''),
-		show: name => show(name ?? recall(key)),
+		count: (name, n) => strip.count(name, n),
+		show: name => {
+			const wanted = name ?? recall(key);
+
+			if (wanted in panes) strip.select(wanted);
+			showPanes(strip.options.selected);
+		},
 	};
 };

@@ -1,4 +1,4 @@
-import { Notify } from '@vanilla-bean/components';
+import { Notify, Tabs } from '@vanilla-bean/components';
 
 import { getGit, getVerification, runGit } from '../api';
 import confirmDialog from '../confirmDialog';
@@ -41,25 +41,22 @@ export default class GitPanel extends Panel {
 
 		this.bar = element('div', 'bar');
 		this.output = element('div', 'output');
-		this.tabs = element('div', 'tabs');
-		this.body = element('div', 'body');
-		this.tabButtons = Object.fromEntries(
-			TABS.map(([key, label]) => {
-				// Read afresh: the checkout may have changed by hand, or by Claude, since
-				const tab = button(
-					label,
-					() => {
-						this.tab = key;
-						this.refresh();
-					},
-					{ className: 'variant-flat' },
-				);
-
-				this.tabs.append(tab);
-
-				return [key, tab];
-			}),
+		// Each tab reads afresh, the open one too: the checkout may have changed by hand, or by Claude, since
+		this.tabStrip = new Tabs({
+			addClass: 'tabs',
+			tabs: TABS.map(([id, label]) => ({ id, label })),
+			onChange: id => {
+				this.tab = id;
+				this.refresh();
+			},
+		});
+		this.tabs = this.tabStrip.elem;
+		this.tabs.addEventListener(
+			'click',
+			event => event.target.closest('[aria-selected="true"]') && this.refresh(),
+			true,
 		);
+		this.body = element('div', 'body');
 		this.elem.tabIndex = -1;
 		this.elem.append(this.bar, this.output, this.tabs, this.body);
 		this.elem.addEventListener('keydown', event => {
@@ -121,8 +118,8 @@ export default class GitPanel extends Panel {
 			...actions,
 			closeButton(() => this.options.close()),
 		);
-		this.tabButtons.changes.textContent = `Changes${this.changeCount() ? ` ${this.changeCount()}` : ''}`;
-		this.tabButtons.stashes.textContent = `Stashes${this.status.stashes ? ` ${this.status.stashes}` : ''}`;
+		this.tabStrip.count('changes', this.changeCount());
+		this.tabStrip.count('stashes', this.status.stashes);
 		this.output.classList.toggle('shown', Boolean(inProgress));
 		if (inProgress) {
 			this.say(`${IN_PROGRESS[inProgress]} Settle the conflicts below, then carry on; or give it up.`, { error: true });
@@ -142,7 +139,7 @@ export default class GitPanel extends Panel {
 
 	async showTab(tab) {
 		this.tab = tab;
-		for (const [key, node] of Object.entries(this.tabButtons)) node.classList.toggle('active', key === tab);
+		this.tabStrip.options.selected = tab;
 
 		if (!this.status) return;
 		if (tab === 'changes') return this.renderChanges();

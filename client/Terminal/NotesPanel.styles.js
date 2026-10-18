@@ -40,20 +40,35 @@ const Panel = styled(
 			border-radius: 6px;
 		}
 
+		.tabs {
+			border-bottom: none;
+			overflow: visible;
+		}
+
 		.tabs button {
 			flex: 1;
+			margin-bottom: 0;
 			padding: 6px;
+			border-bottom: none;
 			border-radius: 4px;
+			color: inherit;
 			font: inherit;
 			opacity: 0.6;
 		}
 
-		.tabs button.active {
+		.tabs button[aria-selected='true'] {
 			background: ${colors.alpha(colors.white, 0.08)};
+			color: inherit;
+			font-weight: normal;
 			opacity: 1;
 		}
 
-		.badge {
+		/* Unread, as a badge; nothing unread, nothing shown */
+		.tabs .count:empty {
+			display: none;
+		}
+
+		.tabs .count:not(:empty) {
 			margin-left: 6px;
 			padding: 0 6px;
 			border-radius: 8px;
