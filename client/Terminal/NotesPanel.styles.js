@@ -44,8 +44,6 @@ const Panel = styled(
 			flex: 1;
 			padding: 6px;
 			border-radius: 4px;
-			background: transparent;
-			color: inherit;
 			font: inherit;
 			opacity: 0.6;
 		}
@@ -97,7 +95,6 @@ const Panel = styled(
 		}
 
 		.who .bell {
-			background: transparent;
 			font-size: 1.1em;
 		}
 
@@ -160,14 +157,11 @@ const Panel = styled(
 
 		.place .where {
 			padding: 0;
-			border: none;
-			background: none;
 			color: ${colors.light(colors.blue)};
 			font: inherit;
 			font-family: ui-monospace, monospace;
 			text-align: left;
 			word-break: break-all;
-			cursor: pointer;
 		}
 
 		.place .github {
@@ -242,7 +236,6 @@ const Panel = styled(
 		}
 
 		.reactions .palette button {
-			background: transparent;
 			font-size: 1.15em;
 			padding: 2px 4px;
 			border-radius: 4px;

@@ -99,7 +99,7 @@ export default class ActivityPanel extends Panel {
 		const node = element('div', `turn${turn.id === this.focused ? ' focused' : ''}`);
 
 		node.dataset.turn = turn.id;
-		const head = element('button', 'turn-head');
+		const head = element('button', 'turn-head variant-flat');
 		const edited = new Set(turn.steps.filter(step => step.edits).map(step => step.file));
 		const failed = turn.steps.filter(step => step.ok === false && !step.declined).length;
 		const meta = [
@@ -138,7 +138,7 @@ export default class ActivityPanel extends Panel {
 
 	step(step, turn) {
 		const row = element('div', `step${step.ok === false ? ' failed' : ''}${step.ok === undefined ? ' running' : ''}`);
-		const line = element('button', 'step-line');
+		const line = element('button', 'step-line variant-flat');
 		const output = element('pre', 'step-output', step.output ?? '');
 
 		line.append(

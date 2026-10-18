@@ -127,7 +127,6 @@ const Card = styled(
 
 		.remove, .watch {
 			flex-shrink: 0;
-			background: transparent;
 			opacity: 0;
 			font-size: 1em;
 		}
@@ -237,7 +236,7 @@ export const checkbox = checked => Object.assign(new Checkbox({ tag: 'input' }).
 
 // Inside the link, so it has to stop the click from also opening the card
 const cardButton = (card, { className, icon, title, onPress }) => {
-	const button = element('button', className);
+	const button = element('button', `${className} variant-flat`);
 
 	button.append(Object.assign(document.createElement('i'), { className: `fa-solid fa-${icon}` }));
 	button.title = title;

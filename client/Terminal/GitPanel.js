@@ -46,10 +46,14 @@ export default class GitPanel extends Panel {
 		this.tabButtons = Object.fromEntries(
 			TABS.map(([key, label]) => {
 				// Read afresh: the checkout may have changed by hand, or by Claude, since
-				const tab = button(label, () => {
-					this.tab = key;
-					this.refresh();
-				});
+				const tab = button(
+					label,
+					() => {
+						this.tab = key;
+						this.refresh();
+					},
+					{ className: 'variant-flat' },
+				);
 
 				this.tabs.append(tab);
 
@@ -180,7 +184,7 @@ export default class GitPanel extends Panel {
 
 	fileRow(file, controls) {
 		const row = element('div', 'file');
-		const name = element('button', 'path', file.from ? `${file.from} → ${file.path}` : file.path);
+		const name = element('button', 'path variant-flat', file.from ? `${file.from} → ${file.path}` : file.path);
 
 		name.title = 'Show the change';
 		name.addEventListener('click', () => this.options.openDiff({ source: 'changes', path: file.here ?? file.path }));
@@ -314,7 +318,7 @@ export default class GitPanel extends Panel {
 		if (this.tab !== 'history') return;
 
 		const rows = this.history.map(commit => {
-			const row = element('button', 'history-item');
+			const row = element('button', 'history-item variant-flat');
 			const refs = element('span', 'refs');
 
 			for (const ref of commit.refs) refs.append(element('span', 'ref', ref.replace('HEAD -> ', '')));

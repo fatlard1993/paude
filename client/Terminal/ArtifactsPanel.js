@@ -107,10 +107,14 @@ export default class ArtifactsPanel extends Panel {
 
 		this.filters.replaceChildren(
 			...KINDS.filter(([kind]) => kind === 'all' || counts[kind]).map(([kind, label]) => {
-				const filter = button(`${label} ${counts[kind]}`, () => {
-					this.kind = kind;
-					this.renderArtifacts();
-				});
+				const filter = button(
+					`${label} ${counts[kind]}`,
+					() => {
+						this.kind = kind;
+						this.renderArtifacts();
+					},
+					{ className: 'variant-flat' },
+				);
 
 				filter.classList.toggle('active', kind === this.kind);
 

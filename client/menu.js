@@ -25,14 +25,8 @@ const MenuBox = styled(
 			gap: 2px;
 			padding: 6px 10px;
 			border-radius: 6px;
-			background: transparent;
-			color: inherit;
 			font: inherit;
 			text-align: left;
-		}
-
-		button:hover, button:focus-visible {
-			background: ${colors.alpha(colors.white, 0.08)};
 		}
 
 		.detail {
@@ -76,10 +70,14 @@ export const openMenu = (anchor, items) => {
 			continue;
 		}
 
-		const row = button('', () => {
-			closeMenu();
-			item.onPress();
-		});
+		const row = button(
+			'',
+			() => {
+				closeMenu();
+				item.onPress();
+			},
+			{ className: 'variant-flat' },
+		);
 
 		row.append(element('span', 'label', item.label), ...(item.detail ? [element('span', 'detail', item.detail)] : []));
 		if (item.accent) row.style.boxShadow = `inset 3px 0 ${item.accent}`;

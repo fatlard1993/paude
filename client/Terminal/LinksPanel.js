@@ -95,10 +95,14 @@ export default class LinksPanel extends Panel {
 
 		this.filters.replaceChildren(
 			...KINDS.filter(([kind]) => kind === 'all' || counts[kind]).map(([kind, label]) => {
-				const filter = button(`${label} ${counts[kind]}`, () => {
-					this.kind = kind;
-					this.renderLinks();
-				});
+				const filter = button(
+					`${label} ${counts[kind]}`,
+					() => {
+						this.kind = kind;
+						this.renderLinks();
+					},
+					{ className: 'variant-flat' },
+				);
 
 				filter.classList.toggle('active', kind === this.kind);
 

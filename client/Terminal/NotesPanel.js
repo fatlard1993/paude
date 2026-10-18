@@ -27,7 +27,7 @@ const yours = note =>
 const composer = ({ placeholder, label, onSend, onAsk, drafts, draftKey }) => {
 	const row = element('div', 'composer');
 	const input = element('textarea');
-	const button = element('button', '', label);
+	const button = element('button', 'variant-flat', label);
 	const ask = onAsk && canType() && element('button', 'ask', 'Ask Claude');
 
 	input.placeholder = placeholder;
@@ -93,7 +93,7 @@ export default class NotesPanel extends Panel {
 			['comments', 'Comments'],
 			...(identity()?.owner ? [['people', 'People']] : []),
 		]) {
-			const button = element('button', '', label);
+			const button = element('button', 'variant-flat', label);
 
 			button.addEventListener('click', () => this.showTab(key));
 			this.tabButtons[key] = button;
@@ -132,7 +132,7 @@ export default class NotesPanel extends Panel {
 	}
 
 	bellButton() {
-		const bell = element('button', 'bell');
+		const bell = element('button', 'bell variant-flat');
 		const show = () => {
 			bell.textContent = desktopNotificationsOn() ? '🔔' : '🔕';
 			bell.title = desktopNotificationsOn()
@@ -313,7 +313,7 @@ export default class NotesPanel extends Panel {
 	// Where an anchored comment is, and where it came from or went: GitHub, for a review brought in or posted
 	placeLine(comment, open) {
 		const line = element('div', 'place');
-		const where = element('button', 'where', anchorPlace(comment.anchor));
+		const where = element('button', 'where variant-flat', anchorPlace(comment.anchor));
 
 		where.title = 'Open these lines';
 		where.addEventListener('click', open);
@@ -400,7 +400,7 @@ export default class NotesPanel extends Panel {
 		for (const [emoji, authors] of Object.entries(item.reactions ?? {})) {
 			const chip = element(
 				'button',
-				`chip${authors.some(entry => (typeof entry === 'string' ? entry === this.myName : entry.id === identityKey())) ? ' mine' : ''}`,
+				`chip variant-flat${authors.some(entry => (typeof entry === 'string' ? entry === this.myName : entry.id === identityKey())) ? ' mine' : ''}`,
 				`${emoji} ${authors.length}`,
 			);
 
@@ -412,7 +412,7 @@ export default class NotesPanel extends Panel {
 
 		if (!canNote()) return row;
 
-		const add = element('button', 'chip add');
+		const add = element('button', 'chip add variant-flat');
 		const palette = element('div', 'palette');
 		const other = element('input');
 
@@ -420,7 +420,7 @@ export default class NotesPanel extends Panel {
 		add.append(element('i', 'fa-regular fa-face-smile'), '+');
 		add.addEventListener('click', () => palette.classList.toggle('open'));
 		for (const emoji of REACTION_PALETTE) {
-			const pick = element('button', '', emoji);
+			const pick = element('button', 'variant-flat', emoji);
 
 			pick.addEventListener('click', () => react(emoji));
 			palette.append(pick);

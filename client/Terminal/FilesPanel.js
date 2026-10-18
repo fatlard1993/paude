@@ -317,10 +317,16 @@ export default class FilesPanel extends Panel {
 		this.toggles = {
 			caseSensitive: button('Aa', () => this.toggleOption('caseSensitive'), {
 				title: 'Match case',
-				className: 'toggle',
+				className: 'toggle variant-flat',
 			}),
-			wholeWord: button('ab', () => this.toggleOption('wholeWord'), { title: 'Match whole word', className: 'toggle' }),
-			regex: button('.*', () => this.toggleOption('regex'), { title: 'Use regular expression', className: 'toggle' }),
+			wholeWord: button('ab', () => this.toggleOption('wholeWord'), {
+				title: 'Match whole word',
+				className: 'toggle variant-flat',
+			}),
+			regex: button('.*', () => this.toggleOption('regex'), {
+				title: 'Use regular expression',
+				className: 'toggle variant-flat',
+			}),
 		};
 		search.append(this.query, ...Object.values(this.toggles));
 
@@ -1073,7 +1079,7 @@ export default class FilesPanel extends Panel {
 		const list = element('div', 'file-history');
 
 		for (const commit of this.fileHistory) {
-			const row = element('button', 'history-item');
+			const row = element('button', 'history-item variant-flat');
 
 			row.append(
 				element('div', 'subject', commit.subject),

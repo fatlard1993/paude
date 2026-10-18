@@ -134,7 +134,7 @@ export default class TasksPanel extends Panel {
 				),
 			);
 		for (const problem of problems) {
-			const row = element('button', `problem ${problem.severity}`);
+			const row = element('button', `problem ${problem.severity} variant-flat`);
 
 			row.append(
 				element('span', 'where', `${problem.file}:${problem.line}`),
@@ -213,7 +213,7 @@ export default class TasksPanel extends Panel {
 
 	taskRow(task, run) {
 		const row = element('div', 'branch-row task');
-		const name = element('button', 'name task-name');
+		const name = element('button', 'name task-name variant-flat');
 		const running = run && (run.code === undefined || run.code === null);
 
 		name.append(icon(KIND_ICONS[task.kind]), ` ${task.name}`);
