@@ -27,16 +27,10 @@ const Strip = styled(
 export const tabs = ({ appendTo, key, names }) => {
 	const panes = {};
 
-	// By display rather than the hidden attribute, which a pane's own display: flex would override
-	const showPanes = name => {
-		remember(key, name);
-		for (const [pane, elem] of Object.entries(panes)) elem.style.display = pane === name ? '' : 'none';
-	};
-
 	const strip = new Strip({
 		appendTo,
 		tabs: names.map(({ name, label }) => ({ id: name, label })),
-		onChange: showPanes,
+		onChange: name => remember(key, name),
 	});
 
 	return {
@@ -45,8 +39,8 @@ export const tabs = ({ appendTo, key, names }) => {
 		show: name => {
 			const wanted = name ?? recall(key);
 
+			strip.options.panels = { ...panes };
 			if (wanted in panes) strip.select(wanted);
-			showPanes(strip.options.selected);
 		},
 	};
 };

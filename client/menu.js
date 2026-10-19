@@ -14,13 +14,6 @@ const GlassMenu = styled(
 		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
 		color: ${colors.white};
 
-		& > ul {
-			display: flex;
-			flex: 1;
-			flex-direction: column;
-			min-width: 0;
-		}
-
 		/* Laid out as paude's rows were: a column, label over detail */
 		& li {
 			display: flex;
@@ -29,7 +22,6 @@ const GlassMenu = styled(
 			gap: 2px;
 			padding: 6px 10px;
 			line-height: normal;
-			text-indent: 0;
 			border: none;
 			border-radius: 6px;
 			white-space: nowrap;
