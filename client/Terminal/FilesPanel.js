@@ -1,10 +1,10 @@
-import { Notify } from '@vanilla-bean/components';
+import { Notify, debounce } from '@vanilla-bean/components';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 
+import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { pathFilter } from '../../shared/globs';
 import { attachDiffText, attachFileText, attachLinesText } from '../../shared/attachText';
-import relativeTime from '../../shared/relativeTime';
 import { diffAnchor, diffLines } from '../../shared/diff';
 import { ORDERS, describeFiles, orderFiles } from '../../shared/reviewOrder';
 import { extensionOf, kindOf, matchNames } from '../../shared/projectFiles';
@@ -344,6 +344,16 @@ export default class FilesPanel extends Panel {
 		this.past = [];
 		this.future = [];
 		pruneDrafts();
+		this.searchSoon = debounce(search => search(), SEARCH_DELAY_MS);
+		this.keepDraftSoon = debounce(path => {
+			if (!this.editing || this.current !== path) return;
+			if (this.editing.text === this.text) return forget(this.draftKey(path));
+
+			remember(
+				this.draftKey(path),
+				JSON.stringify({ text: this.editing.text, hash: this.editing.hash, at: Date.now() }),
+			);
+		}, DRAFT_DELAY_MS);
 		this.mode = 'names';
 		this.selection = null;
 		this.searchOptions = savedOptions();
@@ -605,7 +615,7 @@ export default class FilesPanel extends Panel {
 		const wanted = pathFilter(this.searchOptions);
 		const paths = this.paths.filter(wanted);
 
-		clearTimeout(this.searchTimer);
+		this.searchSoon.cancel();
 
 		if (this.mode === 'changes') return this.renderChanges(query);
 		if (!query && this.mode === 'contents') return this.list.replaceChildren(this.todoOffer());
@@ -616,18 +626,18 @@ export default class FilesPanel extends Panel {
 			);
 
 		if (this.mode === 'contents') {
-			this.searchTimer = setTimeout(() => this.searchContents(query), SEARCH_DELAY_MS);
+			this.searchSoon(() => this.searchContents(query));
 
 			return;
 		}
 
 		if (this.mode === 'symbols') {
-			this.searchTimer = setTimeout(async () => {
+			this.searchSoon(async () => {
 				const { body } = await getSymbols(this.options.sessionId, { q: query });
 
 				if (this.query.value.trim() === query && this.mode === 'symbols')
 					this.showSymbols(body ?? [], body?.length ? null : 'No definitions match.');
-			}, SEARCH_DELAY_MS);
+			});
 
 			return;
 		}
@@ -1702,22 +1712,11 @@ export default class FilesPanel extends Panel {
 	}
 
 	keepDraft() {
-		const path = this.current;
-
-		clearTimeout(this.draftTimer);
-		this.draftTimer = setTimeout(() => {
-			if (!this.editing || this.current !== path) return;
-			if (this.editing.text === this.text) return forget(this.draftKey(path));
-
-			remember(
-				this.draftKey(path),
-				JSON.stringify({ text: this.editing.text, hash: this.editing.hash, at: Date.now() }),
-			);
-		}, DRAFT_DELAY_MS);
+		this.keepDraftSoon(this.current);
 	}
 
 	forgetDraft() {
-		clearTimeout(this.draftTimer);
+		this.keepDraftSoon.cancel();
 		if (this.current) forget(this.draftKey(this.current));
 		this.draft = null;
 	}
