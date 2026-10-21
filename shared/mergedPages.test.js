@@ -21,3 +21,22 @@ test('pages through several sources newest first, each read only as far as it ne
 	expect(ids(await fetchPage({ q: '', offset: 6, limit: 3 }))).toEqual(['a1']);
 	expect(ids(await fetchPage({ q: '', offset: 0, limit: 2 }))).toEqual(['a9', 'b8']);
 });
+
+test('whatever narrows the listing reaches every source, and something else asked starts over', async () => {
+	const asked = [];
+	const fetchPage = mergedPages([
+		async page => {
+			asked.push(page);
+
+			return { sessions: [{ id: 'a', lastModified: 1 }], total: 1 };
+		},
+	]);
+
+	await fetchPage({ filter: 'running', offset: 0, limit: 5 });
+	await fetchPage({ filter: 'archived', q: 'attic', offset: 1, limit: 5 });
+
+	expect(asked).toEqual([
+		{ filter: 'running', offset: 0, limit: 5 },
+		{ filter: 'archived', q: 'attic', offset: 0, limit: 5 },
+	]);
+});

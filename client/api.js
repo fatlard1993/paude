@@ -188,6 +188,10 @@ export const forkSession = async (sessionId, upToMessageId) =>
 
 export const deleteSession = async sessionId => await DELETE('/api/sessions/:id', { urlParameters: { id: sessionId } });
 
+// Out of the lists, or back in: several at once
+export const archiveSessions = async (ids, archived) =>
+	await POST('/api/sessions/archive', { body: { ids, archived } });
+
 export const nameSession = async (sessionId, name) =>
 	await PUT('/api/sessions/:id/name', { urlParameters: { id: sessionId }, body: { name } });
 

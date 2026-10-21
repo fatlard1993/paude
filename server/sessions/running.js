@@ -2,6 +2,7 @@ import { getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import { statSync } from 'fs';
 import path from 'path';
 
+import { setArchived } from '../archive';
 import { stopKeepingWarm } from '../keepWarm';
 import { projectOf } from '../projects';
 import { forgetLimit } from '../usageLimit';
@@ -120,6 +121,8 @@ export const openSession = async id => {
 			running.get(id) ?? launch({ id, cwd, resume: !isHeld(id), adopt: isHeld(id), title: savedTitle(info) });
 
 		startFailures.delete(id);
+		// Opened again, it's in use: back in the lists
+		await setArchived([id], false);
 
 		return session;
 	} catch (error) {

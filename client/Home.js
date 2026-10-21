@@ -1,12 +1,12 @@
 import { Elem, Notify, View, styled } from '@vanilla-bean/components';
 
 import { tintsOf } from '../shared/hues';
-import { byWatchedThenRecent, projectSummary } from '../shared/projects';
+import { byWatchedThenRecent } from '../shared/projects';
 import mergedPages from '../shared/mergedPages';
+import { matchesFilter } from '../shared/sessionSearch';
 import byUrgency from '../shared/urgency';
 import {
 	addFolder,
-	deleteSession,
 	getProjects,
 	getRecentSessions,
 	getRemoteSessions,
@@ -16,24 +16,18 @@ import {
 	removeFolder,
 	setProjectWatching,
 } from './api';
-import confirmDialog, { confirmDeleteSession } from './confirmDialog';
+import confirmDialog from './confirmDialog';
 import { identity, serverName } from './identity';
-import { setServers } from './servers';
-import sessionList from './SessionList';
+import { hueOf, setServers } from './servers';
+import SessionBrowser from './SessionBrowser';
+import { bulkActions, sessionMenu } from './sessionActions';
 import { breadcrumbs } from './Breadcrumbs';
 import { button, element } from './dom';
 import { Bar, ghostButton } from './Bar';
-import { Empty, LinkCard, Scroll, SectionTitle, sessionCard } from './Layout';
+import { Empty, Scroll, SectionTitle, sessionCard } from './Layout';
 import { Places, carryDraft, composeBox, placePrompt } from './PromptHome';
-import { tabs } from './Tabs';
 
-const Grid = styled.Component`
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-	gap: 8px;
-`;
-
-// The grid's last card: pressed, it opens across the grid into the folder's path
+// The project list's last row: pressed, it opens into the folder's path
 const AddFolder = styled(
 	Elem,
 	({ colors }) => `
@@ -65,10 +59,6 @@ const AddFolder = styled(
 			flex: 1;
 			min-width: 0;
 			font-family: ui-monospace, monospace;
-		}
-
-		&.open {
-			grid-column: 1 / -1;
 		}
 
 		&.open .open-form {
@@ -120,47 +110,31 @@ export default class Home extends View {
 			style: { ...urgent, display: 'none' },
 		});
 		this.needs = new List({ appendTo: scroll });
-
-		// What needs you stays in sight above them; the rest, one at a time
-		this.tabs = tabs({
+		this.watchingTitle = new SectionTitle({
 			appendTo: scroll,
-			key: 'paude.homeTab',
-			names: [
-				{ name: 'sessions', label: 'Sessions' },
-				{ name: 'projects', label: 'Projects' },
-			],
+			textContent: 'Watching: running, or with news',
+			style: { display: 'none' },
 		});
+		this.watching = new List({ appendTo: scroll });
+		this.unreachable = new List({ appendTo: scroll });
+		new SectionTitle({ appendTo: scroll, textContent: 'Sessions', style: { marginTop: '12px' } });
 
-		const sessions = this.tabs.pane('sessions', new List({ appendTo: scroll }).elem);
-
-		this.unreachable = new List({ appendTo: sessions });
-		this.watchingTitle = new SectionTitle({ appendTo: sessions, textContent: 'Watching', style: { display: 'none' } });
-		this.watching = new List({ appendTo: sessions });
-		this.recentTitle = new SectionTitle({ appendTo: sessions, textContent: 'Recent', style: { display: 'none' } });
-		this.fetchRecent = this.recentFrom([]);
-		this.recent = sessionList({
-			appendTo: sessions,
-			placeholder: 'Find a session in any project',
-			empty: 'Nothing yet. Pick a project to start a session.',
-			onCount: total => {
-				this.recentCount = total;
-				this.countSessions();
-			},
-			fetchPage: searchParameters => this.fetchRecent(searchParameters),
-			renderCard: (session, appendTo) => this.card(session, appendTo),
-		});
-
-		this.projects = new Grid({ appendTo: scroll, style: { marginTop: '12px' } });
-		this.tabs.pane('projects', this.projects.elem);
+		this.fetchSessions = this.sessionsFrom([]);
 		this.adder = this.addFolderCard();
-		this.tabs.show();
+		this.sessions = new SessionBrowser({
+			appendTo: scroll,
+			key: 'paude.home',
+			placeholder: 'Find a session in any project: its name, first prompt, project or branch',
+			empty: 'Nothing yet. Add a folder as a project, or type above to start.',
+			fetchPage: searchParameters => this.fetchSessions(searchParameters),
+			renderCard: (session, appendTo, options) => this.card(session, appendTo, options),
+			bulk: sessions => bulkActions(sessions, () => this.load()),
+			projects: () => this.projectList(),
+			fetchProject: (project, page) => this.projectSessions(project, page),
+			extra: [this.adder],
+		});
 
 		this.load();
-	}
-
-	// The sessions tab counts what it lists: the watched ones that aren't asking, and the rest
-	countSessions() {
-		this.tabs.count('sessions', (this.quietCount ?? 0) + (this.recentCount ?? 0));
 	}
 
 	// A prompt placed before it's sent: in a conversation it carries on, or a new session in the project that fits
@@ -238,38 +212,108 @@ export default class Home extends View {
 	}
 
 	// With other servers in the lists, every card names its server, this one's too, so they read as one list
-	card(session, appendTo) {
+	card(session, appendTo, { showProject = true, when } = {}) {
 		return sessionCard(session, {
 			appendTo,
+			showProject,
+			when,
 			...(session.remote
 				? this.remoteCard(session)
 				: {
 						server: this.otherServers ? hereName() : undefined,
-						remove: async () => (await confirmDeleteSession(session, deleteSession)) && this.load(),
+						menu: () => sessionMenu(session, () => this.load()),
 					}),
 		});
 	}
 
 	// This server's sessions and those of the other servers that answered, newest first; one that stops answering
 	// partway is left out rather than failing the page
-	recentFrom(remotes) {
-		const here = async searchParameters => {
-			const { body, response } = await getRecentSessions({ searchParameters });
+	sessionsFrom(remotes) {
+		return mergedPages([
+			searchParameters => this.sessionsHere(searchParameters),
+			...remotes.map(remote => searchParameters => this.sessionsThere(remote, searchParameters)),
+		]);
+	}
 
-			return { sessions: body ?? [], total: Number(response?.headers.get('x-total-count') ?? 0) };
+	async sessionsHere(searchParameters) {
+		const { body, response } = await getRecentSessions({ searchParameters });
+
+		return { sessions: body ?? [], total: Number(response?.headers.get('x-total-count') ?? 0) };
+	}
+
+	// A server older than the filters answers with everything: they're applied here too
+	async sessionsThere(remote, searchParameters) {
+		const { body, response } = await getRemoteSessions(remote.url, { searchParameters });
+
+		if (!response?.ok) return { sessions: [], total: 0 };
+
+		const { filter, q, project } = searchParameters;
+
+		return {
+			sessions: body
+				.filter(session => matchesFilter(session, filter, q) && (!project || session.project === project))
+				.map(session => ({ ...session, remote })),
+			total: Number(response.headers.get('x-total-count') ?? 0),
 		};
-		const there = remote => async searchParameters => {
-			const { body, response } = await getRemoteSessions(remote.url, { searchParameters });
+	}
 
-			if (!response?.ok) return { sessions: [], total: 0 };
+	projectSessions(project, page) {
+		const searchParameters = { ...page, project: project.name };
 
-			return {
-				sessions: body.map(session => ({ ...session, remote })),
-				total: Number(response.headers.get('x-total-count') ?? 0),
-			};
-		};
+		return project.remote ? this.sessionsThere(project.remote, searchParameters) : this.sessionsHere(searchParameters);
+	}
 
-		return mergedPages([here, ...remotes.map(there)]);
+	// Every project here and on the other servers, the watched first, then the most recently busy
+	projectList() {
+		return [...this.projects, ...this.remoteProjects].sort(byWatchedThenRecent).map(project => ({
+			...project,
+			accent: tintsOf(project.hue)?.accent,
+			server: project.remote?.name ?? (this.otherServers ? hereName() : undefined),
+			serverHue: hueOf(project.remote?.name ?? hereName()),
+			href: project.remote ? undefined : `#/projects/${project.name}`,
+			onOpen: project.remote ? () => this.openThere(project.remote, { project: project.name }) : undefined,
+			menu: () => this.projectMenu(project),
+		}));
+	}
+
+	projectMenu(project) {
+		if (project.remote)
+			return [
+				{
+					label: `Open on ${project.remote.name}`,
+					onPress: () => this.openThere(project.remote, { project: project.name }),
+				},
+			];
+
+		return [
+			{ label: 'Open', onPress: () => (window.location.hash = `#/projects/${project.name}`) },
+			{
+				label: project.watching ? 'Stop watching' : 'Watch',
+				detail: project.watching ? '' : 'Every session in it, new ones too',
+				onPress: async () => {
+					const { response } = await setProjectWatching(project.name, !project.watching);
+
+					if (response?.ok) this.load();
+					else new Notify({ type: 'error', content: `Could not change watching ${project.name}.` });
+				},
+			},
+			{
+				label: 'Remove from list...',
+				detail: project.registered ? `Stops treating ${project.path} as a project` : 'Hides it; nothing is deleted',
+				onPress: async () => {
+					const where = project.path ?? project.name;
+					const confirmed = await confirmDialog({
+						header: `Take ${project.name} off the list?`,
+						body: `Nothing in ${where} is deleted, but its sessions leave these lists and can't be reopened here until you add the folder again.`,
+						confirmLabel: 'Remove',
+					});
+
+					if (!confirmed) return;
+					await removeFolder(project.name);
+					this.load();
+				},
+			},
+		];
 	}
 
 	async logout() {
@@ -290,85 +334,27 @@ export default class Home extends View {
 		this.otherServers = reachable.length > 0;
 		const remoteWatched = reachable.flatMap(remote => remote.watching.map(session => ({ ...session, remote })));
 		const watched = [...(watching ?? []), ...remoteWatched].sort(byUrgency);
-		const watchedIds = new Set(watched.map(({ id }) => id));
 		const asking = watched.filter(({ status }) => status === 'waiting');
-		const quiet = watched.filter(({ status }) => status !== 'waiting');
+		// Watching is about what's going on: what's running, or happened since you looked. The rest are in the list.
+		const going = watched.filter(
+			({ status, unseen }) => status !== 'waiting' && (['working', 'ready'].includes(status) || unseen > 0),
+		);
+		const above = new Set([...asking, ...going].map(({ id }) => id));
 
 		this.needs.empty();
 		this.needsTitle.elem.style.display = asking.length ? '' : 'none';
 		for (const session of asking) this.card(session, this.needs);
 		this.watching.empty();
-		this.watchingTitle.elem.style.display = quiet.length ? '' : 'none';
-		this.recentTitle.elem.style.display = quiet.length ? '' : 'none';
-		for (const session of quiet) this.card(session, this.watching);
-		this.quietCount = quiet.length;
-		this.countSessions();
+		this.watchingTitle.elem.style.display = going.length ? '' : 'none';
+		for (const session of going) this.card(session, this.watching);
 
 		this.unreachable.empty();
 		for (const remote of (remotes ?? []).filter(({ error }) => error))
 			new Empty({ appendTo: this.unreachable, message: `${remote.name}: ${remote.error}` });
 
-		// What's under Needs you and Watching isn't listed again, unless a search asks for it
-		this.fetchRecent = this.recentFrom(reachable.map(({ url, name }) => ({ url, name })));
-		this.recent.reload({ exclude: watchedIds });
-
-		this.projects.empty();
-
-		const remoteProjects = reachable.flatMap(remote =>
-			(remote.projects ?? []).map(project => ({ ...project, remote })),
-		);
-		const ordered = [...(projects ?? []), ...remoteProjects].sort(byWatchedThenRecent);
-
-		for (const project of ordered) {
-			if (project.remote) {
-				LinkCard({
-					appendTo: this.projects,
-					href: '#/',
-					title: project.name,
-					server: project.remote.name,
-					meta: [projectSummary(project)],
-					live: project.liveCount > 0,
-					watching: project.watching,
-					accent: tintsOf(project.hue)?.accent,
-					onOpen: () => this.openThere(project.remote, { project: project.name }),
-				});
-				continue;
-			}
-
-			LinkCard({
-				appendTo: this.projects,
-				href: `#/projects/${project.name}`,
-				title: project.name,
-				server: this.otherServers ? hereName() : undefined,
-				meta: [projectSummary(project)],
-				live: project.liveCount > 0,
-				watching: project.watching,
-				onWatch: async () => {
-					const { response } = await setProjectWatching(project.name, !project.watching);
-
-					if (response?.ok) this.load();
-					else new Notify({ type: 'error', content: `Could not change watching ${project.name}.` });
-				},
-				accent: tintsOf(project.hue)?.accent,
-				removeLabel: project.registered
-					? `Stop treating ${project.path} as a project (nothing is deleted)`
-					: `Hide ${project.name} from the list (nothing is deleted)`,
-				removeIcon: 'folder-minus',
-				remove: async () => {
-					const where = project.path ?? project.name;
-					const confirmed = await confirmDialog({
-						header: `Take ${project.name} off the list?`,
-						body: `Nothing in ${where} is deleted, but its sessions leave these lists and can't be reopened here until you add the folder again.`,
-						confirmLabel: 'Remove',
-					});
-
-					if (!confirmed) return;
-					await removeFolder(project.name);
-					this.load();
-				},
-			});
-		}
-		this.projects.elem.append(this.adder);
-		this.tabs.count('projects', ordered.length);
+		this.projects = projects ?? [];
+		this.remoteProjects = reachable.flatMap(remote => (remote.projects ?? []).map(project => ({ ...project, remote })));
+		this.fetchSessions = this.sessionsFrom(reachable.map(({ url, name }) => ({ url, name })));
+		this.sessions.reload({ exclude: above });
 	}
 }

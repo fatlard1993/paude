@@ -7,6 +7,7 @@ import { limitOf } from '../usageLimit';
 import { lastSwitch, lifetimeOf } from '../lifetime';
 import { projectOf, projectPath } from '../projects';
 import { worktreeName } from '../worktrees';
+import { isArchived } from '../archive';
 import { titleOf } from './record';
 import { allRunning, runningSession } from './running';
 import { firstPromptOf, folderOf } from './transcript';
@@ -35,6 +36,8 @@ export const toSummary =
 			asking: running?.asking() ?? undefined,
 			limit: limitOf(sessionId) ?? undefined,
 			lifetime: lifetimeOf(sessionId),
+			// One running is in use, whatever was decided about it before
+			archived: !running && isArchived(sessionId),
 			switched: lastSwitch(sessionId) ?? undefined,
 		};
 	};

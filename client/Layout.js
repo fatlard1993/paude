@@ -5,6 +5,7 @@ import relativeTime from '../shared/relativeTime';
 import { LIFETIMES, clockTime } from '../shared/lifetimes';
 import { AskingCard, showAsking, showLimit } from './Asking';
 import { element } from './dom';
+import { contextMenu, openMenu } from './menu';
 import { hueOf } from './servers';
 
 const column = `
@@ -129,7 +130,7 @@ const Card = styled(
 			background: hsl(var(--server-hue) 60% 50% / 0.18);
 		}
 
-		.remove, .watch {
+		.remove, .watch, .more {
 			flex-shrink: 0;
 			opacity: 0;
 			font-size: 1em;
@@ -139,7 +140,16 @@ const Card = styled(
 			opacity: 0.7;
 		}
 
-		:is(.remove, .watch):hover {
+		/* Always there, faintly, so what a card offers can be found without hovering */
+		.more {
+			opacity: 0.45;
+		}
+
+		&:hover .more, .more:focus-visible {
+			opacity: 0.8;
+		}
+
+		:is(.remove, .watch, .more):hover {
 			opacity: 1;
 		}
 
@@ -147,6 +157,20 @@ const Card = styled(
 			.remove, .watch {
 				opacity: 0.6;
 			}
+		}
+
+		.state {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			flex-shrink: 0;
+			color: ${colors.light(colors.gray)};
+			font-size: 0.8em;
+		}
+
+		.flag.archived {
+			background: ${colors.alpha(colors.white, 0.1)};
+			color: ${colors.light(colors.gray)};
 		}
 
 		.dot {
@@ -217,7 +241,7 @@ const cardButton = (card, { className, icon, title, onPress }) => {
 	button.addEventListener('click', event => {
 		event.preventDefault();
 		event.stopPropagation();
-		onPress();
+		onPress(button);
 	});
 	card.elem.append(button);
 };
@@ -234,7 +258,9 @@ export const LinkCard = ({
 	waiting,
 	unseen,
 	watching,
+	archived,
 	onWatch,
+	menu,
 	remove,
 	removeLabel = 'Delete',
 	removeIcon = 'trash-can',
@@ -281,17 +307,17 @@ export const LinkCard = ({
 
 	metaLine.elem.append(meta.filter(Boolean).join(' · '));
 
+	if (archived) new Elem({ appendTo: card, addClass: ['flag', 'archived'], textContent: 'archived' });
 	if (unseen) new Elem({ appendTo: card, addClass: ['flag', 'unseen'], textContent: `${unseen} new` });
 	if (waiting) new Elem({ appendTo: card, addClass: ['flag', 'waiting'], textContent: 'needs you' });
 
+	// Running or not, said in words: needs you (the flag says it), working, or ready for a prompt
 	if (live || busy || waiting) {
 		const state = (waiting && 'waiting') || (busy && 'busy');
+		const holder = new Elem({ appendTo: card, addClass: 'state' });
 
-		new Elem({
-			appendTo: card,
-			addClass: ['dot', ...(state ? [state] : [])],
-			attributes: { title: { waiting: 'needs you', busy: 'working' }[state] ?? 'ready' },
-		});
+		new Elem({ appendTo: holder, addClass: ['dot', ...(state ? [state] : [])] });
+		if (!waiting) holder.elem.append(busy ? 'working' : 'ready');
 	}
 
 	if (onWatch)
@@ -304,6 +330,10 @@ export const LinkCard = ({
 			onPress: onWatch,
 		});
 	if (remove) cardButton(card, { className: 'remove', icon: removeIcon, title: removeLabel, onPress: remove });
+	if (menu) {
+		cardButton(card, { className: 'more', icon: 'ellipsis', title: 'More', onPress: more => openMenu(more, menu()) });
+		contextMenu(card.elem, menu);
+	}
 
 	return card;
 };
@@ -355,7 +385,8 @@ const lifetimeMarks = ({ lifetime, switched }) => {
 	return marks;
 };
 
-export const sessionCard = (session, { showProject = true, appendTo, remove, server, onOpen }) =>
+// `when` says when it last changed in the words its list's group uses; a relative time otherwise
+export const sessionCard = (session, { showProject = true, appendTo, menu, server, onOpen, when }) =>
 	withAsking(
 		LinkCard({
 			appendTo,
@@ -365,7 +396,7 @@ export const sessionCard = (session, { showProject = true, appendTo, remove, ser
 			project: showProject ? session.project : null,
 			server,
 			meta: [
-				relativeTime(session.lastModified ?? session.activeAt),
+				when ?? relativeTime(session.lastModified ?? session.activeAt),
 				session.worktree && `⎇ ${session.worktree}`,
 				session.gitBranch !== 'HEAD' && session.gitBranch !== session.worktree && session.gitBranch,
 			],
@@ -374,8 +405,9 @@ export const sessionCard = (session, { showProject = true, appendTo, remove, ser
 			waiting: session.status === 'waiting',
 			unseen: session.unseen,
 			watching: session.watching,
+			archived: session.archived,
 			accent: tintsOf(session.hue)?.accent,
-			remove,
+			menu,
 			onOpen,
 		}),
 		session,

@@ -6,12 +6,13 @@ import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { initActivity, statusOf } from '../activity';
 import { initAttachments } from '../attachments';
 import { initTrash } from '../fileOperations';
+import { initArchive, isArchived } from '../archive';
 import { createInvite, createToken, initAuth } from '../auth';
 import { hookSecret, setHookAddress } from '../hookSettings';
 import { initNames } from '../names';
 import { initNotes } from '../notes';
 import { initProjects, setProjectsRoot } from '../projects';
-import { allRunning, setClaudePath, startSession } from '../sessions/running';
+import { allRunning, setClaudePath, startSession, stopSession } from '../sessions/running';
 import { setServerName } from '../serverSettings';
 import { readProgress } from '../../shared/progress';
 import router from './router';
@@ -36,8 +37,10 @@ const call = (route, { token, method = 'GET', body, headers = {} } = {}) =>
 		server,
 	);
 
+let base;
+
 beforeAll(async () => {
-	const base = await mkdtemp(path.join(os.tmpdir(), 'paude-router-'));
+	base = await mkdtemp(path.join(os.tmpdir(), 'paude-router-'));
 	const data = path.join(base, 'data');
 
 	await mkdir(path.join(base, 'projects', 'app'), { recursive: true });
@@ -47,6 +50,7 @@ beforeAll(async () => {
 	await Promise.all([initAuth(data), initNotes(data), initNames(data), initActivity(data), initProjects(data)]);
 	initAttachments(data);
 	initTrash(data);
+	await initArchive(data);
 	setHookAddress({ host: '127.0.0.1', port: 1 });
 	setClaudePath(FAKE_CLAUDE);
 
@@ -240,6 +244,36 @@ test('moving, deleting, restoring and uploading take the typing role; a download
 	expect((await files('restore', { trash }, { token: tokens.comment })).status).toBe(403);
 	expect(await (await files('restore', { trash })).json()).toEqual({ restored: ['down.txt', 'again.txt'] });
 	expect((await files('delete', {})).status).toBe(400);
+});
+
+test('archiving takes the owner; an archived session leaves the list but not a search, and a filter finds it', async () => {
+	const app = path.join(base, 'projects', 'app');
+	const id = '00000000-0000-4000-8000-0000000000a1';
+	const transcript = path.join(base, 'claude', 'projects', app.replace(/[^a-zA-Z0-9]/g, '-'), `${id}.jsonl`);
+	const listed = async query =>
+		(await (await call(`/api/sessions?limit=50${query}`, { token: tokens.owner })).json()).map(found => found.id);
+	const archive = (archived, token = tokens.owner) =>
+		call('/api/sessions/archive', { token, method: 'POST', body: { ids: [id], archived } });
+
+	await Bun.write(
+		transcript,
+		`${JSON.stringify({ type: 'user', sessionId: id, cwd: app, message: { role: 'user', content: 'tidy the attic' } })}\n`,
+	);
+
+	expect(await listed('')).toContain(id);
+	expect((await archive(true, tokens.comment)).status).toBe(403);
+	expect((await archive(true)).status).toBe(204);
+	expect(await listed('')).not.toContain(id);
+	expect(await listed('&q=attic')).toEqual([id]);
+	expect(await listed('&filter=archived')).toEqual([id]);
+	expect((await archive(false)).status).toBe(204);
+	expect(await listed('')).toContain(id);
+
+	// Taken back up, it's in use: no longer archived
+	await archive(true);
+	await call(`/api/sessions/${id}/prompt`, { token: tokens.owner, method: 'POST', body: { text: 'and the cellar' } });
+	expect(isArchived(id)).toBe(false);
+	await stopSession(id);
 });
 
 test("other servers are listed only for this machine's own logins", async () => {

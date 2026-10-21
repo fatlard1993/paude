@@ -6,7 +6,6 @@ import { readProgress, recentLines } from '../shared/progress';
 import { LIFETIMES } from '../shared/lifetimes';
 import {
 	createSession,
-	deleteSession,
 	getCheckouts,
 	getProjectArtifacts,
 	getProjectLinks,
@@ -15,11 +14,12 @@ import {
 	markProjectLink,
 	setProjectWatching,
 } from './api';
-import confirmDialog, { confirmDeleteSession } from './confirmDialog';
+import confirmDialog from './confirmDialog';
 import { element } from './dom';
 import { Bar, ghostButton } from './Bar';
 import { breadcrumbs } from './Breadcrumbs';
-import sessionList from './SessionList';
+import SessionBrowser from './SessionBrowser';
+import { bulkActions, sessionMenu } from './sessionActions';
 import { Scroll, sessionCard } from './Layout';
 import { openMenu } from './menu';
 import { Places, composeBox, placePrompt, takeDraft } from './PromptHome';
@@ -56,7 +56,11 @@ export default class Project extends View {
 			project,
 			addCleanup: (name, stop) => this.addCleanup(name, stop),
 		});
-		this.watchButton = ghostButton(this.bar, { icon: 'eye-slash', onPress: () => this.toggleWatching() });
+		this.watchButton = ghostButton(this.bar, {
+			icon: 'eye-slash',
+			label: 'Watch',
+			onPress: () => this.toggleWatching(),
+		});
 
 		const scroll = new Scroll({ appendTo: this });
 		const compose = composeBox({
@@ -132,23 +136,27 @@ export default class Project extends View {
 
 		const sessions = this.tabs.pane('sessions', new Elem({ appendTo: scroll }).elem);
 
-		this.sessions = sessionList({
+		this.sessions = new SessionBrowser({
 			appendTo: sessions,
-			placeholder: `Find a session in ${project}`,
+			key: 'paude.project',
+			placeholder: `Find a session in ${project}: its name, first prompt or branch`,
 			empty: 'No sessions in this project yet.',
-			pageSize: 30,
-			onCount: total => this.tabs.count('sessions', total),
 			fetchPage: async searchParameters => {
 				const { body, response } = await getProjectSessions(project, { searchParameters });
+				const total = Number(response?.headers.get('x-total-count') ?? 0);
 
-				return { sessions: body ?? [], total: Number(response?.headers.get('x-total-count') ?? 0) };
+				if (!searchParameters.q && !searchParameters.filter) this.tabs.count('sessions', total);
+
+				return { sessions: body ?? [], total };
 			},
-			renderCard: (session, appendTo) =>
+			renderCard: (session, appendTo, { when } = {}) =>
 				sessionCard(session, {
 					showProject: false,
 					appendTo,
-					remove: async () => (await confirmDeleteSession(session, deleteSession)) && this.load(),
+					when,
+					menu: () => sessionMenu(session, () => this.load()),
 				}),
+			bulk: picked => bulkActions(picked, () => this.load()),
 		});
 
 		// Every link the project's sessions brought up (docs, tickets, repos, servers), and everything they made; the
@@ -199,6 +207,7 @@ export default class Project extends View {
 		this.watching = Boolean(watching);
 		this.watchButton.classList.toggle('active', this.watching);
 		this.watchButton.firstChild.className = `fa-solid fa-${this.watching ? 'eye' : 'eye-slash'}`;
+		this.watchButton.lastChild.textContent = this.watching ? 'Watching' : 'Watch';
 		this.watchButton.title = this.watching
 			? 'Watching every session here, new ones too. Click to stop watching them all.'
 			: 'Not watching. Click to watch every session here, new ones too.';

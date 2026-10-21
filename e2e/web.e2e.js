@@ -2074,3 +2074,84 @@ test(
 	},
 	TIMEOUT_MS,
 );
+
+test(
+	"sessions on home: a card's menu archives one and the Archived chip finds it, a search too; renamed; several deleted",
+	async () => {
+		const server = await startServer();
+		const ids = ['attic', 'garden', 'shed', 'porch'].map((name, n) => `00000000-0000-4000-8000-00000000000${n + 1}`);
+		const titles = ['Tidy the attic', 'Weed the garden', 'Fix the shed', 'Paint the porch'];
+
+		for (const [n, id] of ids.entries())
+			await server.writeTranscript(id, [
+				{ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: titles[n] } },
+				{ type: 'summary', summary: titles[n] },
+				{ type: 'user', message: { role: 'user', content: 'ok' } },
+			]);
+
+		const { browser, page } = await openBrowser('dom');
+		const press = async (selector, text, options) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y, options);
+			await wait(900);
+		};
+		const titlesShown = () => page.$$eval('.cards a .title', found => found.map(title => title.textContent.trim()));
+		const listed = async query =>
+			(await (await server.api(`/api/sessions?limit=50${query}`)).json()).map(({ id }) => id);
+
+		try {
+			await page.goto(await server.loginLink(''));
+			await wait(2500);
+			expect(await page.$$eval('.group', groups => groups.map(group => group.firstChild.textContent))).toContain(
+				'Today',
+			);
+			expect(await titlesShown()).toEqual(expect.arrayContaining(titles));
+
+			await press('.cards a', 'Tidy the attic', { button: 'right' });
+			await press('[role=menu] li', 'Archive');
+			expect(await titlesShown()).not.toContain('Tidy the attic');
+			expect(await listed('&filter=archived')).toEqual([ids[0]]);
+
+			await press('.toolbar button', 'Archived');
+			expect(await titlesShown()).toEqual(['Tidy the attic']);
+			await press('.toolbar button', 'Archived');
+
+			await page.type('input.search', 'attic');
+			await wait(1200);
+			expect(await titlesShown()).toEqual(['Tidy the attic']);
+			expect(await page.$eval('.cards a', card => card.textContent)).toContain('archived');
+			await page.$eval('input.search', input => {
+				input.value = '';
+				input.dispatchEvent(new Event('input'));
+			});
+			await wait(1200);
+
+			await press('.cards a', 'Weed the garden', { button: 'right' });
+			await press('[role=menu] li', 'Rename...');
+			await page.keyboard.type('Weed the beds');
+			await page.keyboard.press('Enter');
+			await wait(1500);
+			expect(await titlesShown()).toContain('Weed the beds');
+
+			await press('.toolbar button', 'Select');
+			await press('.cards a', 'Fix the shed');
+			await press('.cards a', 'Paint the porch');
+			expect(await page.$eval('.bulk .picked', picked => picked.textContent)).toBe('2 picked');
+			await press('.bulk button', 'Delete 2');
+			await press('dialog[open] button', 'Delete');
+			await wait(1500);
+			expect(await listed('&q=the')).toEqual(expect.arrayContaining([ids[0], ids[1]]));
+			expect(await listed('&q=the')).not.toEqual(expect.arrayContaining([ids[2]]));
+			expect(await listed('&q=the')).not.toEqual(expect.arrayContaining([ids[3]]));
+
+			await press('.toolbar button', 'Done');
+			await press('.toolbar button', 'By project');
+			expect(await page.$$eval('.project-head .name', names => names.map(name => name.textContent))).toEqual(['demo']);
+		} finally {
+			await browser.close();
+			await server.stop();
+		}
+	},
+	TIMEOUT_MS,
+);

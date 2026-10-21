@@ -1,10 +1,11 @@
 import { runningSummary } from '../shared/checkouts';
-import { matchesQuery } from '../shared/sessionSearch';
+import mergedPages from '../shared/mergedPages';
+import { matchesFilter, matchesQuery } from '../shared/sessionSearch';
 import { readProgress, recentLines } from '../shared/progress';
 import { byWatchedThenRecent, projectSummary } from '../shared/projects';
 import sessionUrgency from '../shared/urgency';
 import relativeTime from '../shared/relativeTime';
-import { visitServer } from '../shared/serverClient';
+import { serverPage, visitServer } from '../shared/serverClient';
 import {
 	CLEAR,
 	ENTER_ALT_SCREEN,
@@ -23,6 +24,8 @@ import {
 	wrap,
 	write,
 } from './screen';
+import { loadPrefs, savePrefs } from './prefs';
+import { FILTERS, FILTER_LABELS, SELECTABLE, browserRows, projectKey } from './sessionRows';
 import { api } from './servers';
 
 // Any key in `keys` resolves with that key and the selected row
@@ -75,10 +78,10 @@ const choose = ({ title, subtitle, rows: entries, hint, keys = [], initial = 0 }
 		draw();
 	});
 
-// One line of text typed in place: Enter keeps it, Esc gives up (null)
-const askLine = ({ title, subtitle, prompt, hint }) =>
+// One line of text typed in place, starting from `initial`: Enter keeps it, Esc gives up (null)
+const askLine = ({ title, subtitle, prompt, hint, initial = '' }) =>
 	new Promise(resolve => {
-		let text = '';
+		let text = initial;
 
 		const draw = () => {
 			const { cols } = size();
@@ -96,6 +99,9 @@ const askLine = ({ title, subtitle, prompt, hint }) =>
 			for (const character of key) {
 				if (is(character, 'enter')) return finish(text.trim());
 				if (character === '\x7f' || character === '\b') text = text.slice(0, -1);
+				// As a shell's line takes them: Ctrl+U clears it, Ctrl+W takes the last word
+				else if (character === '\x15') text = '';
+				else if (character === '\x17') text = text.replace(/\S*\s*$/, '');
 				else text += printable(character);
 			}
 
@@ -244,69 +250,16 @@ const startSession = async (server, project, checkout) => {
 	return result.id;
 };
 
-// Every session on a server, narrowed as you type (title, first prompt, project, branch): the session, or null to
-// go back
-const pickFromAll = (server, sessions) =>
-	new Promise(resolve => {
-		let filter = '';
-		let cursor = 0;
-
-		const matching = () => sessions.filter(session => matchesQuery(session, filter));
-
-		const draw = () => {
-			const { cols, rows } = size();
-			const shown = matching();
-			const room = rows - 6;
-			const start = Math.max(0, Math.min(cursor - Math.floor(room / 2), shown.length - room));
-			const lines = [
-				`${bold('paude · all sessions')}  ${dim(server.label)}`,
-				`${orange('/')} ${printable(filter)}█  ${dim(`${shown.length} of ${sessions.length}`)}`,
-				'',
-			];
-
-			for (const [offset, session] of shown.slice(start, start + room).entries()) {
-				const row = sessionRow(server, session, { showProject: true });
-				const line = `${row.marker} ${row.label}  ${dim(row.detail)}`;
-
-				lines.push(start + offset === cursor ? inverse(fit(line, cols - 1)) : fit(line, cols - 1));
-			}
-
-			if (!shown.length) lines.push(dim('  no sessions match'));
-			write(
-				`${CLEAR}${lines.join('\r\n')}\r\n\r\n${dim(fit('type to search · ↑↓ move · enter open · esc clear or back', cols - 1))}`,
-			);
-		};
-
-		const stop = rawInput(key => {
-			const shown = matching();
-
-			if (is(key, 'up') && !/^[jk]$/.test(key)) cursor = Math.max(0, cursor - 1);
-			else if (is(key, 'down') && !/^[jk]$/.test(key)) cursor = Math.min(shown.length - 1, cursor + 1);
-			else if (is(key, 'enter')) return shown[cursor] && finish(shown[cursor]);
-			else if (key === '\x1b' || key === '\x03') {
-				if (filter && key === '\x1b') {
-					filter = '';
-					cursor = 0;
-				} else return finish(null);
-			} else if (key === '\x7f' || key === '\b') filter = filter.slice(0, -1);
-			else if (!key.startsWith('\x1b')) {
-				filter += printable(key);
-				cursor = 0;
-			}
-
-			cursor = Math.max(0, Math.min(cursor, matching().length - 1));
-			draw();
-		});
-
-		const finish = value => {
-			stop();
-			process.stdout.off('resize', draw);
-			resolve(value);
-		};
-
-		process.stdout.on('resize', draw);
-		draw();
-	});
+const PAGE = 50;
+const PREVIEW = 3;
+const SEARCH_DELAY_MS = 200;
+const ESC = '\x1b';
+const KEY = {
+	tab: '\t',
+	backTab: `${ESC}[Z`,
+	right: [`${ESC}[C`, `${ESC}OC`, 'l'],
+	left: [`${ESC}[D`, `${ESC}OD`, 'h'],
+};
 
 const STATUS = {
 	waiting: { marker: '\x1b[1;38;5;179m!\x1b[22;39m', label: 'needs you' },
@@ -315,37 +268,528 @@ const STATUS = {
 	stopped: { marker: ' ', label: '' },
 };
 
-const sessionRow = (server, session, { showServer, showProject }) => ({
-	label: `${printable(session.title) || 'untitled'}${session.watching ? dim(' 👁') : ''}`,
-	detail: [
+const byUrgency = (a, b) => sessionUrgency(a.session, b.session);
+const counted = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
+
+const gather = async server => {
+	const visit = await visitServer(server);
+
+	server.id = visit.serverId;
+	// A name given here wins over the one the server goes by
+	if (!server.local && !server.alias && visit.name) server.label = visit.name;
+
+	return { server, ...visit };
+};
+
+// Same server at two addresses: shown once, under the first
+const gatherAll = async servers => {
+	const seen = new Set();
+
+	return (await Promise.all(servers.map(gather))).filter(({ server }) => {
+		if (!server.id) return true;
+		if (seen.has(server.id)) return false;
+		seen.add(server.id);
+
+		return true;
+	});
+};
+
+const summaryOf = watched => {
+	const waiting = watched.filter(({ session }) => session.status === 'waiting').length;
+	const unseen = watched.reduce((sum, { session }) => sum + session.unseen, 0);
+
+	return [waiting && colored(`${waiting} need${waiting === 1 ? 's' : ''} you`, 179), unseen && `${unseen} new`]
+		.filter(Boolean)
+		.join(dim(' · '));
+};
+
+// A server's sessions a page at a time, narrowed by `asked` ({ q, filter, project }). A guest has its one session. An
+// older server ignores the filters, so they're applied here too.
+const pagesOf =
+	({ server, identity, sessions: own }) =>
+	async ({ offset, limit, ...asked }) => {
+		const keep = session =>
+			matchesQuery(session, asked.q) &&
+			matchesFilter(session, asked.filter, asked.q) &&
+			(!asked.project || session.project === asked.project);
+
+		if (!identity?.owner) {
+			const mine = offset ? [] : (own ?? []).filter(keep);
+
+			return { sessions: mine.map(session => ({ server, session })), total: mine.length };
+		}
+
+		const query = new URLSearchParams({ ...asked, offset: String(offset), limit: String(limit) });
+		const { items, total } = await serverPage(server, `/api/sessions?${query}`);
+
+		return { sessions: items.filter(keep).map(session => ({ server, session })), total };
+	};
+
+// The first `count` sessions the servers have between them, newest first, less those listed above them
+const sessionsFrom = async (gathered, asked, count, above) => {
+	const fetchPage = mergedPages(
+		gathered.filter(({ error }) => !error).map(pagesOf),
+		entry => entry.session.lastModified ?? 0,
+	);
+	const sessions = [];
+	let total = Infinity;
+	let fetched = 0;
+
+	while (sessions.length < count && fetched < total) {
+		const page = await fetchPage({ ...asked, offset: fetched, limit: PAGE });
+
+		total = page.sessions.length ? page.total : fetched;
+		fetched += page.sessions.length;
+		sessions.push(...page.sessions.filter(({ session }) => !above.has(session.id)));
+	}
+
+	return { sessions, total: Math.max(total - above.size, sessions.length) };
+};
+
+const sessionLine = (row, { several, picked, cols }) => {
+	const { server, session } = row;
+	const status = STATUS[session.status] ?? STATUS.stopped;
+	const detail = [
 		session.unseen ? colored(`${session.unseen} new`, 179) : '',
-		STATUS[session.status]?.label,
-		showServer && server.label,
-		showProject && session.project,
+		status.label,
+		session.archived && 'archived',
+		several && server.label,
+		!row.inProject && session.project,
 		session.worktree && `⎇ ${printable(session.worktree)}`,
-		relativeTime(session.lastModified ?? session.activeAt),
+		row.when ?? relativeTime(session.lastModified ?? session.activeAt),
 		session.attached ? `${session.attached} here` : '',
 	]
 		.filter(Boolean)
-		.join(' · '),
-	marker: STATUS[session.status]?.marker ?? ' ',
-	value: { server, session },
-});
+		.join(' · ');
+	const title = `${printable(session.title) || 'untitled'}${session.watching ? dim(' 👁') : ''}`;
 
-const pickInProject = async (server, project) => {
-	const sessions = await api(server, `/api/projects/${encodeURIComponent(project)}/sessions`);
-	const picked = await choose({
-		title: `paude · ${project}`,
-		subtitle: dim(server.label),
-		hint: '↑↓ move · enter open · esc back',
-		rows: [
-			{ label: '＋ New session', value: { create: project } },
-			...sessions.map(session => sessionRow(server, session, {})),
-		],
+	return fit(
+		`${'  '.repeat(row.depth ?? 0)}${picked ? orange('✓') : ' '}${status.marker} ${title}  ${dim(detail)}`,
+		cols,
+	);
+};
+
+const projectLine = ({ project, open }, { several, cols }) => {
+	const about = [
+		several && project.server.label,
+		project.liveCount && green(`${project.liveCount} running`),
+		projectSummary(project),
+	]
+		.filter(Boolean)
+		.join(' · ');
+
+	return fit(
+		`${open ? '▾' : '▸'} ${bold(printable(project.name))}${project.watching ? dim(' 👁') : ''}  ${dim(about)}`,
+		cols,
+	);
+};
+
+const lineOf = (row, context) => {
+	if (row.kind === 'heading') return dim(`${row.label.toUpperCase()}${row.count ? `  ${row.count}` : ''}`);
+	if (row.kind === 'note') return dim(`  ${row.text}`);
+	if (row.kind === 'session') return sessionLine(row, { ...context, picked: context.picked.has(row.key) });
+	if (row.kind === 'project') return projectLine(row, context);
+	if (row.kind === 'new') return '  ＋ New session';
+
+	return `  ${dim(`▸ ${row.count} more`)}`;
+};
+
+const HINTS = [
+	'↑↓ move · enter open · / search · tab running, watching, archived · g by day or project · q quit',
+	'space pick several · w watch · a archive · r rename · d delete · u undo · →← open or close a project',
+];
+
+// The sessions across the servers, as the web's home lists them: what needs you and what's going on among the
+// watched, then every one newest first, by day or by project, searchable and narrowed by filter, each one acted on
+// where it stands. `scope` ({ server, identity, project }) is one project's, with a new session first. Resolves with
+// { server, id, identity } to open, or null.
+const browse = ({ servers, scope }) =>
+	new Promise(resolve => {
+		const prefs = { groupBy: 'day', openProjects: {} };
+		const state = { query: '', typing: false, filter: '', cursor: null, message: '', undo: null, count: PAGE };
+		const picked = new Map();
+		let data = { rows: [], gathered: [], watched: [] };
+		let stop = () => {};
+		let timer;
+		let loading = 0;
+		let busy = false;
+		let done = false;
+
+		const narrowed = () => Boolean(state.query || state.filter);
+		const selectable = () => data.rows.filter(row => SELECTABLE.has(row.kind));
+		const current = () => selectable().find(row => row.key === state.cursor) ?? selectable()[0];
+
+		const load = async () => {
+			const ask = ++loading;
+			const gathered = scope ? [{ ...scope, ...(await visitServer(scope.server)) }] : await gatherAll(servers);
+			const watched = scope
+				? []
+				: gathered
+						.flatMap(({ server, watching }) => (watching ?? []).map(session => ({ server, session })))
+						.sort(byUrgency);
+			const asking = watched.filter(({ session }) => session.status === 'waiting');
+			const going = watched.filter(
+				({ session }) =>
+					session.status !== 'waiting' && (['working', 'ready'].includes(session.status) || session.unseen > 0),
+			);
+			const above = narrowed() || scope ? new Set() : new Set([...asking, ...going].map(({ session }) => session.id));
+			const asked = {
+				...(state.query && { q: state.query }),
+				...(state.filter && { filter: state.filter }),
+				...(scope && { project: scope.project }),
+			};
+			const byProject = !scope && !narrowed() && prefs.groupBy === 'project';
+			const listed = byProject ? { sessions: [], total: 0 } : await sessionsFrom(gathered, asked, state.count, above);
+			const projects = byProject
+				? gathered
+						.flatMap(({ server, projects: found }) => (found ?? []).map(project => ({ ...project, server })))
+						.sort(byWatchedThenRecent)
+				: [];
+			const previews = {};
+
+			if (byProject)
+				await Promise.all(
+					projects.map(async project => {
+						const key = projectKey(project);
+
+						if (!(prefs.openProjects[key] ?? (project.watching || project.liveCount))) return;
+
+						const query = new URLSearchParams({ project: project.name, limit: String(PREVIEW) });
+						const { items } = await serverPage(project.server, `/api/sessions?${query}`).catch(() => ({ items: [] }));
+
+						previews[key] = { sessions: items.map(session => ({ server: project.server, session })) };
+					}),
+				);
+
+			if (ask !== loading) return;
+
+			data = {
+				gathered,
+				watched,
+				rows: [
+					...gathered
+						.filter(({ error }) => error)
+						.map(({ server, error }) => ({ kind: 'note', text: `${server.label}: ${printable(error)}` })),
+					...browserRows({
+						project: scope?.project,
+						narrowed: narrowed(),
+						filter: state.filter,
+						groupBy: prefs.groupBy,
+						asking: scope ? [] : asking,
+						going: scope ? [] : going,
+						...listed,
+						projects,
+						previews,
+						opened: prefs.openProjects,
+					}),
+				],
+			};
+			draw();
+		};
+
+		const draw = () => {
+			const { cols, rows: height } = size();
+			const several = !scope && data.gathered.length > 1;
+			const chips = FILTERS.map(name =>
+				name === state.filter ? inverse(` ${FILTER_LABELS[name]} `) : ` ${dim(FILTER_LABELS[name])} `,
+			).join('');
+			const grouping = scope || narrowed() ? '' : dim(`  by ${prefs.groupBy}`);
+			const header = [
+				`${bold(scope ? `paude · ${scope.project}` : 'paude')}  ${scope ? dim(scope.server.label) : summaryOf(data.watched)}`,
+				`${chips}${grouping}${picked.size ? `  ${orange(`${picked.size} picked`)}` : ''}`,
+				state.typing || state.query ? `${orange('/')} ${printable(state.query)}${state.typing ? '█' : ''}` : '',
+			];
+			const footer = [state.message ? colored(state.message, 179) : '', ...HINTS.map(hint => dim(fit(hint, cols - 1)))];
+			const room = Math.max(height - header.length - footer.length - 1, 3);
+			const at = current();
+			const index = Math.max(data.rows.indexOf(at), 0);
+			const start = Math.max(0, Math.min(index - Math.floor(room / 2), data.rows.length - room));
+			const context = { several, picked, cols: cols - 1 };
+			const body = data.rows.slice(start, start + room).map(row => {
+				const line = lineOf(row, context);
+
+				return row === at && !state.typing ? inverse(fit(line, cols - 1)) : line;
+			});
+
+			write(
+				`${CLEAR}${[...header, ...body, ...Array(Math.max(room - body.length, 0)).fill(''), ...footer].join('\r\n')}`,
+			);
+		};
+
+		const reload = () => {
+			draw();
+			load().catch(error => {
+				state.message = printable(error.message);
+				draw();
+			});
+		};
+
+		const move = step => {
+			const rows = selectable();
+			const index = rows.indexOf(current());
+
+			state.cursor = rows[Math.min(Math.max(index + step, 0), rows.length - 1)]?.key ?? null;
+		};
+
+		const finish = value => {
+			done = true;
+			stop();
+			clearTimeout(timer);
+			process.stdout.off('resize', draw);
+			resolve(value);
+		};
+
+		// Something that takes the screen (a question, a prompt for a name) has the keys until it's done
+		const aside = async work => {
+			busy = true;
+			stop();
+			try {
+				await work();
+			} catch (error) {
+				state.message = printable(error.message);
+			}
+			busy = false;
+			if (done) return;
+			stop = rawInput(onKey);
+			reload();
+		};
+
+		// Each server's own sessions: the picked ones, or the one under the cursor
+		const targets = () => {
+			const row = current();
+
+			if (picked.size) return [...picked.values()];
+
+			return row?.kind === 'session' ? [row] : [];
+		};
+
+		const perServer = async (rows, act) => {
+			const answers = await Promise.allSettled(rows.map(row => act(row)));
+			const failed = answers.filter(({ status }) => status === 'rejected');
+
+			if (failed.length)
+				throw new Error(`${failed.length} of ${rows.length} didn't go through: ${failed[0].reason?.message}`);
+		};
+
+		const watch = rows => {
+			const on = !rows.every(({ session }) => session.watching);
+
+			return aside(async () => {
+				await perServer(rows, ({ server, session }) =>
+					api(server, `/api/sessions/${session.id}/watch`, { method: 'PUT', body: JSON.stringify({ watching: on }) }),
+				);
+				state.message = `${on ? 'Watching' : 'Stopped watching'} ${counted(rows.length, 'session')}`;
+				state.undo = () => watch(rows.map(row => ({ ...row, session: { ...row.session, watching: on } })));
+				picked.clear();
+			});
+		};
+
+		const archive = (rows, on = !rows.every(({ session }) => session.archived)) => {
+			const stopped = rows.filter(({ session }) => !session.live);
+
+			if (!stopped.length) {
+				state.message = "Running sessions aren't archived: they're in use";
+
+				return draw();
+			}
+
+			return aside(async () => {
+				const byServer = Map.groupBy(stopped, ({ server }) => server);
+
+				await perServer([...byServer], ([server, group]) =>
+					api(server, '/api/sessions/archive', {
+						method: 'POST',
+						body: JSON.stringify({ ids: group.map(({ session }) => session.id), archived: on }),
+					}),
+				);
+				state.message = `${on ? 'Archived' : 'Unarchived'} ${counted(stopped.length, 'session')}${stopped.length < rows.length ? " (running ones aren't)" : ''}`;
+				state.undo = () => archive(stopped, !on);
+				picked.clear();
+			});
+		};
+
+		const rename = row =>
+			aside(async () => {
+				const name = await askLine({
+					title: 'Rename',
+					subtitle: dim(printable(row.session.title)),
+					prompt: 'Name:',
+					initial: printable(row.session.title),
+					hint: 'enter save (empty: back to the automatic name) · esc back',
+				});
+
+				if (name === null) return;
+				await api(row.server, `/api/sessions/${row.session.id}/name`, {
+					method: 'PUT',
+					body: JSON.stringify({ name }),
+				});
+				state.message = name ? `Renamed to ${name}` : 'Back to the automatic name';
+			});
+
+		const remove = rows =>
+			aside(async () => {
+				const sure = await choose({
+					title: `Delete ${rows.length === 1 ? printable(rows[0].session.title) : counted(rows.length, 'session')}?`,
+					subtitle: colored('cannot be undone', 179),
+					hint: '↑↓ move · enter pick · esc keep',
+					rows: [
+						...wrap(
+							'Their conversations, chat and comments are removed, and anyone invited loses access.',
+							size().cols - 4,
+						).map(text => ({ note: text })),
+						{ label: 'Keep', value: 'keep' },
+						{ label: `Delete ${counted(rows.length, 'session')}`, value: 'delete' },
+					],
+				});
+
+				if (sure !== 'delete') return;
+				await perServer(rows, ({ server, session }) =>
+					api(server, `/api/sessions/${session.id}`, { method: 'DELETE' }),
+				);
+				state.message = `Deleted ${counted(rows.length, 'session')}`;
+				state.undo = null;
+				picked.clear();
+			});
+
+		const watchProject = ({ project }) =>
+			aside(async () => {
+				await api(project.server, `/api/projects/${encodeURIComponent(project.name)}/watch`, {
+					method: 'PUT',
+					body: JSON.stringify({ watching: !project.watching }),
+				});
+				state.message = `${project.watching ? 'Stopped watching' : 'Watching'} every session in ${project.name}`;
+			});
+
+		const openProject = (row, open) => {
+			prefs.openProjects = { ...prefs.openProjects, [row.key]: open };
+			savePrefs({ ...loadedPrefs, pickerOpenProjects: prefs.openProjects }).catch(() => {});
+			reload();
+		};
+
+		const enter = row => {
+			if (!row) return;
+			if (row.kind === 'session') {
+				const { identity } = data.gathered.find(({ server }) => server === row.server) ?? scope;
+
+				return finish({ server: row.server, id: row.session.id, identity });
+			}
+			if (row.kind === 'more') {
+				state.count += PAGE;
+
+				return reload();
+			}
+			if (row.kind === 'new')
+				return aside(async () => {
+					const id = await newSession(scope.server, scope.project);
+
+					if (id) finish({ server: scope.server, id, identity: scope.identity });
+				});
+			if (row.kind === 'project') {
+				const { identity } = data.gathered.find(({ server }) => server === row.project.server);
+
+				return aside(async () => {
+					const opened = await browse({ scope: { server: row.project.server, identity, project: row.project.name } });
+
+					if (opened) finish(opened);
+				});
+			}
+		};
+
+		const typed = key => {
+			for (const character of key) {
+				if (is(character, 'enter')) state.typing = false;
+				else if (character === '\x7f' || character === '\b') state.query = state.query.slice(0, -1);
+				else state.query += printable(character);
+			}
+			state.count = PAGE;
+			clearTimeout(timer);
+			timer = setTimeout(reload, SEARCH_DELAY_MS);
+			draw();
+		};
+
+		const onKey = key => {
+			if (busy) return;
+			// Keys typed quickly, or pasted, can arrive together: each one counts
+			if (!state.typing && !key.startsWith(ESC) && [...key].length > 1) {
+				for (const single of key) onKey(single);
+
+				return;
+			}
+			state.message = '';
+
+			if (state.typing) {
+				if (key === ESC) {
+					state.typing = false;
+					state.query = '';
+
+					return reload();
+				}
+				if (is(key, 'down') && !/^[jk]$/.test(key)) state.typing = false;
+				else if (key === '\x03') return finish(null);
+				else if (!key.startsWith(ESC)) return typed(key);
+
+				return draw();
+			}
+
+			const row = current();
+
+			if (is(key, 'up')) move(-1);
+			else if (is(key, 'down')) move(1);
+			else if (is(key, 'enter')) return enter(row);
+			else if (key === '/') state.typing = true;
+			else if (key === KEY.tab || key === KEY.backTab) {
+				const step = key === KEY.tab ? 1 : FILTERS.length - 1;
+
+				state.filter = FILTERS[(FILTERS.indexOf(state.filter) + step) % FILTERS.length];
+				state.count = PAGE;
+
+				return reload();
+			} else if (key === 'g' && !scope) {
+				prefs.groupBy = prefs.groupBy === 'day' ? 'project' : 'day';
+				savePrefs({ ...loadedPrefs, pickerGroupBy: prefs.groupBy }).catch(() => {});
+
+				return reload();
+			} else if (key === ' ' && row?.kind === 'session') {
+				if (picked.has(row.key)) picked.delete(row.key);
+				else picked.set(row.key, row);
+				move(1);
+			} else if (key === 'w' && row?.kind === 'project') return watchProject(row);
+			else if (key === 'w' && targets().length) return watch(targets());
+			else if (key === 'a' && targets().length) return archive(targets());
+			else if (key === 'r' && row?.kind === 'session' && !picked.size) return rename(row);
+			else if (key === 'd' && targets().length) return remove(targets());
+			else if (key === 'u' && state.undo) {
+				const undo = state.undo;
+
+				state.undo = null;
+
+				return undo();
+			} else if (KEY.right.includes(key) && row?.kind === 'project' && !row.open) return openProject(row, true);
+			else if (KEY.left.includes(key) && row?.kind === 'project' && row.open) return openProject(row, false);
+			else if (key === ESC && (state.query || picked.size)) {
+				picked.clear();
+				state.query = '';
+
+				return reload();
+			} else if (is(key, 'back')) return finish(null);
+
+			draw();
+		};
+
+		let loadedPrefs = {};
+
+		loadPrefs().then(stored => {
+			loadedPrefs = stored;
+			prefs.groupBy = stored.pickerGroupBy === 'project' ? 'project' : 'day';
+			prefs.openProjects = stored.pickerOpenProjects ?? {};
+			stop = rawInput(onKey);
+			process.stdout.on('resize', draw);
+			reload();
+		});
 	});
 
-	if (!picked?.create) return picked?.session?.id ?? null;
-
+// A new session in a project, worktree and all: its id, or null when given up
+const newSession = async (server, project) => {
 	const where = await pickCheckout(server, project);
 
 	if (!where) return null;
@@ -364,163 +808,11 @@ const pickInProject = async (server, project) => {
 	}
 };
 
-const pickProject = async (server, listed) => {
-	let projects = listed;
-	let at = null;
-
-	while (true) {
-		const picked = await choose({
-			title: 'paude · projects',
-			subtitle: dim(server.label),
-			hint: '↑↓ move · enter open · w watch every session in it or stop · esc back',
-			rows: projects.map(project => ({
-				label: `${printable(project.name)}${project.watching ? dim(' 👁') : ''}`,
-				detail: projectSummary(project),
-				marker: project.liveCount ? green('●') : ' ',
-				value: project.name,
-			})),
-			keys: ['w'],
-			initial: Math.max(
-				projects.findIndex(({ name }) => name === at),
-				0,
-			),
-		});
-
-		if (!picked) return null;
-
-		if (picked.key === 'w') {
-			const project = projects.find(({ name }) => name === picked.row);
-
-			at = picked.row;
-			await api(server, `/api/projects/${encodeURIComponent(picked.row)}/watch`, {
-				method: 'PUT',
-				body: JSON.stringify({ watching: !project.watching }),
-			}).catch(() => {});
-			projects = (await api(server, '/api/projects').catch(() => projects)).sort(byWatchedThenRecent);
-			continue;
-		}
-
-		const id = await pickInProject(server, picked);
-
-		if (id) return id;
-	}
-};
-
-const gather = async server => {
-	const visit = await visitServer(server);
-
-	server.id = visit.serverId;
-	// A name given here wins over the one the server goes by
-	if (!server.local && !server.alias && visit.name) server.label = visit.name;
-
-	return { server, ...visit };
-};
-
-const byUrgency = (a, b) => sessionUrgency(a.session, b.session);
-
-const summaryOf = watched => {
-	const waiting = watched.filter(({ session }) => session.status === 'waiting').length;
-	const unseen = watched.reduce((sum, { session }) => sum + session.unseen, 0);
-
-	return [waiting && colored(`${waiting} need${waiting === 1 ? 's' : ''} you`, 179), unseen && `${unseen} new`]
-		.filter(Boolean)
-		.join(dim(' · '));
-};
-
-const serverRows = ({ server, identity, sessions, projects, error }, watchedIds, watched, several) => {
-	const rows = [{ label: several ? server.label : 'Continue' }];
-
-	if (error) return [...rows, { note: printable(error) }];
-
-	const recent = sessions.filter(session => !watchedIds.has(session.id));
-
-	rows.push(...recent.map(session => sessionRow(server, session, { showProject: true })));
-	// One row for the projects, so every server's sessions stay in view however many folders one has
-	if (projects.length) {
-		rows.push({
-			label: '▸ All sessions',
-			detail: 'search by title, prompt, project or branch',
-			value: { server, allSessions: true },
-		});
-		rows.push({
-			label: `▸ Projects (${projects.length})`,
-			detail: 'start or find a session in one',
-			marker: projects.some(project => project.liveCount) ? green('●') : ' ',
-			value: { server, projects },
-		});
-	}
-
-	if (identity.owner && !recent.length && !projects.length)
-		rows.push({ note: server.local ? 'no folders yet: run paude add in one' : 'nothing here yet' });
-
-	return rows;
-};
-
 const pickSession = async servers => {
 	write(ENTER_ALT_SCREEN);
 
 	try {
-		while (true) {
-			const seen = new Set();
-			// Same server at two addresses: shown once, under the first
-			const gathered = (await Promise.all(servers.map(gather))).filter(({ server }) => {
-				if (!server.id) return true;
-				if (seen.has(server.id)) return false;
-				seen.add(server.id);
-
-				return true;
-			});
-			const several = gathered.length > 1;
-			const watched = gathered
-				.flatMap(({ server, watching }) => (watching ?? []).map(session => ({ server, session })))
-				.sort(byUrgency);
-			const watchedIds = new Set(watched.map(({ session }) => session.id));
-			const rows = [
-				...(watched.length ? [{ label: 'Watching' }] : []),
-				...watched.map(({ server, session }) =>
-					sessionRow(server, session, { showServer: several, showProject: true }),
-				),
-				...gathered.flatMap(found => serverRows(found, watchedIds, watched, several)),
-			];
-
-			const picked = await choose({
-				title: 'paude',
-				subtitle: summaryOf(watched),
-				hint: '↑↓ move · enter open · w watch or stop watching · q quit',
-				rows,
-				keys: ['w'],
-			});
-
-			if (!picked) return null;
-
-			if (picked.key === 'w') {
-				const { server, session } = picked.row;
-
-				if (session) {
-					await api(server, `/api/sessions/${session.id}/watch`, {
-						method: 'PUT',
-						body: JSON.stringify({ watching: !session.watching }),
-					}).catch(() => {});
-				}
-				continue;
-			}
-
-			const { identity } = gathered.find(({ server }) => server === picked.server);
-
-			if (picked.session) return { server: picked.server, id: picked.session.id, identity };
-
-			if (picked.allSessions) {
-				const all = await api(picked.server, '/api/sessions?limit=500');
-				const session = await pickFromAll(picked.server, all);
-
-				if (session) return { server: picked.server, id: session.id, identity };
-				continue;
-			}
-
-			const id = await pickProject(picked.server, picked.projects);
-
-			if (id) return { server: picked.server, id, identity };
-		}
+		return await browse({ servers });
 	} finally {
 		write(LEAVE_ALT_SCREEN);
 	}

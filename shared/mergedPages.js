@@ -1,13 +1,15 @@
-// Several newest-first listings read as one: each source pages on its own (`({ q, offset, limit })` answers
-// { sessions, total }), and each page takes the newest of what they have. Pages come in order; asking from offset 0, or
-// for a different q, starts over.
+// Several newest-first listings read as one: each source pages on its own (`({ offset, limit, ...asked })` answers
+// { sessions, total }, `asked` being whatever narrows it, a q or a filter), and each page takes the newest of what they
+// have. Pages come in order; asking from offset 0, or for something else, starts over.
 const mergedPages = (sources, newness = session => session.lastModified ?? 0) => {
 	let query;
 	let states = [];
 
-	return async ({ q, offset, limit }) => {
-		if (!offset || q !== query) {
-			query = q;
+	return async ({ offset, limit, ...asked }) => {
+		const key = JSON.stringify(asked);
+
+		if (!offset || key !== query) {
+			query = key;
 			states = sources.map(source => ({ source, buffer: [], fetched: 0, total: Infinity }));
 		}
 
@@ -17,7 +19,7 @@ const mergedPages = (sources, newness = session => session.lastModified ?? 0) =>
 			current.map(async state => {
 				if (state.buffer.length >= limit || state.fetched >= state.total) return;
 
-				const { sessions, total } = await state.source({ q, offset: state.fetched, limit });
+				const { sessions, total } = await state.source({ ...asked, offset: state.fetched, limit });
 
 				state.buffer.push(...sessions);
 				state.fetched += sessions.length;

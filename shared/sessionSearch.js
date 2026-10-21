@@ -15,3 +15,15 @@ export const matchesQuery = (session, query) => {
 
 	return words.every(word => known.includes(word));
 };
+
+export const FILTERS = ['running', 'watching', 'archived'];
+
+// Which sessions a list shows: those running, watched or archived, or with no filter every one not archived. A search
+// with no filter looks through the archived ones too, so nothing put away is lost.
+export const matchesFilter = (session, filter, query) => {
+	if (filter === 'running') return Boolean(session.live);
+	if (filter === 'watching') return Boolean(session.watching);
+	if (filter === 'archived') return Boolean(session.archived);
+
+	return !session.archived || Boolean(String(query ?? '').trim());
+};

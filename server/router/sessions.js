@@ -12,9 +12,10 @@ import {
 	watchesAnyProject,
 	watchesProject,
 } from '../activity';
+import { setArchived } from '../archive';
 import { credentialOf, identityOf } from '../auth';
 import { folderHue, sessionHue } from '../../shared/hues';
-import { matchesQuery } from '../../shared/sessionSearch';
+import { FILTERS, matchesFilter, matchesQuery } from '../../shared/sessionSearch';
 import { warmUntil } from '../keepWarm';
 import { continueSession } from '../usageLimit';
 import { LIFETIMES, lastSwitch, lifetimeOf, setLifetime, switchLifetime } from '../lifetime';
@@ -66,9 +67,15 @@ const isFolder = async path =>
 		)?.isDirectory(),
 	);
 
-// A page of sessions, newest first, narrowed by ?q= (see matchesQuery); x-total-count says how many match in all
-const sessionPage = (sessions, { q, offset, limit }, pageSize) => {
-	const matching = sessions.filter(session => matchesQuery(session, q));
+// A page of sessions, newest first, narrowed by ?q= (see matchesQuery), ?filter= (see matchesFilter) and ?project=;
+// x-total-count says how many match in all
+const sessionPage = (sessions, { q, filter, project, offset, limit }, pageSize) => {
+	const matching = sessions.filter(
+		session =>
+			matchesQuery(session, q) &&
+			matchesFilter(session, FILTERS.includes(filter) ? filter : undefined, q) &&
+			(!project || session.project === project),
+	);
 	const from = Math.max(Number(offset) || 0, 0);
 	const count = Math.min(Math.max(Number(limit) || pageSize, 1), 500);
 
@@ -578,6 +585,21 @@ const sessionsRoutes = async (request, server) => {
 		if (removed === null) return new Response('Session not found', { status: 404 });
 
 		return removed.released ? Response.json(removed.released) : new Response(null, { status: 204 });
+	}
+
+	// Put away, or brought back: several at once, by the owner, as deleting is
+	match = requestMatch('POST', '/api/sessions/archive', request);
+	if (match) {
+		if (!identity.owner) return new Response('Only the owner archives sessions', { status: 403 });
+
+		const { ids, archived } = await request.json().catch(() => ({}));
+
+		if (!Array.isArray(ids) || !ids.every(id => typeof id === 'string') || typeof archived !== 'boolean')
+			return new Response('Which sessions, and archived or not?', { status: 400 });
+
+		await setArchived(ids, archived);
+
+		return new Response(null, { status: 204 });
 	}
 
 	// An empty name goes back to the automatic one

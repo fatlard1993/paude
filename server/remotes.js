@@ -58,12 +58,14 @@ export const remoteLink = async (url, { sessionId, project, home, draft, lifetim
 
 // A page of a server's sessions (newest first, searched by q), as its /api/sessions answers it; null for a server
 // this machine isn't logged into
-export const remoteSessions = async (url, { q, offset, limit }) => {
+export const remoteSessions = async (url, { q, filter, project, offset, limit }) => {
 	const server = (await remoteServers()).find(remote => remote.url === url);
 
 	if (!server) return null;
 
-	const query = new URLSearchParams(Object.entries({ q, offset, limit }).filter(([, value]) => value !== undefined));
+	const query = new URLSearchParams(
+		Object.entries({ q, filter, project, offset, limit }).filter(([, value]) => value !== undefined),
+	);
 
 	return serverPage(server, `/api/sessions?${query}`);
 };
