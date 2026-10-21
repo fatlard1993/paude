@@ -1,24 +1,21 @@
-import { hotReload } from '@vanilla-bean/components/app';
+import { serve } from '@vanilla-bean/components/app';
 
 import router from './router/router';
 import attachSocket from './sessions/attachSocket';
 import sideShell from './sessions/sideShell';
 
 export default {
-	async init({ host, port }) {
-		const server = Bun.serve({
+	init: ({ host, port }) =>
+		serve({
 			hostname: host,
 			port,
 			// Nothing paude accepts comes close; the limits keep one client from tying up memory
 			maxRequestBodySize: 1024 * 1024,
-			fetch: router,
+			router,
 			websocket: {
 				maxPayloadLength: 1024 * 1024,
 				// Claude's redraws are mostly repeated escape sequences; compressed, they cost a fraction on a slow link
 				perMessageDeflate: true,
-				open(socket) {
-					hotReload.websocket.open(socket);
-				},
 				message(socket, message) {
 					if (socket.data.route === 'attach') attachSocket.message(socket, message);
 					else if (socket.data.route === 'shell') sideShell.message(socket, message);
@@ -26,15 +23,7 @@ export default {
 				close(socket) {
 					if (socket.data.route === 'attach') attachSocket.close(socket);
 					else if (socket.data.route === 'shell') sideShell.close(socket);
-					else hotReload.websocket.close(socket);
 				},
 			},
-		});
-
-		console.log(`Listening on ${server.hostname}:${server.port}`);
-
-		if (process.env.NODE_ENV === 'development') {
-			await hotReload.watch();
-		}
-	},
+		}),
 };

@@ -15,27 +15,24 @@ import { initProjects, setProjectsRoot } from '../projects';
 import { allRunning, setClaudePath, startSession, stopSession } from '../sessions/running';
 import { setServerName } from '../serverSettings';
 import { readProgress } from '../../shared/progress';
-import router from './router';
+import app from '../server';
 
 const FAKE_CLAUDE = path.join(import.meta.dir, '..', 'sessions', 'fixtures', 'fake-claude.js');
-const server = { upgrade: () => false, requestIP: () => ({ address: '127.0.0.1' }) };
+let server;
 const tokens = {};
 let session;
 let other;
 
 const call = (route, { token, method = 'GET', body, headers = {} } = {}) =>
-	router(
-		new Request(`http://paude.test${route}`, {
-			method,
-			headers: {
-				...(token && { authorization: `Bearer ${token}` }),
-				...(body && { 'content-type': 'application/json' }),
-				...headers,
-			},
-			...(body && { body: JSON.stringify(body) }),
-		}),
-		server,
-	);
+	fetch(`${server.url}${route.slice(1)}`, {
+		method,
+		headers: {
+			...(token && { authorization: `Bearer ${token}` }),
+			...(body && { 'content-type': 'application/json' }),
+			...headers,
+		},
+		...(body && { body: JSON.stringify(body) }),
+	});
 
 let base;
 
@@ -64,9 +61,17 @@ beforeAll(async () => {
 
 		tokens[role] = await createToken(role, { invite });
 	}
+
+	// serve builds and watches the client in development
+	const nodeEnv = process.env.NODE_ENV;
+
+	process.env.NODE_ENV = 'test';
+	server = await app.init({ host: '127.0.0.1', port: 0 });
+	process.env.NODE_ENV = nodeEnv;
 });
 
 afterAll(() => {
+	server.stop(true);
 	for (const running of allRunning()) running.process.kill();
 });
 
@@ -113,14 +118,11 @@ test("git: reading takes the files role, changing takes the typing role, and a g
 test('a dropped file is saved outside the project for Claude to read, by whoever may type', async () => {
 	const route = `/api/sessions/${session.id}/attachments?name=${encodeURIComponent('../Screen Shot.png')}`;
 	const drop = token =>
-		router(
-			new Request(`http://paude.test${route}`, {
-				method: 'POST',
-				headers: { authorization: `Bearer ${token}` },
-				body: 'png bytes',
-			}),
-			server,
-		);
+		fetch(`${server.url}${route.slice(1)}`, {
+			method: 'POST',
+			headers: { authorization: `Bearer ${token}` },
+			body: 'png bytes',
+		});
 
 	expect((await drop(tokens.comment)).status).toBe(403);
 
@@ -215,14 +217,11 @@ test('moving, deleting, restoring and uploading take the typing role; a download
 	const files = (action, body, { token = tokens.owner, method = 'POST' } = {}) =>
 		call(`/api/sessions/${session.id}/files/${action}`, { token, method, body });
 	const upload = (query, token = tokens.owner) =>
-		router(
-			new Request(`http://paude.test/api/sessions/${session.id}/files/upload?${query}`, {
-				method: 'PUT',
-				headers: { authorization: `Bearer ${token}` },
-				body: 'uploaded\n',
-			}),
-			server,
-		);
+		fetch(`${server.url}api/sessions/${session.id}/files/upload?${query}`, {
+			method: 'PUT',
+			headers: { authorization: `Bearer ${token}` },
+			body: 'uploaded\n',
+		});
 
 	expect((await upload('path=up.txt', tokens.comment)).status).toBe(403);
 	expect(await (await upload('path=up.txt')).json()).toEqual({ path: 'up.txt', listed: true });
@@ -357,7 +356,7 @@ test('a session that never got a prompt still deletes cleanly', async () => {
 test('a side terminal is for those who may type: the owner and drivers, never a commenter or viewer', async () => {
 	const shell = id => `/api/sessions/${id}/shell`;
 
-	// The test server refuses every upgrade, so reaching it answers 400
+	// A plain request can't become a socket, so reaching it answers 400
 	expect((await call(shell(session.id), { token: tokens.owner })).status).toBe(400);
 	expect((await call(shell(session.id), { token: tokens.comment })).status).toBe(403);
 	expect((await call(shell(session.id), { token: tokens.watch })).status).toBe(403);

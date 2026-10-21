@@ -3,7 +3,7 @@
 import os from 'os';
 import path from 'path';
 
-import { hotReload } from '@vanilla-bean/components/app';
+import { devConsole, handleExit } from '@vanilla-bean/components/app';
 import Argi from 'argi';
 
 import { ensureLocalToken, initAuth, initServerId, passwordIsSet } from './auth';
@@ -36,7 +36,8 @@ import { sessionRecord } from './sessions/record';
 import { setPreviewPort } from './router/shares';
 import server from './server';
 
-import './exit';
+// Every live session is a child of this process, so a stray error is logged rather than taking them all down
+handleExit({ survive: true });
 
 const { options } = new Argi({
 	options: {
@@ -136,16 +137,4 @@ setInterval(() => {
 	sweepSideShells();
 }, 30_000).unref();
 
-if (process.env.NODE_ENV === 'development') {
-	try {
-		for await (const line of console) {
-			if (['stop', 'close', 'exit'].includes(line)) process.kill(process.pid, 'SIGTERM');
-			else if (line === 'b') {
-				console.log('>> Building...');
-				hotReload.rebuild();
-			}
-		}
-	} catch (error) {
-		console.error('Build Error', error);
-	}
-}
+devConsole();

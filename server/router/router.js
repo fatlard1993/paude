@@ -1,4 +1,4 @@
-import { hotReload, requestMatch, sameOrigin, serveApp, withErrors } from '@vanilla-bean/components/app';
+import { requestMatch, serveApp } from '@vanilla-bean/components/app';
 
 import { setPeerAddress } from '../auth';
 import authRoutes, { guard } from './auth';
@@ -19,9 +19,6 @@ const page = request =>
 const router = async (request, server) => {
 	let response;
 
-	// WebSockets get no CORS protection: without this, any page the browser visits could attach and type into Claude
-	if (!sameOrigin(request)) return new Response('Cross-origin request refused', { status: 403 });
-
 	setPeerAddress(request, server?.requestIP?.(request)?.address);
 
 	if (requestMatch('GET', '/', request)) return page(request);
@@ -37,8 +34,6 @@ const router = async (request, server) => {
 		request.method === 'GET' && new URL(request.url).pathname.match(/^\/(icon-(?:192|512|maskable-512)\.png)$/);
 
 	if (icon) return new Response(Bun.file(`client/${icon[1]}`), { headers: { 'cache-control': 'no-cache' } });
-
-	if (hotReload.upgrade(request, server)) return;
 
 	response = await hooksRoutes(request);
 	if (response) return response;
@@ -64,11 +59,7 @@ const router = async (request, server) => {
 	response = await sessionsRoutes(request, server);
 	if (response !== null) return response;
 
-	response = await page(request);
-	if (response) return response;
-
-	return new Response('Not Found', { status: 404 });
+	return page(request);
 };
 
-// A body that isn't JSON answers 400; anything else thrown is logged and answers 500
-export default withErrors(router);
+export default router;
