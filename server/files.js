@@ -104,6 +104,9 @@ export const listFiles = async cwd => {
 	return files;
 };
 
+// A change made by hand shows in the next listing rather than one a moment later
+export const forgetListing = cwd => listings.delete(cwd);
+
 // A listed path can still be a symlink out of the project; only what resolves inside it is read
 const insideProject = async (cwd, path) => {
 	try {

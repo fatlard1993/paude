@@ -32,7 +32,15 @@ export const confirmDeleteSession = async (session, deleteSession) => {
 };
 
 // Resolves to the new name, '' to go back to the automatic one, or null when left as it was
-export const nameDialog = ({ current, pinned, header = 'Name this session', placeholder = 'Session name' }) =>
+// `select` is the [start, end] of the current text picked to type over, all of it unless given
+export const nameDialog = ({
+	current,
+	pinned,
+	header = 'Name this session',
+	placeholder = 'Session name',
+	confirmLabel = 'Save',
+	select,
+}) =>
 	new Promise(resolve => {
 		const input = element('input');
 		const AUTOMATIC = 'Use automatic name';
@@ -45,20 +53,27 @@ export const nameDialog = ({ current, pinned, header = 'Name this session', plac
 		input.placeholder = placeholder;
 		input.style.width = '100%';
 		input.addEventListener('keydown', event => {
-			if (event.key === 'Enter') finish(input.value.trim() || '');
+			// Left to itself, the Enter would go on to press the button focus returns to
+			if (event.key !== 'Enter') return;
+
+			event.preventDefault();
+			finish(input.value.trim() || '');
 		});
 
 		const dialog = new Dialog({
 			size: 'small',
 			header,
 			body: input,
-			buttons: ['Cancel', ...(pinned ? [AUTOMATIC] : []), 'Save'],
+			buttons: ['Cancel', ...(pinned ? [AUTOMATIC] : []), confirmLabel],
 			onButtonPress: ({ button }) => {
-				if (button === 'Save') finish(input.value.trim());
+				if (button === confirmLabel) finish(input.value.trim());
 				else if (button === AUTOMATIC) finish('');
 				else finish(null);
 			},
 			onClose: () => resolve(null),
 		});
-		setTimeout(() => input.select());
+		setTimeout(() => {
+			input.focus();
+			input.setSelectionRange(...(select ?? [0, input.value.length]));
+		});
 	});

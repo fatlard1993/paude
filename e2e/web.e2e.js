@@ -1655,3 +1655,422 @@ test(
 	},
 	TIMEOUT_MS,
 );
+
+test(
+	'a new file is made where the list was looked into and opens to edit; a new folder shows while empty',
+	async () => {
+		const server = servers.turns;
+		const { browser, page } = await openSession('dom', server);
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+		const labels = () => page.$$eval('.files .list .entry .label', found => found.map(label => label.textContent));
+
+		try {
+			await press('[title="Project files"]');
+			await press('.files .entry.folder', 'server');
+			await press('.files [title="New file or folder"]');
+			await press('[role=menu] li', 'New file');
+			expect(await page.$eval('dialog[open] input', input => input.value)).toBe('server/');
+			await page.keyboard.type('util.js');
+			await page.keyboard.press('Enter');
+			await wait(1500);
+
+			expect(await page.$eval('.files .viewer .path', path => path.textContent)).toBe('server/util.js');
+			expect(await page.$$eval('.files .cm-editor', editors => editors.length)).toBe(1);
+			expect(await Bun.file(`${server.project}/server/util.js`).exists()).toBe(true);
+
+			await press('.files .head button', 'Cancel');
+			await press('.files [title="New file or folder"]');
+			await press('[role=menu] li', 'New folder');
+			await page.keyboard.type('empty');
+			await page.keyboard.press('Enter');
+			await wait(1500);
+
+			expect(await labels()).toEqual(expect.arrayContaining(['server', 'empty', 'util.js']));
+		} finally {
+			await rm(`${server.project}/server/util.js`, { force: true });
+			await rm(`${server.project}/server/empty`, { recursive: true, force: true });
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	"file management from a row's menu: rename, duplicate, cut into a folder, delete and undo it, F2, and upload",
+	async () => {
+		const server = await startServer();
+		const id = await server.newSession();
+		const upload = path.join(await mkdtemp(path.join(os.tmpdir(), 'paude-upload-')), 'logo.svg');
+		const there = file => Bun.file(path.join(server.project, file)).exists();
+
+		await Bun.write(path.join(server.project, 'notes.md'), 'notes\n');
+		await Bun.write(upload, '<svg/>\n');
+
+		const { browser, page } = await openBrowser('dom');
+		const press = async (selector, text, options) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y, options);
+			await wait(800);
+		};
+		const menu = async (row, item) => {
+			await press('.files .list .entry', row, { button: 'right' });
+			await press('[role=menu] li', item);
+		};
+		const answer = async text => {
+			await page.keyboard.type(text);
+			await page.keyboard.press('Enter');
+			await wait(1500);
+		};
+
+		try {
+			await page.goto(await server.loginLink(`/sessions/${id}`));
+			await page.waitForSelector('.xterm-screen');
+			await wait(1500);
+			await press('[title="Project files"]');
+
+			// A rename picks the name short of its extension to type over
+			await menu('notes.md', 'Rename...');
+			await answer('readme');
+			expect([await there('readme.md'), await there('notes.md')]).toEqual([true, false]);
+
+			await menu('readme.md', 'Duplicate');
+			expect(await there('readme copy.md')).toBe(true);
+
+			await menu('readme copy.md', 'Cut');
+			await menu('server', 'Paste');
+			expect([await there('server/readme copy.md'), await there('readme copy.md')]).toEqual([true, false]);
+
+			await menu('readme.md', 'Delete');
+			expect(await there('readme.md')).toBe(false);
+			// The newest toast's Undo, as the move's may still be showing
+			await page.$$eval('button', found =>
+				found
+					.filter(button => button.textContent === 'Undo')
+					.at(-1)
+					.click(),
+			);
+			await wait(1500);
+			expect(await there('readme.md')).toBe(true);
+			expect(await there('server/readme copy.md')).toBe(true);
+
+			await press('.files .list .entry', 'readme.md');
+			await page.focus('.files .list');
+			await page.keyboard.press('F2');
+			await wait(500);
+			await answer('guide');
+			expect(await there('guide.md')).toBe(true);
+
+			const [chooser] = await Promise.all([page.waitForFileChooser(), menu('server', 'Upload files...')]);
+
+			await chooser.accept([upload]);
+			await wait(1500);
+			expect(await Bun.file(path.join(server.project, 'server/logo.svg')).text()).toBe('<svg/>\n');
+		} finally {
+			await browser.close();
+			await server.stop();
+			await rm(path.dirname(upload), { recursive: true, force: true });
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	'file management by hand: Ctrl+click picks several, a drag moves them into a folder, a held press opens the menu',
+	async () => {
+		const server = await startServer();
+		const id = await server.newSession();
+		const there = file => Bun.file(path.join(server.project, file)).exists();
+
+		await Bun.write(path.join(server.project, 'one.md'), '1\n');
+		await Bun.write(path.join(server.project, 'two.md'), '2\n');
+
+		const { browser, page } = await openBrowser('dom');
+		const press = async (selector, text, options) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y, options);
+			await wait(800);
+		};
+		const selected = () =>
+			page.$$eval('.files .list .entry.selected .label', found => found.map(label => label.textContent));
+
+		try {
+			await page.goto(await server.loginLink(`/sessions/${id}`));
+			await page.waitForSelector('.xterm-screen');
+			await wait(1500);
+			await press('[title="Project files"]');
+
+			await press('.files .list .entry', 'one.md');
+			await page.keyboard.down('Control');
+			await press('.files .list .entry', 'two.md');
+			await page.keyboard.up('Control');
+			expect(await selected()).toEqual(['one.md', 'two.md']);
+
+			// What a browser does when a row is dragged onto a folder
+			await page.evaluate(() => {
+				const row = label =>
+					[...document.querySelectorAll('.files .list .entry')].find(
+						entry => entry.querySelector('.label').textContent === label,
+					);
+				const carried = new DataTransfer();
+				const fire = (target, type) =>
+					target.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: carried }));
+
+				fire(row('two.md'), 'dragstart');
+				fire(row('server'), 'dragover');
+				fire(row('server'), 'drop');
+			});
+			await wait(1500);
+			expect([await there('server/one.md'), await there('server/two.md'), await there('one.md')]).toEqual([
+				true,
+				true,
+				false,
+			]);
+
+			// A finger held on a row opens its menu, for the selection the row is part of
+			await page.evaluate(() => {
+				const row = [...document.querySelectorAll('.files .list .entry')].find(
+					entry => entry.querySelector('.label').textContent === 'one.md',
+				);
+				const box = row.getBoundingClientRect();
+
+				row.dispatchEvent(
+					new PointerEvent('pointerdown', {
+						bubbles: true,
+						pointerType: 'touch',
+						clientX: box.x + 5,
+						clientY: box.y + 5,
+					}),
+				);
+			});
+			await wait(800);
+			expect(await page.$$eval('[role=menu] li', items => items.map(item => item.textContent))).toContain(
+				'Delete 2 items',
+			);
+		} finally {
+			await browser.close();
+			await server.stop();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	'the editor: Ctrl+D picks each occurrence to type over at once, Ctrl+H replaces, Ctrl+Z undoes, Ctrl+S saves',
+	async () => {
+		const server = await startServer();
+		const id = await server.newSession();
+		const file = path.join(server.project, 'notes.txt');
+
+		await Bun.write(file, 'alpha beta alpha\nbeta\n');
+
+		const { browser, page } = await openBrowser('dom');
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+		const chord = async (...keys) => {
+			for (const key of keys) await page.keyboard.down(key);
+			for (const key of keys.reverse()) await page.keyboard.up(key);
+			await wait(200);
+		};
+		const text = () =>
+			page.$$eval('.files .cm-content .cm-line', lines => lines.map(line => line.textContent).join('\n'));
+
+		try {
+			await page.goto(await server.loginLink(`/sessions/${id}`));
+			await page.waitForSelector('.xterm-screen');
+			await wait(1500);
+			await press('[title="Project files"]');
+			await press('.files .list .entry', 'notes.txt');
+			await press('.files .head button', 'Edit');
+
+			await chord('Control', 'd');
+			await chord('Control', 'd');
+			await page.keyboard.type('gamma');
+			expect(await text()).toBe('gamma beta gamma\nbeta\n');
+
+			await chord('Control', 'h');
+			await page.type('.files .cm-search [name=search]', 'beta');
+			await page.type('.files .cm-search [name=replace]', 'delta');
+			await press('.files .cm-search button[name=replaceAll]');
+
+			expect(await text()).toBe('gamma delta gamma\ndelta\n');
+
+			await page.focus('.files .cm-content');
+			await chord('Control', 'z');
+			expect(await text()).toBe('gamma beta gamma\nbeta\n');
+
+			await chord('Control', 'g');
+			expect(await page.$$eval('.files .cm-goto-line', panels => panels.length)).toBe(1);
+			await page.keyboard.press('Escape');
+			await page.focus('.files .cm-content');
+			await chord('Alt', 'z');
+			expect(await page.$eval('.files .cm-content', content => content.classList.contains('cm-lineWrapping'))).toBe(
+				true,
+			);
+			await chord('Alt', 'z');
+
+			await chord('Control', 's');
+			await wait(1000);
+			expect(await Bun.file(file).text()).toBe('gamma beta gamma\nbeta\n');
+		} finally {
+			await browser.close();
+			await server.stop();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	'an edit not saved survives a reload as a draft to restore; Ctrl+/ comments a line out and a bracket closes itself',
+	async () => {
+		const server = await startServer();
+		const id = await server.newSession();
+		const file = path.join(server.project, 'notes.js');
+
+		await Bun.write(file, 'const a = 1;\n');
+
+		const { browser, page } = await openBrowser('dom');
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+		const chord = async (...keys) => {
+			for (const key of keys) await page.keyboard.down(key);
+			for (const key of keys.reverse()) await page.keyboard.up(key);
+			await wait(200);
+		};
+		const text = () =>
+			page.$$eval('.files .cm-content .cm-line', lines => lines.map(line => line.textContent).join('\n'));
+		// A login link is spent once used; after it, the page is only loaded again
+		const openNotes = async ({ first = false } = {}) => {
+			if (first) await page.goto(await server.loginLink(`/sessions/${id}`));
+			else await page.reload();
+			await page.waitForSelector('.xterm-screen');
+			await wait(1500);
+			await press('[title="Project files"]');
+			await press('.files .list .entry', 'notes.js');
+		};
+
+		try {
+			await openNotes({ first: true });
+			await press('.files .head button', 'Edit');
+			await chord('Control', '/');
+			await page.keyboard.press('End');
+			await page.keyboard.type('(');
+			expect(await text()).toBe('// const a = 1;()\n');
+			await wait(800);
+
+			await openNotes();
+			expect(await page.$eval('.files .viewer', viewer => viewer.innerText)).toContain(
+				"An edit of this file you didn't save",
+			);
+			await press('.files .conflict button', 'Restore it');
+			expect(await text()).toBe('// const a = 1;()\n');
+			await chord('Control', 's');
+			await wait(1000);
+			expect(await Bun.file(file).text()).toBe('// const a = 1;()\n');
+
+			await openNotes();
+			expect(await page.$$eval('.files .conflict', notices => notices.length)).toBe(0);
+		} finally {
+			await browser.close();
+			await server.stop();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	'Ctrl+P finds a file from anywhere on the page, # there a symbol; Alt+Left and Alt+Right step back and forth',
+	async () => {
+		const server = await startServer();
+		const id = await server.newSession();
+
+		await Bun.write(path.join(server.project, 'server/use.js'), "import { helper } from './help';\n\nhelper();\n");
+		await Bun.write(path.join(server.project, 'server/help.js'), 'export const helper = () => 1;\n');
+
+		const { browser, page } = await openBrowser('dom');
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+		const chord = async (...keys) => {
+			for (const key of keys) await page.keyboard.down(key);
+			for (const key of keys.reverse()) await page.keyboard.up(key);
+			await wait(800);
+		};
+		const reading = () => page.$eval('.files .viewer .path', found => found.textContent);
+
+		try {
+			await page.goto(await server.loginLink(`/sessions/${id}`));
+			await page.waitForSelector('.xterm-screen');
+			await wait(1500);
+			await page.evaluate(() => document.activeElement?.blur());
+
+			await chord('Control', 'p');
+			expect(await page.$eval('.files', panel => panel.classList.contains('open'))).toBe(true);
+			expect(await page.evaluate(() => document.activeElement.matches('.files .bar input'))).toBe(true);
+
+			await page.keyboard.type('#helper');
+			await wait(1500);
+			expect(await page.$eval('.files .bar button.active', active => active.textContent)).toBe('Symbols');
+
+			await page.$eval('.files .bar input', input => (input.value = ''));
+			await press('.files .bar button', 'Names');
+			await page.type('.files .bar input', 'use.js');
+			await wait(500);
+			await press('.files .list .entry', 'use.js');
+
+			// Ctrl+click the call on the last line: to its definition
+			const call = await page.evaluate(() => {
+				const walker = document.createTreeWalker(document.querySelector('.files .source code'), NodeFilter.SHOW_TEXT);
+				let last = null;
+
+				for (let node = walker.nextNode(); node; node = walker.nextNode())
+					if (node.textContent.includes('helper')) last = node;
+
+				const range = document.createRange();
+				const start = last.textContent.lastIndexOf('helper');
+
+				range.setStart(last, start);
+				range.setEnd(last, start + 6);
+
+				const box = range.getBoundingClientRect();
+
+				return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+			});
+
+			await page.keyboard.down('Control');
+			await page.mouse.click(call.x, call.y);
+			await page.keyboard.up('Control');
+			await wait(1500);
+			expect(await reading()).toBe('server/help.js');
+
+			await page.focus('.files');
+			await chord('Alt', 'ArrowLeft');
+			expect(await reading()).toBe('server/use.js');
+			await chord('Alt', 'ArrowRight');
+			expect(await reading()).toBe('server/help.js');
+			await press('.files .head [title^="Back"]');
+			expect(await reading()).toBe('server/use.js');
+		} finally {
+			await browser.close();
+			await server.stop();
+		}
+	},
+	TIMEOUT_MS,
+);

@@ -61,6 +61,9 @@ export const guestMayRequest = (identity, method, pathname) => {
 		(method === 'GET' && pathname === '/api/watching') ||
 		(method === 'POST' && pathname === '/api/handoff') ||
 		(method === 'POST' && pathname === `${own}/replace`) ||
+		// Making, moving and deleting files; the route checks the role may edit
+		(method === 'POST' && (pathname === `${own}/files` || pathname.startsWith(`${own}/files/`))) ||
+		(method === 'PUT' && pathname === `${own}/files/upload`) ||
 		// Tours: catching up on the session, and walking through its code
 		(method === 'POST' && (pathname === `${own}/catch-up` || pathname === `${own}/tour`)) ||
 		(method === 'POST' && pathname === `${own}/links/mark`) ||

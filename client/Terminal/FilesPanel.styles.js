@@ -5,7 +5,7 @@ const LAYER = 'rgba(16, 16, 19, 0.5)';
 
 const Panel = styled(
 	Component,
-	({ colors }) => `
+	({ colors, fonts }) => `
 		display: flex;
 		flex-direction: column;
 		height: 100%;
@@ -137,6 +137,35 @@ const Panel = styled(
 
 		.list .entry:hover, .list .entry.current {
 			background: ${colors.alpha(colors.white, 0.12)};
+		}
+
+		/* A press and hold opens the menu, not the browser's own or a text selection */
+		.list .entry {
+			user-select: none;
+			-webkit-touch-callout: none;
+		}
+
+		.list .entry.selected {
+			background: ${colors.alpha(colors.selected, 0.35)};
+		}
+
+		.list .entry.cut {
+			opacity: 0.5;
+		}
+
+		.list:focus {
+			outline: none;
+		}
+
+		.list:focus-visible .entry.cursor {
+			outline: 1px solid ${colors.lighter(colors.selected)};
+			outline-offset: -1px;
+		}
+
+		.list .entry.drop-target, .list.drop-target {
+			outline: 1px dashed ${colors.lighter(colors.selected)};
+			outline-offset: -1px;
+			background: ${colors.alpha(colors.selected, 0.2)};
 		}
 
 		.list .hit-text {
@@ -587,26 +616,169 @@ const Panel = styled(
 			box-shadow: inset 0 -2px ${colors.light(colors.yellow)};
 		}
 
-		textarea.editor {
-			box-sizing: border-box;
-			width: 100%;
+		.code-editor {
 			height: 100%;
-			margin: 0;
-			padding: 4px 8px;
-			border: none;
-			border-radius: 0;
-			resize: none;
-			outline: none;
 			background: ${colors.alpha(colors.black, 0.35)};
-			font-size: 13px;
-			line-height: ${LINE_HEIGHT}px;
-			white-space: pre;
-			tab-size: 4;
 		}
 
-		textarea.editor.plain {
-			font-family: ui-monospace, monospace;
+		.code-editor .cm-editor {
+			height: 100%;
+			background: transparent;
+			font-size: 13px;
+		}
+
+		.code-editor .cm-editor.cm-focused {
+			outline: none;
+		}
+
+		.code-editor .cm-scroller {
+			line-height: ${LINE_HEIGHT}px;
+		}
+
+		/* The syntax font colors the text, as it does in the source view */
+		.code-editor .cm-content {
+			${fonts.code}
 			color: ${colors.white};
+		}
+
+		.code-editor .cm-content[class*='language-css'] {
+			font-palette: --vbc-css-theme;
+			color: ${colors.light(colors.green)};
+		}
+
+		.code-editor .cm-content[class*='language-json'] {
+			font-palette: --vbc-json-theme;
+		}
+
+		.code-editor .cm-content[class*='language-html'] {
+			font-palette: --vbc-html-theme;
+		}
+
+		.code-editor .cm-content.plain {
+			font-family: ui-monospace, monospace;
+		}
+
+		.code-editor .cm-gutters {
+			background: transparent;
+			border-right: 1px solid ${colors.alpha(colors.white, 0.08)};
+			color: ${colors.light(colors.gray)};
+		}
+
+		.code-editor .cm-activeLine, .code-editor .cm-activeLineGutter {
+			background: ${colors.alpha(colors.white, 0.05)};
+		}
+
+		.code-editor .cm-cursor {
+			border-left-color: ${colors.white};
+		}
+
+		.code-editor .cm-selectionBackground,
+		.code-editor .cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground {
+			background: ${colors.alpha(colors.blue, 0.4)};
+		}
+
+		.code-editor .cm-selectionMatch {
+			background: ${colors.alpha(colors.blue, 0.2)};
+		}
+
+		.code-editor .cm-searchMatch {
+			background: ${colors.alpha(colors.yellow, 0.25)};
+			outline: 1px solid ${colors.alpha(colors.yellow, 0.5)};
+		}
+
+		.code-editor .cm-searchMatch-selected {
+			background: ${colors.alpha(colors.orange, 0.5)};
+		}
+
+		/* The find bar, in the panel's own inputs and buttons */
+		.code-editor .cm-panels {
+			background: ${LAYER};
+			color: inherit;
+			border-color: ${colors.alpha(colors.white, 0.1)};
+		}
+
+		.code-editor .cm-search {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 4px 6px;
+			padding: 6px 28px 6px 8px;
+			font-size: 0.9em;
+		}
+
+		.code-editor .cm-panels .cm-goto-line {
+			padding: 6px 28px 6px 8px;
+			font-size: 0.9em;
+		}
+
+		.code-editor .cm-panels .cm-goto-line form, .code-editor .cm-panels .cm-goto-line label {
+			display: flex;
+			flex: 1;
+			align-items: center;
+			gap: 6px;
+			white-space: nowrap;
+		}
+
+		.code-editor .cm-search br {
+			flex-basis: 100%;
+			height: 0;
+			content: '';
+		}
+
+		.code-editor .cm-panels .cm-textfield {
+			flex: 1 1 140px;
+			min-width: 0;
+			margin: 0;
+			padding: 3px 6px;
+			border: 1px solid ${colors.alpha(colors.white, 0.15)};
+			border-radius: 4px;
+			background: ${colors.alpha(colors.black, 0.6)};
+			color: inherit;
+			font: inherit;
+		}
+
+		.code-editor .cm-panels .cm-button {
+			margin: 0;
+			padding: 3px 8px;
+			border: none;
+			border-radius: 4px;
+			background: ${colors.alpha(colors.white, 0.1)};
+			background-image: none;
+			color: inherit;
+			font: inherit;
+		}
+
+		/* Toggles drawn as the project search's: the box hidden, the label bordered, and lit while it's on */
+		.code-editor .cm-search label {
+			padding: 1px 7px;
+			border: 1px solid ${colors.alpha(colors.white, 0.25)};
+			border-radius: 4px;
+			font-size: inherit;
+			font-family: ui-monospace, monospace;
+			font-weight: bold;
+			cursor: pointer;
+		}
+
+		.code-editor .cm-search label:has(input:checked) {
+			border-color: ${colors.light(colors.blue)};
+			background: ${colors.alpha(colors.blue, 0.45)};
+		}
+
+		.code-editor .cm-search label:has(input:focus-visible) {
+			outline: 1px solid ${colors.lighter(colors.selected)};
+		}
+
+		.code-editor .cm-search label input {
+			position: absolute;
+			opacity: 0;
+			pointer-events: none;
+		}
+
+		.code-editor .cm-search button[name='close'] {
+			top: 4px;
+			right: 6px;
+			color: inherit;
+			font-size: 1.3em;
 		}
 
 		.head .editing {

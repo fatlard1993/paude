@@ -57,6 +57,7 @@ import { pullRequestActions } from './pullRequestReview';
 import SideShell from './SideShell';
 import { Body, NARROW, Presence, SelectHint, SelectionActions, TopBar } from './TerminalView.styles';
 
+const FILE_SHORTCUTS = { p: 'names', 'Shift+f': 'contents', 'Shift+o': 'outline' };
 const BACKGROUND = '#1b1b1b';
 // How far a finger can wander and still be tapping rather than scrolling
 const TAP_SLOP = 8;
@@ -530,6 +531,10 @@ export default class TerminalView extends View {
 	open() {
 		if (this.terminal) return;
 
+		const fileKeys = event => this.fileShortcut(event);
+
+		document.addEventListener('keydown', fileKeys);
+		this.addCleanup('fileKeys', () => document.removeEventListener('keydown', fileKeys));
 		this.addCleanup('connections', () => {
 			this.connection?.close();
 			this.shell?.stop();
@@ -831,6 +836,19 @@ export default class TerminalView extends View {
 				panel.classList.remove('resizing');
 			},
 		});
+	}
+
+	// Ctrl+P (Cmd+P) finds a file, Ctrl+Shift+F searches inside them, Ctrl+Shift+O lists the open file's outline, as
+	// VS Code has them. In a terminal the keys are its own.
+	fileShortcut(event) {
+		if (!(event.ctrlKey || event.metaKey) || event.altKey || event.target.closest?.('.xterm')) return;
+
+		const mode = FILE_SHORTCUTS[`${event.shiftKey ? 'Shift+' : ''}${event.key.toLowerCase()}`];
+
+		if (!mode) return;
+		event.preventDefault();
+		this.toggleFiles(true);
+		this.files.quickOpen(mode);
 	}
 
 	toggleFiles(open = !this.files.elem.classList.contains('open')) {

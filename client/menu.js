@@ -66,8 +66,8 @@ export const closeMenu = () => {
 	if (menu?.shown) menu.hide();
 };
 
-// A menu under a button: items ({ label, detail, accent, onPress }) and headings ({ heading }). One at a time; pressing
-// its button again, Esc, or a press elsewhere closes it.
+// A menu under a button, or at a point ({ x, y }): items ({ label, detail, accent, onPress }) and headings
+// ({ heading }). One at a time; pressing its button again, Esc, or a press elsewhere closes it.
 export const openMenu = (anchor, items) => {
 	menu ??= new GlassMenu({ maxWidth: 360 });
 
@@ -85,5 +85,5 @@ export const openMenu = (anchor, items) => {
 					},
 				},
 	);
-	menu.show({ anchor });
+	menu.show(anchor instanceof Element || !Number.isFinite(anchor?.x) ? { anchor } : anchor);
 };

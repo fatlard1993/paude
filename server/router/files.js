@@ -21,6 +21,15 @@ import {
 	searchProject,
 	writeProjectFile,
 } from '../files';
+import {
+	FileError,
+	copyEntries,
+	createEntry,
+	moveEntries,
+	restoreEntries,
+	trashEntries,
+	uploadFile,
+} from '../fileOperations';
 import { searchOptionsFrom } from '../../shared/searchQuery';
 import { may } from '../permissions';
 import { projectOf, projectPath } from '../projects';
@@ -50,7 +59,8 @@ const search = async (cwd, parameters) => {
 // Chromium's PDF viewer won't show a sandboxed PDF; Firefox's runs a PDF's scripts, so it gets the sandbox
 const chromium = userAgent => /Chrome\/|Chromium\//.test(userAgent ?? '');
 
-const raw = async (cwd, path, userAgent) => {
+// `download` hands it over as a file to save rather than one to show
+const raw = async (cwd, path, userAgent, download) => {
 	const { status, file } = await rawProjectFile(cwd, path);
 
 	if (status !== 200) return new Response(REFUSED[status], { status });
@@ -60,6 +70,9 @@ const raw = async (cwd, path, userAgent) => {
 		'content-type': file.type,
 		'x-content-type-options': 'nosniff',
 		'cache-control': 'private, no-cache',
+		...(download && {
+			'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(path.split('/').at(-1))}`,
+		}),
 	};
 
 	if (type !== 'application/pdf' || !chromium(userAgent))
@@ -85,6 +98,59 @@ const save = async (request, id) => {
 	if (saved.status !== 200) return new Response(REFUSED[saved.status], { status: saved.status });
 
 	return Response.json({ hash: saved.hash });
+};
+
+const bodyOf = request => request.json().catch(() => ({}));
+
+// Making, moving, copying, deleting and uploading files are writes to the project, so they take the same trust as
+// typing into Claude. Each answers JSON, or a FileError's message with its status.
+const MANAGING = [
+	[
+		'POST',
+		'/api/sessions/:id/files',
+		async (cwd, request) => {
+			const { path, folder } = await bodyOf(request);
+
+			return createEntry(cwd, path, { folder: folder === true });
+		},
+	],
+	['POST', '/api/sessions/:id/files/move', async (cwd, request) => moveEntries(cwd, (await bodyOf(request)).moves)],
+	['POST', '/api/sessions/:id/files/copy', async (cwd, request) => copyEntries(cwd, (await bodyOf(request)).copies)],
+	['POST', '/api/sessions/:id/files/delete', async (cwd, request) => trashEntries(cwd, (await bodyOf(request)).paths)],
+	[
+		'POST',
+		'/api/sessions/:id/files/restore',
+		async (cwd, request) => restoreEntries(cwd, (await bodyOf(request)).trash),
+	],
+	[
+		'PUT',
+		'/api/sessions/:id/files/upload',
+		async (cwd, request, match) =>
+			uploadFile(cwd, match.path, await request.arrayBuffer(), { replace: match.replace === '1' }),
+	],
+];
+
+const manage = async request => {
+	for (const [method, route, operate] of MANAGING) {
+		const match = requestMatch(method, route, request);
+
+		if (!match) continue;
+		if (!may(identityOf(credentialOf(request)), 'type', match.id))
+			return new Response('Your invite does not include editing', { status: 403 });
+
+		const cwd = await sessionFolder(match.id);
+
+		if (!cwd) return new Response('Session not found', { status: 404 });
+
+		try {
+			return Response.json(await operate(cwd, request, match));
+		} catch (error) {
+			if (error instanceof FileError) return new Response(error.message, { status: error.status });
+			throw error;
+		}
+	}
+
+	return null;
 };
 
 // Replacing across the project is writing it, so it takes the role that may type into Claude
@@ -212,6 +278,10 @@ const filesRoutes = async request => {
 
 	if (saving) return save(request, saving.id);
 
+	const managed = await manage(request);
+
+	if (managed) return managed;
+
 	const attaching = requestMatch('POST', '/api/sessions/:id/attachments', request);
 
 	if (attaching) return attach(request, attaching.id, attaching.name);
@@ -300,7 +370,7 @@ const filesRoutes = async request => {
 		}
 	}
 	if (pathname.endsWith('/search')) return search(cwd, match);
-	if (pathname.endsWith('/raw')) return raw(cwd, match.path, request.headers.get('user-agent'));
+	if (pathname.endsWith('/raw')) return raw(cwd, match.path, request.headers.get('user-agent'), match.download === '1');
 
 	const { status, text, hash } = await readProjectFile(cwd, match.path);
 

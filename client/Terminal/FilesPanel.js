@@ -26,7 +26,7 @@ import {
 import { AskingCard } from '../Asking';
 import { openMenu } from '../menu';
 import { canNote, canType } from '../identity';
-import { recall, remember } from '../storage';
+import { forget, recall, remember } from '../storage';
 import confirmDialog from '../confirmDialog';
 import { button, closeButton, dragHandle, element } from '../dom';
 import { opensInViewer, viewImage } from '../imageViewer';
@@ -34,6 +34,8 @@ import { artifactUrl } from './ArtifactsPanel';
 import renderDiffSet from './DiffView';
 import stepThrough from './tour';
 import Panel, { LINE_HEIGHT } from './FilesPanel.styles';
+import FileManager from './FileManager';
+import { codeEditor, createState, openSearchPanel } from './codeEditor';
 import { copyWithNotice } from './copySelection';
 
 const MAX_MATCHES = 200;
@@ -48,6 +50,12 @@ const DIFF_LAYOUT_KEY = 'paude.diffLayout';
 const DIFF_ORDER_KEY = 'paude.diffOrder';
 // Narrower than this, side by side leaves too little of each line
 const SPLIT_MIN_WIDTH = 700;
+const WRAP_KEY = 'paude.editorWrap';
+const DRAFT_PREFIX = 'paude.draft.';
+const DRAFT_DELAY_MS = 400;
+const DRAFT_KEPT_MS = 30 * 24 * 60 * 60 * 1000;
+const MAX_HISTORY = 50;
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 
 const iconButton = (name, title, onPress) => button('', onPress, { icon: name, title, className: 'icon-only' });
 
@@ -233,10 +241,11 @@ const languageOf = path => {
 	return LANGUAGES[extension] ?? (CODE_LIKE.has(extension) ? 'javascript' : null);
 };
 
-const buildTree = paths => {
+// Folders come from the files in them; `folders` adds ones with nothing in them yet
+const buildTree = (paths, folders = []) => {
 	const root = { folders: new Map(), files: [] };
 
-	for (const path of paths) {
+	for (const path of [...paths, ...folders.map(folder => `${folder}/`)]) {
 		const parts = path.split('/');
 		let node = root;
 
@@ -245,7 +254,7 @@ const buildTree = paths => {
 			node = node.folders.get(folder);
 		}
 
-		node.files.push(path);
+		if (parts.at(-1)) node.files.push(path);
 	}
 
 	return root;
@@ -297,12 +306,44 @@ const projectPathFrom = (file, reference) => {
 	return parts.join('/');
 };
 
+// Back and forward from the keyboard: Alt+Left and Alt+Right, or Ctrl+- and Ctrl+Shift+- on a Mac, as VS Code has them.
+// Not while typing, where Alt+Left moves the caret. -1, 1, or 0 for neither.
+const travelKey = event => {
+	if (event.defaultPrevented || event.target.closest('input, textarea, .cm-editor')) return 0;
+	if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+		if (event.key === 'ArrowLeft') return -1;
+		if (event.key === 'ArrowRight') return 1;
+	}
+	if (MAC && event.ctrlKey && !event.metaKey && !event.altKey && event.code === 'Minus') return event.shiftKey ? 1 : -1;
+
+	return 0;
+};
+
+// Drafts from sessions long finished aren't kept forever
+const pruneDrafts = () => {
+	try {
+		for (const key of Object.keys(localStorage).filter(found => found.startsWith(DRAFT_PREFIX))) {
+			const at = JSON.parse(localStorage.getItem(key) || 'null')?.at ?? 0;
+
+			if (Date.now() - at > DRAFT_KEPT_MS) localStorage.removeItem(key);
+		}
+	} catch {
+		// Storage refused: nothing kept to prune
+	}
+};
+
 export default class FilesPanel extends Panel {
 	build() {
 		document.addEventListener('selectionchange', () => this.offerNameActions());
 		this.paths = [];
 		this.changes = null;
 		this.expanded = new Set();
+		// Git lists files, never an empty folder, so the folders made here stay in the tree until the page reloads
+		this.madeFolders = new Set();
+		this.manager = new FileManager(this);
+		this.past = [];
+		this.future = [];
+		pruneDrafts();
 		this.mode = 'names';
 		this.selection = null;
 		this.searchOptions = savedOptions();
@@ -314,7 +355,13 @@ export default class FilesPanel extends Panel {
 		const search = element('div', 'search');
 
 		this.query = element('input');
-		this.query.addEventListener('input', () => this.renderList());
+		this.query.addEventListener('input', () => {
+			// As in VS Code's Ctrl+P, a # first looks for a function, class or type instead
+			if (this.mode === 'names' && this.query.value.startsWith('#')) {
+				this.query.value = this.query.value.slice(1);
+				this.setMode('symbols');
+			} else this.renderList();
+		});
 		this.toggles = {
 			caseSensitive: button('Aa', () => this.toggleOption('caseSensitive'), {
 				title: 'Match case',
@@ -343,12 +390,23 @@ export default class FilesPanel extends Panel {
 		this.modeButtons.changes.append(this.changeCount);
 		this.filtersButton = iconButton('filter', 'Files to include and exclude', () => this.toggleFilters());
 		this.fullscreenButton = iconButton('expand', 'Full screen', () => this.toggleFullscreen());
+		const newButton = iconButton('plus', 'New file or folder', () =>
+			openMenu(newButton, [
+				{ label: 'New file...', onPress: () => this.manager.create() },
+				{ label: 'New folder...', onPress: () => this.manager.create({ folder: true }) },
+				{ label: 'Upload files...', onPress: () => this.manager.pickUploads(this.here ?? '') },
+				{ label: 'Upload a folder...', onPress: () => this.manager.pickUploads(this.here ?? '', { folder: true }) },
+			]),
+		);
+
+		newButton.style.display = canType() ? '' : 'none';
 		bar.append(
 			search,
 			this.modeButtons.names,
 			this.modeButtons.contents,
 			this.modeButtons.symbols,
 			this.modeButtons.changes,
+			newButton,
 			this.filtersButton,
 			this.fullscreenButton,
 			closeButton(() => this.options.close()),
@@ -362,6 +420,7 @@ export default class FilesPanel extends Panel {
 
 		this.panes = element('div', 'panes');
 		this.list = element('div', 'list');
+		this.manager.decorateList(this.list);
 		this.viewer = element('div', 'viewer');
 		this.panes.append(this.list, this.splitter(), this.viewer);
 		// Full screen, the splitter or the window can carry the viewer across the width side by side needs
@@ -371,6 +430,22 @@ export default class FilesPanel extends Panel {
 		this.replaceRow = this.replaceControls();
 		this.elem.append(bar, this.filters, this.replaceRow, this.panes);
 		this.elem.tabIndex = -1;
+
+		this.elem.addEventListener('keydown', event => {
+			const step = travelKey(event);
+
+			if (!step) return;
+			event.preventDefault();
+			if (step < 0) this.back();
+			else this.forward();
+		});
+		// A mouse's own back and forward buttons step through what was read, not away from the session
+		for (const type of ['mousedown', 'mouseup'])
+			this.elem.addEventListener(type, event => {
+				if (event.button !== 3 && event.button !== 4) return;
+				event.preventDefault();
+				if (type === 'mouseup') this[event.button === 3 ? 'back' : 'forward']();
+			});
 
 		// Esc steps back out of full screen first, then closes the panel
 		this.elem.addEventListener('keydown', event => {
@@ -534,7 +609,11 @@ export default class FilesPanel extends Panel {
 
 		if (this.mode === 'changes') return this.renderChanges(query);
 		if (!query && this.mode === 'contents') return this.list.replaceChildren(this.todoOffer());
-		if (!query) return this.list.replaceChildren(...this.comparingNotice(), ...this.treeEntries(buildTree(paths), 0));
+		if (!query)
+			return this.list.replaceChildren(
+				...this.comparingNotice(),
+				...this.treeEntries(buildTree(paths, [...this.madeFolders]), 0),
+			);
 
 		if (this.mode === 'contents') {
 			this.searchTimer = setTimeout(() => this.searchContents(query), SEARCH_DELAY_MS);
@@ -846,7 +925,7 @@ export default class FilesPanel extends Panel {
 		return node;
 	}
 
-	treeEntries(node, depth) {
+	treeEntries(node, depth, parent = '') {
 		const indent = entry => {
 			entry.style.paddingLeft = `${4 + depth * 14}px`;
 
@@ -856,7 +935,7 @@ export default class FilesPanel extends Panel {
 		const entries = [];
 
 		for (const [name, child] of folders) {
-			const key = `${depth}:${name}:${child.files[0] ?? ''}`;
+			const key = parent + name;
 			const open = this.expanded.has(key);
 			const entry = indent(element('div', 'entry folder'));
 
@@ -870,17 +949,79 @@ export default class FilesPanel extends Panel {
 				dot.title = 'Something in here changed';
 				entry.append(dot);
 			}
-			entry.addEventListener('click', () => {
-				if (open) this.expanded.delete(key);
-				else this.expanded.add(key);
-				this.renderList();
+			this.manager.decorate(entry, key);
+			entry.addEventListener('click', event => {
+				if (!this.manager.pressed(event, key)) this.toggleFolder(key);
 			});
-			entries.push(entry, ...(open ? this.treeEntries(child, depth + 1) : []));
+			entries.push(entry, ...(open ? this.treeEntries(child, depth + 1, `${key}/`) : []));
 		}
 
 		for (const path of node.files) entries.push(indent(this.fileEntry(path.split('/').at(-1), path)));
 
 		return entries;
+	}
+
+	// Open or close a folder in the tree; new files are made where the list was last looked into
+	toggleFolder(path, open = !this.expanded.has(path)) {
+		if (open) this.expanded.add(path);
+		else this.expanded.delete(path);
+		this.here = open ? path : path.split('/').slice(0, -1).join('/');
+		this.renderList();
+	}
+
+	// The folders down to a path opened in the tree, and a folder's own with `folder`
+	reveal(path, { folder = false, render = false } = {}) {
+		const parts = path.split('/');
+
+		for (let depth = 1; depth < parts.length + (folder ? 1 : 0); depth += 1)
+			this.expanded.add(parts.slice(0, depth).join('/'));
+		if (render) this.renderList();
+	}
+
+	// Files and folders moved: whatever the panel remembers by their old paths follows them, an edit in progress too
+	followMoves(moves) {
+		const follow = path => {
+			for (const { from, to } of moves) {
+				if (path === from) return to;
+				if (path?.startsWith(`${from}/`)) return to + path.slice(from.length);
+			}
+
+			return path;
+		};
+
+		this.expanded = new Set([...this.expanded].map(follow));
+		for (const location of [...this.past, ...this.future]) if (!location.outside) location.path = follow(location.path);
+		this.madeFolders = new Set([...this.madeFolders].map(follow));
+		this.here = follow(this.here);
+		if (this.current && !this.outside && follow(this.current) !== this.current) {
+			this.current = follow(this.current);
+			this.renderViewer();
+		}
+	}
+
+	// Files and folders deleted: the open file closes if it was one of them
+	forget(paths) {
+		const gone = path => paths.some(deleted => path === deleted || path?.startsWith(`${deleted}/`));
+
+		this.madeFolders = new Set([...this.madeFolders].filter(path => !gone(path)));
+		if (gone(this.here)) this.here = '';
+		if (!this.current || this.outside || !gone(this.current)) return;
+
+		this.current = null;
+		this.view = null;
+		this.editing = null;
+		this.panes.classList.remove('reading');
+		this.viewer.replaceChildren(element('div', 'empty', 'Pick a file to read it.'));
+	}
+
+	// Search the contents of one folder
+	findIn(folder) {
+		this.searchOptions.include = folder;
+		this.include.value = folder;
+		this.saveOptions();
+		this.filters.classList.add('shown');
+		this.setMode('contents');
+		this.query.focus();
 	}
 
 	changedInside(node) {
@@ -898,14 +1039,18 @@ export default class FilesPanel extends Panel {
 		if (change) entry.append(statusMark(change.status));
 		entry.dataset.path = path;
 		entry.title = change?.from ? `${path} (from ${change.from})` : path;
-		entry.addEventListener('click', () => {
+		// A row for the file itself, not one of its lines or its changes, is one to manage
+		const managed = !diff && line === undefined;
+
+		if (managed) this.manager.decorate(entry, path);
+		entry.addEventListener('click', event => {
 			if (this.comparing && !diff) {
 				const first = this.comparing;
 
 				this.comparing = null;
 				this.openDiffSet({ source: 'files', a: first, b: path });
 			} else if (diff) this.openDiff(path);
-			else this.open(path, line);
+			else if (!managed || !this.manager.pressed(event, path)) this.open(path, line);
 		});
 
 		return entry;
@@ -914,6 +1059,7 @@ export default class FilesPanel extends Panel {
 	// An edit not yet saved is lost by leaving it, so leaving asks first
 	async leaveEditing() {
 		if (!this.editing || this.editing.text === this.text) {
+			if (this.editing) this.forgetDraft();
 			this.editing = null;
 
 			return true;
@@ -926,7 +1072,10 @@ export default class FilesPanel extends Panel {
 			confirmLabel: 'Discard them',
 		});
 
-		if (leave) this.editing = null;
+		if (leave) {
+			this.forgetDraft();
+			this.editing = null;
+		}
 
 		return leave;
 	}
@@ -938,6 +1087,7 @@ export default class FilesPanel extends Panel {
 	// Any kind of diff: a changed file, a turn, a proposal, or two files compared
 	async openDiffSet(source) {
 		if (!(await this.leaveEditing())) return;
+		this.leaving(null);
 
 		const single = source.path ?? source.b ?? null;
 
@@ -1011,11 +1161,13 @@ export default class FilesPanel extends Panel {
 			: rawFileUrl(this.options.sessionId, this.current);
 	}
 
-	async open(path, line, lastLine = line, { outside = false } = {}) {
+	async open(path, line, lastLine = line, { outside = false, returning = false } = {}) {
 		if (!(await this.leaveEditing())) return;
+		if (!returning) this.leaving(path, line);
 
 		this.leaveTour(subject => !outside && subject.file?.path === path);
 		this.current = path;
+		this.here = outside ? this.here : path.split('/').slice(0, -1).join('/');
 		this.outside = outside;
 		this.view = 'file';
 		this.kind = kindOf(path);
@@ -1048,6 +1200,7 @@ export default class FilesPanel extends Panel {
 		this.failure = null;
 		this.hash = response.headers.get('x-content-hash');
 		this.text = body;
+		this.draft = outside ? null : this.draftOf(path, body);
 		this.lines = body.replace(/\n$/, '').split('\n');
 		this.commentLines = null;
 		await this.loadCommentLines();
@@ -1146,7 +1299,7 @@ export default class FilesPanel extends Panel {
 		const path = element('div', 'path', this.current);
 
 		path.title = this.current;
-		head.append(back, fileIcon(this.current), path);
+		head.append(back, ...this.travelButtons(), fileIcon(this.current), path);
 		if (change) head.append(statusMark(change.status));
 
 		if (this.editing) return this.editingHead(head);
@@ -1255,7 +1408,7 @@ export default class FilesPanel extends Panel {
 
 		back.classList.add('back');
 		title.title = set?.title ?? '';
-		head.append(back, ...(single ? [fileIcon(single.path)] : []), title);
+		head.append(back, ...this.travelButtons(), ...(single ? [fileIcon(single.path)] : []), title);
 
 		if (set?.files.length > 1 || Object.values(set?.outlines ?? {}).some(outline => outline.length))
 			head.append(this.orderButton());
@@ -1296,6 +1449,7 @@ export default class FilesPanel extends Panel {
 
 		head.append(
 			element('span', 'editing', dirty ? 'Editing, not saved' : 'Editing'),
+			iconButton('magnifying-glass', 'Find and replace (Ctrl+F, Ctrl+H)', () => openSearchPanel(this.editorView)),
 			button('Save', () => this.save(), { title: 'Save (Ctrl+S)', className: 'primary' }),
 			button('Cancel', () => this.cancelEditing()),
 		);
@@ -1305,6 +1459,8 @@ export default class FilesPanel extends Panel {
 
 	renderViewer() {
 		const scroll = this.body?.scrollTop ?? 0;
+
+		this.dropEditor();
 
 		this.body = element('div', 'body');
 
@@ -1328,6 +1484,7 @@ export default class FilesPanel extends Panel {
 			this.viewerHead(),
 			...(this.tour ? [this.tourCard.elem] : []),
 			...(this.conflict ? [this.conflictNotice()] : []),
+			...(this.draft && !this.editing && this.view === 'file' ? [this.draftNotice()] : []),
 			this.body,
 		);
 		this.body.scrollTop = scroll;
@@ -1421,52 +1578,70 @@ export default class FilesPanel extends Panel {
 		this.renderList();
 	}
 
-	// Compare: the list picks the file to compare the open one with
-	startComparing() {
-		this.comparing = this.current;
+	// Compare: the list picks the file to compare this one (the open one, unless another is given) with
+	startComparing(path = this.current) {
+		this.comparing = path;
 		this.setMode('names');
 		this.panes.classList.remove('reading');
 	}
 
-	// The syntax font colors the text being typed, the same as it does the source view
+	// The edit's own state (its text, cursors and undo history) outlives the editor drawn for it, so drawing the viewer
+	// again, for a conflict say, keeps all of it
 	editor() {
-		const language = languageOf(this.current);
-		const area = element('textarea', `editor syntax-highlighting ${language ? `language-${language}` : 'plain'}`);
+		const view = codeEditor(this.editing.state);
+		const holder = element('div', 'code-editor');
 
-		area.value = this.editing.text;
-		area.spellcheck = false;
-		area.addEventListener('input', () => {
-			const wasDirty = this.editing.text !== this.text;
-
-			this.editing.text = area.value;
-			if (wasDirty !== (this.editing.text !== this.text)) this.refreshHead();
+		holder.append(view.dom);
+		this.editorView = view;
+		requestAnimationFrame(() => {
+			view.scrollDOM.scrollTop = this.editing?.scroll ?? 0;
+			view.focus();
 		});
-		area.addEventListener('keydown', event => {
-			if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-				event.preventDefault();
-				this.save();
-			} else if (event.key === 'Tab' && !event.shiftKey) {
-				event.preventDefault();
-				area.setRangeText('\t', area.selectionStart, area.selectionEnd, 'end');
-				area.dispatchEvent(new Event('input'));
-			} else if (event.key === 'Escape') {
-				// Esc would close the panel; while editing it does nothing, and the edit stays
-				event.stopPropagation();
-			}
-		});
-		requestAnimationFrame(() => area.focus());
 
-		return area;
+		return holder;
+	}
+
+	// Leaving the editor drawn: where it was scrolled to is kept with the edit
+	dropEditor() {
+		if (!this.editorView) return;
+
+		if (this.editing) this.editing.scroll = this.editorView.scrollDOM.scrollTop;
+		this.editorView.destroy();
+		this.editorView = null;
 	}
 
 	refreshHead() {
 		this.viewer.querySelector('.head')?.replaceWith(this.viewerHead());
 	}
 
-	startEditing() {
-		this.editing = { text: this.text };
+	// An edit begins from the file as read, or from a draft kept from before (over the version it was begun on, so a
+	// newer one is a conflict when saving rather than lost)
+	startEditing({ text = this.text, hash = this.hash } = {}) {
+		this.draft = null;
+		this.editing = {
+			text,
+			hash,
+			state: createState(text, {
+				path: this.current,
+				language: languageOf(this.current),
+				wrap: recall(WRAP_KEY) === 'on',
+				onSave: () => this.save(),
+				onWrap: on => remember(WRAP_KEY, on ? 'on' : 'off'),
+				onUpdate: update => {
+					this.editing.state = update.state;
+					if (!update.docChanged) return;
+
+					const wasDirty = this.editing.text !== this.text;
+
+					this.editing.text = update.state.doc.toString();
+					if (wasDirty !== (this.editing.text !== this.text)) this.refreshHead();
+					this.keepDraft();
+				},
+			}),
+		};
 		this.selection = null;
 		this.renderViewer();
+		if (text !== this.text) this.keepDraft();
 	}
 
 	async cancelEditing() {
@@ -1476,7 +1651,7 @@ export default class FilesPanel extends Panel {
 		}
 	}
 
-	async save(hash = this.hash) {
+	async save(hash = this.editing.hash) {
 		const { text } = this.editing;
 		const { body, response } = await saveFile(this.options.sessionId, this.current, text, hash);
 
@@ -1496,12 +1671,149 @@ export default class FilesPanel extends Panel {
 		this.hash = body.hash;
 		this.text = text;
 		this.lines = text.replace(/\n$/, '').split('\n');
+		this.forgetDraft();
 		this.editing = null;
 		this.conflict = null;
 		new Notify({ type: 'success', content: 'Saved', timeout: 1500 });
 		await this.refreshChanges();
 		this.renderList();
 		this.renderViewer();
+	}
+
+	draftKey(path) {
+		return `${DRAFT_PREFIX}${this.options.sessionId}:${path}`;
+	}
+
+	// An edit not yet saved is kept in this browser as it's typed, so a reload or a lost connection doesn't lose it.
+	// One that matches the file now is no draft at all.
+	draftOf(path, text) {
+		let draft = null;
+
+		try {
+			draft = JSON.parse(recall(this.draftKey(path)) || 'null');
+		} catch {
+			// Unreadable: as good as none
+		}
+
+		if (draft && typeof draft.text === 'string' && draft.text !== text) return draft;
+		forget(this.draftKey(path));
+
+		return null;
+	}
+
+	keepDraft() {
+		const path = this.current;
+
+		clearTimeout(this.draftTimer);
+		this.draftTimer = setTimeout(() => {
+			if (!this.editing || this.current !== path) return;
+			if (this.editing.text === this.text) return forget(this.draftKey(path));
+
+			remember(
+				this.draftKey(path),
+				JSON.stringify({ text: this.editing.text, hash: this.editing.hash, at: Date.now() }),
+			);
+		}, DRAFT_DELAY_MS);
+	}
+
+	forgetDraft() {
+		clearTimeout(this.draftTimer);
+		if (this.current) forget(this.draftKey(this.current));
+		this.draft = null;
+	}
+
+	draftNotice() {
+		const changed = this.draft.hash !== this.hash;
+		const notice = element(
+			'div',
+			'conflict',
+			`An edit of this file you didn't save (${relativeTime(this.draft.at)})${changed ? ', and the file has changed since' : ''}.`,
+		);
+
+		notice.append(
+			button('Restore it', () => this.startEditing({ text: this.draft.text, hash: this.draft.hash }), {
+				className: 'primary',
+			}),
+			button('Discard it', () => {
+				this.forgetDraft();
+				this.renderViewer();
+			}),
+		);
+
+		return notice;
+	}
+
+	// Where the reader is: the file, its picked lines and how far down, for Back and Forward to return to
+	location() {
+		if (this.view !== 'file' || !this.current) return null;
+
+		return {
+			path: this.current,
+			outside: this.outside,
+			selection: this.selection && { ...this.selection },
+			scroll: this.body?.scrollTop ?? 0,
+		};
+	}
+
+	// Somewhere new is about to open: where the reader was goes on the way back, and the way forward is gone
+	leaving(path, line) {
+		const here = this.location();
+
+		if (!here || (here.path === path && !line)) return;
+
+		this.past.push(here);
+		if (this.past.length > MAX_HISTORY) this.past.shift();
+		this.future = [];
+	}
+
+	async travel(from, to) {
+		const target = from.pop();
+
+		if (!target) return;
+
+		const here = this.location();
+		const { selection } = target;
+
+		await this.open(target.path, selection?.from, selection?.to, { outside: target.outside, returning: true });
+		if (this.current !== target.path) return from.push(target);
+		if (here) to.push(here);
+		if (this.body) this.body.scrollTop = target.scroll;
+		this.refreshHead();
+	}
+
+	back() {
+		return this.travel(this.past, this.future);
+	}
+
+	forward() {
+		return this.travel(this.future, this.past);
+	}
+
+	travelButtons() {
+		const key = MAC ? 'Ctrl+-' : 'Alt+Left';
+		const forwardKey = MAC ? 'Ctrl+Shift+-' : 'Alt+Right';
+
+		return [
+			...(this.past.length ? [iconButton('chevron-left', `Back (${key})`, () => this.back())] : []),
+			...(this.future.length ? [iconButton('chevron-right', `Forward (${forwardKey})`, () => this.forward())] : []),
+		];
+	}
+
+	// From the keyboard anywhere on the page: the names (Ctrl+P), contents (Ctrl+Shift+F) or symbols to look through,
+	// or the open file's outline (Ctrl+Shift+O)
+	quickOpen(mode) {
+		if (mode === 'outline') {
+			if (this.current && this.view === 'file' && !this.outside) return this.showOutline();
+			mode = 'symbols';
+		}
+
+		const selected = window.getSelection().toString().trim();
+
+		if (mode === 'contents' && selected && !selected.includes('\n')) this.query.value = selected;
+		this.setMode(mode);
+		this.panes.classList.remove('reading');
+		this.query.focus();
+		this.query.select();
 	}
 
 	// Someone (Claude, most likely) saved the file after the edit began; neither version is dropped without a choice
@@ -1523,6 +1835,7 @@ export default class FilesPanel extends Panel {
 				this.text = this.conflict.text;
 				this.hash = this.conflict.hash;
 				this.lines = this.text.replace(/\n$/, '').split('\n');
+				this.forgetDraft();
 				this.editing = null;
 				this.conflict = null;
 				this.renderViewer();

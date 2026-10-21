@@ -5,6 +5,7 @@ import { afterAll, beforeAll, expect, test } from 'bun:test';
 
 import { initActivity, statusOf } from '../activity';
 import { initAttachments } from '../attachments';
+import { initTrash } from '../fileOperations';
 import { createInvite, createToken, initAuth } from '../auth';
 import { hookSecret, setHookAddress } from '../hookSettings';
 import { initNames } from '../names';
@@ -45,6 +46,7 @@ beforeAll(async () => {
 	setProjectsRoot(path.join(base, 'projects'));
 	await Promise.all([initAuth(data), initNotes(data), initNames(data), initActivity(data), initProjects(data)]);
 	initAttachments(data);
+	initTrash(data);
 	setHookAddress({ host: '127.0.0.1', port: 1 });
 	setClaudePath(FAKE_CLAUDE);
 
@@ -192,6 +194,52 @@ test('guests reach their own session only, and what their role allows', async ()
 			})
 		).status,
 	).toBe(204);
+});
+
+test('making a file or folder takes the typing role, and is refused over what is there', async () => {
+	const make = (body, token = tokens.owner) =>
+		call(`/api/sessions/${session.id}/files`, { token, method: 'POST', body });
+
+	expect((await make({ path: 'drafts/idea.md' }, tokens.comment)).status).toBe(403);
+	expect(await (await make({ path: 'drafts/idea.md' })).json()).toEqual({ path: 'drafts/idea.md', listed: true });
+	expect((await make({ path: 'drafts/idea.md' })).status).toBe(409);
+	expect((await make({ path: 'drafts/later', folder: true })).status).toBe(200);
+	expect((await make({ path: '../escape.md' })).status).toBe(400);
+});
+
+test('moving, deleting, restoring and uploading take the typing role; a download is the file to save', async () => {
+	const files = (action, body, { token = tokens.owner, method = 'POST' } = {}) =>
+		call(`/api/sessions/${session.id}/files/${action}`, { token, method, body });
+	const upload = (query, token = tokens.owner) =>
+		router(
+			new Request(`http://paude.test/api/sessions/${session.id}/files/upload?${query}`, {
+				method: 'PUT',
+				headers: { authorization: `Bearer ${token}` },
+				body: 'uploaded\n',
+			}),
+			server,
+		);
+
+	expect((await upload('path=up.txt', tokens.comment)).status).toBe(403);
+	expect(await (await upload('path=up.txt')).json()).toEqual({ path: 'up.txt', listed: true });
+	expect((await upload('path=up.txt')).status).toBe(409);
+	expect((await upload('path=up.txt&replace=1')).status).toBe(200);
+
+	const download = await call(`/api/sessions/${session.id}/raw?path=up.txt&download=1`, { token: tokens.comment });
+
+	expect(download.headers.get('content-disposition')).toBe("attachment; filename*=UTF-8''up.txt");
+
+	expect((await files('move', { moves: [{ from: 'up.txt', to: 'down.txt' }] }, { token: tokens.comment })).status).toBe(
+		403,
+	);
+	expect((await files('move', { moves: [{ from: 'up.txt', to: 'down.txt' }] })).status).toBe(200);
+	expect((await files('copy', { copies: [{ from: 'down.txt', to: 'again.txt' }] })).status).toBe(200);
+
+	const { trash } = await (await files('delete', { paths: ['down.txt', 'again.txt'] })).json();
+
+	expect((await files('restore', { trash }, { token: tokens.comment })).status).toBe(403);
+	expect(await (await files('restore', { trash })).json()).toEqual({ restored: ['down.txt', 'again.txt'] });
+	expect((await files('delete', {})).status).toBe(400);
 });
 
 test("other servers are listed only for this machine's own logins", async () => {

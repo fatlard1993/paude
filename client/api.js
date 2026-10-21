@@ -134,6 +134,25 @@ export const getTurnChanges = async sessionId =>
 export const saveFile = async (sessionId, path, text, hash) =>
 	await PUT('/api/sessions/:id/file', { urlParameters: { id: sessionId }, body: { path, text, hash } });
 
+// Resolves to { path, listed }: whether git lets the new file show in the listing (a folder never says)
+export const createEntry = async (sessionId, path, folder) =>
+	await POST('/api/sessions/:id/files', { urlParameters: { id: sessionId }, body: { path, folder } });
+
+// `action` is move ({ moves: [{ from, to }] }), copy ({ copies }), delete ({ paths }, answering { trash }) or restore
+// ({ trash }); a refusal answers with why, as text
+export const manageFiles = async (sessionId, action, body) =>
+	await POST('/api/sessions/:id/files/:action', { urlParameters: { id: sessionId, action }, body });
+
+// A file from this computer into the project at `path`; a 409 means something is there, which `replace` writes over
+export const uploadFile = async (sessionId, path, file, { replace = false } = {}) => {
+	const response = await fetch(
+		`/api/sessions/${encodeURIComponent(sessionId)}/files/upload?path=${encodeURIComponent(path)}${replace ? '&replace=1' : ''}`,
+		{ method: 'PUT', body: file },
+	).catch(() => null);
+
+	return { response, body: response?.ok ? await response.json() : await response?.text() };
+};
+
 export const readFile = async (sessionId, path) =>
 	await GET('/api/sessions/:id/file', {
 		urlParameters: { id: sessionId },
@@ -172,8 +191,8 @@ export const deleteSession = async sessionId => await DELETE('/api/sessions/:id'
 export const nameSession = async (sessionId, name) =>
 	await PUT('/api/sessions/:id/name', { urlParameters: { id: sessionId }, body: { name } });
 
-export const rawFileUrl = (sessionId, path) =>
-	`/api/sessions/${encodeURIComponent(sessionId)}/raw?path=${encodeURIComponent(path)}`;
+export const rawFileUrl = (sessionId, path, { download = false } = {}) =>
+	`/api/sessions/${encodeURIComponent(sessionId)}/raw?path=${encodeURIComponent(path)}${download ? '&download=1' : ''}`;
 
 export const getWatching = async () => await GET('/api/watching', { invalidateAfter: 0 });
 
