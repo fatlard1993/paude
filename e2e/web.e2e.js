@@ -1492,6 +1492,12 @@ test(
 			await page.waitForSelector('.server-switch:not([style*="none"])');
 			await page.click('.server-switch');
 			await page.waitForSelector('[role=menu] li .label');
+			// The menu unfolds as it opens; a row is clickable once it's drawn at its full height
+			await page.waitForFunction(() => {
+				const row = [...document.querySelectorAll('[role=menu] li')].at(-1);
+
+				return row && row.getBoundingClientRect().height === row.offsetHeight;
+			});
 
 			const items = await page.$$eval('[role=menu] li .label', labels => labels.map(label => label.textContent));
 
