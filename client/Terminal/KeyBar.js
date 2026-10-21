@@ -19,13 +19,15 @@ const KEYS = [
 
 const Bar = styled(
 	Component,
-	({ colors }) => `
+	({ colors, media, safeArea }) => `
 		display: none;
 		gap: 4px;
 		padding: 4px 8px;
+		/* Clear of the home indicator, but not of the keyboard, which covers it: the room shrinks as the keyboard opens */
+		padding-bottom: max(4px, calc(${safeArea.bottom} - (100dvh - var(--visible-height, 100dvh))));
 		overflow-x: auto;
 
-		@media (pointer: coarse) {
+		@media ${media.touch} {
 			display: flex;
 		}
 

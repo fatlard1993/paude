@@ -159,6 +159,7 @@ module.exports = {
 		'notificationclick',
 		'paudes',
 		'hsla',
+		'100dvh',
 		'xdg',
 		'br',
 		'codespan',
