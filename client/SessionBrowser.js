@@ -1,7 +1,7 @@
-import { Elem, styled } from '@vanilla-bean/components';
+import { Card, Elem, SectionLabel, Tabs, debounce, styled } from '@vanilla-bean/components';
 
+import { relativeTime } from '@vanilla-bean/components/utils/date';
 import dayGroup, { DAY_GROUPS, whenIn } from '../shared/dayGroup';
-import relativeTime from '../shared/relativeTime';
 import { button, element } from './dom';
 import { Empty, checkbox } from './Layout';
 import { contextMenu, openMenu } from './menu';
@@ -20,7 +20,7 @@ const FILTERS = [
 
 const Box = styled(
 	Elem,
-	({ colors }) => `
+	({ colors, radius }) => `
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
@@ -41,36 +41,8 @@ const Box = styled(
 			flex: 1;
 		}
 
-		.chip {
-			padding: 2px 10px;
-			border: 1px solid ${colors.alpha(colors.white, 0.15)};
-			border-radius: 12px;
-			background: transparent;
-			color: ${colors.light(colors.gray)};
-			font: inherit;
-			font-size: 0.85em;
-		}
-
-		.chip.active {
-			border-color: ${colors.light(colors.blue)};
-			background: ${colors.alpha(colors.blue, 0.3)};
-			color: ${colors.white};
-		}
-
-		.switch {
-			display: inline-flex;
-			border: 1px solid ${colors.alpha(colors.white, 0.15)};
-			border-radius: 12px;
-			overflow: hidden;
-		}
-
-		.switch .chip {
-			border: none;
-			border-radius: 0;
-		}
-
 		.summary {
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 			font-size: 0.85em;
 		}
 
@@ -82,10 +54,6 @@ const Box = styled(
 
 		.group {
 			margin: 10px 0 0;
-			color: ${colors.light(colors.gray)};
-			font-size: 0.8em;
-			letter-spacing: 0.05em;
-			text-transform: uppercase;
 		}
 
 		.group .count {
@@ -117,9 +85,9 @@ const Box = styled(
 			align-items: center;
 			gap: 6px;
 			padding: 8px 10px;
-			border-radius: 6px;
-			background: ${colors.darker(colors.gray)};
-			box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
+			border-radius: ${radius.md};
+			background: ${colors.surface};
+			box-shadow: 0 -4px 16px ${colors.alpha(colors.vantablack, 0.4)};
 		}
 
 		.bulk .picked {
@@ -143,20 +111,11 @@ const Box = styled(
 			align-items: center;
 			gap: 8px;
 			margin-top: 6px;
-			padding: 8px 10px;
-			border-radius: 6px;
-			box-shadow: inset 3px 0 var(--project-accent, transparent);
-			background: ${colors.alpha(colors.white, 0.03)};
-			cursor: pointer;
-		}
-
-		.project-head:hover {
-			background: ${colors.alpha(colors.white, 0.07)};
 		}
 
 		.project-head .chevron {
 			width: 1em;
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 		}
 
 		.project-head .name {
@@ -169,7 +128,7 @@ const Box = styled(
 			overflow: hidden;
 			text-overflow: ellipsis;
 			white-space: nowrap;
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 			font-size: 0.85em;
 		}
 
@@ -219,27 +178,29 @@ export default class SessionBrowser {
 		this.latest = 0;
 
 		this.search = Object.assign(element('input', 'search'), { type: 'search', placeholder });
-		this.search.addEventListener('input', () => {
-			clearTimeout(this.timer);
-			this.timer = setTimeout(() => this.reload(), SEARCH_DELAY_MS);
-		});
+		this.search.addEventListener(
+			'input',
+			debounce(() => this.reload(), SEARCH_DELAY_MS),
+		);
 
 		this.chips = FILTERS.map(({ name, label, title }) => {
-			const chip = button(label, () => this.setFilter(name), { title, className: 'chip variant-flat' });
+			const chip = button(label, () => this.setFilter(name), { title, className: 'variant-chip' });
 
 			chip.dataset.filter = name;
 
 			return chip;
 		});
-		this.switch = element('span', 'switch');
-		this.groupChips = ['day', 'project'].map(name =>
-			button(name === 'day' ? 'By day' : 'By project', () => this.setGroupBy(name), {
-				className: 'chip variant-flat',
-			}),
-		);
-		this.switch.append(...this.groupChips);
+		this.switch = new Tabs({
+			variant: 'segmented',
+			tabs: [
+				{ id: 'day', label: 'By day' },
+				{ id: 'project', label: 'By project' },
+			],
+			selected: this.groupBy,
+			onChange: name => this.setGroupBy(name),
+		});
 		this.pickButton = button('Select', () => this.setPicking(!this.picking), {
-			className: 'chip variant-flat',
+			className: 'variant-chip',
 			title: 'Pick several to archive, watch or delete together',
 		});
 
@@ -248,7 +209,7 @@ export default class SessionBrowser {
 		toolbar.append(
 			...this.chips,
 			element('span', 'spacer'),
-			...(projects ? [this.switch] : []),
+			...(projects ? [this.switch.elem] : []),
 			...(bulk ? [this.pickButton] : []),
 		);
 		this.summary = element('div', 'summary');
@@ -297,10 +258,7 @@ export default class SessionBrowser {
 
 	paintToolbar() {
 		for (const chip of this.chips) chip.classList.toggle('active', chip.dataset.filter === this.filter);
-		this.groupChips.forEach((chip, index) =>
-			chip.classList.toggle('active', ['day', 'project'][index] === this.groupBy),
-		);
-		this.switch.style.display = this.narrowed ? 'none' : '';
+		this.switch.elem.style.display = this.narrowed ? 'none' : '';
 		this.pickButton.classList.toggle('active', this.picking);
 		this.pickButton.textContent = this.picking ? 'Done' : 'Select';
 		this.extra.style.display = !this.narrowed && this.groupBy === 'project' ? '' : 'none';
@@ -367,10 +325,12 @@ export default class SessionBrowser {
 
 			if (!inGroup.length) continue;
 
-			const heading = element('div', 'group', group);
-
-			heading.append(element('span', 'count', String(inGroup.length)));
-			this.list.append(heading);
+			new SectionLabel({
+				appendTo: this.list,
+				addClass: 'group',
+				textContent: group,
+				append: element('span', 'count', String(inGroup.length)),
+			});
 			for (const session of inGroup)
 				this.card(session, this.list, { when: whenIn(group, session.lastModified ?? session.activeAt) });
 		}
@@ -428,14 +388,14 @@ export default class SessionBrowser {
 					this.paintBulk();
 					this.redraw();
 				},
-				{ className: 'chip variant-flat' },
+				{ className: 'variant-chip' },
 			),
 			...(picked.length
 				? this.bulk(picked).map(({ label, title, onPress, danger }) =>
-						button(label, onPress, { title, className: `chip variant-flat${danger ? ' danger' : ''}` }),
+						button(label, onPress, { title, className: `variant-chip${danger ? ' danger' : ''}` }),
 					)
 				: []),
-			button('Done', () => this.setPicking(false), { className: 'chip variant-flat active' }),
+			button('Done', () => this.setPicking(false), { className: 'variant-chip active' }),
 		);
 	}
 
@@ -459,11 +419,10 @@ export default class SessionBrowser {
 			const id = project.server ? `${project.server}/${project.name}` : project.name;
 			const open = opened[id] ?? Boolean(project.watching || project.liveCount);
 			const section = element('div', 'project-group');
-			const head = element('div', 'project-head');
+			const head = new Card({ accent: project.accent, interactive: true, addClass: 'project-head' }).elem;
 			const body = element('div', 'project-body');
 			const about = element('span', 'about');
 
-			if (project.accent) head.style.setProperty('--project-accent', project.accent);
 			head.append(
 				element('i', `fa-solid fa-chevron-${open ? 'down' : 'right'} chevron`),
 				element('span', 'name', project.name),

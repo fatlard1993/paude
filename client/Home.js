@@ -1,4 +1,4 @@
-import { Elem, Notify, View, styled } from '@vanilla-bean/components';
+import { Elem, Notify, SectionLabel, View, styled, theme } from '@vanilla-bean/components';
 
 import { tintsOf } from '../shared/hues';
 import { byWatchedThenRecent } from '../shared/projects';
@@ -24,7 +24,7 @@ import { bulkActions, sessionMenu } from './sessionActions';
 import { breadcrumbs } from './Breadcrumbs';
 import { button, element } from './dom';
 import { Bar, ghostButton } from './Bar';
-import { Empty, Scroll, SectionTitle, sessionCard } from './Layout';
+import { Empty, Scroll, sessionCard } from './Layout';
 import { Places, carryDraft, composeBox, placePrompt } from './PromptHome';
 
 // The project list's last row: pressed, it opens into the folder's path
@@ -72,7 +72,7 @@ const AddFolder = styled(
 );
 
 // What needs you heads the page, in the color of a session asking
-const urgent = { color: 'hsl(38, 80%, 70%)' };
+const urgent = { color: theme.colors.lighter(theme.colors.warning).toString() };
 
 const List = styled.Component`
 	display: flex;
@@ -104,20 +104,20 @@ export default class Home extends View {
 		const scroll = new Scroll({ appendTo: this });
 
 		this.promptBox(scroll);
-		this.needsTitle = new SectionTitle({
+		this.needsTitle = new SectionLabel({
 			appendTo: scroll,
 			textContent: 'Needs you',
 			style: { ...urgent, display: 'none' },
 		});
 		this.needs = new List({ appendTo: scroll });
-		this.watchingTitle = new SectionTitle({
+		this.watchingTitle = new SectionLabel({
 			appendTo: scroll,
 			textContent: 'Watching: running, or with news',
 			style: { display: 'none' },
 		});
 		this.watching = new List({ appendTo: scroll });
 		this.unreachable = new List({ appendTo: scroll });
-		new SectionTitle({ appendTo: scroll, textContent: 'Sessions', style: { marginTop: '12px' } });
+		new SectionLabel({ appendTo: scroll, textContent: 'Sessions', style: { marginTop: '12px' } });
 
 		this.fetchSessions = this.sessionsFrom([]);
 		this.adder = this.addFolderCard();

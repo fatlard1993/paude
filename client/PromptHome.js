@@ -9,17 +9,17 @@ import { sessionCard } from './Layout';
 
 const Compose = styled(
 	Elem,
-	({ colors }) => `
+	({ colors, radius }) => `
 		display: flex;
 		flex-direction: column;
-		border: 1px solid ${colors.alpha(colors.white, 0.12)};
+		border: 1px solid ${colors.border};
 		border-radius: 10px;
 		background: ${colors.alpha(colors.black, 0.35)};
 		transition: border-color 0.15s, box-shadow 0.15s;
 
 		&:focus-within {
-			border-color: ${colors.lightest(colors.teal).setAlpha(0.6)};
-			box-shadow: 0 0 0 3px ${colors.alpha(colors.teal, 0.15)};
+			border-color: ${colors.light(colors.blue)};
+			box-shadow: 0 0 0 2px ${colors.alpha(colors.blue, 0.35)};
 		}
 
 		textarea {
@@ -58,17 +58,7 @@ const Compose = styled(
 			align-items: center;
 			gap: 6px;
 			max-width: 100%;
-			padding: 3px 10px;
-			border: 1px solid ${colors.alpha(colors.white, 0.12)};
-			border-radius: 999px;
-			color: ${colors.alpha(colors.white, 0.75)};
-			font: inherit;
-			font-size: 0.85em;
 			overflow: hidden;
-		}
-
-		.chip:hover {
-			color: ${colors.white};
 		}
 
 		.chip.lifetime.warm {
@@ -78,8 +68,8 @@ const Compose = styled(
 		}
 
 		.chip.lifetime.brief {
-			border-color: hsla(35, 90%, 62%, 0.5);
-			color: hsl(35, 90%, 62%);
+			border-color: ${colors.alpha(colors.light(colors.warning), 0.5)};
+			color: ${colors.light(colors.warning)};
 		}
 
 		.chip-name {
@@ -87,8 +77,8 @@ const Compose = styled(
 			min-width: 0;
 			max-width: 260px;
 			padding: 3px 10px;
-			border: 1px solid ${colors.alpha(colors.white, 0.12)};
-			border-radius: 999px;
+			border: 1px solid ${colors.border};
+			border-radius: ${radius.pill};
 			background: transparent;
 			font-size: 0.85em;
 		}
@@ -202,7 +192,7 @@ export const Places = styled(
 		}
 
 		.cost.cold {
-			color: hsl(35, 90%, 62%);
+			color: ${colors.light(colors.warning)};
 		}
 
 		.place > button {

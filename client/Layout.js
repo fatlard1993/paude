@@ -1,56 +1,31 @@
-import { Component, Elem, EmptyState, SectionLabel, styled } from '@vanilla-bean/components';
+import { Card, Content, Elem, EmptyState, styled, theme } from '@vanilla-bean/components';
 
+import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { tintsOf } from '../shared/hues';
-import relativeTime from '../shared/relativeTime';
 import { LIFETIMES, clockTime } from '../shared/lifetimes';
 import { AskingCard, showAsking, showLimit } from './Asking';
 import { element } from './dom';
 import { contextMenu, openMenu } from './menu';
 import { hueOf } from './servers';
 
-const column = `
-	width: 100%;
-	max-width: 960px;
-	margin: 0 auto;
-	box-sizing: border-box;
-`;
-
-export const Header = styled.Component`
-	${column}
-	display: flex;
-	align-items: center;
-	gap: 12px;
-	padding: 10px 16px;
-
-	.title {
-		font-size: 1.2em;
-		font-weight: bold;
-		flex: 1;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-`;
-
-export const Scroll = styled.Component`
-	${column}
-	flex: 1;
-	overflow-y: auto;
-	padding: 12px 16px 24px;
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
-`;
-
-// The library's section label and empty state, set as paude's: a tighter label, and a plain line where nothing is
-export const SectionTitle = styled(
-	SectionLabel,
+// Each page's scrolling part: its parts down a centered column
+export class Scroll extends styled(
+	Content,
 	() => `
-		margin-bottom: 4px;
-		font-size: 0.8em;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		margin: 0;
+		padding: 12px 16px calc(24px + ${theme.safeArea.bottom});
+		--content-gutter: 16px;
 	`,
-);
+) {
+	static schema = {
+		column: { default: true },
+	};
+}
 
+// The library's empty state as paude's: a plain line where nothing is
 export const Empty = styled(
 	EmptyState,
 	() => `
@@ -65,27 +40,14 @@ export const Empty = styled(
 	`,
 );
 
-const Card = styled(
-	Component,
+// The library's card, with a session's or project's parts in a row; its accent is the session's own color, or the
+// project's folder color, in kitty-bg's tints
+const SessionCard = styled(
+	Card,
 	({ colors }) => `
 		display: flex;
 		align-items: center;
 		gap: 10px;
-		padding: 10px 12px;
-		border-radius: 6px;
-		background: ${colors.alpha(colors.white, 0.05)};
-		color: inherit;
-		text-decoration: none;
-		min-width: 0;
-
-		&:hover, &:focus-visible {
-			background: ${colors.alpha(colors.white, 0.1)};
-		}
-
-		/* A session's own color, or a project's folder color, in kitty-bg's tints */
-		&.tinted {
-			box-shadow: inset 3px 0 var(--card-accent);
-		}
 
 		.body {
 			flex: 1;
@@ -109,7 +71,7 @@ const Card = styled(
 		}
 
 		.meta {
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 			font-size: 0.85em;
 			margin-top: 2px;
 			overflow: hidden;
@@ -164,13 +126,13 @@ const Card = styled(
 			align-items: center;
 			gap: 6px;
 			flex-shrink: 0;
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 			font-size: 0.8em;
 		}
 
 		.flag.archived {
 			background: ${colors.alpha(colors.white, 0.1)};
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 		}
 
 		.dot {
@@ -187,8 +149,8 @@ const Card = styled(
 		}
 
 		.dot.waiting {
-			background: hsl(38, 70%, 60%);
-			box-shadow: 0 0 0 3px hsla(38, 70%, 60%, 0.25);
+			background: ${colors.light(colors.warning)};
+			box-shadow: 0 0 0 3px ${colors.alpha(colors.light(colors.warning), 0.25)};
 		}
 
 		.flag {
@@ -200,8 +162,8 @@ const Card = styled(
 		}
 
 		.flag.waiting {
-			background: hsla(38, 70%, 60%, 0.2);
-			color: hsl(38, 80%, 70%);
+			background: ${colors.alpha(colors.light(colors.warning), 0.2)};
+			color: ${colors.lighter(colors.warning)};
 		}
 
 		.flag.unseen {
@@ -268,12 +230,7 @@ export const LinkCard = ({
 	accent,
 	appendTo,
 }) => {
-	const card = new Card({ tag: 'a', attributes: { href }, appendTo });
-
-	if (accent) {
-		card.elem.classList.add('tinted');
-		card.elem.style.setProperty('--card-accent', accent);
-	}
+	const card = new SessionCard({ tag: 'a', attributes: { href }, accent, interactive: true, appendTo });
 
 	if (onOpen) {
 		card.elem.addEventListener('click', event => {

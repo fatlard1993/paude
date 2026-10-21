@@ -58,7 +58,8 @@ export default class Project extends View {
 		});
 		this.watchButton = ghostButton(this.bar, {
 			icon: 'eye-slash',
-			label: 'Watch',
+			// The space parts the label from the icon, as the session bar's tools with text do
+			label: ' Watch',
 			onPress: () => this.toggleWatching(),
 		});
 
@@ -91,12 +92,12 @@ export default class Project extends View {
 		this.sent = compose.sent;
 		this.startButton = compose.buttons[1];
 		this.startLabel = this.startButton.querySelector('.label');
-		this.checkoutChip = element('button', 'chip variant-flat');
+		this.checkoutChip = element('button', 'chip variant-chip');
 		this.newName = Object.assign(element('input', 'chip-name'), { placeholder: 'worktree name (from the prompt)' });
 		this.fromInput = Object.assign(element('input', 'chip-name'), {
 			placeholder: 'branch, tag, commit or PR (#123)',
 		});
-		this.lifetimeChip = element('button', 'chip variant-flat');
+		this.lifetimeChip = element('button', 'chip variant-chip');
 		this.checkoutChip.style.display = 'none';
 		this.newName.style.display = 'none';
 		this.fromInput.style.display = 'none';
@@ -207,7 +208,7 @@ export default class Project extends View {
 		this.watching = Boolean(watching);
 		this.watchButton.classList.toggle('active', this.watching);
 		this.watchButton.firstChild.className = `fa-solid fa-${this.watching ? 'eye' : 'eye-slash'}`;
-		this.watchButton.lastChild.textContent = this.watching ? 'Watching' : 'Watch';
+		this.watchButton.lastChild.textContent = this.watching ? ' Watching' : ' Watch';
 		this.watchButton.title = this.watching
 			? 'Watching every session here, new ones too. Click to stop watching them all.'
 			: 'Not watching. Click to watch every session here, new ones too.';

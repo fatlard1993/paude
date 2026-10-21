@@ -1,20 +1,19 @@
-import { styled } from '@vanilla-bean/components';
+import { Toolbar, styled } from '@vanilla-bean/components';
 
 import { button } from './dom';
-import { Header } from './Layout';
 
-// Every page's top bar: where you are on the left, its tools on the right as quiet icons. A page with a color of its
-// own (a project's, a session's) underlines the bar with it.
-export const Bar = styled(
-	Header,
-	({ colors }) => `
-		max-width: none;
-		gap: 4px;
-		padding: 6px 10px;
-		background: rgba(24, 24, 27, 0.55);
-		backdrop-filter: blur(12px);
-		-webkit-backdrop-filter: blur(12px);
-		border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+// Every page's top bar: where you are on the left, its tools on the right as quiet icons, over glass the page shows
+// through. A page with a color of its own (a project's, a session's) underlines the bar with it.
+export class Bar extends styled(
+	Toolbar,
+	({ colors, safeArea }) => `
+		&.variant-bar {
+			padding-top: calc(8px + ${safeArea.top});
+			padding-inline: calc(12px + ${safeArea.left}) calc(12px + ${safeArea.right});
+			background: ${colors.alpha(colors.black, 0.55)};
+			backdrop-filter: blur(12px);
+			-webkit-backdrop-filter: blur(12px);
+		}
 
 		&.accented {
 			border-bottom: 2px solid var(--bar-accent);
@@ -25,18 +24,14 @@ export const Bar = styled(
 			min-width: 32px;
 			height: 32px;
 			padding: 0 8px;
-			border-radius: 6px;
+		}
+
+		.ghost:where(:not(.active)) {
 			color: ${colors.alpha(colors.white, 0.7)};
-			font: inherit;
 		}
 
-		.ghost:hover {
+		.ghost:where(:not(.active)):hover {
 			color: ${colors.white};
-		}
-
-		.ghost.active {
-			background: ${colors.alpha(colors.blue, 0.25)};
-			color: ${colors.lighter(colors.blue)};
 		}
 
 		.ghost.danger:hover {
@@ -56,7 +51,13 @@ export const Bar = styled(
 			line-height: 14px;
 		}
 	`,
-);
+) {
+	static schema = {
+		variant: { default: 'bar' },
+		gap: { default: 4 },
+		wrap: { default: false },
+	};
+}
 
 export const ghostButton = (appendTo, { icon, label, title, onPress, className = '' }) => {
 	const node = button(label, onPress, { icon, title: title ?? '', className: `ghost variant-flat ${className}` });
