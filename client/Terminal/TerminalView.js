@@ -1,4 +1,4 @@
-import { Button, Elem, Notify, View, styled } from '@vanilla-bean/components';
+import { Button, Elem, Notify, View, styled, theme } from '@vanilla-bean/components';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
@@ -58,7 +58,8 @@ import SideShell from './SideShell';
 import { Body, NARROW, Presence, SelectHint, SelectionActions, TopBar } from './TerminalView.styles';
 
 const FILE_SHORTCUTS = { p: 'names', 'Shift+f': 'contents', 'Shift+o': 'outline' };
-const BACKGROUND = '#1b1b1b';
+// The page's own, for xterm, which takes a color string
+const BACKGROUND = theme.colors.black.toHexString();
 // How far a finger can wander and still be tapping rather than scrolling
 const TAP_SLOP = 8;
 // How far above and below a row to look for the rest of a URL Claude broke across rows
@@ -88,12 +89,12 @@ const Screen = styled.Component`
 	}
 
 	&.selecting {
-		outline: 2px dashed hsl(29, 55%, 62%);
+		outline: 2px dashed ${({ colors }) => colors.light(colors.orange)};
 		outline-offset: -2px;
 	}
 
 	&.dropping {
-		outline: 2px dashed var(--session-accent, hsl(29, 55%, 62%));
+		outline: 2px dashed var(--session-accent, ${({ colors }) => colors.light(colors.orange)});
 		outline-offset: -2px;
 	}
 `;
@@ -1252,8 +1253,14 @@ export default class TerminalView extends View {
 			if (!found) continue;
 
 			const fork = spare[used++] ?? this.forkButton();
-			// After all of the line, not only its "done" time: Claude goes on after it (· 1 shell still running)
-			const after = columns[text.length - 1] + 1;
+			// After all of the line, not only its "done" time: Claude goes on after it (· 1 shell still running),
+			// onto more rows when the terminal is narrow
+			let end = row;
+
+			while (buffer.getLine(buffer.viewportY + end + 1)?.isWrapped) end++;
+
+			const last = end === row ? { text, columns } : this.bufferCells(buffer.viewportY + end);
+			let after = last.text ? last.columns[last.text.length - 1] + 1 : 0;
 
 			fork.dataset.line = buffer.viewportY + row;
 			Object.assign(fork.style, { height: `${cellHeight}px`, fontSize: `${cellHeight * 0.65}px` });
@@ -1261,11 +1268,18 @@ export default class TerminalView extends View {
 			fork.classList.remove('compact');
 			fork.classList.toggle('compact', fork.offsetWidth > (cols - after) * cellWidth);
 
+			// A line that fills its last row leaves no room even for the icon, so the button takes the row below
+			if (fork.offsetWidth > (cols - after) * cellWidth) {
+				const below = this.bufferCells(buffer.viewportY + ++end);
+
+				after = below.text ? below.columns[below.text.length - 1] + 1 : 0;
+			}
+
 			const x = Math.min(after, cols - Math.ceil(fork.offsetWidth / cellWidth));
 
 			Object.assign(fork.style, {
 				left: `${screen.left - column.left + x * cellWidth}px`,
-				top: `${screen.top - column.top + row * cellHeight}px`,
+				top: `${screen.top - column.top + end * cellHeight}px`,
 			});
 		}
 
