@@ -1,6 +1,7 @@
 import { Component, styled } from '@vanilla-bean/components';
 
-const LAYER = 'rgba(16, 16, 19, 0.5)';
+// What text sits on over the panel's glass
+const layer = colors => colors.alpha(colors.vantablack, 0.5);
 
 const Panel = styled(
 	Component,
@@ -18,7 +19,7 @@ const Panel = styled(
 			align-items: center;
 			padding: 4px 6px;
 			border-radius: 6px;
-			background: ${LAYER};
+			background: ${layer(colors)};
 		}
 
 		.label {
@@ -65,7 +66,7 @@ const Panel = styled(
 			min-height: 0;
 			padding: 4px;
 			border-radius: 6px;
-			background: rgba(16, 16, 19, 0.55);
+			background: ${colors.alpha(colors.vantablack, 0.55)};
 			overflow: hidden;
 		}
 

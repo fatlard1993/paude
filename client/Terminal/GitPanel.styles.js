@@ -1,6 +1,7 @@
 import { Component, styled } from '@vanilla-bean/components';
 
-const LAYER = 'rgba(18, 18, 21, 0.5)';
+// What text sits on over the panel's glass
+const layer = colors => colors.alpha(colors.vantablack, 0.5);
 
 const Panel = styled(
 	Component,
@@ -29,7 +30,7 @@ const Panel = styled(
 
 		.bar, .tabs, .body, .output {
 			border-radius: 6px;
-			background: ${LAYER};
+			background: ${layer(colors)};
 		}
 
 		.bar {
@@ -214,6 +215,7 @@ const Panel = styled(
 			min-width: 0;
 			overflow: hidden;
 			text-overflow: ellipsis;
+			white-space: nowrap;
 		}
 
 		.share a {
@@ -620,7 +622,7 @@ const Panel = styled(
 			white-space: pre-wrap;
 			font-size: 0.8em;
 			border-radius: 4px;
-			background: rgba(0, 0, 0, 0.35);
+			background: ${colors.alpha(colors.vantablack, 0.35)};
 		}
 
 		.verdict {

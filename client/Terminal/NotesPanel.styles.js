@@ -23,11 +23,11 @@ const Panel = styled(
 		.tabs, .who {
 			margin: 8px 8px 0;
 			border-radius: 6px;
-			background: rgba(18, 18, 21, 0.5);
+			background: ${colors.alpha(colors.vantablack, 0.5)};
 		}
 
 		.message, .comment, .draft, .composer {
-			background: rgba(18, 18, 21, 0.5);
+			background: ${colors.alpha(colors.vantablack, 0.5)};
 		}
 
 		.message {
@@ -243,7 +243,7 @@ const Panel = styled(
 			gap: 2px;
 			padding: 4px;
 			border-radius: 6px;
-			background: rgba(12, 12, 14, 0.9);
+			background: ${colors.alpha(colors.vantablack, 0.9)};
 		}
 
 		.reactions .palette.open {

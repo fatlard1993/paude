@@ -75,7 +75,7 @@ const Trail = styled(
 			padding: 1px 8px;
 			border: none;
 			border-radius: 10px;
-			background: hsl(35, 90%, 55%);
+			background: ${colors.light(colors.warning)};
 			color: ${colors.black};
 			font: inherit;
 			font-size: 0.8em;

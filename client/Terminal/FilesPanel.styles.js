@@ -1,7 +1,8 @@
 import { Component, styled } from '@vanilla-bean/components';
 
 export const LINE_HEIGHT = 20;
-const LAYER = 'rgba(16, 16, 19, 0.5)';
+// What text sits on over the panel's glass
+const layer = colors => colors.alpha(colors.vantablack, 0.5);
 
 const Panel = styled(
 	Component,
@@ -18,7 +19,7 @@ const Panel = styled(
 		}
 
 		.bar, .filters, .list, .viewer {
-			background: ${LAYER};
+			background: ${layer(colors)};
 			border-radius: 6px;
 		}
 
@@ -692,7 +693,7 @@ const Panel = styled(
 
 		/* The find bar, in the panel's own inputs and buttons */
 		.code-editor .cm-panels {
-			background: ${LAYER};
+			background: ${layer(colors)};
 			color: inherit;
 			border-color: ${colors.alpha(colors.white, 0.1)};
 		}
@@ -901,7 +902,7 @@ const Panel = styled(
 			max-width: 100%;
 			max-height: 100%;
 			object-fit: contain;
-			background: repeating-conic-gradient(#2a2a2e 0% 25%, #222226 0% 50%) 50% / 16px 16px;
+			background: repeating-conic-gradient(${colors.darkest(colors.gray)} 0% 25%, ${colors.black} 0% 50%) 50% / 16px 16px;
 		}
 
 		.media iframe {

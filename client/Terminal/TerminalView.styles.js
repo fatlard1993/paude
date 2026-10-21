@@ -85,10 +85,10 @@ export const Body = styled.Component`
 		gap: 5px;
 		box-sizing: border-box;
 		padding: 0 7px;
-		border: 1px solid hsl(210, 60%, 60%, 0.6);
+		border: 1px solid ${({ colors }) => colors.alpha(colors.light(colors.blue), 0.6)};
 		border-radius: 4px;
-		background: hsl(210, 60%, 45%, 0.25);
-		color: hsl(210, 80%, 85%);
+		background: ${({ colors }) => colors.alpha(colors.blue, 0.25)};
+		color: ${({ colors }) => colors.lightest(colors.blue)};
 		font-family: inherit;
 		white-space: nowrap;
 		cursor: pointer;
@@ -100,7 +100,7 @@ export const Body = styled.Component`
 	}
 
 	.fork-here:hover {
-		background: hsl(210, 60%, 45%, 0.45);
+		background: ${({ colors }) => colors.alpha(colors.blue, 0.45)};
 	}
 
 	/* Floats over the terminal rather than taking a column, so opening it never changes the session's size */
@@ -118,11 +118,11 @@ export const Body = styled.Component`
 		z-index: 2;
 		box-sizing: border-box;
 		border-radius: 10px;
-		border: 1px solid rgba(255, 255, 255, 0.12);
-		background: rgba(24, 24, 27, 0.04);
+		border: 1px solid ${({ colors }) => colors.border};
+		background: ${({ colors }) => colors.alpha(colors.black, 0.04)};
 		backdrop-filter: blur(18px) saturate(160%);
 		-webkit-backdrop-filter: blur(18px) saturate(160%);
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+		box-shadow: 0 8px 32px ${({ colors }) => colors.alpha(colors.vantablack, 0.45)};
 		overflow: hidden;
 		opacity: 0;
 		pointer-events: none;
@@ -212,7 +212,7 @@ export const Body = styled.Component`
 
 	.resize:hover,
 	.resizing .resize {
-		background: rgba(255, 255, 255, 0.15);
+		background: ${({ colors }) => colors.alpha(colors.white, 0.15)};
 	}
 
 	.resizing {
@@ -247,7 +247,7 @@ export const Body = styled.Component`
 
 		/* Full screen over Claude's own key bar, which would show through the glass */
 		.shell {
-			background: rgba(24, 24, 27, 0.96);
+			background: ${({ colors }) => colors.alpha(colors.black, 0.96)};
 		}
 	}
 `;
@@ -264,8 +264,11 @@ export const TopBar = styled(
 			display: flex;
 			align-items: center;
 			gap: 8px;
-			font-size: 1em;
+			flex: 1;
 			min-width: 0;
+			overflow: hidden;
+			font-weight: bold;
+			white-space: nowrap;
 		}
 
 		.name {
@@ -287,8 +290,8 @@ export const TopBar = styled(
 		}
 
 		.state.waiting {
-			background: hsl(38, 70%, 60%);
-			box-shadow: 0 0 0 3px hsla(38, 70%, 60%, 0.3);
+			background: ${colors.light(colors.warning)};
+			box-shadow: 0 0 0 3px ${colors.alpha(colors.light(colors.warning), 0.3)};
 			animation: none;
 		}
 
@@ -339,12 +342,12 @@ export const TopBar = styled(
 		}
 
 		.meter.cold {
-			color: hsl(35, 90%, 62%);
+			color: ${colors.light(colors.warning)};
 		}
 
 		/* A short-lived session says so, a press from being kept */
 		.tool.lifetime.brief {
-			color: hsl(35, 90%, 62%);
+			color: ${colors.light(colors.warning)};
 		}
 
 		/* The lever names what it switches, and what it was before the last switch while that can be put back */
@@ -364,7 +367,7 @@ export const TopBar = styled(
 			width: 1px;
 			height: 20px;
 			margin: 0 4px;
-			background: rgba(255, 255, 255, 0.1);
+			background: ${colors.alpha(colors.white, 0.1)};
 		}
 
 		/* A phone keeps the session's name: the divider gives way */

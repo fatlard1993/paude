@@ -3,15 +3,15 @@ import { ContextMenu, styled } from '@vanilla-bean/components';
 // The library's menu in paude's glass: flat rows, a second line for detail, small warm headings
 const GlassMenu = styled(
 	ContextMenu,
-	({ colors }) => `
+	({ colors, radius }) => `
 		min-width: 240px;
 		max-width: min(360px, calc(100vw - 16px)) !important;
 		padding: 4px;
-		border-radius: 8px;
-		border: 1px solid rgba(255, 255, 255, 0.12);
-		background: rgba(24, 24, 27, 0.92);
+		border-radius: ${radius.lg};
+		border: 1px solid ${colors.border};
+		background: ${colors.alpha(colors.black, 0.92)};
 		backdrop-filter: blur(18px);
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+		box-shadow: 0 8px 32px ${colors.alpha(colors.vantablack, 0.45)};
 		color: ${colors.white};
 
 		/* Laid out as paude's rows were: a column, label over detail */
@@ -55,7 +55,7 @@ const GlassMenu = styled(
 			padding: 0;
 			border-radius: 0;
 			background: none;
-			color: hsl(29, 70%, 65%) !important;
+			color: ${colors.light(colors.orange)} !important;
 		}
 	`,
 );

@@ -8,7 +8,7 @@ const Viewer = styled.Component`
 	z-index: 30;
 	display: flex;
 	flex-direction: column;
-	background: rgba(10, 10, 12, 0.92);
+	background: ${({ colors }) => colors.alpha(colors.vantablack, 0.92)};
 	backdrop-filter: blur(8px);
 	-webkit-backdrop-filter: blur(8px);
 	outline: none;
@@ -18,6 +18,7 @@ const Viewer = styled.Component`
 		align-items: center;
 		gap: 4px;
 		padding: 8px 12px;
+		padding-top: calc(8px + ${({ safeArea }) => safeArea.top});
 		min-height: 44px;
 		box-sizing: border-box;
 	}
@@ -58,7 +59,7 @@ const Viewer = styled.Component`
 	.viewer-bar button:hover,
 	.viewer-bar a:hover {
 		opacity: 1;
-		background: rgba(255, 255, 255, 0.08);
+		background: ${({ colors }) => colors.alpha(colors.white, 0.08)};
 	}
 
 	/* Fitted to the screen; a press on the picture shows it at its own size, scrolled to pan */
@@ -77,7 +78,8 @@ const Viewer = styled.Component`
 		object-fit: contain;
 		cursor: zoom-in;
 		border-radius: 4px;
-		background: repeating-conic-gradient(rgba(255, 255, 255, 0.06) 0 25%, transparent 0 50%) 0 0 / 16px 16px;
+		background: repeating-conic-gradient(${({ colors }) => colors.alpha(colors.white, 0.06)} 0 25%, transparent 0 50%) 0
+			0 / 16px 16px;
 	}
 
 	.stage.actual img {
@@ -94,7 +96,7 @@ const Viewer = styled.Component`
 		height: 64px;
 		padding: 0;
 		border-radius: 8px;
-		background: rgba(0, 0, 0, 0.4);
+		background: ${({ colors }) => colors.alpha(colors.vantablack, 0.4)};
 		color: inherit;
 		font-size: 1.2em;
 		opacity: 0.7;
