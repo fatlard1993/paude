@@ -1,5 +1,6 @@
 import { Notify, Tabs } from '@vanilla-bean/components';
 
+import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { DESKTOP_KEY, desktopNotificationsOn, remember } from '../storage';
 import confirmDialog from '../confirmDialog';
 
@@ -7,7 +8,6 @@ import { anchorPlace, attachCommentText, attachCommentsText } from '../../shared
 import { applyNote } from '../../shared/protocol';
 import { REACTION_PALETTE } from '../../shared/reactions';
 import { canNote, canType, identity, identityKey } from '../identity';
-import relativeTime from '../../shared/relativeTime';
 import { closeButton, element } from '../dom';
 import renderPeople from './People';
 import Panel from './NotesPanel.styles';

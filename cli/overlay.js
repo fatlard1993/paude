@@ -1,8 +1,8 @@
+import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { anchorPlace } from '../shared/attachText';
 import inputKind from '../shared/inputKind';
 import { REACTION_PALETTE } from '../shared/reactions';
 import { roleAllows } from '../shared/roles';
-import relativeTime from '../shared/relativeTime';
 import { browserKey, browserKeys, browserView } from './fileBrowser';
 import { createPanel, panelKey, panelKeys, panelView, statusLine } from './panels';
 import {

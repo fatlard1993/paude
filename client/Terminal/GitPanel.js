@@ -1,11 +1,11 @@
 import { Notify, Tabs } from '@vanilla-bean/components';
 
+import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { getGit, getVerification, runGit } from '../api';
 import confirmDialog from '../confirmDialog';
 import { button, closeButton, element, icon } from '../dom';
 import { checkbox } from '../Layout';
 import { canType } from '../identity';
-import relativeTime from '../../shared/relativeTime';
 import Panel from './GitPanel.styles';
 
 const STATUS_LETTERS = { modified: 'M', added: 'A', deleted: 'D', renamed: 'R', copied: 'C', untracked: 'U' };

@@ -1,7 +1,7 @@
+import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { getEnvironment, getRun, getTasks, runTask, setAfterTurn, stopProcess, stopRun } from '../api';
 import { button, closeButton, element, icon } from '../dom';
 import { canType } from '../identity';
-import relativeTime from '../../shared/relativeTime';
 import Panel from './GitPanel.styles';
 
 const KIND_ICONS = { test: 'flask', check: 'circle-check', build: 'hammer', serve: 'server', run: 'play' };

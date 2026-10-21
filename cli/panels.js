@@ -1,5 +1,5 @@
+import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { LIFETIMES, clockTime } from '../shared/lifetimes';
-import relativeTime from '../shared/relativeTime';
 import { bold, colored, dim, fit, green, heading, is, onBackground, orange, printable, wrap } from './screen';
 
 // The web's side panels, in the terminal box: links, artifacts, activity, the catch-up tour, git, shared services

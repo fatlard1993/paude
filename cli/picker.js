@@ -1,10 +1,10 @@
+import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { runningSummary } from '../shared/checkouts';
 import mergedPages from '../shared/mergedPages';
 import { matchesFilter, matchesQuery } from '../shared/sessionSearch';
 import { readProgress, recentLines } from '../shared/progress';
 import { byWatchedThenRecent, projectSummary } from '../shared/projects';
 import sessionUrgency from '../shared/urgency';
-import relativeTime from '../shared/relativeTime';
 import { serverPage, visitServer } from '../shared/serverClient';
 import {
 	CLEAR,

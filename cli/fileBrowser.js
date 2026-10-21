@@ -1,8 +1,8 @@
+import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { pathFilter } from '../shared/globs';
 import { attachDiffText, attachFileText, attachLinesText } from '../shared/attachText';
 import { diffAnchor, diffLines, parseDiff, sideBySide } from '../shared/diff';
 import { ORDERS, describeFiles, fileLabel, folds, orderFiles } from '../shared/reviewOrder';
-import relativeTime from '../shared/relativeTime';
 import { extensionOf, kindOf, matchNames } from '../shared/projectFiles';
 import searchPattern from '../shared/searchPattern';
 import { fitCells } from './graphics';

@@ -1,6 +1,6 @@
+import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { button, closeButton, element, icon } from '../dom';
 import { canNote } from '../identity';
-import relativeTime from '../../shared/relativeTime';
 import Panel from './GitPanel.styles';
 import { copyWithNotice } from './copySelection';
 

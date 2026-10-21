@@ -1,6 +1,6 @@
+import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { getTimeline, getVerification } from '../api';
 import { button, closeButton, element, icon } from '../dom';
-import relativeTime from '../../shared/relativeTime';
 import Panel from './GitPanel.styles';
 
 const TOOL_ICONS = {

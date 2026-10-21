@@ -1,7 +1,7 @@
 import { stat } from 'fs/promises';
 import { isAbsolute, join } from 'path';
 
-import relativeTime from '../shared/relativeTime';
+import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { listChanges } from './changes';
 import { runsOf, testCounts } from './tasks';
 import { sessionTurns } from './timeline';

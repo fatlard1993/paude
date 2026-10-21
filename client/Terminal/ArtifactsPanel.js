@@ -1,4 +1,4 @@
-import relativeTime from '../../shared/relativeTime';
+import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { button, closeButton, element, icon } from '../dom';
 import { opensInViewer } from '../imageViewer';
 import Panel from './GitPanel.styles';

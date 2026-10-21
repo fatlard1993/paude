@@ -1,4 +1,4 @@
-import relativeTime from './relativeTime';
+import { relativeTime } from '@vanilla-bean/components/utils/date';
 
 // Watched ones first, then most recently active; projects never used follow, alphabetically
 export const byWatchedThenRecent = (a, b) =>
