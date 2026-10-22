@@ -24,13 +24,13 @@ paude add                 # this folder becomes a project; this machine's paude 
 paude                     # the picker: sessions and projects here and on every paude you're logged into
 ```
 
-![The picker: what needs you and what you watch first, then the rest, then the projects](docs/terminal-picker.png)
+![The picker: what needs you and what you watch first, then every session by day, with Running, Watching and Archived to narrow it](docs/terminal-picker.png)
 
-Working on paude itself? `sh scripts/install.sh --dev` from your checkout runs that checkout as this machine's paude service (systemd, or launchd on macOS): it restarts itself as you save, rebuilds the web client and reloads open pages, and sessions carry on through it. Running the installer without `--dev` goes back to an installed copy.
+Working on paude itself? `sh scripts/install.sh --dev` from your checkout runs that checkout as this machine's paude service (systemd, or launchd on macOS): it restarts itself as you save, rebuilds the web client and reloads open pages, and sessions carry on through it. Running the installer without `--dev` goes back to an installed copy. With the service stopped, `bun run dev` runs the checkout in the foreground instead: type `b` (or `build`) to rebuild the web client, `stop` to end it.
 
 `bun test` runs the unit tests (the pre-commit hook does too). `bun run test:e2e` drives the web client in Chrome against a fake Claude that draws the way Claude Code does, in three browsers: xterm's DOM renderer, its GPU renderer, and a Mac. `bun run test:claude` does the same against the real Claude Code, at the cost of a few tokens. Both look for Chrome in the usual places, or `CHROME`.
 
-Locally there is no password: the server keeps an owner token in `~/.paude/local-token`, readable only by you, and the `paude` command uses it. `paude web` opens this machine's paude in a browser, already logged in. Folders under `~/Projects` are projects without being added. `paude add` takes several folders, or a pattern: `paude add '~/Projects/minecraft/*'` makes each folder in there a project of its own. `paude remove <name>...` takes projects off the list: an added folder is forgotten, one under `~/Projects` is hidden until you add it again. Nothing on disk changes either way, and the home page's project cards do the same. `paude stop` stops the background server (after pulling an update, say); the next `paude` starts it again. The first session in a folder Claude Code hasn't seen asks, in the session, whether you trust it.
+Locally there is no password: the server keeps an owner token in `~/.paude/local-token`, readable only by you, and the `paude` command uses it. `paude web` opens this machine's paude in a browser, already logged in. Folders under `~/Projects` are projects without being added. `paude add` takes several folders, or a pattern: `paude add '~/Projects/minecraft/*'` makes each folder in there a project of its own. `paude remove <name>...` takes projects off the list: an added folder is forgotten, one under `~/Projects` is hidden until you add it again. Nothing on disk changes either way, and the home page's project cards do the same. The `paude` command looks for this machine's paude at `http://127.0.0.1:8044` and its token in `~/.paude`; `PAUDE_LOCAL_URL` and `PAUDE_DATA` point it elsewhere. `paude stop` stops the background server (after pulling an update, say); the next `paude` starts it again. The first session in a folder Claude Code hasn't seen asks, in the session, whether you trust it.
 
 ## On a server
 
@@ -252,7 +252,7 @@ The side panels float over the terminal and resize from their inner edge.
 
 ## Watching
 
-![Home: what needs you on top, answerable there, then sessions and projects in tabs](docs/web-home.png)
+![Home: what needs you on top, answerable there, then the watched sessions with something going on, then every session by day or by project](docs/web-home.png)
 
 Home heads its lists with the watched sessions that need you, always in sight, and then the watched ones with something going on: running, or with news since you looked. Under them every session, newest first, with a search over all of them (name, first prompt, project, branch) and chips for the ones **Running**, **Watching** or **Archived**. With neither, they're grouped by the day they last changed, or **By project**: each project a heading with its sessions, how many are running and when it was last busy, opening to its newest sessions (the watched and running ones open to begin with); adding a folder is at the end. Every card and project has a **⋯** menu, also on a right-click or a press and hold: watch or stop, rename, archive, copy its link, delete. **Select** picks several to archive, watch or delete at once. An archived session leaves the lists but not a search or the Archived chip, and opening it again brings it back; a project's page lists its sessions the same way.
 
