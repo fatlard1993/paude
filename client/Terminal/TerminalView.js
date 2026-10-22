@@ -80,7 +80,7 @@ const Screen = styled.Component`
 	flex: 1;
 	min-height: 0;
 	overflow: hidden;
-	padding: 0 4px;
+	padding: 0 ${({ space }) => space.xs};
 	background: var(--session-background, ${BACKGROUND});
 	/* xterm's own layers (the GPU renderer's link canvas among them) stack in here, under the buttons over the screen */
 	isolation: isolate;

@@ -5,19 +5,19 @@ const layer = colors => colors.alpha(colors.vantablack, 0.5);
 
 const Panel = styled(
 	Component,
-	({ colors, radius }) => `
+	({ colors, radius, space }) => `
 		display: flex;
 		flex-direction: column;
 		height: 100%;
-		gap: 6px;
-		padding: 6px 8px 8px;
+		gap: ${space.sm};
+		padding: ${space.sm};
 		box-sizing: border-box;
 
 		.bar {
 			display: flex;
-			gap: 6px;
+			gap: ${space.sm};
 			align-items: center;
-			padding: 4px 6px;
+			padding: ${space.xs} ${space.sm};
 			border-radius: ${radius.md};
 			background: ${layer(colors)};
 		}
@@ -28,19 +28,19 @@ const Panel = styled(
 			overflow: hidden;
 			text-overflow: ellipsis;
 			white-space: nowrap;
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 		}
 
 		.label i {
-			margin-right: 6px;
+			margin-right: ${space.sm};
 			color: ${colors.light(colors.orange)};
 		}
 
 		button {
 			display: inline-flex;
-			gap: 6px;
+			gap: ${space.sm};
 			align-items: center;
-			padding: 4px 10px;
+			padding: ${space.xs} ${space.md};
 			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.08)};
 			color: ${colors.white};
@@ -57,14 +57,14 @@ const Panel = styled(
 		}
 
 		button.icon-only {
-			padding: 4px 8px;
+			padding: ${space.xs} ${space.sm};
 		}
 
 		.screen {
 			position: relative;
 			flex: 1;
 			min-height: 0;
-			padding: 4px;
+			padding: ${space.xs};
 			border-radius: ${radius.md};
 			background: ${colors.alpha(colors.vantablack, 0.55)};
 			overflow: hidden;
@@ -90,7 +90,7 @@ const Panel = styled(
 			left: 50%;
 			transform: translateX(-50%);
 			z-index: 1;
-			padding: 4px 10px;
+			padding: ${space.xs} ${space.md};
 			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.black, 0.75)};
 			color: ${colors.white};

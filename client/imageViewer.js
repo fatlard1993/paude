@@ -16,9 +16,9 @@ const Viewer = styled.Component`
 	.viewer-bar {
 		display: flex;
 		align-items: center;
-		gap: 4px;
-		padding: 8px 12px;
-		padding-top: calc(8px + ${({ safeArea }) => safeArea.top});
+		gap: ${({ space }) => space.xs};
+		padding: ${({ space }) => `${space.sm} ${space.md}`};
+		padding-top: calc(${({ safeArea, space }) => `${space.sm} + ${safeArea.top}`});
 		min-height: 44px;
 		box-sizing: border-box;
 	}
@@ -35,7 +35,7 @@ const Viewer = styled.Component`
 	.viewer-count {
 		opacity: 0.5;
 		font-size: 0.85em;
-		margin-right: 6px;
+		margin-right: ${({ space }) => space.sm};
 		white-space: nowrap;
 	}
 

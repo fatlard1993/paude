@@ -82,9 +82,9 @@ export const Body = styled.Component`
 		position: absolute;
 		display: flex;
 		align-items: center;
-		gap: 5px;
+		gap: ${({ space }) => space.sm};
 		box-sizing: border-box;
-		padding: 0 7px;
+		padding: 0 ${({ space }) => space.sm};
 		border: 1px solid ${({ colors }) => colors.alpha(colors.light(colors.blue), 0.6)};
 		border-radius: ${({ radius }) => radius.sm};
 		background: ${({ colors }) => colors.alpha(colors.blue, 0.25)};
@@ -254,7 +254,7 @@ export const Body = styled.Component`
 
 export const TopBar = styled(
 	Bar,
-	({ colors }) => `
+	({ colors, space }) => `
 		/* The session's own color, in kitty-bg's tints */
 		.tinted & {
 			border-bottom: 2px solid var(--session-accent);
@@ -263,7 +263,7 @@ export const TopBar = styled(
 		.title {
 			display: flex;
 			align-items: center;
-			gap: 8px;
+			gap: ${space.sm};
 			flex: 1;
 			min-width: 0;
 			overflow: hidden;
@@ -296,7 +296,7 @@ export const TopBar = styled(
 		}
 
 		.state.offline {
-			background: ${colors.red};
+			background: ${colors.danger};
 		}
 
 		@keyframes paude-pulse {
@@ -357,7 +357,7 @@ export const TopBar = styled(
 		}
 
 		.lifetime .lifetime-was {
-			margin-left: 4px;
+			margin-left: ${space.xs};
 			font-size: 0.7em;
 			opacity: 0.5;
 			white-space: nowrap;
@@ -366,7 +366,7 @@ export const TopBar = styled(
 		.divider {
 			width: 1px;
 			height: 20px;
-			margin: 0 4px;
+			margin: 0 ${space.xs};
 			background: ${colors.alpha(colors.white, 0.1)};
 		}
 
@@ -381,14 +381,14 @@ export const TopBar = styled(
 
 export const SelectHint = styled(
 	Elem,
-	({ colors }) => `
+	({ colors, radius, space }) => `
 		position: absolute;
 		left: 50%;
 		top: 12px;
 		transform: translateX(-50%);
 		z-index: 1;
-		padding: 6px 12px;
-		border-radius: 14px;
+		padding: ${space.sm} ${space.md};
+		border-radius: ${radius.pill};
 		background: ${colors.alpha(colors.black, 0.75)};
 		color: ${colors.light(colors.orange)};
 		pointer-events: none;
@@ -399,14 +399,14 @@ export const SelectionActions = styled.Component`
 	position: absolute;
 	z-index: 1;
 	display: flex;
-	gap: 6px;
+	gap: ${({ space }) => space.sm};
 `;
 
 export const Presence = styled(
 	Elem,
-	({ colors, radius }) => `
+	({ colors, radius, space }) => `
 		display: flex;
-		gap: 6px;
+		gap: ${space.sm};
 		flex-shrink: 0;
 		font-size: 0.8em;
 		overflow: hidden;
@@ -416,8 +416,8 @@ export const Presence = styled(
 		.who {
 			display: flex;
 			align-items: center;
-			gap: 5px;
-			padding: 2px 8px;
+			gap: ${space.sm};
+			padding: 2px ${space.sm};
 			border-radius: ${radius.lg};
 			background: ${colors.alpha(colors.white, 0.06)};
 			color: ${colors.alpha(colors.white, 0.75)};
