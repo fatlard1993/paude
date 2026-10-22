@@ -14,6 +14,7 @@ import { initNotes } from '../notes';
 import { initProjects, setProjectsRoot } from '../projects';
 import { allRunning, setClaudePath, startSession, stopSession } from '../sessions/running';
 import { setServerName } from '../serverSettings';
+import { initShares, shareNamed } from '../shares';
 import { readProgress } from '../../shared/progress';
 import app from '../server';
 
@@ -48,6 +49,7 @@ beforeAll(async () => {
 	initAttachments(data);
 	initTrash(data);
 	await initArchive(data);
+	await initShares(data);
 	setHookAddress({ host: '127.0.0.1', port: 1 });
 	setClaudePath(FAKE_CLAUDE);
 
@@ -351,6 +353,21 @@ test('a session that never got a prompt still deletes cleanly', async () => {
 	const fresh = startSession(session.cwd);
 
 	expect((await call(`/api/sessions/${fresh.id}`, { token: tokens.owner, method: 'DELETE' })).status).toBe(204);
+});
+
+test("a deleted session's shares go with it", async () => {
+	const fresh = startSession(session.cwd);
+	const shared = await (
+		await call(`/api/sessions/${fresh.id}/shares`, {
+			token: tokens.owner,
+			method: 'POST',
+			body: { kind: 'port', port: 5999 },
+		})
+	).json();
+
+	expect(shareNamed(shared.name)?.sessionId).toBe(fresh.id);
+	expect((await call(`/api/sessions/${fresh.id}`, { token: tokens.owner, method: 'DELETE' })).status).toBe(204);
+	expect(shareNamed(shared.name)).toBeNull();
 });
 
 test('a side terminal is for those who may type: the owner and drivers, never a commenter or viewer', async () => {

@@ -8,11 +8,12 @@ import { deleteNotes } from './notes';
 import { noteProjectActivity, projectOf, projectPath } from './projects';
 import { sessionRecord } from './sessions/record';
 import { allRunning, stopSession } from './sessions/running';
+import { forgetSessionShares } from './shares';
 import { releaseWorktree } from './worktrees';
 
-// A session gone for good: Claude ended, its transcript, chat and comments deleted, its invites revoked, and its
-// worktree let go once no other session uses it. { released } (the worktree's fate, if it had one); null for no such
-// session.
+// A session gone for good: Claude ended, its transcript, chat and comments deleted, its invites revoked, its shares
+// stopped, and its worktree let go once no other session uses it. { released } (the worktree's fate, if it had one);
+// null for no such session.
 const removeSession = async id => {
 	const record = await sessionRecord(id);
 
@@ -31,6 +32,7 @@ const removeSession = async id => {
 	await revokeInvitesFor(id);
 	await pinName(id, '');
 	await forgetActivity(id);
+	await forgetSessionShares(id);
 	await setArchived([id], false);
 
 	const projectDir = projectPath(projectOf(cwd));

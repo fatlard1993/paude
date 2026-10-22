@@ -167,9 +167,18 @@ export const removeShare = async (sessionId, id) => {
 	return true;
 };
 
+// A session gone for good takes what it shared with it, and the names it gave its ports
 export const forgetSessionShares = async sessionId => {
+	const ofSession = key => key.startsWith(`${sessionId}:`);
+	const kept = made.filter(share => share.sessionId !== sessionId);
+	const named = Object.keys(portNames).filter(ofSession);
+
 	found.delete(sessionId);
-	made = made.filter(share => share.sessionId !== sessionId);
+	for (const key of [...stopped].filter(ofSession)) stopped.delete(key);
+	if (kept.length === made.length && !named.length) return;
+
+	made = kept;
+	for (const key of named) delete portNames[key];
 	await save();
 };
 
