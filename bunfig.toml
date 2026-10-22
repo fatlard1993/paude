@@ -2,3 +2,6 @@
 registry = "https://registry.npmjs.org"
 # The agent SDK is only used to read session files; its optional packages are ~470MB of native Claude binaries
 optional = false
+
+[test]
+preload = ["./scripts/testTmp.js"]
