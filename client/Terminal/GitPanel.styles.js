@@ -5,13 +5,13 @@ const layer = colors => colors.alpha(colors.vantablack, 0.5);
 
 const Panel = styled(
 	Component,
-	({ colors, radius }) => `
+	({ colors, radius, space }) => `
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: ${space.sm};
 		height: 100%;
 		min-height: 0;
-		padding: 8px;
+		padding: ${space.sm};
 		box-sizing: border-box;
 
 		/* Focused so Esc closes it; nothing to show for that */
@@ -36,8 +36,8 @@ const Panel = styled(
 		.bar {
 			display: flex;
 			align-items: center;
-			gap: 6px;
-			padding: 6px;
+			gap: ${space.sm};
+			padding: ${space.sm};
 		}
 
 		.spacer {
@@ -45,7 +45,7 @@ const Panel = styled(
 		}
 
 		button {
-			padding: 4px 10px;
+			padding: ${space.xs} ${space.md};
 			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.1)};
 			color: inherit;
@@ -53,7 +53,7 @@ const Panel = styled(
 		}
 
 		button.icon-only {
-			padding: 4px 8px;
+			padding: ${space.xs} ${space.sm};
 		}
 
 		button.primary {
@@ -61,7 +61,7 @@ const Panel = styled(
 		}
 
 		button.danger:hover {
-			background: ${colors.alpha(colors.red, 0.45)};
+			background: ${colors.alpha(colors.danger, 0.45)};
 		}
 
 		button:disabled {
@@ -77,12 +77,12 @@ const Panel = styled(
 
 		/* Which repository: the session's folder's, which may not be the one Claude is working in */
 		.repository {
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 			white-space: nowrap;
 		}
 
 		.tracking, .meta {
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 			font-size: 0.85em;
 			font-variant-numeric: tabular-nums;
 		}
@@ -91,8 +91,8 @@ const Panel = styled(
 		.output {
 			display: none;
 			align-items: flex-start;
-			gap: 6px;
-			padding: 6px 8px;
+			gap: ${space.sm};
+			padding: ${space.sm};
 		}
 
 		.output.shown {
@@ -100,7 +100,7 @@ const Panel = styled(
 		}
 
 		.output.error {
-			box-shadow: inset 3px 0 ${colors.light(colors.red)};
+			box-shadow: inset 3px 0 ${colors.light(colors.danger)};
 		}
 
 		.output pre {
@@ -114,8 +114,8 @@ const Panel = styled(
 
 		.tabs {
 			display: flex;
-			gap: 4px;
-			padding: 4px;
+			gap: ${space.xs};
+			padding: ${space.xs};
 			border-bottom: none;
 			overflow: visible;
 		}
@@ -125,7 +125,7 @@ const Panel = styled(
 			min-width: 0;
 			overflow: hidden;
 			margin-bottom: 0;
-			padding: 4px 6px;
+			padding: ${space.xs} ${space.sm};
 			border-bottom: none;
 			border-radius: ${radius.sm};
 			color: inherit;
@@ -157,7 +157,7 @@ const Panel = styled(
 			flex: 1;
 			min-height: 0;
 			overflow-y: auto;
-			padding: 6px;
+			padding: ${space.sm};
 			display: flex;
 			flex-direction: column;
 			gap: 2px;
@@ -167,8 +167,8 @@ const Panel = styled(
 			display: flex;
 			align-items: center;
 			justify-content: space-between;
-			margin: 8px 2px 4px;
-			color: ${colors.light(colors.gray)};
+			margin: ${space.sm} 2px ${space.xs};
+			color: ${colors.muted};
 			font-size: 0.8em;
 			text-transform: uppercase;
 			letter-spacing: 0.05em;
@@ -181,7 +181,7 @@ const Panel = styled(
 		.file, .branch-row {
 			display: flex;
 			align-items: center;
-			gap: 6px;
+			gap: ${space.sm};
 			padding: 2px;
 			border-radius: ${radius.sm};
 		}
@@ -197,7 +197,7 @@ const Panel = styled(
 			text-overflow: ellipsis;
 			text-align: left;
 			background: transparent;
-			padding: 2px 4px;
+			padding: 2px ${space.xs};
 		}
 
 		.status {
@@ -206,9 +206,9 @@ const Panel = styled(
 			font-weight: bold;
 		}
 
-		.status.modified, .status.renamed, .status.copied { color: ${colors.light(colors.yellow)}; }
-		.status.added, .status.untracked { color: ${colors.light(colors.green)}; }
-		.status.deleted { color: ${colors.light(colors.red)}; }
+		.status.modified, .status.renamed, .status.copied { color: ${colors.light(colors.warning)}; }
+		.status.added, .status.untracked { color: ${colors.light(colors.success)}; }
+		.status.deleted { color: ${colors.light(colors.danger)}; }
 
 		.branch-row .name {
 			flex: 1;
@@ -239,18 +239,18 @@ const Panel = styled(
 
 		.branch-row.current .name::before {
 			content: '● ';
-			color: ${colors.light(colors.green)};
+			color: ${colors.light(colors.success)};
 		}
 
 		.commit-box {
 			display: flex;
 			flex-direction: column;
-			gap: 6px;
-			margin-top: 10px;
+			gap: ${space.sm};
+			margin-top: ${space.md};
 		}
 
 		.review-commit {
-			padding: 2px 6px;
+			padding: 2px ${space.sm};
 			overflow: hidden;
 			text-overflow: ellipsis;
 			white-space: nowrap;
@@ -271,14 +271,14 @@ const Panel = styled(
 			flex-wrap: wrap;
 			align-items: center;
 			justify-content: flex-end;
-			gap: 6px;
+			gap: ${space.sm};
 		}
 
 		.amend {
 			flex: 1;
 			display: flex;
 			align-items: center;
-			gap: 6px;
+			gap: ${space.sm};
 			font-size: 0.85em;
 			white-space: nowrap;
 			cursor: pointer;
@@ -290,8 +290,8 @@ const Panel = styled(
 
 		.new-branch {
 			display: flex;
-			gap: 6px;
-			margin-bottom: 6px;
+			gap: ${space.sm};
+			margin-bottom: ${space.sm};
 		}
 
 		.history-item {
@@ -299,7 +299,7 @@ const Panel = styled(
 			flex-direction: column;
 			align-items: stretch;
 			gap: 2px;
-			padding: 6px;
+			padding: ${space.sm};
 			text-align: left;
 			background: transparent;
 			white-space: normal;
@@ -312,11 +312,11 @@ const Panel = styled(
 		.refs {
 			display: flex;
 			flex-wrap: wrap;
-			gap: 4px;
+			gap: ${space.xs};
 		}
 
 		.ref {
-			padding: 0 6px;
+			padding: 0 ${space.sm};
 			border-radius: ${radius.lg};
 			font-size: 0.75em;
 			background: ${colors.alpha(colors.blue, 0.3)};
@@ -324,7 +324,7 @@ const Panel = styled(
 
 		.more {
 			align-self: center;
-			margin-top: 6px;
+			margin-top: ${space.sm};
 		}
 
 		/* The Links panel */
@@ -346,7 +346,7 @@ const Panel = styled(
 			display: flex;
 			flex-direction: column;
 			gap: 2px;
-			padding: 6px;
+			padding: ${space.sm};
 			border-radius: ${radius.sm};
 		}
 
@@ -355,13 +355,13 @@ const Panel = styled(
 		}
 
 		.link.pinned {
-			box-shadow: inset 3px 0 ${colors.light(colors.yellow)};
+			box-shadow: inset 3px 0 ${colors.light(colors.warning)};
 		}
 
 		.link-head {
 			display: flex;
 			align-items: center;
-			gap: 6px;
+			gap: ${space.sm};
 		}
 
 		.link-head i {
@@ -385,7 +385,7 @@ const Panel = styled(
 		}
 
 		.link-address {
-			padding-left: calc(1.2em + 6px);
+			padding-left: calc(1.2em + ${space.sm});
 			color: ${colors.gray};
 			font-size: 0.75em;
 			overflow: hidden;
@@ -394,7 +394,7 @@ const Panel = styled(
 		}
 
 		.link > .meta {
-			padding-left: calc(1.2em + 6px);
+			padding-left: calc(1.2em + ${space.sm});
 		}
 
 				.link-context .said-by {
@@ -402,8 +402,8 @@ const Panel = styled(
 		}
 
 		.link-context {
-			padding-left: calc(1.2em + 6px);
-			color: ${colors.light(colors.gray)};
+			padding-left: calc(1.2em + ${space.sm});
+			color: ${colors.muted};
 			font-size: 0.8em;
 			overflow: hidden;
 			display: -webkit-box;
@@ -414,7 +414,7 @@ const Panel = styled(
 		/* The Artifacts panel: an image's preview under its name */
 		.artifact-preview {
 			display: block;
-			padding-left: calc(1.2em + 6px);
+			padding-left: calc(1.2em + ${space.sm});
 		}
 
 		.artifact-preview img {
@@ -429,7 +429,7 @@ const Panel = styled(
 		.link-head .download {
 			color: inherit;
 			opacity: 0.7;
-			padding: 2px 4px;
+			padding: 2px ${space.xs};
 		}
 
 		/* The Tasks panel */
@@ -445,8 +445,8 @@ const Panel = styled(
 		.ready-item {
 			display: flex;
 			align-items: center;
-			gap: 8px;
-			padding: 3px 0;
+			gap: ${space.sm};
+			padding: ${space.xs} 0;
 			font-size: 0.9em;
 		}
 
@@ -456,12 +456,12 @@ const Panel = styled(
 			overflow-wrap: anywhere;
 		}
 
-		.ready-item.done i { color: ${colors.light(colors.green)}; }
-		.ready-item.todo i { color: ${colors.light(colors.yellow)}; }
+		.ready-item.done i { color: ${colors.light(colors.success)}; }
+		.ready-item.todo i { color: ${colors.light(colors.warning)}; }
 
-		.outcome.ok { color: ${colors.light(colors.green)}; }
-		.outcome.failed { color: ${colors.light(colors.red)}; }
-		.outcome.running { color: ${colors.light(colors.yellow)}; }
+		.outcome.ok { color: ${colors.light(colors.success)}; }
+		.outcome.failed { color: ${colors.light(colors.danger)}; }
+		.outcome.running { color: ${colors.light(colors.warning)}; }
 
 		button.on {
 			background: ${colors.alpha(colors.blue, 0.45)};
@@ -469,9 +469,9 @@ const Panel = styled(
 
 		.problem {
 			display: flex;
-			gap: 8px;
+			gap: ${space.sm};
 			align-items: baseline;
-			padding: 3px 6px;
+			padding: ${space.xs} ${space.sm};
 			text-align: left;
 			background: transparent;
 			white-space: normal;
@@ -484,11 +484,11 @@ const Panel = styled(
 
 		.problem .where {
 			flex-shrink: 0;
-			color: ${colors.light(colors.red)};
+			color: ${colors.light(colors.danger)};
 		}
 
 		.problem.warning .where {
-			color: ${colors.light(colors.yellow)};
+			color: ${colors.light(colors.warning)};
 		}
 
 		.problem .message {
@@ -499,8 +499,8 @@ const Panel = styled(
 
 		.variable {
 			display: flex;
-			gap: 8px;
-			padding: 1px 6px;
+			gap: ${space.sm};
+			padding: 1px ${space.sm};
 			font-size: 0.85em;
 		}
 
@@ -519,9 +519,9 @@ const Panel = styled(
 		.run-head {
 			display: flex;
 			align-items: center;
-			gap: 6px;
+			gap: ${space.sm};
 			flex-wrap: wrap;
-			margin-bottom: 6px;
+			margin-bottom: ${space.sm};
 		}
 
 		.run-output {
@@ -547,7 +547,7 @@ const Panel = styled(
 			flex-direction: column;
 			align-items: stretch;
 			gap: 2px;
-			padding: 6px;
+			padding: ${space.sm};
 			text-align: left;
 			background: transparent;
 			white-space: normal;
@@ -568,17 +568,17 @@ const Panel = styled(
 			display: flex;
 			flex-direction: column;
 			gap: 1px;
-			margin: 0 0 8px 10px;
-			padding-left: 6px;
-			border-left: 1px solid ${colors.alpha(colors.white, 0.12)};
+			margin: 0 0 ${space.sm} ${space.md};
+			padding-left: ${space.sm};
+			border-left: 1px solid ${colors.border};
 		}
 
 		.step-line {
 			display: flex;
 			align-items: baseline;
-			gap: 6px;
+			gap: ${space.sm};
 			width: 100%;
-			padding: 2px 4px;
+			padding: 2px ${space.xs};
 			text-align: left;
 			background: transparent;
 			font-size: 0.9em;
@@ -595,7 +595,7 @@ const Panel = styled(
 		}
 
 		.step-line .tool {
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 		}
 
 		.step-line .what {
@@ -606,7 +606,7 @@ const Panel = styled(
 		}
 
 		.step.failed .tool, .step.failed i {
-			color: ${colors.light(colors.red)};
+			color: ${colors.light(colors.danger)};
 			opacity: 1;
 		}
 
@@ -615,8 +615,8 @@ const Panel = styled(
 		}
 
 		.step-output {
-			margin: 2px 0 6px 24px;
-			padding: 6px;
+			margin: 2px 0 ${space.sm} ${space.xl};
+			padding: ${space.sm};
 			max-height: 16em;
 			overflow: auto;
 			white-space: pre-wrap;
@@ -626,8 +626,8 @@ const Panel = styled(
 		}
 
 		.verdict {
-			margin: 4px 0 8px;
-			padding: 6px 10px;
+			margin: ${space.xs} 0 ${space.sm};
+			padding: ${space.sm} ${space.md};
 			border-left: 3px solid ${colors.gray};
 			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.04)};
@@ -635,20 +635,20 @@ const Panel = styled(
 		}
 
 		.verdict.current {
-			border-color: ${colors.green};
+			border-color: ${colors.success};
 		}
 
 		.verdict.stale, .verdict.untested {
-			border-color: ${colors.yellow};
+			border-color: ${colors.warning};
 		}
 
 		.verdict.failing {
-			border-color: ${colors.red};
+			border-color: ${colors.danger};
 		}
 
 		.empty {
-			padding: 12px;
-			color: ${colors.light(colors.gray)};
+			padding: ${space.md};
+			color: ${colors.muted};
 		}
 	`,
 );
