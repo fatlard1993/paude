@@ -846,8 +846,6 @@ const ACTIONS = {
 	dropStash: (root, { ref }) => act(['stash', 'drop', cleanName(ref)], root),
 };
 
-export const GIT_ACTIONS = Object.keys(ACTIONS);
-
 // Runs one, resolving to { ok, output }: git's own words either way, for the panel to show
 export const gitAction = async (root, action, options = {}) => {
 	if (!Object.hasOwn(ACTIONS, action)) throw new GitError('Unknown git action');
