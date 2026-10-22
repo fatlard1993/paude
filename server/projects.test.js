@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp } from 'fs/promises';
+import { mkdir, mkdtemp, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { beforeAll, expect, test } from 'bun:test';
@@ -17,6 +17,7 @@ import {
 	setProjectsRoot,
 	unregisterFolder,
 } from './projects';
+import gitEnvironment from './utils/gitEnvironment';
 
 let base;
 
@@ -93,4 +94,24 @@ test("a project keeps when it was last active after its sessions are gone, until
 
 	await unregisterFolder('tool');
 	expect(projectActivity('tool')).toBeNull();
+});
+
+test("a git worktree left in the projects root is its repository's, not a project of its own", async () => {
+	const repo = path.join(base, 'root/repo');
+	const run = (...args) => Bun.spawnSync(['git', ...args], { cwd: repo, env: gitEnvironment() });
+
+	await mkdir(repo);
+	run('init', '-q', '-b', 'main');
+	run('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'start');
+	run('worktree', 'add', '-q', '-b', 'fix', path.join(base, 'root/repo-fix'));
+	// A submodule's .git file names a gitdir with no commondir
+	await mkdir(path.join(base, 'root/module'));
+	await writeFile(path.join(base, 'root/module/.git'), `gitdir: ${path.join(repo, '.git')}\n`);
+
+	const listed = await listProjects();
+
+	expect(listed).toContain('repo');
+	expect(listed).toContain('module');
+	expect(listed).not.toContain('repo-fix');
+	expect(projectOf(path.join(base, 'root/repo-fix'))).toBe('repo');
 });

@@ -1,6 +1,6 @@
-import { readdir, realpath, stat } from 'fs/promises';
+import { readFile, readdir, realpath, stat } from 'fs/promises';
 import os from 'os';
-import { basename, join, relative, resolve, sep } from 'path';
+import { basename, dirname, join, relative, resolve, sep } from 'path';
 
 import writeJsonFile from '../shared/writeJsonFile';
 import readJsonFile from '../shared/readJsonFile';
@@ -64,13 +64,49 @@ const rootProjects = async () => {
 const holdsOthersWorktrees = name =>
 	worktrees.some(({ path, project }) => project !== name && inside(path, join(root, name)));
 
-export const listProjects = async () =>
-	[
+// The main checkout a linked worktree belongs to, from the gitdir its .git file names; null for anything else (a
+// repository's own .git folder, a submodule's gitdir, which has no commondir)
+const mainCheckoutOf = async folder => {
+	const gitdir = (await readFile(join(folder, '.git'), 'utf8').catch(() => '')).match(/^gitdir: (.+)$/m)?.[1];
+
+	if (!gitdir) return null;
+
+	const linked = resolve(folder, gitdir.trim());
+	const common = (await readFile(join(linked, 'commondir'), 'utf8').catch(() => '')).trim();
+	const shared = common && resolve(linked, common);
+
+	return shared && basename(shared) === '.git' ? dirname(shared) : null;
+};
+
+// A worktree left in the projects root (by git, or a tool other than paude) is claimed for its repository's project,
+// as joining a session there would, rather than listed as a project of its own
+const claimRootWorktrees = async names => {
+	const projects = [...names.map(name => ({ name, path: join(root, name) })), ...folders];
+
+	for (const name of names) {
+		const path = join(root, name);
+
+		if (worktrees.some(worktree => worktree.path === path)) continue;
+
+		const main = await mainCheckoutOf(path);
+		const project = main && projects.find(candidate => candidate.path === main && candidate.name !== name);
+
+		if (project) await claimWorktree(path, project.name);
+	}
+};
+
+export const listProjects = async () => {
+	const names = await rootProjects();
+
+	await claimRootWorktrees(names);
+
+	return [
 		...new Set([
-			...(await rootProjects()).filter(name => !holdsOthersWorktrees(name) && !hidden.includes(name)),
+			...names.filter(name => !holdsOthersWorktrees(name) && !hidden.includes(name)),
 			...folders.map(({ name }) => name),
 		]),
 	].sort((a, b) => a.localeCompare(b));
+};
 
 export const registeredFolders = () => folders.map(folder => ({ ...folder }));
 
