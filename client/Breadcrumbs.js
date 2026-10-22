@@ -2,6 +2,7 @@ import { Elem, Notify, styled } from '@vanilla-bean/components';
 
 import { tintsOf } from '../shared/hues';
 import { openRemote } from './api';
+import { CRAMPED } from './Bar';
 import { element } from './dom';
 import favicon from './favicon.svg';
 import { serverName } from './identity';
@@ -11,7 +12,7 @@ import { onWaitingChange } from './waiting';
 
 const Trail = styled(
 	Elem,
-	({ colors }) => `
+	({ colors, radius }) => `
 		display: flex;
 		align-items: center;
 		gap: 6px;
@@ -74,7 +75,7 @@ const Trail = styled(
 			flex-shrink: 0;
 			padding: 1px 8px;
 			border: none;
-			border-radius: 10px;
+			border-radius: ${radius.lg};
 			background: ${colors.light(colors.warning)};
 			color: ${colors.black};
 			font: inherit;
@@ -95,7 +96,7 @@ const Trail = styled(
 			gap: 6px;
 			flex-shrink: 0;
 			padding: 2px 8px;
-			border-radius: 10px;
+			border-radius: ${radius.lg};
 			background: hsl(var(--server-hue) 60% 50% / 0.18);
 			color: hsl(var(--server-hue) 70% 75%);
 			font: inherit;
@@ -112,7 +113,7 @@ const Trail = styled(
 		}
 
 		/* On a phone the bucket stands for paude, and the switch keeps only its arrow */
-		@media (max-width: 600px) {
+		@media ${CRAMPED} {
 			.root .label,
 			.server-switch .name {
 				display: none;

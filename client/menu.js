@@ -23,7 +23,7 @@ const GlassMenu = styled(
 			padding: 6px 10px;
 			line-height: normal;
 			border: none;
-			border-radius: 6px;
+			border-radius: ${radius.md};
 			white-space: nowrap;
 			outline-color: ${colors.lighter(colors.selected)};
 		}

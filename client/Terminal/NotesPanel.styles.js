@@ -2,7 +2,7 @@ import { Component, styled } from '@vanilla-bean/components';
 
 const Panel = styled(
 	Component,
-	({ colors }) => `
+	({ colors, radius }) => `
 		display: flex;
 		flex-direction: column;
 		min-height: 0;
@@ -22,7 +22,7 @@ const Panel = styled(
 		/* The panel itself is mostly glass; what holds text sits on something solid enough to read */
 		.tabs, .who {
 			margin: 8px 8px 0;
-			border-radius: 6px;
+			border-radius: ${radius.md};
 			background: ${colors.alpha(colors.vantablack, 0.5)};
 		}
 
@@ -32,12 +32,12 @@ const Panel = styled(
 
 		.message {
 			padding: 6px 8px;
-			border-radius: 6px;
+			border-radius: ${radius.md};
 		}
 
 		.composer {
 			margin: 8px;
-			border-radius: 6px;
+			border-radius: ${radius.md};
 		}
 
 		.tabs {
@@ -50,7 +50,7 @@ const Panel = styled(
 			margin-bottom: 0;
 			padding: 6px;
 			border-bottom: none;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			color: inherit;
 			font: inherit;
 			opacity: 0.6;
@@ -71,7 +71,7 @@ const Panel = styled(
 		.tabs .count:not(:empty) {
 			margin-left: 6px;
 			padding: 0 6px;
-			border-radius: 8px;
+			border-radius: ${radius.lg};
 			background: ${colors.orange};
 			color: ${colors.white};
 			font-size: 0.8em;
@@ -104,7 +104,7 @@ const Panel = styled(
 		/* Matches the files panel's */
 		.who button.close {
 			padding: 4px 8px;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.1)};
 			color: inherit;
 		}
@@ -140,7 +140,7 @@ const Panel = styled(
 
 		.comment {
 			padding: 8px;
-			border-radius: 6px;
+			border-radius: ${radius.md};
 			display: flex;
 			flex-direction: column;
 			gap: 6px;
@@ -195,7 +195,7 @@ const Panel = styled(
 
 		.comments-toolbar button {
 			padding: 4px 10px;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.1)};
 			color: inherit;
 			font: inherit;
@@ -216,7 +216,7 @@ const Panel = styled(
 		.reactions .chip {
 			padding: 1px 7px;
 			border: 1px solid ${colors.alpha(colors.white, 0.12)};
-			border-radius: 10px;
+			border-radius: ${radius.lg};
 			background: ${colors.alpha(colors.white, 0.04)};
 			color: inherit;
 			font: inherit;
@@ -242,7 +242,7 @@ const Panel = styled(
 			flex-wrap: wrap;
 			gap: 2px;
 			padding: 4px;
-			border-radius: 6px;
+			border-radius: ${radius.md};
 			background: ${colors.alpha(colors.vantablack, 0.9)};
 		}
 
@@ -253,7 +253,7 @@ const Panel = styled(
 		.reactions .palette button {
 			font-size: 1.15em;
 			padding: 2px 4px;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 		}
 
 		.reactions .palette button:hover {
@@ -290,7 +290,7 @@ const Panel = styled(
 
 		.actions button, .composer button {
 			padding: 4px 10px;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.1)};
 			color: inherit;
 			font: inherit;

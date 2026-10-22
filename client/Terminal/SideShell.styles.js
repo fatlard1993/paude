@@ -5,7 +5,7 @@ const layer = colors => colors.alpha(colors.vantablack, 0.5);
 
 const Panel = styled(
 	Component,
-	({ colors }) => `
+	({ colors, radius }) => `
 		display: flex;
 		flex-direction: column;
 		height: 100%;
@@ -18,7 +18,7 @@ const Panel = styled(
 			gap: 6px;
 			align-items: center;
 			padding: 4px 6px;
-			border-radius: 6px;
+			border-radius: ${radius.md};
 			background: ${layer(colors)};
 		}
 
@@ -41,7 +41,7 @@ const Panel = styled(
 			gap: 6px;
 			align-items: center;
 			padding: 4px 10px;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.08)};
 			color: ${colors.white};
 			font: inherit;
@@ -65,7 +65,7 @@ const Panel = styled(
 			flex: 1;
 			min-height: 0;
 			padding: 4px;
-			border-radius: 6px;
+			border-radius: ${radius.md};
 			background: ${colors.alpha(colors.vantablack, 0.55)};
 			overflow: hidden;
 		}
@@ -91,7 +91,7 @@ const Panel = styled(
 			transform: translateX(-50%);
 			z-index: 1;
 			padding: 4px 10px;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.black, 0.75)};
 			color: ${colors.white};
 			pointer-events: none;

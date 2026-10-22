@@ -6,7 +6,7 @@ const layer = colors => colors.alpha(colors.vantablack, 0.5);
 
 const Panel = styled(
 	Component,
-	({ colors, fonts }) => `
+	({ colors, fonts, radius }) => `
 		display: flex;
 		flex-direction: column;
 		height: 100%;
@@ -20,7 +20,7 @@ const Panel = styled(
 
 		.bar, .filters, .list, .viewer {
 			background: ${layer(colors)};
-			border-radius: 6px;
+			border-radius: ${radius.md};
 		}
 
 		.bar {
@@ -37,7 +37,7 @@ const Panel = styled(
 			align-items: center;
 			gap: 2px;
 			padding-right: 2px;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.black, 0.6)};
 		}
 
@@ -61,7 +61,7 @@ const Panel = styled(
 
 		button {
 			padding: 4px 10px;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.1)};
 			color: inherit;
 			font: inherit;
@@ -120,7 +120,7 @@ const Panel = styled(
 			align-items: center;
 			gap: 6px;
 			padding: 2px 4px;
-			border-radius: 3px;
+			border-radius: ${radius.sm};
 			cursor: pointer;
 			white-space: nowrap;
 		}
@@ -401,7 +401,7 @@ const Panel = styled(
 		.bar button .count:not(:empty) {
 			margin-left: 6px;
 			padding: 0 6px;
-			border-radius: 8px;
+			border-radius: ${radius.lg};
 			font-size: 0.8em;
 			background: ${colors.alpha(colors.white, 0.15)};
 		}
@@ -568,7 +568,7 @@ const Panel = styled(
 
 		.diff .file-head .file-label {
 			padding: 1px 6px;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.08)};
 			color: ${colors.light(colors.gray)};
 			font-size: 0.8em;
@@ -609,7 +609,7 @@ const Panel = styled(
 			gap: 6px;
 			margin-bottom: 6px;
 			padding: 6px;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.blue, 0.18)};
 		}
 
@@ -732,7 +732,7 @@ const Panel = styled(
 			margin: 0;
 			padding: 3px 6px;
 			border: 1px solid ${colors.alpha(colors.white, 0.15)};
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.black, 0.6)};
 			color: inherit;
 			font: inherit;
@@ -742,7 +742,7 @@ const Panel = styled(
 			margin: 0;
 			padding: 3px 8px;
 			border: none;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.1)};
 			background-image: none;
 			color: inherit;
@@ -753,7 +753,7 @@ const Panel = styled(
 		.code-editor .cm-search label {
 			padding: 1px 7px;
 			border: 1px solid ${colors.alpha(colors.white, 0.25)};
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			font-size: inherit;
 			font-family: ui-monospace, monospace;
 			font-weight: bold;
@@ -872,7 +872,7 @@ const Panel = styled(
 
 		.markdown pre {
 			padding: 8px;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			overflow: auto;
 		}
 

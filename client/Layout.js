@@ -44,7 +44,7 @@ export const Empty = styled(
 // project's folder color, in kitty-bg's tints
 const SessionCard = styled(
 	Card,
-	({ colors }) => `
+	({ colors, media, radius }) => `
 		display: flex;
 		align-items: center;
 		gap: 10px;
@@ -87,7 +87,7 @@ const SessionCard = styled(
 			display: inline-block;
 			margin-right: 6px;
 			padding: 0 6px;
-			border-radius: 8px;
+			border-radius: ${radius.lg};
 			color: hsl(var(--server-hue) 70% 75%);
 			background: hsl(var(--server-hue) 60% 50% / 0.18);
 		}
@@ -115,7 +115,7 @@ const SessionCard = styled(
 			opacity: 1;
 		}
 
-		@media (pointer: coarse) {
+		@media ${media.touch} {
 			.remove, .watch {
 				opacity: 0.6;
 			}

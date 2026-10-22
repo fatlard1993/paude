@@ -48,7 +48,7 @@ const Viewer = styled.Component`
 		height: 36px;
 		padding: 0;
 		border: none;
-		border-radius: 6px;
+		border-radius: ${({ radius }) => radius.md};
 		background: transparent;
 		color: inherit;
 		font: inherit;
@@ -77,7 +77,7 @@ const Viewer = styled.Component`
 		max-height: calc(100% - 24px);
 		object-fit: contain;
 		cursor: zoom-in;
-		border-radius: 4px;
+		border-radius: ${({ radius }) => radius.sm};
 		background: repeating-conic-gradient(${({ colors }) => colors.alpha(colors.white, 0.06)} 0 25%, transparent 0 50%) 0
 			0 / 16px 16px;
 	}
@@ -95,7 +95,7 @@ const Viewer = styled.Component`
 		width: 44px;
 		height: 64px;
 		padding: 0;
-		border-radius: 8px;
+		border-radius: ${({ radius }) => radius.lg};
 		background: ${({ colors }) => colors.alpha(colors.vantablack, 0.4)};
 		color: inherit;
 		font-size: 1.2em;

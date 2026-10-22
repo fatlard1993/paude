@@ -31,12 +31,12 @@ import { updateTabTitle } from './tabTitle';
 // The repo's own create command, as it runs
 const Progress = styled(
 	Elem,
-	({ colors }) => `
+	({ colors, radius }) => `
 		max-height: 14em;
 		overflow: auto;
 		margin: 6px 0;
 		padding: 8px 10px;
-		border-radius: 6px;
+		border-radius: ${radius.md};
 		background: ${colors.alpha(colors.black, 0.35)};
 		font-size: 0.85em;
 		white-space: pre-wrap;

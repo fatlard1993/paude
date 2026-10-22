@@ -1,4 +1,4 @@
-import { Notify } from '@vanilla-bean/components';
+import { Notify, theme } from '@vanilla-bean/components';
 
 import { attachFileText } from '../../shared/attachText';
 import { createEntry, manageFiles, rawFileUrl, uploadFile } from '../api';
@@ -15,7 +15,7 @@ const HELD_CLICK_MS = 800;
 const EXPAND_ON_HOVER_MS = 700;
 const MAX_UPLOAD = 50 * 1024 * 1024;
 const UNDO_MS = 10_000;
-const TOUCH = window.matchMedia('(pointer: coarse)');
+const TOUCH = window.matchMedia(theme.media.touch);
 
 const parentOf = path => path.split('/').slice(0, -1).join('/');
 const nameOf = path => path.split('/').at(-1);

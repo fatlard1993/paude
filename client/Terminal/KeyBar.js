@@ -19,7 +19,7 @@ const KEYS = [
 
 const Bar = styled(
 	Component,
-	({ colors, media, safeArea }) => `
+	({ colors, media, radius, safeArea }) => `
 		display: none;
 		gap: 4px;
 		padding: 4px 8px;
@@ -38,7 +38,7 @@ const Bar = styled(
 			flex: 1 0 auto;
 			min-width: 40px;
 			padding: 8px 6px;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.08)};
 			color: inherit;
 			font: inherit;

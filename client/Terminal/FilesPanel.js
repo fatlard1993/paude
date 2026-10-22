@@ -1,4 +1,4 @@
-import { Notify, debounce } from '@vanilla-bean/components';
+import { Notify, debounce, theme } from '@vanilla-bean/components';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 
@@ -39,7 +39,7 @@ import { codeEditor, createState, openSearchPanel } from './codeEditor';
 import { copyWithNotice } from './copySelection';
 
 const MAX_MATCHES = 200;
-const TOUCH = window.matchMedia('(pointer: coarse)');
+const TOUCH = window.matchMedia(theme.media.touch);
 const SEARCH_DELAY_MS = 300;
 const OPTIONS_KEY = 'paude.searchOptions';
 const MARKDOWN_KEY = 'paude.markdownView';

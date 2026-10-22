@@ -138,7 +138,7 @@ const Box = styled(
 
 		.project-head .server {
 			padding: 0 6px;
-			border-radius: 8px;
+			border-radius: ${radius.lg};
 			color: hsl(var(--server-hue) 70% 75%);
 			background: hsl(var(--server-hue) 60% 50% / 0.18);
 			font-size: 0.85em;

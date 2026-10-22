@@ -1,7 +1,9 @@
+import { theme } from '@vanilla-bean/components';
+
 import symbolsFont from '../fonts/SymbolsNerdFontMono-Regular.woff2';
 import technicalFont from '../fonts/FreeMonoTechnical.woff2';
 
-const touch = window.matchMedia('(pointer: coarse)').matches;
+const touch = window.matchMedia(theme.media.touch).matches;
 
 // Fonts for what ordinary monospace fonts leave as boxes, each downloaded only once a terminal prints something it
 // draws. Nerd Font icons (a prompt's git branch, ls with icons) sit in the private use areas; Nerd Fonts' own symbols

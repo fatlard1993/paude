@@ -5,7 +5,7 @@ const layer = colors => colors.alpha(colors.vantablack, 0.5);
 
 const Panel = styled(
 	Component,
-	({ colors }) => `
+	({ colors, radius }) => `
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
@@ -29,7 +29,7 @@ const Panel = styled(
 		}
 
 		.bar, .tabs, .body, .output {
-			border-radius: 6px;
+			border-radius: ${radius.md};
 			background: ${layer(colors)};
 		}
 
@@ -46,7 +46,7 @@ const Panel = styled(
 
 		button {
 			padding: 4px 10px;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.1)};
 			color: inherit;
 			font: inherit;
@@ -127,7 +127,7 @@ const Panel = styled(
 			margin-bottom: 0;
 			padding: 4px 6px;
 			border-bottom: none;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			color: inherit;
 			font-size: 0.9em;
 			background: transparent;
@@ -183,7 +183,7 @@ const Panel = styled(
 			align-items: center;
 			gap: 6px;
 			padding: 2px;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 		}
 
 		.file:hover, .branch-row:hover {
@@ -317,7 +317,7 @@ const Panel = styled(
 
 		.ref {
 			padding: 0 6px;
-			border-radius: 8px;
+			border-radius: ${radius.lg};
 			font-size: 0.75em;
 			background: ${colors.alpha(colors.blue, 0.3)};
 		}
@@ -347,7 +347,7 @@ const Panel = styled(
 			flex-direction: column;
 			gap: 2px;
 			padding: 6px;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 		}
 
 		.link:hover {
@@ -422,7 +422,7 @@ const Panel = styled(
 			cursor: zoom-in;
 			max-width: 100%;
 			max-height: 160px;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.05)};
 		}
 
@@ -534,7 +534,7 @@ const Panel = styled(
 		.turn {
 			display: flex;
 			flex-direction: column;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 		}
 
 		/* The turn a catch-up tour is on */
@@ -621,7 +621,7 @@ const Panel = styled(
 			overflow: auto;
 			white-space: pre-wrap;
 			font-size: 0.8em;
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.vantablack, 0.35)};
 		}
 
@@ -629,7 +629,7 @@ const Panel = styled(
 			margin: 4px 0 8px;
 			padding: 6px 10px;
 			border-left: 3px solid ${colors.gray};
-			border-radius: 4px;
+			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.04)};
 			font-size: 0.9em;
 		}

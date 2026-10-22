@@ -30,7 +30,7 @@ import { Places, carryDraft, composeBox, placePrompt } from './PromptHome';
 // The project list's last row: pressed, it opens into the folder's path
 const AddFolder = styled(
 	Elem,
-	({ colors }) => `
+	({ colors, radius }) => `
 		display: flex;
 		align-items: center;
 		min-height: 56px;
@@ -39,7 +39,7 @@ const AddFolder = styled(
 			flex: 1;
 			align-self: stretch;
 			border: 1px dashed ${colors.alpha(colors.white, 0.18)};
-			border-radius: 6px;
+			border-radius: ${radius.md};
 			color: ${colors.light(colors.gray)};
 			font: inherit;
 		}

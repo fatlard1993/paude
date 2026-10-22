@@ -9,11 +9,11 @@ import { sessionCard } from './Layout';
 
 const Compose = styled(
 	Elem,
-	({ colors, radius }) => `
+	({ colors, media, radius }) => `
 		display: flex;
 		flex-direction: column;
 		border: 1px solid ${colors.border};
-		border-radius: 10px;
+		border-radius: ${radius.lg};
 		background: ${colors.alpha(colors.black, 0.35)};
 		transition: border-color 0.15s, box-shadow 0.15s;
 
@@ -27,7 +27,7 @@ const Compose = styled(
 			max-height: 40vh;
 			padding: 10px 12px;
 			border: none;
-			border-radius: 10px 10px 0 0;
+			border-radius: ${radius.lg} ${radius.lg} 0 0;
 			background: transparent;
 			outline: none;
 			resize: vertical;
@@ -92,7 +92,7 @@ const Compose = styled(
 		}
 
 		.actions button {
-			border-radius: 6px;
+			border-radius: ${radius.md};
 		}
 
 		/* The lesser action reads as an option, not a second send */
@@ -110,7 +110,7 @@ const Compose = styled(
 			font-size: 0.8em;
 		}
 
-		@media (pointer: coarse) {
+		@media ${media.touch} {
 			.keys {
 				display: none;
 			}
@@ -156,7 +156,7 @@ export const composeBox = ({ appendTo, placeholder, actions, keep }) => {
 
 export const Places = styled(
 	Elem,
-	({ colors }) => `
+	({ colors, radius }) => `
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
@@ -178,7 +178,7 @@ export const Places = styled(
 			flex-direction: column;
 			gap: 6px;
 			padding: 8px;
-			border-radius: 8px;
+			border-radius: ${radius.lg};
 			background: ${colors.alpha(colors.white, 0.03)};
 		}
 

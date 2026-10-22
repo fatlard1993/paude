@@ -2,6 +2,10 @@ import { Toolbar, styled } from '@vanilla-bean/components';
 
 import { button } from './dom';
 
+// Below this the bar sheds what it can spare, its labels and who's here: its own content breakpoint, narrower than a
+// phone, since at a phone's widest the bar still has room for them
+export const CRAMPED = '(max-width: 600px)';
+
 // Every page's top bar: where you are on the left, its tools on the right as quiet icons, over glass the page shows
 // through. A page with a color of its own (a project's, a session's) underlines the bar with it.
 export class Bar extends styled(

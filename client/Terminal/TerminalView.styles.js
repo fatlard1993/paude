@@ -1,6 +1,6 @@
 import { Elem, styled } from '@vanilla-bean/components';
 
-import { Bar } from '../Bar';
+import { Bar, CRAMPED } from '../Bar';
 
 // Below this the side panels cover the whole terminal
 export const NARROW = '(max-width: 800px)';
@@ -31,7 +31,7 @@ export const Body = styled.Component`
 		display: none;
 	}
 
-	@media (pointer: coarse), (max-width: 600px) {
+	@media ${({ media }) => `${media.touch}, ${media.phone}`} {
 		.asking-overlay.shown {
 			display: flex;
 		}
@@ -61,7 +61,7 @@ export const Body = styled.Component`
 	}
 
 	/* Above the phone's key bar */
-	@media (pointer: coarse) {
+	@media ${({ media }) => media.touch} {
 		.asking-overlay,
 		.limit-overlay {
 			bottom: 60px;
@@ -86,7 +86,7 @@ export const Body = styled.Component`
 		box-sizing: border-box;
 		padding: 0 7px;
 		border: 1px solid ${({ colors }) => colors.alpha(colors.light(colors.blue), 0.6)};
-		border-radius: 4px;
+		border-radius: ${({ radius }) => radius.sm};
 		background: ${({ colors }) => colors.alpha(colors.blue, 0.25)};
 		color: ${({ colors }) => colors.lightest(colors.blue)};
 		font-family: inherit;
@@ -117,7 +117,7 @@ export const Body = styled.Component`
 		bottom: 8px;
 		z-index: 2;
 		box-sizing: border-box;
-		border-radius: 10px;
+		border-radius: ${({ radius }) => radius.lg};
 		border: 1px solid ${({ colors }) => colors.border};
 		background: ${({ colors }) => colors.alpha(colors.black, 0.04)};
 		backdrop-filter: blur(18px) saturate(160%);
@@ -371,7 +371,7 @@ export const TopBar = styled(
 		}
 
 		/* A phone keeps the session's name: the divider gives way */
-		@media (max-width: 600px) {
+		@media ${CRAMPED} {
 			.divider {
 				display: none;
 			}
@@ -404,7 +404,7 @@ export const SelectionActions = styled.Component`
 
 export const Presence = styled(
 	Elem,
-	({ colors }) => `
+	({ colors, radius }) => `
 		display: flex;
 		gap: 6px;
 		flex-shrink: 0;
@@ -418,7 +418,7 @@ export const Presence = styled(
 			align-items: center;
 			gap: 5px;
 			padding: 2px 8px;
-			border-radius: 10px;
+			border-radius: ${radius.lg};
 			background: ${colors.alpha(colors.white, 0.06)};
 			color: ${colors.alpha(colors.white, 0.75)};
 			white-space: nowrap;
@@ -438,7 +438,7 @@ export const Presence = styled(
 		}
 
 		/* The people stay a tap away in the panel */
-		@media (max-width: 600px) {
+		@media ${CRAMPED} {
 			.who {
 				display: none;
 			}
