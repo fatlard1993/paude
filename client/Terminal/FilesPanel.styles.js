@@ -1,5 +1,7 @@
 import { Component, styled } from '@vanilla-bean/components';
 
+import { NARROW } from './TerminalView.styles';
+
 export const LINE_HEIGHT = 20;
 // What text sits on over the panel's glass
 const layer = colors => colors.alpha(colors.vantablack, 0.5);
@@ -922,7 +924,7 @@ const Panel = styled(
 			display: none;
 		}
 
-		@media (max-width: 800px) {
+		@media ${NARROW} {
 			.list {
 				width: auto;
 				flex: 1;
