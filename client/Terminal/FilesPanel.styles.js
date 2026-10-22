@@ -8,12 +8,12 @@ const layer = colors => colors.alpha(colors.vantablack, 0.5);
 
 const Panel = styled(
 	Component,
-	({ colors, fonts, radius }) => `
+	({ colors, fonts, radius, space }) => `
 		display: flex;
 		flex-direction: column;
 		height: 100%;
-		gap: 8px;
-		padding: 8px;
+		gap: ${space.sm};
+		padding: ${space.sm};
 
 		/* Focused so Esc closes it; nothing to show for that */
 		&:focus {
@@ -27,8 +27,8 @@ const Panel = styled(
 
 		.bar {
 			display: flex;
-			gap: 6px;
-			padding: 6px;
+			gap: ${space.sm};
+			padding: ${space.sm};
 			align-items: center;
 		}
 
@@ -53,8 +53,8 @@ const Panel = styled(
 		.filters {
 			display: none;
 			flex-direction: column;
-			gap: 6px;
-			padding: 6px;
+			gap: ${space.sm};
+			padding: ${space.sm};
 		}
 
 		.filters.shown {
@@ -62,7 +62,7 @@ const Panel = styled(
 		}
 
 		button {
-			padding: 4px 10px;
+			padding: ${space.xs} ${space.md};
 			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.1)};
 			color: inherit;
@@ -70,7 +70,7 @@ const Panel = styled(
 		}
 
 		button.toggle {
-			padding: 2px 7px;
+			padding: 2px ${space.sm};
 			border: 1px solid ${colors.alpha(colors.white, 0.25)};
 			background: transparent;
 			font-family: ui-monospace, monospace;
@@ -87,7 +87,7 @@ const Panel = styled(
 		}
 
 		button.icon-only {
-			padding: 4px 8px;
+			padding: ${space.xs} ${space.sm};
 		}
 
 		.panes {
@@ -113,15 +113,15 @@ const Panel = styled(
 			min-width: 140px;
 			flex-shrink: 0;
 			overflow: auto;
-			padding: 6px;
+			padding: ${space.sm};
 			font-size: 0.9em;
 		}
 
 		.list .entry {
 			display: flex;
 			align-items: center;
-			gap: 6px;
-			padding: 2px 4px;
+			gap: ${space.sm};
+			padding: 2px ${space.xs};
 			border-radius: ${radius.sm};
 			cursor: pointer;
 			white-space: nowrap;
@@ -172,7 +172,7 @@ const Panel = styled(
 		}
 
 		.list .hit-text {
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 			overflow: hidden;
 			text-overflow: ellipsis;
 		}
@@ -192,9 +192,9 @@ const Panel = styled(
 
 		.viewer .head {
 			display: flex;
-			gap: 6px;
+			gap: ${space.sm};
 			align-items: center;
-			padding: 6px;
+			padding: ${space.sm};
 			flex-wrap: wrap;
 			border-bottom: 1px solid ${colors.alpha(colors.white, 0.08)};
 		}
@@ -257,7 +257,7 @@ const Panel = styled(
 
 		.replace {
 			display: none;
-			gap: 6px;
+			gap: ${space.sm};
 		}
 
 		.replace.shown {
@@ -271,8 +271,8 @@ const Panel = styled(
 		}
 
 		.entry .snippet {
-			margin-left: 8px;
-			color: ${colors.light(colors.gray)};
+			margin-left: ${space.sm};
+			color: ${colors.muted};
 			font-size: 0.85em;
 			white-space: nowrap;
 			overflow: hidden;
@@ -281,8 +281,8 @@ const Panel = styled(
 
 		/* Symbols in the list: their kind, and where they are */
 		.list-heading {
-			padding: 6px 8px 4px;
-			color: ${colors.light(colors.gray)};
+			padding: ${space.sm} ${space.sm} ${space.xs};
+			color: ${colors.muted};
 			font-size: 0.8em;
 			text-transform: uppercase;
 			letter-spacing: 0.05em;
@@ -305,8 +305,8 @@ const Panel = styled(
 
 		.entry .where {
 			margin-left: auto;
-			padding-left: 8px;
-			color: ${colors.light(colors.gray)};
+			padding-left: ${space.sm};
+			color: ${colors.muted};
 			font-size: 0.8em;
 			white-space: nowrap;
 			overflow: hidden;
@@ -322,7 +322,7 @@ const Panel = styled(
 			flex-shrink: 0;
 			width: 18ch;
 			padding-right: 8px;
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 			font-size: 0.8em;
 			line-height: ${LINE_HEIGHT}px;
 			white-space: pre;
@@ -345,7 +345,7 @@ const Panel = styled(
 		.file-history {
 			display: flex;
 			flex-direction: column;
-			padding: 6px;
+			padding: ${space.sm};
 		}
 
 		.file-history .history-item {
@@ -353,7 +353,7 @@ const Panel = styled(
 			flex-direction: column;
 			align-items: stretch;
 			gap: 2px;
-			padding: 6px;
+			padding: ${space.sm};
 			text-align: left;
 			background: transparent;
 			white-space: normal;
@@ -364,7 +364,7 @@ const Panel = styled(
 		}
 
 		.file-history .meta {
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 			font-size: 0.85em;
 		}
 
@@ -375,7 +375,7 @@ const Panel = styled(
 
 		.status {
 			margin-left: auto;
-			padding: 0 4px;
+			padding: 0 ${space.xs};
 			font-weight: bold;
 			font-size: 0.85em;
 		}
@@ -385,15 +385,15 @@ const Panel = styled(
 		}
 
 		.status.modified, .status.renamed {
-			color: ${colors.light(colors.yellow)};
+			color: ${colors.light(colors.warning)};
 		}
 
 		.status.added, .status.untracked {
-			color: ${colors.light(colors.green)};
+			color: ${colors.light(colors.success)};
 		}
 
 		.status.deleted {
-			color: ${colors.light(colors.red)};
+			color: ${colors.light(colors.danger)};
 		}
 
 		.status.renamed {
@@ -401,8 +401,8 @@ const Panel = styled(
 		}
 
 		.bar button .count:not(:empty) {
-			margin-left: 6px;
-			padding: 0 6px;
+			margin-left: ${space.sm};
+			padding: 0 ${space.sm};
 			border-radius: ${radius.lg};
 			font-size: 0.8em;
 			background: ${colors.alpha(colors.white, 0.15)};
@@ -422,7 +422,7 @@ const Panel = styled(
 			padding: 4px 8px;
 			margin-top: 6px;
 			background: ${colors.alpha(colors.blue, 0.12)};
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 			font-family: ui-monospace, monospace;
 			position: sticky;
 			left: 0;
@@ -474,7 +474,7 @@ const Panel = styled(
 			flex-shrink: 0;
 			text-align: center;
 			font-family: ui-monospace, monospace;
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 		}
 
 		.diff code {
@@ -544,7 +544,7 @@ const Panel = styled(
 
 		.diff .split-note {
 			padding-left: 8px;
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 		}
 
 		.diff .file-head {
@@ -553,7 +553,7 @@ const Panel = styled(
 			gap: 8px;
 			margin-top: 12px;
 			padding: 6px 8px;
-			border-top: 1px solid ${colors.alpha(colors.white, 0.12)};
+			border-top: 1px solid ${colors.border};
 			font-weight: bold;
 		}
 
@@ -572,7 +572,7 @@ const Panel = styled(
 			padding: 1px 6px;
 			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.08)};
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 			font-size: 0.8em;
 			white-space: nowrap;
 		}
@@ -586,18 +586,18 @@ const Panel = styled(
 		}
 
 		.list .section {
-			margin: 10px 4px 4px;
+			margin: ${space.md} ${space.xs} ${space.xs};
 			font-size: 0.8em;
 			text-transform: uppercase;
 			letter-spacing: 0.05em;
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 		}
 
 		.list .entry .detail {
 			margin-left: auto;
-			padding-left: 8px;
+			padding-left: ${space.sm};
 			font-size: 0.85em;
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 		}
 
 		.list .entry.proposal {
@@ -608,9 +608,9 @@ const Panel = styled(
 			display: flex;
 			flex-wrap: wrap;
 			align-items: center;
-			gap: 6px;
-			margin-bottom: 6px;
-			padding: 6px;
+			gap: ${space.sm};
+			margin-bottom: ${space.sm};
+			padding: ${space.sm};
 			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.blue, 0.18)};
 		}
@@ -664,7 +664,7 @@ const Panel = styled(
 		.code-editor .cm-gutters {
 			background: transparent;
 			border-right: 1px solid ${colors.alpha(colors.white, 0.08)};
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 		}
 
 		.code-editor .cm-activeLine, .code-editor .cm-activeLineGutter {
@@ -704,13 +704,13 @@ const Panel = styled(
 			display: flex;
 			flex-wrap: wrap;
 			align-items: center;
-			gap: 4px 6px;
-			padding: 6px 28px 6px 8px;
+			gap: ${space.xs} ${space.sm};
+			padding: ${space.sm} 28px ${space.sm} ${space.sm};
 			font-size: 0.9em;
 		}
 
 		.code-editor .cm-panels .cm-goto-line {
-			padding: 6px 28px 6px 8px;
+			padding: ${space.sm} 28px ${space.sm} ${space.sm};
 			font-size: 0.9em;
 		}
 
@@ -718,7 +718,7 @@ const Panel = styled(
 			display: flex;
 			flex: 1;
 			align-items: center;
-			gap: 6px;
+			gap: ${space.sm};
 			white-space: nowrap;
 		}
 
@@ -732,7 +732,7 @@ const Panel = styled(
 			flex: 1 1 140px;
 			min-width: 0;
 			margin: 0;
-			padding: 3px 6px;
+			padding: ${space.xs} ${space.sm};
 			border: 1px solid ${colors.alpha(colors.white, 0.15)};
 			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.black, 0.6)};
@@ -742,7 +742,7 @@ const Panel = styled(
 
 		.code-editor .cm-panels .cm-button {
 			margin: 0;
-			padding: 3px 8px;
+			padding: ${space.xs} ${space.sm};
 			border: none;
 			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.1)};
@@ -753,7 +753,7 @@ const Panel = styled(
 
 		/* Toggles drawn as the project search's: the box hidden, the label bordered, and lit while it's on */
 		.code-editor .cm-search label {
-			padding: 1px 7px;
+			padding: 1px ${space.sm};
 			border: 1px solid ${colors.alpha(colors.white, 0.25)};
 			border-radius: ${radius.sm};
 			font-size: inherit;
@@ -792,14 +792,14 @@ const Panel = styled(
 			display: flex;
 			flex-wrap: wrap;
 			align-items: center;
-			gap: 8px;
-			padding: 6px 8px;
+			gap: ${space.sm};
+			padding: ${space.sm};
 			background: ${colors.alpha(colors.orange, 0.2)};
 		}
 
 		.tour-strip {
 			flex-shrink: 0;
-			margin: 6px 8px;
+			margin: ${space.sm};
 			max-height: 40%;
 			overflow: auto;
 		}
@@ -815,7 +815,7 @@ const Panel = styled(
 		}
 
 		.tour-strip .answers button {
-			padding: 4px 10px;
+			padding: ${space.xs} ${space.md};
 		}
 
 		.comment-mark {
@@ -916,8 +916,8 @@ const Panel = styled(
 		}
 
 		.empty {
-			color: ${colors.light(colors.gray)};
-			padding: 8px;
+			color: ${colors.muted};
+			padding: ${space.sm};
 		}
 
 		.head .back {

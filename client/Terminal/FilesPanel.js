@@ -176,7 +176,7 @@ const ICON_COLORS = {
 };
 const KIND_COLORS = { image: '#a074c4', video: '#e06c75', audio: '#56b6c2' };
 const FOLDER_COLOR = '#dcb67a';
-const PLAIN_COLOR = '#9da5b4';
+const PLAIN_COLOR = theme.colors.muted.toString();
 
 const icon = (className, color) => {
 	const node = element('i', className);
@@ -674,7 +674,7 @@ export default class FilesPanel extends Panel {
 			const entry = element('div', 'entry proposal');
 
 			entry.append(
-				icon('fa-solid fa-hand', '#e5c07b'),
+				icon('fa-solid fa-hand', theme.colors.warning.toString()),
 				element('span', 'label', `Claude proposes ${count === 1 ? 'a change' : `${count} changes`}`),
 			);
 			entry.addEventListener('click', () => this.openDiffSet({ source: 'proposal' }));
