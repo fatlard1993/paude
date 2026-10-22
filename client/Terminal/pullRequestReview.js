@@ -1,4 +1,4 @@
-import { Dialog, Notify } from '@vanilla-bean/components';
+import { Dialog, Notify, theme } from '@vanilla-bean/components';
 
 import { anchorPlace } from '../../shared/attachText';
 import { getGit, runGit } from '../api';
@@ -18,10 +18,15 @@ const styled = (node, style) => Object.assign(node.style, style) && node;
 
 const note = text => styled(element('div', 'review-why', text), { opacity: '0.7', fontSize: '0.9em' });
 
-const heading = text => styled(element('div', 'review-heading', text), { fontWeight: 'bold', marginTop: '4px' });
+const heading = text =>
+	styled(element('div', 'review-heading', text), { fontWeight: 'bold', marginTop: theme.space.xs });
 
 const choiceRow = (item, detail) => {
-	const row = styled(element('label', 'review-item'), { display: 'flex', gap: '8px', alignItems: 'flex-start' });
+	const row = styled(element('label', 'review-item'), {
+		display: 'flex',
+		gap: theme.space.sm,
+		alignItems: 'flex-start',
+	});
 	const box = checkbox(item.mine);
 	const text = styled(element('div', 'review-text'), { minWidth: 0, flex: '1' });
 
@@ -43,7 +48,11 @@ const choiceRow = (item, detail) => {
 // a summary, and what the review says. Resolves to { commentIds, body, event }, or null.
 const reviewDialog = plan =>
 	new Promise(resolve => {
-		const body = styled(element('div', 'review-dialog'), { display: 'flex', flexDirection: 'column', gap: '10px' });
+		const body = styled(element('div', 'review-dialog'), {
+			display: 'flex',
+			flexDirection: 'column',
+			gap: theme.space.md,
+		});
 		const summary = Object.assign(element('textarea'), { rows: 4, placeholder: 'A summary, if any' });
 		const event = element('select');
 		const items = [...plan.inline, ...plan.inBody];
