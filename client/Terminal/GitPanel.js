@@ -288,7 +288,7 @@ export default class GitPanel extends Panel {
 				write.disabled = true;
 				write.textContent = 'Writing…';
 
-				const { body } = await runGit(this.options.sessionId, 'message');
+				const { body } = await runGit(this.options.sessionId, 'message', { amend: amending.checked });
 
 				write.disabled = false;
 				write.textContent = 'Claude, write it';
@@ -298,7 +298,10 @@ export default class GitPanel extends Panel {
 				this.draft = body.message;
 				message.focus();
 			},
-			{ title: 'Claude reads the staged changes and writes a message for you to edit' },
+			{
+				title:
+					'Claude reads the staged changes, and the conversation that made them, and writes a message for you to edit',
+			},
 		);
 
 		write.disabled = !this.status.staged.length;

@@ -189,7 +189,14 @@ const gitRoutes = async request => {
 
 			return Response.json(await postToPullRequest(match.id, root, cwd, await request.json()));
 		}
-		if (match.what === 'message') return Response.json({ ok: true, message: await draftCommitMessage(root) });
+		if (match.what === 'message') {
+			const { amend } = await request.json().catch(() => ({}));
+
+			return Response.json({
+				ok: true,
+				message: await draftCommitMessage(root, { sessionId: match.id, cwd, amend: Boolean(amend) }),
+			});
+		}
 		if (match.what === 'pr-draft')
 			return Response.json({ ok: true, ...(await draftPullRequest(root, await draftNotes(match.id, cwd))) });
 		if (match.what === 'pr') return Response.json({ ok: true, ...(await openPullRequest(root, await request.json())) });
