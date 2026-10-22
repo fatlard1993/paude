@@ -380,6 +380,67 @@ export const defaultBase = async root => {
 	return null;
 };
 
+// Where the open stack starts: where the branch left its upstream, or the default base without one. Where it left it,
+// not the upstream itself: settling onto an upstream that has gained commits since would take them in too.
+export const openBase = async root => {
+	const upstream = await run(['rev-parse', '--verify', '-q', '@{u}'], root);
+	const base = upstream.code === 0 ? '@{u}' : await defaultBase(root);
+	const parted = base && (await run(['merge-base', 'HEAD', base], root));
+
+	return parted?.code === 0 ? parted.out.trim() : null;
+};
+
+const FOLD = /^(amend|fixup|squash)! (.+)$/;
+
+// The commits not pushed as concerns, newest first: each commit, with the amend!/fixup!/squash! commits that fold into
+// it at settling, and the message it will have then (the latest amend!'s). A fold names its concern by subject, as
+// git's own --fixup=amend: does: the subject it was committed with (`originalSubject`), which a pull --rebase leaves
+// alone where it changes the sha. An older fold naming it by sha still counts while that sha is the concern's.
+export const parseStack = commits => {
+	const concerns = [];
+
+	for (const commit of [...commits].reverse()) {
+		const [, kind, target] = FOLD.exec(commit.subject) ?? [];
+		const into =
+			kind &&
+			concerns.findLast(concern => concern.hash.startsWith(target) || concern.originalSubject === target.trim());
+
+		if (!into) {
+			concerns.push({ ...commit, originalSubject: commit.subject, folds: [] });
+			continue;
+		}
+
+		into.folds.push({ hash: commit.hash, short: commit.short, kind });
+		if (kind === 'amend') {
+			const [subject = into.subject, ...body] = commit.body.split('\n');
+
+			Object.assign(into, { subject: subject.trim(), body: body.join('\n').trim() });
+		}
+	}
+
+	return concerns.reverse();
+};
+
+// { base, concerns: [{ hash, short, subject, body, folds: [{ hash, short, kind }] }] }
+export const gitStack = async root => {
+	const base = await openBase(root);
+
+	if (!base) return { base: null, concerns: [] };
+
+	const out = await must(['log', `--format=%H${UNIT}%h${UNIT}%s${UNIT}%b${RECORD}`, `${base}..HEAD`], root);
+	const commits = out
+		.split(RECORD)
+		.map(record => record.replace(/^\n/, ''))
+		.filter(record => record.trim())
+		.map(record => {
+			const [hash, short, subject, body = ''] = record.split(UNIT);
+
+			return { hash, short, subject, body: body.trim() };
+		});
+
+	return { base, concerns: parseStack(commits) };
+};
+
 // What this branch adds to the base: its commits, and its changes as the diff view's files (since they parted)
 export const gitCompare = async (root, { base, working = false } = {}) => {
 	const against = base || (await defaultBase(root));
@@ -795,7 +856,20 @@ const ACTIONS = {
 
 		return '';
 	},
-	commit: async (root, { message, amend }) => {
+	commit: async (root, { message, amend, into }) => {
+		// Into a concern not pushed yet: its whole new message, folded in at settling (the reasoning alone, with nothing
+		// staged)
+		if (into) {
+			const { concerns } = await gitStack(root);
+			const concern = concerns.find(open => open.hash === into);
+
+			if (!concern) throw new GitError('That commit is pushed or gone; commit it as its own');
+			if (typeof message !== 'string' || !message.trim()) throw new GitError('Write the message it will have');
+
+			return act(['commit', '--allow-empty', '-F', '-'], root, {
+				input: `amend! ${concern.originalSubject}\n\n${message.trim()}`,
+			});
+		}
 		if (typeof message !== 'string' || !message.trim()) {
 			if (!amend) throw new GitError('Write a message for the commit');
 
@@ -803,6 +877,14 @@ const ACTIONS = {
 		}
 
 		return act(['commit', ...(amend ? ['--amend'] : []), '-F', '-'], root, { input: message.trim() });
+	},
+	// What was filed into each concern, folded in: the open stack as it will be pushed. The work not committed stays.
+	settle: async root => {
+		const base = await openBase(root);
+
+		if (!base) throw new GitError('Nothing to settle: no commits beyond what is pushed');
+
+		return act(['rebase', '-i', '--autosquash', '--autostash', base], root, { env: { GIT_SEQUENCE_EDITOR: 'true' } });
 	},
 	switch: (root, { branch }) => act(['switch', cleanName(branch)], root),
 	createBranch: (root, { name, from }) =>

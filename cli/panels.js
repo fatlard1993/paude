@@ -33,6 +33,7 @@ const GIT_TABS = [
 	['log', 'History'],
 	['branches', 'Branches'],
 	['pr', 'Pull request'],
+	['stack', 'Not pushed'],
 ];
 const MADE_BY = { written: 'Claude wrote it', command: 'a command made it', viewed: 'Claude looked at it' };
 // What the reader can't show as text: saved to this machine instead
@@ -123,6 +124,7 @@ export const itemsOf = panel => {
 			if (!data || data.error) return [];
 			if (tabKey(panel) === 'status') return statusRows(data);
 			if (tabKey(panel) === 'log') return data;
+			if (tabKey(panel) === 'stack') return data.concerns;
 			if (tabKey(panel) === 'branches') return data.local;
 
 			return data.checks ?? [];
@@ -152,6 +154,7 @@ const EMPTY = {
 	activity: 'No turns yet.',
 	services: 'Nothing shared: a server the session starts shows here once it listens.',
 	'git.log': 'No commits yet.',
+	'git.stack': 'Nothing beyond what is pushed.',
 	'git.branches': 'No branches yet: the first commit makes one.',
 };
 
@@ -180,6 +183,8 @@ const rowText = (panel, item) => {
 				return `  ${colored(item.status === 'conflict' ? '!' : (GIT_STATUS[item.status] ?? 'M'), item.where === 'staged' ? 108 : 179)} ${printable(item.path)} ${dim(item.where)}`;
 			if (tab === 'log')
 				return `  ${colored(item.short, BLUE)} ${printable(item.subject)} ${dim(`${printable(item.author)} · ${relativeTime(item.date)}`)}`;
+			if (tab === 'stack')
+				return `  ${colored(item.short, BLUE)} ${printable(item.subject)} ${item.folds.length ? orange(`+${item.folds.length} to fold in`) : ''}`;
 			if (tab === 'branches') {
 				const current = item.name === gitData(panel).current;
 				const track = [item.ahead && `↑${item.ahead}`, item.behind && `↓${item.behind}`, item.gone && 'gone']
@@ -226,6 +231,8 @@ const detailOf = (panel, item, width) => {
 		case 'activity':
 			return panel.turn ? lines(item.file, item.ok === false && item.output) : [];
 		case 'git':
+			if (tabKey(panel) === 'stack') return lines(item.body);
+
 			return tabKey(panel) === 'log' ? lines(item.hash) : [];
 		case 'services':
 			return lines(item.url);
@@ -398,7 +405,12 @@ export const panelKeys = (panel, keyCap) => {
 		case 'git': {
 			const tab = tabKey(panel);
 
-			add('enter', 'its diff', item && (tab === 'status' || tab === 'log'));
+			add('enter', 'its diff', item && (tab === 'status' || tab === 'log' || tab === 'stack'));
+			add(
+				's',
+				'settle: fold what was filed in',
+				tab === 'stack' && gitData(panel)?.concerns?.some(concern => concern.folds.length),
+			);
 			add('enter', 'open in your browser', tab === 'pr' && gitData(panel)?.url);
 			add('r', 'refresh');
 			break;
@@ -513,6 +525,8 @@ export const panelKey = (panel, key) => {
 			const tab = tabKey(panel);
 
 			if (key === 'r') return { type: 'loadGit', what: tab };
+			if (key === 's' && tab === 'stack' && gitData(panel)?.concerns?.some(concern => concern.folds.length))
+				return { type: 'settle' };
 			if (!is(key, 'enter')) break;
 			if (tab === 'pr' && gitData(panel)?.url) return { type: 'openUrl', url: gitData(panel).url };
 			if (tab === 'status' && item)
@@ -520,7 +534,8 @@ export const panelKey = (panel, key) => {
 				return item.where === 'untracked' && !(item.here ?? '').startsWith('../')
 					? { type: 'readFile', path: item.here ?? item.path }
 					: { type: 'readDiffSet', source: { source: 'changes', path: item.here ?? item.path } };
-			if (tab === 'log' && item) return { type: 'readDiffSet', source: { source: 'commit', ref: item.hash } };
+			if ((tab === 'log' || tab === 'stack') && item)
+				return { type: 'readDiffSet', source: { source: 'commit', ref: item.hash } };
 			break;
 		}
 		case 'services':

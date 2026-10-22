@@ -11,6 +11,7 @@ import {
 	gitCommit,
 	gitCompare,
 	gitLog,
+	gitStack,
 	gitStashes,
 	gitStatus,
 	hasObject,
@@ -62,6 +63,7 @@ const READS = {
 	commit: (root, { ref }) => gitCommit(root, ref),
 	branches: root => gitBranches(root),
 	stashes: root => gitStashes(root),
+	stack: root => gitStack(root),
 	blame: (root, query, cwd) => gitBlame(root, fromRoot(root, cwd, query.path)),
 	compare: (root, { base }) => gitCompare(root, { base }),
 	pr: root => pullRequest(root),
@@ -190,11 +192,16 @@ const gitRoutes = async request => {
 			return Response.json(await postToPullRequest(match.id, root, cwd, await request.json()));
 		}
 		if (match.what === 'message') {
-			const { amend } = await request.json().catch(() => ({}));
+			const { amend, into } = await request.json().catch(() => ({}));
 
 			return Response.json({
 				ok: true,
-				message: await draftCommitMessage(root, { sessionId: match.id, cwd, amend: Boolean(amend) }),
+				message: await draftCommitMessage(root, {
+					sessionId: match.id,
+					cwd,
+					amend: Boolean(amend),
+					into: typeof into === 'string' ? into : undefined,
+				}),
 			});
 		}
 		if (match.what === 'pr-draft')

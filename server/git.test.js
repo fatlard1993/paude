@@ -10,6 +10,7 @@ import {
 	gitCommit,
 	gitCompare,
 	gitLog,
+	gitStack,
 	gitStashes,
 	gitSince,
 	blobOf,
@@ -21,6 +22,7 @@ import {
 	linesInDiff,
 	linesNow,
 	movedSince,
+	parseStack,
 	parseStatus,
 	pathsFromFolder,
 	repoRoot,
@@ -591,5 +593,155 @@ describe('reviewing a branch, and conflicts', () => {
 		expect((await gitAction(repo, 'abort')).ok).toBe(true);
 		expect(await Bun.file(path.join(repo, 'a.txt')).text()).toBe('ours\n');
 		expect((await gitAction(repo, 'abort')).output).toBe('Nothing is half done');
+	});
+});
+
+describe('the open stack', () => {
+	const pushedFirst = async () => {
+		const remote = path.join(dir, 'remote.git');
+
+		Bun.spawnSync(['git', 'init', '-q', '--bare', '-b', 'main', remote], { env });
+		await firstCommit();
+		git('remote', 'add', 'origin', remote);
+		git('push', '-q', '-u', 'origin', 'main');
+	};
+	const concern = async (file, subject, body = '') => {
+		await write(file, `${subject}\n`);
+		git('add', file);
+		git('commit', '-q', '-m', subject, ...(body ? ['-m', body] : []));
+
+		return git('rev-parse', 'HEAD');
+	};
+
+	test('folds name their concern by subject (or sha); the latest amend! is the message it will have', () => {
+		const stack = parseStack([
+			{ hash: 'f3', short: 'f3', subject: 'fixup! b2', body: '' },
+			{ hash: 'e5', short: 'e5', subject: 'amend! a: one', body: 'a: one, widened\n\nChose X over Y.' },
+			{ hash: 'b2', short: 'b2', subject: 'b: two', body: '' },
+			{ hash: 'a1', short: 'a1', subject: 'a: one', body: 'Chose X.' },
+		]);
+
+		expect(stack.map(open => [open.subject, open.body, open.folds.map(fold => fold.kind)])).toEqual([
+			['b: two', '', ['fixup']],
+			['a: one, widened', 'Chose X over Y.', ['amend']],
+		]);
+	});
+
+	test('is what the upstream lacks; a change filed into a deeper concern folds in at settling', async () => {
+		await pushedFirst();
+
+		const one = await concern('one.txt', 'one', 'Chose one.');
+
+		await concern('two.txt', 'two');
+		expect((await gitStack(repo)).concerns.map(open => open.subject)).toEqual(['two', 'one']);
+
+		await write('one.txt', 'one, more\n');
+		git('add', 'one.txt');
+		expect((await gitAction(repo, 'commit', { message: 'one, widened\n\nChose one, and more.', into: one })).ok).toBe(
+			true,
+		);
+		// The reasoning alone, nothing staged
+		expect(
+			(await gitAction(repo, 'commit', { message: 'one, widened\n\nChose one, and more, and why.', into: one })).ok,
+		).toBe(true);
+
+		const stack = await gitStack(repo);
+
+		expect(stack.concerns[1]).toMatchObject({ subject: 'one, widened', body: 'Chose one, and more, and why.' });
+		expect(stack.concerns[1].folds).toHaveLength(2);
+
+		await write('loose.txt', 'not filed\n');
+		expect((await gitAction(repo, 'settle')).ok).toBe(true);
+		expect(git('log', '--format=%s', 'origin/main..HEAD').split('\n')).toEqual(['two', 'one, widened']);
+		expect(git('show', '-s', '--format=%b', 'HEAD~1')).toBe('Chose one, and more, and why.');
+		expect(git('show', 'HEAD~1:one.txt')).toBe('one, more');
+		expect(git('status', '--porcelain')).toBe('?? loose.txt');
+	});
+
+	test('a fold names its concern by subject, so a pull --rebase that moves the concern leaves it folding in', async () => {
+		await pushedFirst();
+
+		const one = await concern('one.txt', 'one');
+
+		expect((await gitAction(repo, 'commit', { message: 'one, widened\n\nChose one.', into: one })).ok).toBe(true);
+		expect(git('log', '-1', '--format=%s')).toBe('amend! one');
+
+		// The upstream gains a commit, and the pull moves the stack onto it: every sha in it changes
+		const other = path.join(dir, 'other');
+
+		Bun.spawnSync(['git', 'clone', '-q', path.join(dir, 'remote.git'), other], { env });
+		await writeFile(path.join(other, 'theirs.txt'), 'theirs\n');
+		for (const args of [
+			['add', 'theirs.txt'],
+			['-c', 'user.name=Bo', '-c', 'user.email=bo@example.com', 'commit', '-q', '-m', 'theirs'],
+			['push', '-q'],
+		])
+			Bun.spawnSync(['git', ...args], { cwd: other, env });
+		git('pull', '-q', '--rebase');
+		expect(git('rev-parse', 'HEAD~1')).not.toBe(one);
+
+		expect((await gitStack(repo)).concerns.map(open => [open.subject, open.folds.length])).toEqual([
+			['one, widened', 1],
+		]);
+		expect((await gitAction(repo, 'settle')).ok).toBe(true);
+		expect(git('log', '--format=%s', 'origin/main..HEAD')).toBe('one, widened');
+		expect(git('log', '-1', '--format=%s', 'origin/main')).toBe('theirs');
+	});
+
+	test("settling folds the stack where it left the upstream, and doesn't bring in what the upstream gained since", async () => {
+		await pushedFirst();
+
+		const one = await concern('one.txt', 'one');
+
+		await write('one.txt', 'one, more\n');
+		git('add', 'one.txt');
+		await gitAction(repo, 'commit', { message: 'one, widened', into: one });
+
+		// Someone else pushes; this checkout fetches it but hasn't taken it in
+		const other = path.join(dir, 'other');
+
+		Bun.spawnSync(['git', 'clone', '-q', path.join(dir, 'remote.git'), other], { env });
+		Bun.spawnSync(
+			[
+				'git',
+				'-C',
+				other,
+				'-c',
+				'user.name=Ben',
+				'-c',
+				'user.email=b@e.c',
+				'commit',
+				'-q',
+				'--allow-empty',
+				'-m',
+				'theirs',
+			],
+			{ env },
+		);
+		Bun.spawnSync(['git', '-C', other, 'push', '-q'], { env });
+		git('fetch', '-q');
+
+		expect((await gitStack(repo)).concerns.map(open => open.subject)).toEqual(['one, widened']);
+		expect((await gitAction(repo, 'settle')).ok).toBe(true);
+		expect(git('log', '--format=%s').split('\n')).toEqual(['one, widened', 'first']);
+	});
+
+	test('a pushed commit takes nothing filed into it', async () => {
+		await pushedFirst();
+
+		const pushed = git('rev-parse', 'HEAD');
+
+		expect((await gitAction(repo, 'commit', { message: 'first, again', into: pushed })).ok).toBe(false);
+		expect((await gitAction(repo, 'settle')).ok).toBe(true);
+	});
+
+	test('without an upstream, it starts where the branch left the default base', async () => {
+		await firstCommit();
+		git('switch', '-q', '-c', 'feature');
+		await concern('f.txt', 'feature work');
+
+		const { concerns } = await gitStack(repo);
+
+		expect(concerns.map(open => open.subject)).toEqual(['feature work']);
 	});
 });

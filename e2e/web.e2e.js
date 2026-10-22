@@ -209,6 +209,7 @@ test(
 			await page.type('.git .commit-box textarea', 'first from the panel');
 			await press('.git .commit-box button', 'Commit');
 			expect(await git('.body')).toContain('Nothing changed since the last commit');
+			expect(await page.$eval('.git .commit-box textarea', box => box.value)).toBe('');
 
 			await press('.git .tabs button', 'History');
 			expect(await git('.body')).toContain('first from the panel');
@@ -240,6 +241,68 @@ test(
 			expect(await Bun.file(`${servers.turns.project}/server/app.js`).text()).toStartWith('line 1');
 		} finally {
 			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+// The commits not pushed are concerns: a change is filed into one with the whole message it will have, and settling
+// folds it in, ready to push
+test(
+	'git: a change filed into a concern not pushed, then settled',
+	async () => {
+		const server = await startServer();
+		const origin = await mkdtemp(path.join(os.tmpdir(), 'paude-origin-'));
+		const git = (...args) =>
+			Bun.spawnSync(['git', ...args], { cwd: server.project })
+				.stdout.toString()
+				.trim();
+
+		git('commit', '-q', '-m', 'start');
+		Bun.spawnSync(['git', 'init', '-q', '--bare', origin]);
+		git('remote', 'add', 'origin', origin);
+		git('push', '-q', '-u', 'origin', 'main');
+		await Bun.write(path.join(server.project, 'lock.js'), 'per user\n');
+		git('add', 'lock.js');
+		git('commit', '-q', '-m', 'lock per user', '-m', 'Chose per user over per session.');
+
+		const concern = git('rev-parse', 'HEAD');
+		const { browser, page } = await openSession('dom', server);
+		const body = () => page.$eval('.git .body', node => node.textContent);
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+
+		try {
+			await press('[title^="Git"]');
+			expect(await body()).toContain('Not pushed 1');
+			expect(await body()).toContain('Chose per user over per session.');
+
+			await Bun.write(path.join(server.project, 'lock.js'), 'per user, five tries\n');
+			await press('.git .tabs button', 'Changes');
+			await press('.git .section-head button', 'Stage all');
+			await page.select('.git .commit-box select', concern);
+			expect(await page.$eval('.git .commit-box textarea', box => box.value)).toBe(
+				'lock per user\n\nChose per user over per session.',
+			);
+			await page.type('.git .commit-box textarea', ' Five tries, then locked.');
+			await press('.git .commit-box button', 'Commit');
+			expect(await body()).toContain('1 change to fold in');
+			expect(await page.$eval('.git .commit-box textarea', box => box.value)).toBe('');
+
+			await press('.git .section-head button', 'Settle');
+			expect(await body()).not.toContain('to fold in');
+			expect(git('log', '--format=%s%n%b', 'origin/main..HEAD')).toBe(
+				'lock per user\nChose per user over per session. Five tries, then locked.',
+			);
+			expect(git('show', 'HEAD:lock.js')).toBe('per user, five tries');
+		} finally {
+			await browser.close();
+			await server.stop();
+			await rm(origin, { recursive: true, force: true });
 		}
 	},
 	TIMEOUT_MS,

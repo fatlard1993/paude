@@ -33,6 +33,7 @@ import {
 	size,
 	write,
 	OVERLAY_KEY,
+	printable,
 } from './screen';
 
 // Ctrl+] arrives as a plain byte, or as a CSI u sequence once Claude Code has switched on the kitty keyboard protocol;
@@ -503,6 +504,18 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 					: readDiffSet(source),
 			panel: loadPanel,
 			loadGit,
+			settle: async () => {
+				const settled = await data.gitAction('settle');
+
+				// git's last word on it, when it refused: a hint is one line
+				const said = String(settled.output || 'Not settled')
+					.trim()
+					.split('\n')
+					.at(-1);
+
+				state.hint = settled.error ?? (settled.ok ? 'Settled: ready to push.' : printable(said));
+				await loadGit({ what: 'stack' });
+			},
 			readArtifact: ({ path: made }) => readFromPanel(() => data.readArtifact(made)),
 			saveArtifact,
 			takeTour,

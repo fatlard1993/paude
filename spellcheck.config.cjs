@@ -5,6 +5,8 @@ module.exports = {
 		'nul',
 		'pathspec',
 		'pathspecs',
+		'autosquash',
+		'autostash',
 		'favicon',
 		'tsv',
 		'visibilitychange',

@@ -28,6 +28,7 @@ const sessionData = ({ url, token }, id) => {
 		catchUp: since => send('POST', '/catch-up', { since }),
 		tour: subject => send('POST', '/tour', subject),
 		git: (what, query = {}) => call(`/git/${what}?${new URLSearchParams(query)}`),
+		gitAction: (action, body = {}) => send('POST', `/git/${action}`, body),
 		shares: () => call('/shares'),
 		setWatching: watching => send('PUT', '/watch', { watching }),
 		setLifetime: lifetime => send('PUT', '/lifetime', { lifetime }),

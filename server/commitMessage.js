@@ -2,7 +2,7 @@ import os from 'os';
 import path from 'path';
 
 import { markInterruptions, steeringOf } from './catchUp';
-import { GitError } from './git';
+import { GitError, gitStack } from './git';
 import { sessionEnvironment } from './sessions/PtySession';
 import { claudeCommand } from './sessions/running';
 import { sessionTurns } from './timeline';
@@ -39,9 +39,11 @@ const turnText = (turn, index) =>
 
 // What Claude is asked: the staged changes, the repository's recent subjects for its style, and the turns of the
 // conversation they came from, for the why the diff can't hold
-export const commitPrompt = ({ subjects, stat, patch, turns = [] }) =>
+export const commitPrompt = ({ subjects, stat, patch, turns = [], into }) =>
 	[
-		'Write a git commit message for the staged changes below.',
+		into
+			? `The staged changes fold into an earlier commit, not pushed yet. Write that commit's whole message anew: keep what it says that still holds, and add what these changes decide. Its message now:\n${into}`
+			: 'Write a git commit message for the staged changes below.',
 		'Reply with only the message: no quotes, no code fences, nothing before or after it.',
 		subjects.trim()
 			? `Match the form of this repository's recent subjects (their casing, tense and prefixes):\n${subjects.trim()}`
@@ -84,7 +86,7 @@ export const cleanMessage = reply =>
 // as it was, and it works while that Claude is busy. It runs outside the project so it isn't listed among its
 // sessions. Given the session, it reads the turns that made the staged changes since the commit they'd follow (the
 // one before the last, when amending).
-export const draftCommitMessage = async (root, { sessionId, cwd, amend = false } = {}) => {
+export const draftCommitMessage = async (root, { sessionId, cwd, amend = false, into } = {}) => {
 	const [subjects, stat, patch, names, since] = await Promise.all([
 		gitOut(['log', `-${RECENT_SUBJECTS}`, '--format=%s'], root),
 		gitOut(['diff', '--cached', '--stat', '--no-color'], root),
@@ -94,6 +96,8 @@ export const draftCommitMessage = async (root, { sessionId, cwd, amend = false }
 	]);
 
 	if (!patch.trim()) throw new GitError('Stage something first, and Claude will describe it');
+
+	const concern = into && (await gitStack(root)).concerns.find(open => open.hash === into);
 
 	const turns =
 		sessionId && cwd
@@ -107,7 +111,15 @@ export const draftCommitMessage = async (root, { sessionId, cwd, amend = false }
 	const child = Bun.spawn([claudeCommand(), '-p', '--output-format', 'text'], {
 		cwd: os.tmpdir(),
 		env: sessionEnvironment(),
-		stdin: new TextEncoder().encode(commitPrompt({ subjects, stat, patch, turns })),
+		stdin: new TextEncoder().encode(
+			commitPrompt({
+				subjects,
+				stat,
+				patch,
+				turns,
+				into: concern && [concern.subject, concern.body].filter(Boolean).join('\n\n'),
+			}),
+		),
 		stdout: 'pipe',
 		stderr: 'pipe',
 		timeout: TIMEOUT_MS,

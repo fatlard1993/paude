@@ -213,3 +213,39 @@ test('a key that does nothing here is not offered', () => {
 	expect(keys(pr)).not.toContain('[enter]');
 	expect(keys(loaded('links', []))).not.toContain('[enter]');
 });
+describe('git: not pushed', () => {
+	const stack = {
+		base: 'abc',
+		concerns: [
+			{ hash: 'b2'.padEnd(40, '0'), short: 'b2', subject: 'two', body: '', folds: [] },
+			{
+				hash: 'a1'.padEnd(40, '0'),
+				short: 'a1',
+				subject: 'one, widened',
+				body: 'Chose one.',
+				folds: [{ kind: 'amend' }],
+			},
+		],
+	};
+
+	test('lists the concerns, what each has to fold in, and settles them', () => {
+		const panel = loaded('git', { stack }, { tab: 4 });
+
+		expect(itemsOf(panel).map(concern => concern.subject)).toEqual(['two', 'one, widened']);
+		expect(panelView(panel, 80, 20).join('\n')).toContain('+1 to fold in');
+		expect(panelKey(panel, 's')).toEqual({ type: 'settle' });
+		panelKey(panel, DOWN);
+		expect(panelView(panel, 80, 20).join('\n')).toContain('Chose one.');
+		expect(panelKey(panel, '\r')).toEqual({
+			type: 'readDiffSet',
+			source: { source: 'commit', ref: stack.concerns[1].hash },
+		});
+	});
+
+	test('nothing to fold in: no settling', () => {
+		const panel = loaded('git', { stack: { base: 'abc', concerns: [stack.concerns[0]] } }, { tab: 4 });
+
+		expect(panelKey(panel, 's')).toEqual({ type: 'ignore' });
+		expect(panelKeys(panel, key => key).join(' ')).not.toContain('settle');
+	});
+});

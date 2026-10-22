@@ -159,7 +159,8 @@ export default class GitPanel extends Panel {
 		this.output.classList.add('shown');
 	}
 
-	async act(action, body = {}, { done } = {}) {
+	// onSuccess runs before the panel is drawn again, so what it changes is drawn
+	async act(action, body = {}, { done, onSuccess } = {}) {
 		this.elem.classList.add('busy');
 
 		const { body: result, response } = await runGit(this.options.sessionId, action, body);
@@ -169,6 +170,7 @@ export default class GitPanel extends Panel {
 		if (!response?.ok || !result?.ok) {
 			this.say(result?.output || (typeof result === 'string' && result) || `git ${action} failed`, { error: true });
 		} else {
+			onSuccess?.();
 			this.output.classList.remove('shown');
 			new Notify({ type: 'success', content: done ?? (result.output.split('\n').at(-1) || 'Done'), timeout: 2500 });
 		}
@@ -200,7 +202,12 @@ export default class GitPanel extends Panel {
 		return [head, ...files.map(file => this.fileRow(file, canType() ? each(file) : []))];
 	}
 
-	renderChanges() {
+	async renderChanges() {
+		const { body: stack } = await getGit(this.options.sessionId, 'stack');
+
+		if (this.tab !== 'changes') return;
+
+		const concerns = stack?.concerns ?? [];
 		const { staged, unstaged, untracked, conflicted } = this.status;
 		const discard = async file => {
 			const confirmed = await confirmDialog({
@@ -248,25 +255,88 @@ export default class GitPanel extends Panel {
 		];
 
 		if (!nodes.length) nodes.push(element('div', 'empty', 'Nothing changed since the last commit.'));
-		if (canType()) nodes.push(this.commitBox());
+		if (canType()) nodes.push(this.commitBox(concerns));
+		nodes.push(...this.stackNodes(concerns));
 
 		this.body.replaceChildren(...nodes);
 	}
 
-	commitBox() {
+	// The commits not pushed, each a concern with what was filed into it; settling folds those in, ready to push
+	stackNodes(concerns) {
+		if (!concerns.length) return [];
+
+		const folds = concerns.reduce((count, concern) => count + concern.folds.length, 0);
+		const head = element('div', 'section-head');
+
+		head.append(element('span', '', `Not pushed ${concerns.length}`));
+		if (folds && canType()) {
+			const settle = button('Settle', () => this.act('settle', {}, { done: 'Settled' }));
+
+			settle.title = `Fold ${plural(folds, 'filed change')} into ${concerns.length === 1 ? 'its concern' : 'their concerns'}, ready to push`;
+			head.append(settle);
+		}
+
+		return [
+			head,
+			...concerns.map(concern => {
+				const row = element('button', 'history-item variant-flat');
+
+				row.title = 'Show this commit';
+				row.append(
+					element('div', 'subject', concern.subject),
+					...(concern.body ? [element('div', 'meta stack-body', concern.body)] : []),
+					element(
+						'div',
+						'meta',
+						[concern.short, concern.folds.length && `${plural(concern.folds.length, 'change')} to fold in`]
+							.filter(Boolean)
+							.join(' · '),
+					),
+				);
+				row.addEventListener('click', () => this.options.openDiff({ source: 'commit', ref: concern.hash }));
+
+				return row;
+			}),
+		];
+	}
+
+	commitBox(concerns = []) {
 		const box = element('div', 'commit-box');
 		const options = element('div', 'commit-options');
 		const message = element('textarea');
 		const amend = element('label', 'amend');
 		const amending = checkbox(false);
+		// Into a concern not pushed yet: the change, or only the reasoning, folded into it at settling
+		const into = element('select', 'into');
+		const intoConcern = () => concerns.find(concern => concern.hash === into.value);
 		const commit = button('Commit', async () => {
-			const ok = await this.act(
+			const target = intoConcern();
+			const done = amending.checked ? 'Amended' : 'Committed';
+			await this.act(
 				'commit',
-				{ message: message.value, amend: amending.checked },
-				{ done: amending.checked ? 'Amended' : 'Committed' },
+				{ message: message.value, amend: !target && amending.checked, into: target?.hash },
+				{ done: target ? `Filed into ${target.short}` : done, onSuccess: () => (this.draft = '') },
 			);
+		});
 
-			if (ok) this.draft = '';
+		for (const [value, label] of [
+			['', 'A commit of its own'],
+			...concerns.map(concern => [concern.hash, `Into ${concern.short} ${concern.subject}`]),
+		])
+			into.append(Object.assign(element('option', '', label), { value }));
+		into.title = 'File it into a commit not pushed yet, with the whole message that commit will have';
+		into.hidden = !concerns.length;
+		into.addEventListener('change', () => {
+			const target = intoConcern();
+
+			amend.hidden = Boolean(target) || !this.status.hasCommits;
+			commit.disabled = !target && !this.status.staged.length && !this.status.hasCommits;
+			// The message it will have starts from the one it has
+			if (target && (!message.value.trim() || message.value === this.filled)) {
+				message.value = [target.subject, target.body].filter(Boolean).join('\n\n');
+				this.filled = message.value;
+				this.draft = message.value;
+			}
 		});
 
 		message.placeholder = 'Commit message';
@@ -288,7 +358,10 @@ export default class GitPanel extends Panel {
 				write.disabled = true;
 				write.textContent = 'Writing…';
 
-				const { body } = await runGit(this.options.sessionId, 'message', { amend: amending.checked });
+				const { body } = await runGit(this.options.sessionId, 'message', {
+					amend: amending.checked,
+					into: intoConcern()?.hash,
+				});
 
 				write.disabled = false;
 				write.textContent = 'Claude, write it';
@@ -306,7 +379,7 @@ export default class GitPanel extends Panel {
 
 		write.disabled = !this.status.staged.length;
 		options.append(amend, write, commit);
-		box.append(message, options);
+		box.append(into, message, options);
 
 		return box;
 	}

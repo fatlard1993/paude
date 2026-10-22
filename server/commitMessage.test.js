@@ -74,3 +74,15 @@ test('a command that names a staged file counts as changing it', () => {
 		'p',
 	]);
 });
+
+test("filed into an earlier commit, asks for that commit's whole message anew", () => {
+	const prompt = commitPrompt({
+		subjects: '',
+		stat: '',
+		patch: '+more',
+		into: 'auth: lock per user\n\nChose per user.',
+	});
+
+	expect(prompt).toContain("Write that commit's whole message anew");
+	expect(prompt).toContain('auth: lock per user\n\nChose per user.');
+});

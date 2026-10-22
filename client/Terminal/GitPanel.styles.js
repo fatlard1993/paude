@@ -249,6 +249,14 @@ const Panel = styled(
 			margin-top: ${space.md};
 		}
 
+		.stack-body {
+			display: -webkit-box;
+			-webkit-box-orient: vertical;
+			-webkit-line-clamp: 3;
+			overflow: hidden;
+			white-space: pre-wrap;
+		}
+
 		.review-commit {
 			padding: 2px ${space.sm};
 			overflow: hidden;
@@ -260,7 +268,7 @@ const Panel = styled(
 			cursor: pointer;
 		}
 
-		.commit-box input:not([type='checkbox']), .commit-box textarea, .new-branch input {
+		.commit-box input:not([type='checkbox']), .commit-box textarea, .commit-box select, .new-branch input {
 			box-sizing: border-box;
 			width: 100%;
 			font: inherit;
