@@ -323,7 +323,7 @@ export default class TerminalView extends View {
 		const selectionButton = (options, onPress) =>
 			new Button({ appendTo: this.selectionActions, ...options }).elem.addEventListener('click', onPress);
 
-		selectionButton({ textContent: '📋 Copy' }, () => copySelection(this.terminal));
+		selectionButton({ icon: 'copy', textContent: 'Copy' }, () => copySelection(this.terminal));
 		if (canType())
 			selectionButton(
 				{
@@ -333,7 +333,7 @@ export default class TerminalView extends View {
 				},
 				() => this.sendSelectionToShell(),
 			);
-		if (canNote()) selectionButton({ textContent: '💬 Comment' }, () => this.commentOnSelection());
+		if (canNote()) selectionButton({ icon: 'comment', textContent: 'Comment' }, () => this.commentOnSelection());
 		if (canNote()) {
 			new KeyBar({
 				appendTo: column,
@@ -1622,14 +1622,16 @@ export default class TerminalView extends View {
 			...(was
 				? [
 						{
-							label: `↶ Put back: ${LIFETIMES[was].label}`,
+							label: `Put back: ${LIFETIMES[was].label}`,
+							icon: 'rotate-left',
 							detail: `as it was before your last switch, until ${clockTime(this.switched.until)}`,
 							onPress: () => this.changeLifetime(was),
 						},
 					]
 				: []),
 			...Object.entries(LIFETIMES).map(([lifetime, { label, detail }]) => ({
-				label: lifetime === this.lifetime ? `✓ ${label}` : label,
+				label,
+				...(lifetime === this.lifetime && { icon: 'check' }),
 				detail,
 				onPress: () => this.changeLifetime(lifetime),
 			})),

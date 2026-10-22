@@ -240,7 +240,8 @@ export default class Project extends View {
 		openMenu(this.lifetimeChip, [
 			{ heading: 'How long the new session lasts' },
 			...Object.entries(LIFETIMES).map(([lifetime, { label, detail }]) => ({
-				label: lifetime === this.lifetime ? `✓ ${label}` : label,
+				label,
+				...(lifetime === this.lifetime && { icon: 'check' }),
 				detail,
 				onPress: () => this.pickLifetime(lifetime),
 			})),
@@ -282,7 +283,8 @@ export default class Project extends View {
 	openCheckouts() {
 		const running = active => (active ? ` · ${active} running` : '');
 		const option = (value, label, detail) => ({
-			label: value === this.checkout ? `✓ ${label}` : label,
+			label,
+			...(value === this.checkout && { icon: 'check' }),
 			detail,
 			onPress: () => {
 				this.pickCheckout(value);

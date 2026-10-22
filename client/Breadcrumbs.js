@@ -169,7 +169,13 @@ const serverSwitch = addCleanup => {
 	switcher.addEventListener('click', () =>
 		openMenu(switcher, [
 			{ heading: 'Your paudes' },
-			{ label: `✓ ${here}`, detail: 'This one', accent: accent(here), onPress: () => (window.location.hash = '#/') },
+			{
+				label: here,
+				icon: 'check',
+				detail: 'This one',
+				accent: accent(here),
+				onPress: () => (window.location.hash = '#/'),
+			},
 			...others.map(server => ({
 				label: server.name,
 				detail: summaryOf(server),

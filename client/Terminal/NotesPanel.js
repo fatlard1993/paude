@@ -8,7 +8,7 @@ import { anchorPlace, attachCommentText, attachCommentsText } from '../../shared
 import { applyNote } from '../../shared/protocol';
 import { REACTION_PALETTE } from '../../shared/reactions';
 import { canNote, canType, identity, identityKey } from '../identity';
-import { closeButton, element } from '../dom';
+import { closeButton, element, icon } from '../dom';
 import renderPeople from './People';
 import Panel from './NotesPanel.styles';
 
@@ -130,7 +130,7 @@ export default class NotesPanel extends Panel {
 	bellButton() {
 		const bell = element('button', 'bell variant-flat');
 		const show = () => {
-			bell.textContent = desktopNotificationsOn() ? '🔔' : '🔕';
+			bell.replaceChildren(icon(desktopNotificationsOn() ? 'bell' : 'bell-slash'));
 			bell.title = desktopNotificationsOn()
 				? 'Desktop notifications on (while this tab is in the background)'
 				: 'Desktop notifications off';

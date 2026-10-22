@@ -50,6 +50,20 @@ const GlassMenu = styled(
 			margin-top: 0;
 		}
 
+		/* A menu with marks (a check on the current choice) leaves them a column, so every label starts in line */
+		&.marked ul li:not(.heading) {
+			position: relative;
+			padding-left: 30px;
+		}
+
+		& ul li.fa-support:before {
+			position: absolute;
+			left: 10px;
+			top: 6px;
+			font-size: 0.85em;
+			line-height: 1.4;
+		}
+
 		& ul li.heading, & ul li.heading:hover {
 			margin: 6px 10px 2px;
 			padding: 0;
@@ -66,8 +80,9 @@ export const closeMenu = () => {
 	if (menu?.shown) menu.hide();
 };
 
-// A menu under a button, or at a point ({ x, y }): items ({ label, detail, accent, onPress }) and headings
-// ({ heading }). One at a time; pressing its button again, Esc, or a press elsewhere closes it.
+// A menu under a button, or at a point ({ x, y }): items ({ label, detail, icon, accent, onPress }) and headings
+// ({ heading }); an item's icon marks it, as a check marks the current choice. One at a time; pressing its button
+// again, Esc, or a press elsewhere closes it.
 export const openMenu = (anchor, items) => {
 	menu ??= new GlassMenu({ maxWidth: 360 });
 
@@ -77,6 +92,7 @@ export const openMenu = (anchor, items) => {
 			: {
 					textContent: item.label,
 					detail: item.detail || undefined,
+					...(item.icon && { icon: item.icon }),
 					...(item.accent && { style: { boxShadow: `inset 3px 0 ${item.accent}` } }),
 					// Closed before the item acts, so focus it moves (a panel's field) isn't taken back to the button
 					onPointerPress: () => {
@@ -84,6 +100,10 @@ export const openMenu = (anchor, items) => {
 						item.onPress();
 					},
 				},
+	);
+	menu.toggleClass(
+		'marked',
+		items.some(item => item.icon),
 	);
 	menu.show(anchor instanceof Element || !Number.isFinite(anchor?.x) ? { anchor } : anchor);
 };

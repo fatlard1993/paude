@@ -1302,7 +1302,7 @@ export default class FilesPanel extends Panel {
 		if (this.view === 'diff') return this.diffHead();
 
 		const head = element('div', 'head');
-		const back = button('←', () => this.panes.classList.remove('reading'));
+		const back = iconButton('arrow-left', 'The list of files', () => this.panes.classList.remove('reading'));
 		const change = this.changedPaths?.get(this.current);
 
 		back.classList.add('back');
@@ -1386,7 +1386,8 @@ export default class FilesPanel extends Panel {
 			openMenu(
 				order,
 				Object.entries(ORDERS).map(([key, { label, detail }]) => ({
-					label: key === this.diffOrder ? `✓ ${label}` : label,
+					label,
+					...(key === this.diffOrder && { icon: 'check' }),
 					detail,
 					onPress: () => {
 						remember(DIFF_ORDER_KEY, key);
@@ -1410,7 +1411,7 @@ export default class FilesPanel extends Panel {
 
 	diffHead() {
 		const head = element('div', 'head');
-		const back = button('←', () => this.panes.classList.remove('reading'));
+		const back = iconButton('arrow-left', 'The list of files', () => this.panes.classList.remove('reading'));
 		const set = this.diffSet;
 		const single = set?.files.length === 1 ? set.files[0] : null;
 		const title = element('div', 'path', set?.title ?? '');
