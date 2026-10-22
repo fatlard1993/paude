@@ -19,7 +19,7 @@
         "@xterm/addon-webgl": "^0.19.0",
         "@xterm/headless": "^6.0.0",
         "@xterm/xterm": "^6.0.0",
-        "argi": "github:fatlard1993/argi#fcac703",
+        "argi-cli": "^1.0.0",
         "dompurify": "^3.4.16",
         "highlight.js": "^11.12.0",
         "marked": "^18.1.0",
@@ -206,7 +206,7 @@
 
     "are-docs-informative": ["are-docs-informative@0.1.1", "", {}, "sha512-sqRsNQBwbKLRX0jV5Cu5uzmtflf892n4Vukz7T659ebL4pz3mpOqCMU7lxMoBTFwnp10E3YB5ZcyHM41W5bcDA=="],
 
-    "argi": ["argi@github:fatlard1993/argi#fcac703", { "dependencies": { "find-root": "^1.1.0" } }, "fatlard1993-argi-fcac703", "sha512-MJeHxG/MuIGou+NJwvAJkYjCTvn+zBZkNq4BSNAYPUpVPmucto8TlfgCCj3JbPntGJTrvWaY6uOfPzF9e0YYSA=="],
+    "argi-cli": ["argi-cli@1.0.0", "", {}, "sha512-0iupCg+eh7zx/yoz2fAQZ8PfLDboRPpzs5PFHWb9Wfdmr/n6e9Pe9oJ6bPhyg4aU2A4DoJiNSAFHIp0C6/iA0A=="],
 
     "array-buffer-byte-length": ["array-buffer-byte-length@1.0.2", "", { "dependencies": { "call-bound": "^1.0.3", "is-array-buffer": "^3.0.5" } }, "sha512-LHE+8BuR7RYGDKvnrmcuSq3tDcKv9OFEXQt/HpbZhY7V6h0zlUXutnAD82GiFx9rdieCMjkvtcsPqBwgUl1Iiw=="],
 
@@ -387,8 +387,6 @@
     "file-entry-cache": ["file-entry-cache@11.1.5", "", { "dependencies": { "flat-cache": "^6.1.23" } }, "sha512-+PFTHITI08JIGhnNpGNI8T8inUpgZfk3GNEqfT9R2zZV2iFXg3CvqzSl/uEhs7TSGujYRELEANyDvS8Fj7+S7Q=="],
 
     "finalhandler": ["finalhandler@2.1.1", "", { "dependencies": { "debug": "^4.4.0", "encodeurl": "^2.0.0", "escape-html": "^1.0.3", "on-finished": "^2.4.1", "parseurl": "^1.3.3", "statuses": "^2.0.1" } }, "sha512-S8KoZgRZN+a5rNwqTxlZZePjT/4cnm0ROV70LedRHZ0p8u9fRID0hJUZQpkKLzro8LfmC8sx23bY6tVNxv8pQA=="],
-
-    "find-root": ["find-root@1.1.0", "", {}, "sha512-NKfW6bec6GfKc0SGx1e07QZY9PE99u0Bft/0rzSD5k3sO/vwkVUpDUKVm5Gpp5Ue3YfShPFTX2070tDs5kB9Ng=="],
 
     "find-up": ["find-up@5.0.0", "", { "dependencies": { "locate-path": "^6.0.0", "path-exists": "^4.0.0" } }, "sha512-78/PXT1wlLLDgTzDs7sjq9hzz0vXD+zn+7wypEe4fXQxCmdmqfGsEPQxmiCSQI3ajFV91bVSsvNtrJRiW6nGng=="],
 

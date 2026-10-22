@@ -3,7 +3,7 @@
 import os from 'os';
 import path from 'path';
 
-import Argi from 'argi';
+import Argi from 'argi-cli';
 
 import packageJSON from '../package.json';
 
@@ -178,7 +178,7 @@ const runOne = async options => {
 
 const run = async () => {
 	const { options } = new Argi({
-		// Otherwise argi looks for one in the current directory, and paude runs from anywhere
+		// Otherwise argi looks for one above the command's path, which may be a link to paude from elsewhere
 		packageJSON,
 		options: {
 			url: { type: 'string', defaultValue: process.env.PAUDE_URL, description: 'paude server (env: PAUDE_URL)' },

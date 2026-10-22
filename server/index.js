@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 
 import { devConsole, handleExit } from '@vanilla-bean/components/app';
-import Argi from 'argi';
+import Argi from 'argi-cli';
 
 import { ensureLocalToken, initAuth, initServerId, passwordIsSet } from './auth';
 import { initActivity } from './activity';
