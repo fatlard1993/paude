@@ -1,7 +1,17 @@
-// The page styles no bare elements, so buttons and fields carry the library's look by class, as its own components do
-const LOOKS = { button: 'vbc-button', input: 'vbc-input', textarea: 'vbc-input', select: 'vbc-input' };
+import { Button } from '@vanilla-bean/components';
+
+// The page styles no bare elements, so fields carry the library's look by class, as its own components do; a button is
+// the library's Button
+const LOOKS = { input: 'vbc-input', textarea: 'vbc-input', select: 'vbc-input' };
 
 export const element = (tag, className, text) => {
+	if (tag === 'button') {
+		const classes = className?.split(' ') ?? [];
+		const variant = classes.find(name => name.startsWith('variant-'));
+
+		return new Button({ variant: variant?.slice('variant-'.length), addClass: classes, textContent: text }).elem;
+	}
+
 	const node = document.createElement(tag);
 	const look = [LOOKS[tag], className].filter(Boolean).join(' ');
 
