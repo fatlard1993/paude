@@ -19,27 +19,27 @@ const KEYS = [
 
 const Bar = styled(
 	Component,
-	({ colors, media, radius, safeArea }) => `
+	({ colors, media, safeArea, space }) => `
 		display: none;
-		gap: 4px;
-		padding: 4px 8px;
+		gap: ${space.xs};
+		padding: ${space.xs} ${space.sm};
 		/* Clear of the home indicator, but not of the keyboard, which covers it: the room shrinks as the keyboard opens */
-		padding-bottom: max(4px, calc(${safeArea.bottom} - (100dvh - var(--visible-height, 100dvh))));
+		padding-bottom: max(${space.xs}, calc(${safeArea.bottom} - (100dvh - var(--visible-height, 100dvh))));
 		overflow-x: auto;
 
 		@media ${media.touch} {
 			display: flex;
 		}
 
+		/* Keys, raised as the library's are, in gray so the bevel shows on the dark */
 		button {
 			display: inline-flex;
 			align-items: center;
 			justify-content: center;
 			flex: 1 0 auto;
 			min-width: 40px;
-			padding: 8px 6px;
-			border-radius: ${radius.sm};
-			background: ${colors.alpha(colors.white, 0.08)};
+			min-height: 36px;
+			background-color: ${colors.dark(colors.gray)};
 			color: inherit;
 			font: inherit;
 		}
@@ -49,7 +49,7 @@ const Bar = styled(
 // Fires on click, which a swipe along the bar cancels, so scrolling to a key doesn't press the ones it passes.
 // Canceling pointerdown keeps focus, and the phone keyboard, on the terminal.
 const keyButton = ({ label, icon: name, title }, press) => {
-	const button = element('button');
+	const button = element('button', 'variant-raised');
 
 	if (name) button.append(icon(name));
 	else button.textContent = label;
