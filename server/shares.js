@@ -209,11 +209,21 @@ export const detectShares = async () => {
 	}
 };
 
+// Answers how to stop looking
 export const watchShares = () => {
+	let next;
+	let stopped = false;
 	const look = () =>
 		detectShares()
 			.catch(error => console.error('Looking for shared ports failed:', error))
-			.finally(() => setTimeout(look, DETECT_EVERY_MS).unref());
+			.finally(() => {
+				if (!stopped) next = setTimeout(look, DETECT_EVERY_MS).unref();
+			});
 
 	look();
+
+	return () => {
+		stopped = true;
+		clearTimeout(next);
+	};
 };

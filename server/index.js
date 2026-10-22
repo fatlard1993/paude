@@ -39,6 +39,12 @@ import server from './server';
 // Every live session is a child of this process, so a stray error is logged rather than taking them all down
 handleExit({ survive: true });
 
+// Under --hot this file runs again with every module fresh; what the last run left ticking stops, or both would act
+// on (and save) their own copy of the state
+const lastRun = (globalThis[Symbol.for('paude/lastRun')] ??= { stops: [] });
+
+for (const stop of lastRun.stops.splice(0)) stop();
+
 const { options } = new Argi({
 	options: {
 		projects: {
@@ -77,7 +83,7 @@ const { options } = new Argi({
 if (process.env.NODE_ENV === 'development') console.log('Options', options);
 
 setProjectsRoot(options.projects);
-await initAuth(options.data, { watchForChanges: true });
+lastRun.stops.push(await initAuth(options.data, { watchForChanges: true }));
 await initNotes(options.data);
 initReviews(options.data);
 await initNames(options.data);
@@ -100,19 +106,21 @@ if (!passwordIsSet()) {
 setClaudePath(options.claude);
 setHolderFolder(path.join(options.data, 'held'));
 await adoptHeldSessions();
-await initKeepWarm(options.data, runningSession);
+lastRun.stops.push(await initKeepWarm(options.data, runningSession));
 await initLifetime(options.data);
-await initUsageLimits(options.data, runningSession);
+lastRun.stops.push(await initUsageLimits(options.data, runningSession));
 onLimitChange(sessionId => runningSession(sessionId)?.broadcastPresence());
-await initBriefSessions(options.data, {
-	sessionOf: runningSession,
-	meterOf: async id => {
-		const record = await sessionRecord(id);
+lastRun.stops.push(
+	await initBriefSessions(options.data, {
+		sessionOf: runningSession,
+		meterOf: async id => {
+			const record = await sessionRecord(id);
 
-		return record ? meterOf(id, record.cwd) : null;
-	},
-	remove: removeSession,
-});
+			return record ? meterOf(id, record.cwd) : null;
+		},
+		remove: removeSession,
+	}),
+);
 
 server.init({ host: options.host, port: options.port });
 
@@ -129,12 +137,14 @@ await initArchive(options.data);
 onRunsChange((sessionId, runs) => runningSession(sessionId)?.broadcast({ type: 'runs', runs }));
 setPreviewPort(previewPort);
 startPreview({ host: options.host, port: previewPort });
-watchShares();
+lastRun.stops.push(watchShares());
 // A session's shares changing reaches whoever has it open
 onSharesChange((sessionId, shares) => runningSession(sessionId)?.broadcast({ type: 'shares', shares }));
-setInterval(() => {
+const sweeping = setInterval(() => {
 	sweepCredentials();
 	sweepSideShells();
 }, 30_000).unref();
+
+lastRun.stops.push(() => clearInterval(sweeping));
 
 devConsole();

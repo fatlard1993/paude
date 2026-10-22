@@ -191,5 +191,7 @@ export const forgetLimit = async id => {
 export const initUsageLimits = async (dataDir, sessionOf) => {
 	file = path.join(dataDir, 'usage-limits.json');
 	limited = await readJsonFile(file, {});
-	setInterval(() => checkLimits(sessionOf), CHECK_MS).unref();
+	const checking = setInterval(() => checkLimits(sessionOf), CHECK_MS).unref();
+
+	return () => clearInterval(checking);
 };

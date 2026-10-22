@@ -114,8 +114,10 @@ export const initKeepWarm = async (dataDir, sessionOf) => {
 			typeof kept === 'number' ? { hours: DEFAULT_HOURS, until: kept } : kept,
 		]),
 	);
-	setInterval(
+	const checking = setInterval(
 		() => checkWarm(sessionOf).catch(error => console.error('Keeping sessions warm failed:', error)),
 		CHECK_MS,
 	).unref();
+
+	return () => clearInterval(checking);
 };

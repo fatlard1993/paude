@@ -51,7 +51,7 @@ const load = async () => {
 };
 
 // The server watches the file so a password set from the command line (scripts/set-password.js) takes effect,
-// and its sign-outs hold, without a restart
+// and its sign-outs hold, without a restart. Watching, it answers how to stop.
 export const initAuth = async (dataDir, { watchForChanges = false } = {}) => {
 	await mkdir(dataDir, { recursive: true, mode: 0o700 });
 
@@ -62,12 +62,14 @@ export const initAuth = async (dataDir, { watchForChanges = false } = {}) => {
 
 	let reload;
 
-	watch(dataDir, (event, name) => {
+	const watcher = watch(dataDir, (event, name) => {
 		if (name !== 'auth.json') return;
 
 		clearTimeout(reload);
 		reload = setTimeout(() => load().catch(error => console.error('Could not reload auth.json', error)), 50);
 	});
+
+	return () => watcher.close();
 };
 
 export const passwordIsSet = () => Boolean(state.passwordHash);
