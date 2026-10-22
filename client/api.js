@@ -80,6 +80,18 @@ export const getVerification = async sessionId =>
 export const getSymbols = async (sessionId, searchParameters) =>
 	await GET('/api/sessions/:id/symbols', { urlParameters: { id: sessionId }, searchParameters, invalidateAfter: 0 });
 
+// What the session settled, newest first, and whether each is written down: { reading, decisions: [{ id, kind, chose,
+// rejected, because, asked, at, place, looking }] }
+export const getDecisions = async sessionId =>
+	await GET('/api/sessions/:id/decisions', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
+
+export const dismissDecision = async (sessionId, id) =>
+	await POST('/api/sessions/:id/decisions/dismiss', { urlParameters: { id: sessionId }, body: { id } });
+
+// Typed into Claude once its prompt box is free: write this one down where it belongs
+export const writeDownDecision = async (sessionId, id) =>
+	await POST('/api/sessions/:id/decisions/write', { urlParameters: { id: sessionId }, body: { id } });
+
 // The links that came up in the session, newest first: [{ url, kind, context, by, count, firstAt, pinned }]
 export const getLinks = async sessionId =>
 	await GET('/api/sessions/:id/links', { urlParameters: { id: sessionId }, invalidateAfter: 0 });

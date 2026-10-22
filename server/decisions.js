@@ -1,0 +1,347 @@
+import { stat } from 'fs/promises';
+import path from 'path';
+
+import readJsonFile from '../shared/readJsonFile';
+import writeJsonFile from '../shared/writeJsonFile';
+import { statusOf } from './activity';
+import { markInterruptions, steeringOf } from './catchUp';
+import describer from './describer';
+import { repoRoot } from './git';
+import askHaiku, { jsonIn } from './haiku';
+import { runningSession } from './sessions/running';
+import { claudeHome } from './sessions/transcript';
+import { sessionTurns } from './timeline';
+import gitEnvironment from './utils/gitEnvironment';
+
+// What a session decided that was never written down. The code holds what was decided and a commit can hold why; this
+// finds the rest: Haiku reads each finished turn once for its decisions (chosen, rejected, why), the directions the
+// person gave and the work put off, then looks for each in the places they'd be written down (the commits since, the
+// instruction files, the design documents). What's found nowhere is what the panel leads with.
+const KINDS = new Set(['decision', 'direction', 'deferred']);
+const TURNS_AT_ONCE = 4;
+const JUDGED_AT_ONCE = 15;
+const ANSWERS = 600;
+// What the person said next, read with a turn
+const REPLY = 1000;
+const COMMITS = 200;
+// How much of each kind of place Haiku reads, at most, and of any one file
+const PLACE_CHARACTERS = 30_000;
+const FILE_CHARACTERS = 8000;
+// A look for a decision's place that came back with nothing waits this long before it's tried again
+const RETRY_MS = 10 * 60 * 1000;
+const KEEP_WARM_PING = /^keep-?warm ping/i;
+
+// A turn as Haiku reads it: what was asked, how the person steered, what they answered and turned down, what changed,
+// what Claude ended with
+export const turnText = (turn, index) =>
+	[
+		`Turn ${index + 1}`,
+		turn.summary
+			? "  (Claude went on from a summary of the conversation before it: nothing here is the person's words.)"
+			: `  Asked: ${turn.asked ?? turn.prompt}`,
+		steeringOf(turn).length && `  The person ${steeringOf(turn).join(', ')}.`,
+		...turn.steps
+			.filter(step => step.declined)
+			.map(step => `  Turned down: ${step.tool} ${step.summary ?? ''}`.trimEnd()),
+		...turn.steps
+			.filter(step => step.tool === 'AskUserQuestion' && step.output)
+			.map(step => `  Answered: ${step.output.replace(/\s+/g, ' ').slice(0, ANSWERS)}`),
+		turn.steps.some(step => step.edits) &&
+			`  Changed: ${[...new Set(turn.steps.filter(step => step.edits).map(step => step.file))].join(', ')}`,
+		turn.said && `  Claude ended with: ${turn.said}`,
+		turn.reply && `  Then the person said: ${turn.reply}`,
+	]
+		.filter(Boolean)
+		.join('\n');
+
+export const findPrompt = turns =>
+	[
+		'Below are turns of a conversation between a person and Claude, a coding assistant. Find what each turn settled that someone working on this later would need to know. Three kinds:',
+		'- decision: a choice about what the work is or how it is built, one someone later could get wrong without knowing it: what it should do, which way was taken, what was turned down',
+		'- direction: an instruction from the person about how the work is done',
+		'- deferred: work agreed to but put off for later',
+		"Routine edits, questions and fixes settle nothing: leave those turns empty. The person's own words settle the most; where they steered (stopped Claude, redirected it, turned something down, answered a question), look there first. What Claude proposed, offered or asked is settled only when the person agreed to it: read what they said next, and when they turned it down, it is what was rejected.",
+		'Each as {"kind", "chose", "rejected", "because"}: chose is the decision, the direction or the work put off, in one plain sentence; rejected is what was turned down, "" when nothing was; because is why, in one sentence, "" when no reason was given. Never invent a reason. Call them "the person", never "the user".',
+		'Reply with only a JSON object from each turn number to its list, every number given one: {"1": [], "2": [{"kind": "decision", "chose": "…", "rejected": "…", "because": "…"}]}.',
+		turns.map(turnText).join('\n\n'),
+	].join('\n\n');
+
+const plain = value => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '');
+
+// Haiku's reply as { [number]: [{ kind, chose, rejected, because }] }: what isn't one of those, left out
+export const parseFound = reply =>
+	Object.fromEntries(
+		Object.entries(jsonIn(reply) ?? {})
+			.filter(([, found]) => Array.isArray(found))
+			.map(([number, found]) => [
+				number,
+				found
+					.filter(item => KINDS.has(item?.kind) && plain(item.chose))
+					.map(item => ({
+						kind: item.kind,
+						chose: plain(item.chose),
+						rejected: plain(item.rejected),
+						because: plain(item.because),
+					})),
+			]),
+	);
+
+// A turn going on from a summary is read under a key of its own: read as the person's words, it once found the whole
+// summary's decisions over again
+const keyOf = turn => (turn.summary ? `${turn.id}:summary` : turn.id);
+
+const found = describer({
+	fileName: 'decisions.json',
+	keyOf,
+	promptFor: findPrompt,
+	// The latest first: what the panel shows at the top
+	sooner: (a, b) => String(b.at).localeCompare(String(a.at)),
+	batchSize: TURNS_AT_ONCE,
+	parse: parseFound,
+	keep: list => list,
+});
+
+const gitOut = async (args, cwd) => {
+	const child = Bun.spawn(['git', ...args], { cwd, env: gitEnvironment(), stdout: 'pipe', stderr: 'ignore' });
+	const out = await new Response(child.stdout).text();
+
+	return (await child.exited) === 0 ? out : '';
+};
+
+const readCapped = async file =>
+	Bun.file(file)
+		.slice(0, FILE_CHARACTERS)
+		.text()
+		.catch(() => '');
+
+// The files of one kind, each under its path, to PLACE_CHARACTERS in all
+const filesText = async (files, root) => {
+	let text = '';
+
+	for (const file of files) {
+		const contents = await readCapped(path.isAbsolute(file) ? file : path.join(root, file));
+
+		if (!contents.trim()) continue;
+		text += `== ${file}\n${contents.trim()}\n\n`;
+		if (text.length > PLACE_CHARACTERS) break;
+	}
+
+	return text.slice(0, PLACE_CHARACTERS);
+};
+
+// The person's own skills: where a standing direction is often written down
+const skillFiles = async () => {
+	const folder = path.join(claudeHome(), 'skills');
+	const files = [];
+
+	try {
+		for await (const file of new Bun.Glob('*/SKILL.md').scan({ cwd: folder, followSymlinks: true }))
+			files.push(path.join(folder, file));
+	} catch {
+		// No skills folder
+	}
+
+	return files.sort();
+};
+
+// The places a decision would be written down, as Haiku reads them, with the names it may answer with and a
+// fingerprint that changes when any of them does: the commits since `since`, the instruction files (the project's, and
+// the person's own CLAUDE.md and skills), the design documents
+export const placesFor = async (cwd, since) => {
+	const root = await repoRoot(cwd);
+	const userInstructions = path.join(claudeHome(), 'CLAUDE.md');
+	const listed = async patterns =>
+		root ? (await gitOut(['ls-files', '-z', '--', ...patterns], root)).split('\0').filter(Boolean) : [];
+	const [head, log, instructions, designs] = await Promise.all([
+		root ? gitOut(['rev-parse', 'HEAD'], root) : '',
+		root && since
+			? gitOut(['log', `--since=${since}`, `--max-count=${COMMITS}`, '--format=commit %h%n%B%x00'], root)
+			: '',
+		listed(['CLAUDE.md', '*/CLAUDE.md', 'AGENTS.md', '*/AGENTS.md']),
+		listed(['*.lld.md']),
+	]);
+	const instructionFiles = [...instructions, userInstructions, ...(await skillFiles())];
+	const stamps = await Promise.all(
+		[...instructionFiles, ...designs].map(async file => {
+			const info = await stat(path.isAbsolute(file) ? file : path.join(root, file)).catch(() => null);
+
+			return info ? `${file}:${info.size}:${info.mtimeMs}` : '';
+		}),
+	);
+	const commits = log
+		.split('\0')
+		.map(entry => entry.trim())
+		.filter(Boolean);
+
+	return {
+		fingerprint: [head.trim(), ...stamps].join('|'),
+		names: new Set([
+			...commits.map(commit => commit.split('\n')[0].replace('commit ', '')),
+			...instructionFiles,
+			...designs,
+		]),
+		text: [
+			commits.length && `Commits since:\n${commits.join('\n\n').slice(0, PLACE_CHARACTERS)}`,
+			`Instruction files:\n${await filesText(instructionFiles, root)}`,
+			designs.length && `Design documents:\n${await filesText(designs, root)}`,
+		]
+			.filter(Boolean)
+			.join('\n\n'),
+	};
+};
+
+export const placePrompt = (decisions, placesText) =>
+	[
+		'Each item below was settled in a conversation about a codebase. After them are the places its people write things down: commit messages, instruction files, design documents.',
+		'For each item, say where it is written down: a commit by its short sha, or a file by its path, as given below. Written down means that place says the same thing, not that it touches the topic. When no place says it, null.',
+		'Reply with only a JSON object from each number to a place or null, like {"1": "382a290", "2": null}.',
+		decisions
+			.map((decision, index) =>
+				[
+					`${index + 1}. ${decision.chose}`,
+					decision.rejected && `   Rejected: ${decision.rejected}`,
+					decision.because && `   Because: ${decision.because}`,
+				]
+					.filter(Boolean)
+					.join('\n'),
+			)
+			.join('\n'),
+		placesText,
+	].join('\n\n');
+
+// Haiku's reply as { [number]: place | null }, a place only when it is one of those given; null for no reply at all
+export const parsePlaces = (reply, names) => {
+	const json = jsonIn(reply);
+
+	if (!json) return null;
+
+	return Object.fromEntries(
+		Object.entries(json).map(([number, place]) => [
+			number,
+			typeof place === 'string' && names.has(place) ? place : null,
+		]),
+	);
+};
+
+let placesFile;
+// { [decision id]: { place, fingerprint } }: a place found is kept; nowhere is looked into again when the places change
+let placed = {};
+let marksFile;
+// { [session id]: [decision id] }: the ones set aside as not worth writing down
+let dismissed = {};
+const looking = new Set();
+const failedAt = new Map();
+
+export const initDecisions = async dataDir => {
+	await found.init(dataDir);
+	placesFile = path.join(dataDir, 'decision-places.json');
+	marksFile = path.join(dataDir, 'decision-marks.json');
+	[placed, dismissed] = await Promise.all([readJsonFile(placesFile, {}), readJsonFile(marksFile, {})]);
+};
+
+// Those still to look for: never looked for, or found nowhere since the places last changed
+const toLookFor = (decisions, fingerprint) =>
+	decisions.filter(
+		decision =>
+			!looking.has(decision.id) &&
+			Date.now() - (failedAt.get(decision.id) ?? 0) > RETRY_MS &&
+			(!placed[decision.id] || (placed[decision.id].place === null && placed[decision.id].fingerprint !== fingerprint)),
+	);
+
+const lookFor = async (decisions, places, ask = askHaiku) => {
+	for (const decision of decisions) looking.add(decision.id);
+	try {
+		for (let at = 0; at < decisions.length; at += JUDGED_AT_ONCE) {
+			const batch = decisions.slice(at, at + JUDGED_AT_ONCE);
+			const answer = parsePlaces(await ask(placePrompt(batch, places.text)), places.names);
+
+			if (!answer) {
+				for (const decision of decisions.slice(at)) failedAt.set(decision.id, Date.now());
+				break;
+			}
+			batch.forEach((decision, index) => {
+				placed[decision.id] = { place: answer[String(index + 1)] ?? null, fingerprint: places.fingerprint };
+			});
+			await writeJsonFile(placesFile, () => placed);
+		}
+	} finally {
+		for (const decision of decisions) looking.delete(decision.id);
+	}
+};
+
+// The session's turns worth reading, each with what the person said next (which settles what Claude proposed): not a
+// cut-short marker or a keep-warm ping, and the latest only once the session has stopped, when nothing more will
+// answer it
+export const turnsToRead = (turns, { running }) => {
+	const told = markInterruptions(turns).filter(turn => !turn.interrupted && !KEEP_WARM_PING.test(turn.prompt));
+	const read = told.map((turn, index) => ({
+		...turn,
+		reply: told[index + 1]?.summary ? undefined : told[index + 1]?.asked?.slice(0, REPLY),
+	}));
+
+	return running ? read.slice(0, -1) : read;
+};
+
+// What the session settled, newest first: [{ id, turnId, at, asked, kind, chose, rejected, because, place, looking,
+// dismissed }], and whether Haiku is still reading turns or looking for places
+export const sessionDecisions = async (id, cwd, { withDismissed = false } = {}) => {
+	const turns = turnsToRead(await sessionTurns(id, cwd), {
+		running: Boolean(runningSession(id)) || statusOf(id) === 'working',
+	});
+
+	if (placesFile) found.describe(turns);
+
+	const decisions = turns.flatMap(turn =>
+		(found.descriptionOf(keyOf(turn)) ?? []).map((decision, index) => ({
+			id: `${keyOf(turn)}:${index}`,
+			turnId: turn.id,
+			at: turn.at,
+			asked: turn.prompt,
+			...decision,
+		})),
+	);
+	const set = new Set(dismissed[id] ?? []);
+	const open = decisions.filter(decision => !set.has(decision.id));
+
+	if (open.length && placesFile) {
+		const places = await placesFor(cwd, open.map(decision => decision.at).sort()[0]);
+		const unplaced = toLookFor(open, places.fingerprint);
+
+		if (unplaced.length) lookFor(unplaced, places);
+	}
+
+	return {
+		reading: turns.some(turn => found.describingOf(keyOf(turn))),
+		decisions: decisions
+			.map(decision => ({
+				...decision,
+				place: placed[decision.id]?.place ?? null,
+				looking: looking.has(decision.id),
+				dismissed: set.has(decision.id),
+			}))
+			.filter(decision => withDismissed || !decision.dismissed)
+			.reverse(),
+	};
+};
+
+export const dismissDecision = async (sessionId, decisionId, dismiss = true) => {
+	const now = new Set(dismissed[sessionId] ?? []);
+
+	if (dismiss) now.add(decisionId);
+	else now.delete(decisionId);
+	dismissed = { ...dismissed, [sessionId]: [...now] };
+	await writeJsonFile(marksFile, () => dismissed);
+};
+
+// What the session's Claude is asked, to write one down where it belongs
+export const writeDownPrompt = decision =>
+	[
+		"This was settled earlier in the session and is not written down anywhere yet. Write it down where it belongs, then say where: in the message of the commit it shaped (folded in with amend! while that commit is unpushed), in CLAUDE.md if it is a standing direction, in the slice's .lld.md if it is design intent, or nowhere if it no longer holds (say why).",
+		`${{ decision: 'Decided', direction: 'Direction', deferred: 'Put off' }[decision.kind]}: ${decision.chose}`,
+		decision.rejected && `Rejected: ${decision.rejected}`,
+		decision.because && `Because: ${decision.because}`,
+	]
+		.filter(Boolean)
+		.join('\n');
+
+export { lookFor as lookForPlaces, toLookFor };

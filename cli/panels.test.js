@@ -213,6 +213,64 @@ test('a key that does nothing here is not offered', () => {
 	expect(keys(pr)).not.toContain('[enter]');
 	expect(keys(loaded('links', []))).not.toContain('[enter]');
 });
+
+describe('decisions', () => {
+	const data = {
+		reading: false,
+		decisions: [
+			{
+				id: 't2:0',
+				kind: 'direction',
+				chose: 'Commit to main',
+				asked: 'no issues',
+				at: '2026-10-22T12:00:00Z',
+				place: null,
+			},
+			{
+				id: 't1:0',
+				kind: 'decision',
+				chose: 'Lock per user',
+				rejected: 'Per session',
+				because: 'A new session would reset it',
+				asked: 'lock accounts',
+				at: '2026-10-22T11:00:00Z',
+				place: '382a290',
+			},
+		],
+	};
+
+	test('leads with what is not written down; Tab shows what is, and where', () => {
+		const panel = loaded('decisions', data);
+
+		expect(itemsOf(panel).map(item => item.id)).toEqual(['t2:0']);
+		expect(panelView(panel, 80, 20).join('\n')).toContain('Not written down 1');
+		panelKey(panel, '\t');
+		expect(itemsOf(panel).map(item => item.id)).toEqual(['t1:0']);
+
+		const lines = panelView(panel, 80, 20).join('\n');
+
+		expect(lines).toContain('Rejected: Per session');
+		expect(lines).toContain('in 382a290');
+	});
+
+	test('asks Claude to write down one not written down, or sets it aside', () => {
+		const panel = loaded('decisions', data);
+
+		expect(panelKey(panel, 'w')).toEqual({ type: 'writeDecision', id: 't2:0' });
+		expect(panelKey(panel, 'x')).toEqual({ type: 'dismissDecision', id: 't2:0' });
+		panelKey(panel, '\t');
+		expect(panelKey(panel, 'w')).toEqual({ type: 'ignore' });
+		expect(panelKeys(panel, key => key).join(' ')).not.toContain('write it down');
+	});
+
+	test('says while it is still reading, and what an empty tab means', () => {
+		const lines = panelView(loaded('decisions', { reading: true, decisions: [] }), 80, 20).join('\n');
+
+		expect(lines).toContain('Reading the conversation for what it settled');
+		expect(lines).toContain('Nothing settled here waits to be written down.');
+	});
+});
+
 describe('git: not pushed', () => {
 	const stack = {
 		base: 'abc',

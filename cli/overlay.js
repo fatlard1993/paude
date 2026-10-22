@@ -69,7 +69,7 @@ const canTypeIn = state => roleAllows(state.role ?? 'owner', 'type');
 const canBrowse = state => roleAllows(state.role ?? 'owner', 'files');
 
 // The panels each key opens: the action loads what it shows
-const PANEL_KEYS = { l: 'links', a: 'artifacts', h: 'activity', g: 'git' };
+const PANEL_KEYS = { l: 'links', a: 'artifacts', D: 'decisions', h: 'activity', g: 'git' };
 
 const threadComment = state => state.notes.comments.find(({ id }) => id === state.thread);
 
@@ -181,6 +181,7 @@ const keysFor = (state, canNote) => {
 		canTypeIn(state) && `${keyCap('t')} terminal`,
 		canBrowse(state) && `${keyCap('l')} links`,
 		canBrowse(state) && `${keyCap('a')} artifacts`,
+		canBrowse(state) && `${keyCap('D')} decisions`,
 		canBrowse(state) && `${keyCap('h')} activity`,
 		canBrowse(state) && `${keyCap('g')} git`,
 		`${keyCap('p')} shared`,

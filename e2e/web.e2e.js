@@ -1459,6 +1459,71 @@ test(
 );
 
 test(
+	'the decisions panel leads with what was settled and not written down, until a commit says it',
+	async () => {
+		const server = servers.turns;
+		const id = await server.newSession();
+		const asked = (text, at) => ({
+			type: 'user',
+			uuid: `prompt-${at}`,
+			timestamp: `2026-10-07T12:00:0${at}.000Z`,
+			message: { role: 'user', content: text },
+		});
+		const said = (text, at) => ({
+			type: 'assistant',
+			timestamp: `2026-10-07T12:00:0${at}.500Z`,
+			message: { content: [{ type: 'text', text }] },
+		});
+
+		await server.writeTranscript(id, [
+			asked('lock accounts after failed logins', 1),
+			said('Counting per user, so a new session does not reset it.', 1),
+			asked('thanks', 2),
+			said('You are welcome.', 2),
+		]);
+
+		const { browser, page } = await openBrowser('dom');
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+		const panel = () => page.$eval('.decisions-panel', node => node.innerText);
+
+		try {
+			await page.goto(await server.loginLink(`/sessions/${id}`));
+			await page.waitForSelector('.xterm-screen');
+			await wait(1000);
+			await press('[title^="Decisions"]');
+			await page.waitForFunction(
+				() => document.querySelector('.decisions-panel')?.innerText.includes('Lock accounts per user'),
+				{ timeout: 20_000 },
+			);
+			expect(await panel()).toContain('Not written down 1');
+			expect(await panel()).toContain('Rejected: Per session');
+			expect(await panel()).toContain('❯ lock accounts after failed logins');
+
+			Bun.spawnSync(
+				['git', 'commit', '-q', '--allow-empty', '-m', 'lock per user', '-m', 'Chose per user over per session.'],
+				{ cwd: server.project },
+			);
+			await press('.decisions-panel .bar .close');
+			await press('[title^="Decisions"]');
+			await page.waitForFunction(
+				() => document.querySelector('.decisions-panel')?.innerText.includes('Written down 1'),
+				{ timeout: 20_000 },
+			);
+			await press('.decisions-panel .tabs button', 'Written down');
+			expect(await panel()).toMatch(/in [0-9a-f]{7}/);
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
 	"a project's page lists the links all its sessions brought up, each naming where",
 	async () => {
 		const server = await startServer();

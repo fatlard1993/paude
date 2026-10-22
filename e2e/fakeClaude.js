@@ -26,6 +26,40 @@ if (process.argv.includes('-p')) {
 		write(tourOf(prompt));
 		process.exit(0);
 	}
+	// The Decisions panel: what each turn settled (a turn about locking settles one), then where each is written down
+	// (in a commit that says so)
+	if (prompt.includes('Find what each turn settled')) {
+		const turns = [...prompt.matchAll(/^Turn (\d+)\n {2}Asked: (.*)$/gm)];
+
+		write(
+			JSON.stringify(
+				Object.fromEntries(
+					turns.map(([, number, asked]) => [
+						number,
+						asked.includes('lock')
+							? [
+									{
+										kind: 'decision',
+										chose: 'Lock accounts per user',
+										rejected: 'Per session',
+										because: 'A new session would reset the count',
+									},
+								]
+							: [],
+					]),
+				),
+			),
+		);
+		process.exit(0);
+	}
+	if (prompt.includes('Written down means that place says the same thing')) {
+		const commit = /^commit (\w+)\n.*per user/im.exec(prompt)?.[1] ?? null;
+
+		write(
+			JSON.stringify(Object.fromEntries([...prompt.matchAll(/^(\d+)\. /gm)].map(([, number]) => [number, commit]))),
+		);
+		process.exit(0);
+	}
 
 	write(
 		process.argv.includes('haiku')

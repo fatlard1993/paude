@@ -53,6 +53,8 @@ const OVERLAY_KEY_HINT = OVERLAY_KEY === 'Ctrl+]' ? OVERLAY_KEY : `${OVERLAY_KEY
 
 const NOTE_ACTIONS = ['chat', 'comment', 'reply', 'resolve', 'react', 'delete', 'ask'];
 const FRAME_MS = 33;
+// How soon an open decisions panel reads again while Haiku is still at it
+const DECISIONS_AGAIN_MS = 4000;
 // How soon after this person's own click or key a clipboard write from the session is theirs
 const OWN_COPY_MS = 3000;
 
@@ -264,6 +266,7 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 		const LOADERS = {
 			links: () => data.links(),
 			artifacts: () => data.artifacts(),
+			decisions: () => data.decisions(),
 			activity: async () => {
 				const [timeline, checked] = await Promise.all([data.timeline(), data.verification()]);
 
@@ -287,6 +290,19 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			else panel.data = loaded;
 			redraw();
 			if (kind === 'git') loadGit({ what: 'status' });
+			if (kind === 'decisions') followDecisions(panel);
+		};
+
+		// Haiku is still reading turns, or looking for where some are written: read again shortly, while it's open
+		const followDecisions = panel => {
+			const busy = panel.data?.reading || panel.data?.decisions?.some(decision => decision.looking);
+
+			if (!busy || state.panel !== panel) return;
+			setTimeout(async () => {
+				if (state.panel !== panel) return;
+				await reloadPanel();
+				followDecisions(panel);
+			}, DECISIONS_AGAIN_MS);
 		};
 
 		const reloadPanel = async () => {
@@ -526,6 +542,19 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 				state.hint = openLocally(absolute)
 					? 'Asked your browser to open it. Nothing came up? y copies it.'
 					: 'No browser to open it here. y copies it.';
+				redraw();
+			},
+			writeDecision: async ({ id: decision }) => {
+				const asked = await data.writeDownDecision(decision);
+
+				state.hint = asked.error ?? 'Asked: Claude writes it down once its prompt box is free.';
+				redraw();
+			},
+			dismissDecision: async ({ id: decision }) => {
+				const set = await data.dismissDecision(decision);
+
+				if (set.error) state.hint = set.error;
+				await reloadPanel();
 				redraw();
 			},
 			markLink: async ({ url: link, change }) => {

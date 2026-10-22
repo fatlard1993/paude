@@ -12,10 +12,22 @@ const RETRY_MS = 60 * 60 * 1000;
 export const parseDescriptions = reply =>
 	Object.fromEntries(Object.entries(jsonIn(reply) ?? {}).filter(([, text]) => typeof text === 'string' && text.trim()));
 
+const sentence = text => text.trim().replace(/\.$/, '');
+
 // Short descriptions Haiku writes for things that came up in sessions (links, artifacts): once per thing, kept by its
 // key in `<dataDir>/<fileName>`. Asked in the background, a batch at a time, the soonest first, while the panel shows
 // what it has. promptFor(batch) numbers the batch from 1; describable(item) says whether there's anything to go on.
-const describer = ({ fileName, keyOf, promptFor, sooner, describable = () => true }) => {
+// What's kept is a sentence, unless parse (the reply as { [number]: value }) and keep (a value as kept) say otherwise.
+const describer = ({
+	fileName,
+	keyOf,
+	promptFor,
+	sooner,
+	describable = () => true,
+	batchSize = BATCH,
+	parse = parseDescriptions,
+	keep = sentence,
+}) => {
 	let file;
 	let descriptions = {};
 	const queue = new Map();
@@ -27,8 +39,8 @@ const describer = ({ fileName, keyOf, promptFor, sooner, describable = () => tru
 		working = true;
 		try {
 			while (queue.size) {
-				const batch = [...queue.values()].sort(sooner).slice(0, BATCH);
-				const written = parseDescriptions(await askHaiku(await promptFor(batch)));
+				const batch = [...queue.values()].sort(sooner).slice(0, batchSize);
+				const written = parse(await askHaiku(await promptFor(batch)));
 
 				// No answer at all (not logged in, out of usage): the rest wait their hour too, rather than each failing
 				if (!Object.keys(written).length) {
@@ -40,7 +52,7 @@ const describer = ({ fileName, keyOf, promptFor, sooner, describable = () => tru
 				batch.forEach((item, index) => {
 					const text = written[String(index + 1)];
 
-					if (text) descriptions[keyOf(item)] = text.trim().replace(/\.$/, '');
+					if (text) descriptions[keyOf(item)] = keep(text);
 					else failedAt.set(keyOf(item), Date.now());
 					queue.delete(keyOf(item));
 				});

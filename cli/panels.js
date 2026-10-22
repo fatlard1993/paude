@@ -2,8 +2,8 @@ import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { LIFETIMES, clockTime } from '../shared/lifetimes';
 import { bold, colored, dim, fit, green, heading, is, onBackground, orange, printable, wrap } from './screen';
 
-// The web's side panels, in the terminal box: links, artifacts, activity, the catch-up tour, git, shared services
-// and a session's lifetime. Each is a list moved through with the arrows (or j/k), Tab stepping between its tabs;
+// The web's side panels, in the terminal box: links, artifacts, decisions, activity, the catch-up tour, git, shared
+// services and a session's lifetime. Each is a list moved through with the arrows (or j/k), Tab stepping between its tabs;
 // keys return actions for attach.js to carry out, which loads what they need and puts it in `panel.data`.
 
 const CURSOR_BACKGROUND = 238;
@@ -28,6 +28,11 @@ const ARTIFACT_KINDS = [
 	['media', 'Media'],
 	['archive', 'Archives'],
 ];
+const DECISION_TABS = [
+	['open', 'Not written down'],
+	['placed', 'Written down'],
+];
+const DECISION_KINDS = { decision: 'decided', direction: 'direction', deferred: 'put off' };
 const GIT_TABS = [
 	['status', 'Status'],
 	['log', 'History'],
@@ -66,6 +71,7 @@ const tabsOf = panel => {
 	if (panel.kind === 'links') return kindTabs(LINK_KINDS, mentionedLinks(panel));
 	if (panel.kind === 'artifacts') return kindTabs(ARTIFACT_KINDS, panel.data ?? []);
 	if (panel.kind === 'git') return GIT_TABS;
+	if (panel.kind === 'decisions') return DECISION_TABS;
 
 	return [];
 };
@@ -77,6 +83,10 @@ const mentionedLinks = panel =>
 	(panel.data ?? []).filter(link => panel.withOutput || link.pinned || link.by.some(by => by !== 'output'));
 
 const gitData = panel => panel.data?.[tabKey(panel)];
+
+// Those in a decisions tab: written down somewhere, or not
+const decisionsIn = (panel, tab) =>
+	(panel.data?.decisions ?? []).filter(item => (tab === 'placed') === Boolean(item.place));
 
 const statusRows = status => [
 	...status.conflicted.map(file => ({ ...file, status: 'conflict', where: 'conflicted' })),
@@ -116,6 +126,8 @@ export const itemsOf = panel => {
 
 			return panel.data.filter(made => kind === 'all' || made.kind === kind);
 		}
+		case 'decisions':
+			return decisionsIn(panel, tabKey(panel));
 		case 'activity':
 			return panel.turn ? panel.turn.steps : [...panel.data.turns].reverse();
 		case 'git': {
@@ -141,6 +153,7 @@ export const itemsOf = panel => {
 const TITLES = {
 	links: 'Links',
 	artifacts: 'Artifacts',
+	decisions: 'Decisions',
 	activity: 'Activity',
 	tour: 'Catch me up',
 	git: 'Git',
@@ -152,6 +165,8 @@ const EMPTY = {
 	links: 'No links came up yet.',
 	artifacts: 'Nothing made here yet: screenshots, pages and scripts show up as they are.',
 	activity: 'No turns yet.',
+	'decisions.open': 'Nothing settled here waits to be written down.',
+	'decisions.placed': 'Nothing settled here is written down yet.',
 	services: 'Nothing shared: a server the session starts shows here once it listens.',
 	'git.log': 'No commits yet.',
 	'git.stack': 'Nothing beyond what is pushed.',
@@ -171,6 +186,8 @@ const rowText = (panel, item) => {
 			return `${item.pinned ? orange('▪') : ' '} ${printable(shortened(item.url))}${item.count > 1 ? dim(` ×${item.count}`) : ''}`;
 		case 'artifacts':
 			return `  ${printable(item.name)}  ${dim(printable(item.shown ?? item.path))}`;
+		case 'decisions':
+			return `  ${printable(item.chose)} ${dim(DECISION_KINDS[item.kind] ?? '')}`;
 		case 'activity':
 			if (panel.turn)
 				return `  ${item.ok === false ? colored('✗', RED) : dim('·')} ${bold(printable(item.tool))} ${printable(item.summary ?? item.file ?? '')}`;
@@ -228,6 +245,18 @@ const detailOf = (panel, item, width) => {
 					.filter(Boolean)
 					.join(' · '),
 			);
+		case 'decisions':
+			return lines(
+				item.rejected && `Rejected: ${item.rejected}`,
+				item.because && `Because: ${item.because}`,
+				`❯ ${item.asked}`,
+				[
+					item.at && relativeTime(item.at),
+					item.place ? `in ${item.place}` : item.looking && 'looking for where it is written',
+				]
+					.filter(Boolean)
+					.join(' · '),
+			);
 		case 'activity':
 			return panel.turn ? lines(item.file, item.ok === false && item.output) : [];
 		case 'git':
@@ -249,10 +278,13 @@ const tabsLine = panel => {
 	if (tabs.length < 2) return [];
 
 	const counted = ([kind, label], index) => {
-		const count =
-			panel.kind === 'git'
-				? ''
-				: ` ${(panel.kind === 'links' ? mentionedLinks(panel) : panel.data).filter(item => kind === 'all' || item.kind === kind).length}`;
+		const inTab = () =>
+			panel.kind === 'decisions'
+				? decisionsIn(panel, kind)
+				: (panel.kind === 'links' ? mentionedLinks(panel) : panel.data).filter(
+						item => kind === 'all' || item.kind === kind,
+					);
+		const count = panel.kind === 'git' ? '' : ` ${inTab().length}`;
 		const text = `${label}${count}`;
 
 		return index === panel.tab ? orange(bold(`[${text}]`)) : dim(` ${text} `);
@@ -268,6 +300,8 @@ const headerOf = panel => {
 
 		return outputOnly && !panel.withOutput ? [dim(`${outputOnly} more only a command printed (i shows them)`)] : [];
 	}
+	if (panel.kind === 'decisions' && panel.data?.reading)
+		return [dim('Reading the conversation for what it settled...')];
 	if (panel.kind === 'activity' && !panel.turn && panel.data?.checked) return [dim(printable(panel.data.checked))];
 	if (panel.kind === 'activity' && panel.turn)
 		return [
@@ -357,7 +391,7 @@ export const panelView = (panel, width, room) => {
 
 		return [row(panel, item, index, width), ...(index === panel.cursor ? detail : [])];
 	});
-	const said = EMPTY[panel.kind === 'git' ? `git.${tabKey(panel)}` : panel.kind];
+	const said = EMPTY[`${panel.kind}.${tabKey(panel)}`] ?? EMPTY[panel.kind];
 
 	return [...header, '', ...(items.length ? rows : [said && dim(said)].filter(Boolean))];
 };
@@ -395,6 +429,10 @@ export const panelKeys = (panel, keyCap) => {
 			add('enter', item && UNREADABLE.test(item.path) ? 'save and open' : 'read it here', item);
 			add('o', 'save to this machine and open', item);
 			add('y', 'copy its path', item);
+			break;
+		case 'decisions':
+			add('w', 'ask Claude to write it down', item && !item.place);
+			add('x', 'set it aside', item);
 			break;
 		case 'activity':
 			if (panel.turn) {
@@ -506,6 +544,11 @@ export const panelKey = (panel, key) => {
 				return { type: 'saveArtifact', path: item.path, name: item.name };
 			if (is(key, 'enter')) return { type: 'readArtifact', path: item.path };
 			if (key === 'y') return { type: 'copy', text: item.path, what: 'its path' };
+			break;
+		case 'decisions':
+			if (!item) break;
+			if (key === 'w' && !item.place) return { type: 'writeDecision', id: item.id };
+			if (key === 'x') return { type: 'dismissDecision', id: item.id };
 			break;
 		case 'activity':
 			if (panel.turn) {

@@ -10,6 +10,8 @@ export const TAIL_BYTES = 6 * 1024 * 1024;
 const MAX_TURNS = 40;
 const OUTPUT_CHARACTERS = 2000;
 const PROMPT_PREVIEW = 200;
+// The prompt as asked, for what reads a turn's words rather than lists it
+const ASKED_CHARACTERS = 2000;
 // The end of what Claude last wrote in a turn: its answer, usually
 const SAID_CHARACTERS = 800;
 
@@ -107,15 +109,17 @@ export const timelineFrom = (lines, cwd) => {
 		const prompt = promptText(line);
 
 		if (prompt !== null) {
+			const asked = prompt.replace(/<\/?pasted_content[^>]*>/g, '').trim();
+
 			turns.push({
 				id: line.uuid,
-				prompt: prompt
-					.replace(/<\/?pasted_content[^>]*>/g, '')
-					.trim()
-					.slice(0, PROMPT_PREVIEW),
+				prompt: asked.slice(0, PROMPT_PREVIEW),
+				asked: asked.slice(0, ASKED_CHARACTERS),
 				at: line.timestamp,
 				endedAt: line.timestamp,
 				interrupted: /^\[Request interrupted/.test(prompt),
+				// Claude Code's summary of the conversation so far, carried into a fresh context: not the person's words
+				summary: Boolean(line.isCompactSummary),
 				steps: [],
 				context: null,
 				output: 0,

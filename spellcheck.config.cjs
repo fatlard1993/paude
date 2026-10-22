@@ -7,6 +7,8 @@ module.exports = {
 		'pathspecs',
 		'autosquash',
 		'autostash',
+		'codebase',
+		'unpushed',
 		'favicon',
 		'tsv',
 		'visibilitychange',

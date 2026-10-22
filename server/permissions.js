@@ -42,6 +42,7 @@ const OWN_SESSION_ROUTES = [
 	'/feed',
 	'/symbols',
 	'/links',
+	'/decisions',
 ];
 
 export const guestMayRequest = (identity, method, pathname) => {
@@ -67,6 +68,7 @@ export const guestMayRequest = (identity, method, pathname) => {
 		// Tours: catching up on the session, and walking through its code
 		(method === 'POST' && (pathname === `${own}/catch-up` || pathname === `${own}/tour`)) ||
 		(method === 'POST' && pathname === `${own}/links/mark`) ||
+		(method === 'POST' && pathname === `${own}/decisions/dismiss`) ||
 		(method === 'GET' && pathname === `${own}/environment`) ||
 		(method === 'PUT' && (pathname === `${own}/watch` || pathname === `${own}/file`)) ||
 		(method === 'POST' && pathname === '/api/logout') ||

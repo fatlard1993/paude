@@ -6,6 +6,8 @@ import { sessionArtifacts } from '../artifacts';
 import { listChanges } from '../changes';
 import { DiffError, diffSet, turnsWithChanges } from '../diffs';
 import { markLink, sessionLinks } from '../links';
+import { dismissDecision, sessionDecisions, writeDownPrompt } from '../decisions';
+import { askClaude } from '../claudeInbox';
 import { definitions, outline, searchSymbols } from '../symbols';
 import { sessionTimeline } from '../timeline';
 import { sessionFeed } from '../feed';
@@ -34,6 +36,7 @@ import { searchOptionsFrom } from '../../shared/searchQuery';
 import { may } from '../permissions';
 import { projectOf, projectPath } from '../projects';
 import { readingFeed } from '../sessions/attachSocket';
+import { openSession } from '../sessions/running';
 import { sessionRecord } from '../sessions/record';
 
 const REFUSED = {
@@ -304,6 +307,38 @@ const filesRoutes = async request => {
 		return new Response(null, { status: 204 });
 	}
 
+	const dismissing = requestMatch('POST', '/api/sessions/:id/decisions/dismiss', request);
+
+	if (dismissing) {
+		if (!may(identityOf(credentialOf(request)), 'note', dismissing.id))
+			return new Response('Not part of your invite', { status: 403 });
+
+		const { id, dismissed = true } = await request.json();
+
+		if (typeof id !== 'string') return new Response('Which one?', { status: 400 });
+		await dismissDecision(dismissing.id, id, Boolean(dismissed));
+
+		return new Response(null, { status: 204 });
+	}
+
+	// Typed into the session's Claude, which writes it down where it belongs: a prompt, so the owner's alone
+	const writing = requestMatch('POST', '/api/sessions/:id/decisions/write', request);
+
+	if (writing) {
+		if (!identityOf(credentialOf(request))?.owner)
+			return new Response('Only the owner asks Claude to write it down', { status: 403 });
+
+		const cwd = await sessionFolder(writing.id);
+		const { id } = await request.json();
+		const decision = cwd && (await sessionDecisions(writing.id, cwd)).decisions.find(found => found.id === id);
+
+		if (!decision) return new Response('That one is gone', { status: 404 });
+		if (!(await openSession(writing.id))) return new Response('Session not found', { status: 404 });
+		askClaude(writing.id, { prompt: writeDownPrompt(decision), answer: async () => {} });
+
+		return new Response(null, { status: 204 });
+	}
+
 	const made =
 		requestMatch('GET', '/api/sessions/:id/artifacts', request) ||
 		requestMatch('GET', '/api/sessions/:id/artifact', request);
@@ -327,6 +362,7 @@ const filesRoutes = async request => {
 		requestMatch('GET', '/api/sessions/:id/feed', request) ||
 		requestMatch('GET', '/api/sessions/:id/symbols', request) ||
 		requestMatch('GET', '/api/sessions/:id/links', request) ||
+		requestMatch('GET', '/api/sessions/:id/decisions', request) ||
 		requestMatch('GET', '/api/sessions/:id/files', request) ||
 		requestMatch('GET', '/api/sessions/:id/file', request) ||
 		requestMatch('GET', '/api/sessions/:id/search', request) ||
@@ -352,6 +388,8 @@ const filesRoutes = async request => {
 
 		return Response.json(await sessionFeed(match.id, cwd, match.after));
 	}
+	if (pathname.endsWith('/decisions'))
+		return Response.json(await sessionDecisions(match.id, cwd, { withDismissed: match.all === '1' }));
 	if (pathname.endsWith('/links'))
 		return Response.json(await sessionLinks(match.id, cwd, { withHidden: match.all === '1' }));
 	// A file's outline, where a name is defined, or the names matching what's typed

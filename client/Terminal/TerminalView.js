@@ -17,6 +17,9 @@ import {
 	markLink,
 	nameSession,
 	getArtifacts,
+	getDecisions,
+	dismissDecision,
+	writeDownDecision,
 	getAsking,
 	getMeter,
 	setLifetime,
@@ -53,6 +56,7 @@ import ActivityPanel from './ActivityPanel';
 import TasksPanel from './TasksPanel';
 import LinksPanel from './LinksPanel';
 import ArtifactsPanel from './ArtifactsPanel';
+import DecisionsPanel from './DecisionsPanel';
 import NotesPanel from './NotesPanel';
 import { pullRequestActions } from './pullRequestReview';
 import SideShell from './SideShell';
@@ -219,6 +223,12 @@ export default class TerminalView extends View {
 				title: 'Artifacts: the screenshots, pages, scripts and data made along the way',
 				className: 'tool',
 				onPress: () => this.toggleArtifacts(),
+			});
+			this.decisionsButton = ghostButton(header, {
+				icon: 'scale-balanced',
+				title: "Decisions: what was settled here, and what isn't written down anywhere",
+				className: 'tool',
+				onPress: () => this.toggleDecisions(),
 			});
 			this.gitButton = ghostButton(header, {
 				icon: 'code-branch',
@@ -432,6 +442,15 @@ export default class TerminalView extends View {
 					}),
 			});
 			this.addResizeHandle(this.artifacts.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
+			this.decisions = new DecisionsPanel({
+				appendTo: body,
+				addClass: ['links', 'decisions-panel'],
+				load: () => getDecisions(this.options.id),
+				dismiss: id => dismissDecision(this.options.id, id),
+				writeDown: id => writeDownDecision(this.options.id, id),
+				close: () => this.toggleDecisions(false),
+			});
+			this.addResizeHandle(this.decisions.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
 		}
 		this.shares = new SharesPanel({
 			appendTo: body,
@@ -695,7 +714,7 @@ export default class TerminalView extends View {
 	// once more then
 	followTurn(busy) {
 		const refreshOpen = () =>
-			[this.activity, this.links, this.artifacts]
+			[this.activity, this.links, this.artifacts, this.decisions]
 				.filter(panel => panel?.elem.classList.contains('open'))
 				.forEach(panel => panel.refresh());
 
@@ -869,6 +888,15 @@ export default class TerminalView extends View {
 		if (keep !== 'tasks' && this.tasks?.elem.classList.contains('open')) this.toggleTasks(false);
 		if (keep !== 'links' && this.links?.elem.classList.contains('open')) this.toggleLinks(false);
 		if (keep !== 'artifacts' && this.artifacts?.elem.classList.contains('open')) this.toggleArtifacts(false);
+		if (keep !== 'decisions' && this.decisions?.elem.classList.contains('open')) this.toggleDecisions(false);
+	}
+
+	toggleDecisions(open = !this.decisions.elem.classList.contains('open')) {
+		if (open) this.closeOthersOnTheRight('decisions');
+		this.decisions.elem.classList.toggle('open', open);
+		this.decisionsButton?.classList.toggle('active', open);
+		if (open) this.decisions.refresh();
+		this.focusPanel(this.decisions.elem, open);
 	}
 
 	toggleArtifacts(open = !this.artifacts.elem.classList.contains('open')) {
