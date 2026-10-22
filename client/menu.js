@@ -3,10 +3,10 @@ import { ContextMenu, styled } from '@vanilla-bean/components';
 // The library's menu in paude's glass: flat rows, a second line for detail, small warm headings
 const GlassMenu = styled(
 	ContextMenu,
-	({ colors, radius }) => `
+	({ colors, radius, space }) => `
 		min-width: 240px;
 		max-width: min(360px, calc(100vw - 16px)) !important;
-		padding: 4px;
+		padding: ${space.xs};
 		border-radius: ${radius.lg};
 		border: 1px solid ${colors.border};
 		background: ${colors.alpha(colors.black, 0.92)};
@@ -20,7 +20,7 @@ const GlassMenu = styled(
 			flex-direction: column;
 			align-items: flex-start;
 			gap: 2px;
-			padding: 6px 10px;
+			padding: ${space.sm} ${space.md};
 			line-height: normal;
 			border: none;
 			border-radius: ${radius.md};
@@ -65,7 +65,7 @@ const GlassMenu = styled(
 		}
 
 		& ul li.heading, & ul li.heading:hover {
-			margin: 6px 10px 2px;
+			margin: ${space.sm} ${space.md} 2px;
 			padding: 0;
 			border-radius: 0;
 			background: none;

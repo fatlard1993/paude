@@ -12,10 +12,10 @@ import { onWaitingChange } from './waiting';
 
 const Trail = styled(
 	Elem,
-	({ colors, radius }) => `
+	({ colors, radius, space }) => `
 		display: flex;
 		align-items: center;
-		gap: 6px;
+		gap: ${space.sm};
 		min-width: 0;
 		flex: 1;
 		white-space: nowrap;
@@ -23,8 +23,8 @@ const Trail = styled(
 		a.crumb {
 			display: flex;
 			align-items: center;
-			gap: 6px;
-			color: ${colors.light(colors.gray)};
+			gap: ${space.sm};
+			color: ${colors.muted};
 			text-decoration: none;
 			overflow: hidden;
 			text-overflow: ellipsis;
@@ -37,7 +37,7 @@ const Trail = styled(
 		.root {
 			display: flex;
 			align-items: center;
-			gap: 6px;
+			gap: ${space.sm};
 			flex-shrink: 0;
 		}
 
@@ -73,7 +73,7 @@ const Trail = styled(
 
 		.waiting {
 			flex-shrink: 0;
-			padding: 1px 8px;
+			padding: 1px ${space.sm};
 			border: none;
 			border-radius: ${radius.lg};
 			background: ${colors.light(colors.warning)};
@@ -93,9 +93,9 @@ const Trail = styled(
 		.server-switch {
 			display: flex;
 			align-items: center;
-			gap: 6px;
+			gap: ${space.sm};
 			flex-shrink: 0;
-			padding: 2px 8px;
+			padding: 2px ${space.sm};
 			border-radius: ${radius.lg};
 			background: hsl(var(--server-hue) 60% 50% / 0.18);
 			color: hsl(var(--server-hue) 70% 75%);

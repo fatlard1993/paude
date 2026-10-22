@@ -5,10 +5,10 @@ import { recall, remember } from './storage';
 // The library's tabs, underlined in the bar's accent
 const Strip = styled(
 	Tabs,
-	({ colors }) => `
-		margin-top: 16px;
+	({ colors, space }) => `
+		margin-top: ${space.lg};
 		overflow: visible;
-		border-bottom: 1px solid ${colors.alpha(colors.white, 0.08)};
+		border-bottom: 1px solid ${colors.border};
 
 		& > .vbc-button {
 			border-radius: 0;

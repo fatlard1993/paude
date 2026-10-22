@@ -14,10 +14,10 @@ export class Scroll extends styled(
 	() => `
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: ${theme.space.sm};
 		margin: 0;
-		padding: 12px 16px calc(24px + ${theme.safeArea.bottom});
-		--content-gutter: 16px;
+		padding: ${theme.space.md} ${theme.space.lg} calc(${theme.space.xl} + ${theme.safeArea.bottom});
+		--content-gutter: ${theme.space.lg};
 	`,
 ) {
 	static schema = {
@@ -31,7 +31,7 @@ export const Empty = styled(
 	() => `
 		display: block;
 		flex: none;
-		padding: 8px 0;
+		padding: ${theme.space.sm} 0;
 		text-align: left;
 
 		& > .message {
@@ -44,10 +44,10 @@ export const Empty = styled(
 // project's folder color, in kitty-bg's tints
 const SessionCard = styled(
 	Card,
-	({ colors, media, radius }) => `
+	({ colors, media, radius, space }) => `
 		display: flex;
 		align-items: center;
-		gap: 10px;
+		gap: ${space.md};
 
 		.body {
 			flex: 1;
@@ -85,8 +85,8 @@ const SessionCard = styled(
 
 		.server {
 			display: inline-block;
-			margin-right: 6px;
-			padding: 0 6px;
+			margin-right: ${space.sm};
+			padding: 0 ${space.sm};
 			border-radius: ${radius.lg};
 			color: hsl(var(--server-hue) 70% 75%);
 			background: hsl(var(--server-hue) 60% 50% / 0.18);
@@ -124,7 +124,7 @@ const SessionCard = styled(
 		.state {
 			display: flex;
 			align-items: center;
-			gap: 6px;
+			gap: ${space.sm};
 			flex-shrink: 0;
 			color: ${colors.muted};
 			font-size: 0.8em;
@@ -140,7 +140,7 @@ const SessionCard = styled(
 			height: 9px;
 			border-radius: 50%;
 			flex-shrink: 0;
-			background: ${colors.green};
+			background: ${colors.success};
 		}
 
 		.dot.busy {
@@ -155,8 +155,8 @@ const SessionCard = styled(
 
 		.flag {
 			flex-shrink: 0;
-			padding: 1px 8px;
-			border-radius: 9px;
+			padding: 1px ${space.sm};
+			border-radius: ${radius.pill};
 			font-size: 0.75em;
 			white-space: nowrap;
 		}
@@ -172,7 +172,7 @@ const SessionCard = styled(
 		}
 
 		.lifetime-mark {
-			margin-right: 6px;
+			margin-right: ${space.sm};
 
 			&.was {
 				opacity: 0.45;
@@ -180,7 +180,7 @@ const SessionCard = styled(
 		}
 
 		.watching {
-			margin-left: 6px;
+			margin-left: ${space.sm};
 			opacity: 0.5;
 			font-size: 0.8em;
 		}
