@@ -4,12 +4,12 @@ import { login } from './api';
 
 const Card = styled(
 	Elem,
-	({ colors, fonts }) => `
+	({ colors, fonts, space }) => `
 		margin: auto;
 		width: min(340px, calc(100% - 32px));
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
+		gap: ${space.md};
 
 		.title {
 			font-size: 1.4em;
@@ -18,11 +18,11 @@ const Card = styled(
 
 		.message {
 			min-height: 1.2em;
-			color: ${colors.light(colors.red)};
+			color: ${colors.light(colors.danger)};
 		}
 
 		.hint {
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 		}
 
 		code {

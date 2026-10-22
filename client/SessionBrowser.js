@@ -20,10 +20,10 @@ const FILTERS = [
 
 const Box = styled(
 	Elem,
-	({ colors, radius }) => `
+	({ colors, radius, space }) => `
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
+		gap: ${space.sm};
 
 		.search {
 			width: 100%;
@@ -34,7 +34,7 @@ const Box = styled(
 			display: flex;
 			flex-wrap: wrap;
 			align-items: center;
-			gap: 6px;
+			gap: ${space.sm};
 		}
 
 		.toolbar .spacer {
@@ -49,21 +49,21 @@ const Box = styled(
 		.cards {
 			display: flex;
 			flex-direction: column;
-			gap: 6px;
+			gap: ${space.sm};
 		}
 
 		.group {
-			margin: 10px 0 0;
+			margin: ${space.md} 0 0;
 		}
 
 		.group .count {
-			margin-left: 6px;
+			margin-left: ${space.sm};
 			opacity: 0.7;
 		}
 
 		.more-sessions {
 			align-self: center;
-			margin-top: 4px;
+			margin-top: ${space.xs};
 		}
 
 		/* Picking several: a box on each card, and the card's press picks it */
@@ -83,8 +83,8 @@ const Box = styled(
 			display: flex;
 			flex-wrap: wrap;
 			align-items: center;
-			gap: 6px;
-			padding: 8px 10px;
+			gap: ${space.sm};
+			padding: ${space.sm} ${space.md};
 			border-radius: ${radius.md};
 			background: ${colors.surface};
 			box-shadow: 0 -4px 16px ${colors.alpha(colors.vantablack, 0.4)};
@@ -96,21 +96,21 @@ const Box = styled(
 		}
 
 		.bulk .danger {
-			border-color: ${colors.alpha(colors.red, 0.6)};
-			color: ${colors.light(colors.red)};
+			border-color: ${colors.alpha(colors.danger, 0.6)};
+			color: ${colors.light(colors.danger)};
 		}
 
 		.project-group {
 			display: flex;
 			flex-direction: column;
-			gap: 6px;
+			gap: ${space.sm};
 		}
 
 		.project-head {
 			display: flex;
 			align-items: center;
-			gap: 8px;
-			margin-top: 6px;
+			gap: ${space.sm};
+			margin-top: ${space.sm};
 		}
 
 		.project-head .chevron {
@@ -133,11 +133,11 @@ const Box = styled(
 		}
 
 		.project-head .running {
-			color: ${colors.light(colors.green)};
+			color: ${colors.light(colors.success)};
 		}
 
 		.project-head .server {
-			padding: 0 6px;
+			padding: 0 ${space.sm};
 			border-radius: ${radius.lg};
 			color: hsl(var(--server-hue) 70% 75%);
 			background: hsl(var(--server-hue) 60% 50% / 0.18);
@@ -147,8 +147,8 @@ const Box = styled(
 		.project-body {
 			display: flex;
 			flex-direction: column;
-			gap: 6px;
-			margin-left: 14px;
+			gap: ${space.sm};
+			margin-left: ${space.md};
 		}
 
 		.project-body .all {

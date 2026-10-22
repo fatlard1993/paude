@@ -7,13 +7,13 @@ import { button, element } from './dom';
 // terminal. Each answer presses its number, as long as Claude still asks that.
 export const AskingCard = styled(
 	Elem,
-	({ colors, radius }) => `
+	({ colors, radius, space }) => `
 		box-sizing: border-box;
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
-		padding: 10px 12px;
+		gap: ${space.sm};
+		padding: ${space.md};
 		border-radius: ${radius.lg};
 		background: ${colors.alpha(colors.black, 0.96)};
 		box-shadow: inset 0 0 0 1px ${colors.alpha(colors.orange, 0.5)};
@@ -41,11 +41,11 @@ export const AskingCard = styled(
 		.answers {
 			display: flex;
 			flex-direction: column;
-			gap: 4px;
+			gap: ${space.xs};
 		}
 
 		.answers button {
-			padding: 8px 10px;
+			padding: ${space.sm} ${space.md};
 			border-radius: ${radius.md};
 			background: ${colors.alpha(colors.white, 0.1)};
 			color: inherit;

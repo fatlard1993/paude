@@ -31,7 +31,7 @@ import { Places, carryDraft, composeBox, placePrompt } from './PromptHome';
 // The project list's last row: pressed, it opens into the folder's path
 const AddFolder = styled(
 	Elem,
-	({ colors, radius }) => `
+	({ colors, radius, space }) => `
 		display: flex;
 		align-items: center;
 		min-height: 56px;
@@ -41,7 +41,7 @@ const AddFolder = styled(
 			align-self: stretch;
 			border: 1px dashed ${colors.alpha(colors.white, 0.18)};
 			border-radius: ${radius.md};
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 			font: inherit;
 		}
 
@@ -53,7 +53,7 @@ const AddFolder = styled(
 		form {
 			flex: 1;
 			display: none;
-			gap: 6px;
+			gap: ${space.sm};
 		}
 
 		form input {
@@ -78,7 +78,7 @@ const urgent = { color: theme.colors.lighter(theme.colors.warning).toString() };
 const List = styled.Component`
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: ${({ space }) => space.sm};
 `;
 
 const hereName = () => serverName() ?? 'this machine';
@@ -118,7 +118,7 @@ export default class Home extends View {
 		});
 		this.watching = new List({ appendTo: scroll });
 		this.unreachable = new List({ appendTo: scroll });
-		new SectionLabel({ appendTo: scroll, textContent: 'Sessions', style: { marginTop: '12px' } });
+		new SectionLabel({ appendTo: scroll, textContent: 'Sessions', style: { marginTop: theme.space.md } });
 
 		this.fetchSessions = this.sessionsFrom([]);
 		this.adder = this.addFolderCard();

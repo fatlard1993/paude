@@ -9,7 +9,7 @@ import { sessionCard } from './Layout';
 
 const Compose = styled(
 	Elem,
-	({ colors, media, radius }) => `
+	({ colors, media, radius, space }) => `
 		display: flex;
 		flex-direction: column;
 		border: 1px solid ${colors.border};
@@ -25,7 +25,7 @@ const Compose = styled(
 		textarea {
 			min-height: 4.5em;
 			max-height: 40vh;
-			padding: 10px 12px;
+			padding: ${space.md};
 			border: none;
 			border-radius: ${radius.lg} ${radius.lg} 0 0;
 			background: transparent;
@@ -37,8 +37,8 @@ const Compose = styled(
 			display: flex;
 			flex-wrap: wrap;
 			align-items: center;
-			gap: 6px;
-			padding: 6px 8px;
+			gap: ${space.sm};
+			padding: ${space.sm};
 			border-top: 1px solid ${colors.alpha(colors.white, 0.06)};
 		}
 
@@ -48,7 +48,7 @@ const Compose = styled(
 			display: flex;
 			flex-wrap: wrap;
 			align-items: center;
-			gap: 6px;
+			gap: ${space.sm};
 			min-width: 0;
 		}
 
@@ -56,7 +56,7 @@ const Compose = styled(
 		.chip {
 			display: inline-flex;
 			align-items: center;
-			gap: 6px;
+			gap: ${space.sm};
 			max-width: 100%;
 			overflow: hidden;
 		}
@@ -76,7 +76,7 @@ const Compose = styled(
 			flex: 1 1 140px;
 			min-width: 0;
 			max-width: 260px;
-			padding: 3px 10px;
+			padding: ${space.xs} ${space.md};
 			border: 1px solid ${colors.border};
 			border-radius: ${radius.pill};
 			background: transparent;
@@ -87,7 +87,7 @@ const Compose = styled(
 			display: flex;
 			flex-wrap: wrap;
 			justify-content: flex-end;
-			gap: 6px;
+			gap: ${space.sm};
 			margin-left: auto;
 		}
 
@@ -105,7 +105,7 @@ const Compose = styled(
 		}
 
 		.keys {
-			margin-left: 8px;
+			margin-left: ${space.sm};
 			opacity: 0.6;
 			font-size: 0.8em;
 		}
@@ -156,18 +156,18 @@ export const composeBox = ({ appendTo, placeholder, actions, keep }) => {
 
 export const Places = styled(
 	Elem,
-	({ colors, radius }) => `
+	({ colors, radius, space }) => `
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
-		margin-top: 10px;
+		gap: ${space.sm};
+		margin-top: ${space.md};
 
 		&:empty {
 			display: none;
 		}
 
 		.heading {
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 			font-size: 0.85em;
 			text-transform: uppercase;
 			letter-spacing: 0.05em;
@@ -176,8 +176,8 @@ export const Places = styled(
 		.place {
 			display: flex;
 			flex-direction: column;
-			gap: 6px;
-			padding: 8px;
+			gap: ${space.sm};
+			padding: ${space.sm};
 			border-radius: ${radius.lg};
 			background: ${colors.alpha(colors.white, 0.03)};
 		}
@@ -187,7 +187,7 @@ export const Places = styled(
 		}
 
 		.cost {
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 			font-size: 0.85em;
 		}
 
