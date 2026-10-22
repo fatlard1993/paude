@@ -1,7 +1,7 @@
-import { Button } from '@vanilla-bean/components';
+import { Button, Link } from '@vanilla-bean/components';
 
 // The page styles no bare elements, so fields carry the library's look by class, as its own components do; a button is
-// the library's Button
+// the library's Button and a link its Link, with no tooltip: a link here says where it goes by its title, if at all
 const LOOKS = { input: 'vbc-input', textarea: 'vbc-input', select: 'vbc-input' };
 
 export const element = (tag, className, text) => {
@@ -11,6 +11,7 @@ export const element = (tag, className, text) => {
 
 		return new Button({ variant: variant?.slice('variant-'.length), addClass: classes, textContent: text }).elem;
 	}
+	if (tag === 'a') return new Link({ addClass: className?.split(' '), textContent: text, tooltip: false }).elem;
 
 	const node = document.createElement(tag);
 	const look = [LOOKS[tag], className].filter(Boolean).join(' ');
