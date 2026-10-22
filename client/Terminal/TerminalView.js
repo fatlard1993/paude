@@ -1,4 +1,4 @@
-import { Button, Elem, Notify, View, styled, theme } from '@vanilla-bean/components';
+import { Button, Elem, Notify, View, delay, styled, theme } from '@vanilla-bean/components';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
@@ -767,7 +767,7 @@ export default class TerminalView extends View {
 
 		shown.remove('shown');
 		for (const wait of waiting ? [0, 400, 1500] : []) {
-			await new Promise(done => setTimeout(done, wait));
+			await delay(wait);
 			if (!this.lastPresence?.waiting) return;
 
 			const { body } = await getAsking(this.options.id);

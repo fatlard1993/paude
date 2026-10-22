@@ -1,3 +1,5 @@
+import { delay } from '@vanilla-bean/components/utils/data';
+
 import { statusOf } from './activity';
 import { promptText } from './sessions/history';
 import { runningSession } from './sessions/running';
@@ -77,12 +79,10 @@ export const answerTo = (lines, prompt) => {
 // times before a message waits for the next turn
 const READ_AGAIN_MS = [0, 300, 1000, 2500, 5000];
 
-const sleep = ms => new Promise(done => setTimeout(done, ms));
-
 // A turn ended (the Stop hook): every message whose turn is over gets its answer
 export const turnEnded = async id => {
 	for (const wait of READ_AGAIN_MS) {
-		await sleep(wait);
+		await delay(wait);
 
 		const inbox = inboxes.get(id);
 		const session = runningSession(id);
