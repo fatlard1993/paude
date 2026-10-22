@@ -2,7 +2,7 @@ import { Component, styled } from '@vanilla-bean/components';
 
 const Panel = styled(
 	Component,
-	({ colors, radius }) => `
+	({ colors, radius, space }) => `
 		display: flex;
 		flex-direction: column;
 		min-height: 0;
@@ -15,13 +15,13 @@ const Panel = styled(
 
 		.tabs, .who, .composer {
 			display: flex;
-			gap: 6px;
-			padding: 8px;
+			gap: ${space.sm};
+			padding: ${space.sm};
 		}
 
 		/* The panel itself is mostly glass; what holds text sits on something solid enough to read */
 		.tabs, .who {
-			margin: 8px 8px 0;
+			margin: ${space.sm} ${space.sm} 0;
 			border-radius: ${radius.md};
 			background: ${colors.alpha(colors.vantablack, 0.5)};
 		}
@@ -31,12 +31,12 @@ const Panel = styled(
 		}
 
 		.message {
-			padding: 6px 8px;
+			padding: ${space.sm};
 			border-radius: ${radius.md};
 		}
 
 		.composer {
-			margin: 8px;
+			margin: ${space.sm};
 			border-radius: ${radius.md};
 		}
 
@@ -48,7 +48,7 @@ const Panel = styled(
 		.tabs button {
 			flex: 1;
 			margin-bottom: 0;
-			padding: 6px;
+			padding: ${space.sm};
 			border-bottom: none;
 			border-radius: ${radius.sm};
 			color: inherit;
@@ -69,8 +69,8 @@ const Panel = styled(
 		}
 
 		.tabs .count:not(:empty) {
-			margin-left: 6px;
-			padding: 0 6px;
+			margin-left: ${space.sm};
+			padding: 0 ${space.sm};
 			border-radius: ${radius.lg};
 			background: ${colors.orange};
 			color: ${colors.white};
@@ -85,13 +85,13 @@ const Panel = styled(
 			flex: 1;
 			display: flex;
 			align-items: baseline;
-			gap: 6px;
-			padding: 4px 2px;
+			gap: ${space.sm};
+			padding: ${space.xs} 2px;
 			min-width: 0;
 		}
 
 		.who .guest-name .as {
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 			font-size: 0.85em;
 		}
 
@@ -103,7 +103,7 @@ const Panel = styled(
 
 		/* Matches the files panel's */
 		.who button.close {
-			padding: 4px 8px;
+			padding: ${space.xs} ${space.sm};
 			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.1)};
 			color: inherit;
@@ -117,19 +117,19 @@ const Panel = styled(
 			flex: 1;
 			min-height: 0;
 			overflow-y: auto;
-			padding: 8px;
+			padding: ${space.sm};
 			display: flex;
 			flex-direction: column;
-			gap: 8px;
+			gap: ${space.sm};
 		}
 
 		.empty {
 			color: ${colors.gray};
-			padding: 8px 0;
+			padding: ${space.sm} 0;
 		}
 
 		.message .meta, .comment .meta, .reply .meta {
-			color: ${colors.light(colors.gray)};
+			color: ${colors.muted};
 			font-size: 0.8em;
 		}
 
@@ -139,11 +139,11 @@ const Panel = styled(
 		}
 
 		.comment {
-			padding: 8px;
+			padding: ${space.sm};
 			border-radius: ${radius.md};
 			display: flex;
 			flex-direction: column;
-			gap: 6px;
+			gap: ${space.sm};
 		}
 
 		.comment.resolved {
@@ -152,7 +152,7 @@ const Panel = styled(
 
 		.quote {
 			margin: 0;
-			padding: 4px 8px;
+			padding: ${space.xs} ${space.sm};
 			border-left: 3px solid ${colors.light(colors.orange)};
 			white-space: pre-wrap;
 			word-break: break-word;
@@ -166,7 +166,7 @@ const Panel = styled(
 			display: flex;
 			flex-wrap: wrap;
 			align-items: baseline;
-			gap: 8px;
+			gap: ${space.sm};
 			font-size: 0.85em;
 		}
 
@@ -190,11 +190,11 @@ const Panel = styled(
 		.comments-toolbar {
 			display: flex;
 			flex-wrap: wrap;
-			gap: 6px;
+			gap: ${space.sm};
 		}
 
 		.comments-toolbar button {
-			padding: 4px 10px;
+			padding: ${space.xs} ${space.md};
 			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.1)};
 			color: inherit;
@@ -206,7 +206,7 @@ const Panel = styled(
 			display: flex;
 			flex-wrap: wrap;
 			align-items: center;
-			gap: 4px;
+			gap: ${space.xs};
 		}
 
 		.reactions:empty {
@@ -214,8 +214,8 @@ const Panel = styled(
 		}
 
 		.reactions .chip {
-			padding: 1px 7px;
-			border: 1px solid ${colors.alpha(colors.white, 0.12)};
+			padding: 1px ${space.sm};
+			border: 1px solid ${colors.border};
 			border-radius: ${radius.lg};
 			background: ${colors.alpha(colors.white, 0.04)};
 			color: inherit;
@@ -241,7 +241,7 @@ const Panel = styled(
 			flex-basis: 100%;
 			flex-wrap: wrap;
 			gap: 2px;
-			padding: 4px;
+			padding: ${space.xs};
 			border-radius: ${radius.md};
 			background: ${colors.alpha(colors.vantablack, 0.9)};
 		}
@@ -252,7 +252,7 @@ const Panel = styled(
 
 		.reactions .palette button {
 			font-size: 1.15em;
-			padding: 2px 4px;
+			padding: 2px ${space.xs};
 			border-radius: ${radius.sm};
 		}
 
@@ -266,13 +266,13 @@ const Panel = styled(
 		}
 
 		.reply {
-			margin-left: 12px;
+			margin-left: ${space.md};
 		}
 
 		/* Claude's answers, set apart from what people say */
 		.from-claude {
 			border-left: 2px solid hsl(20, 70%, 60%);
-			padding-left: 8px;
+			padding-left: ${space.sm};
 		}
 
 		.from-claude > .meta {
@@ -285,11 +285,11 @@ const Panel = styled(
 
 		.actions {
 			display: flex;
-			gap: 6px;
+			gap: ${space.sm};
 		}
 
 		.actions button, .composer button {
-			padding: 4px 10px;
+			padding: ${space.xs} ${space.md};
 			border-radius: ${radius.sm};
 			background: ${colors.alpha(colors.white, 0.1)};
 			color: inherit;
@@ -305,10 +305,10 @@ const Panel = styled(
 		}
 
 		.draft {
-			padding: 8px;
+			padding: ${space.sm};
 			display: flex;
 			flex-direction: column;
-			gap: 6px;
+			gap: ${space.sm};
 			border-top: 1px solid ${colors.alpha(colors.white, 0.08)};
 		}
 	`,
