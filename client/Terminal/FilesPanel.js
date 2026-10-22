@@ -1,4 +1,4 @@
-import { Notify, debounce, theme } from '@vanilla-bean/components';
+import { Notify, debounce, isMac, theme } from '@vanilla-bean/components';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 
@@ -55,7 +55,7 @@ const DRAFT_PREFIX = 'paude.draft.';
 const DRAFT_DELAY_MS = 400;
 const DRAFT_KEPT_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_HISTORY = 50;
-const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+const MAC = isMac();
 
 const iconButton = (name, title, onPress) => button('', onPress, { icon: name, title, className: 'icon-only' });
 

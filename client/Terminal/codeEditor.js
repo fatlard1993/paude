@@ -14,11 +14,12 @@ import {
 import { defaultKeymap, history, historyKeymap, indentLess, indentMore } from '@codemirror/commands';
 import { bracketMatching, indentUnit } from '@codemirror/language';
 import { gotoLine, highlightSelectionMatches, openSearchPanel, search, searchKeymap } from '@codemirror/search';
+import { isMac } from '@vanilla-bean/components';
 
 import commentTokens from '../../shared/commentTokens';
 import indentation from '../../shared/indentation';
 
-const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+const MAC = isMac();
 // The find bar in the words and toggles the project search uses
 const PHRASES = {
 	Find: 'Find',
