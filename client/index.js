@@ -1,5 +1,6 @@
 import { Page, Router, fitToKeyboard } from '@vanilla-bean/components';
 
+import { getAuth, joinInvite, redeemHandoff } from './api';
 import Home from './Home';
 import { setIdentity, setServerName } from './identity';
 import Login from './Login';
@@ -34,15 +35,11 @@ let joinFailed = false;
 const GUEST_KEY = 'paude.guest';
 
 if (joinToken) {
-	const response = await fetch('/api/join', {
-		method: 'POST',
-		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ token: joinToken }),
-	});
+	const { response, body } = await joinInvite(joinToken);
 
-	if (response.ok) {
+	if (response?.ok) {
 		remember(GUEST_KEY, 'yes');
-		window.location.replace(`#/sessions/${(await response.json()).sessionId}`);
+		window.location.replace(`#/sessions/${body.sessionId}`);
 	} else joinFailed = true;
 }
 
@@ -55,18 +52,16 @@ const [, handoffCode, handoffTo, handoffProject, handoffLifetime, handoffDraft] 
 
 if (handoffCode) {
 	// An expired code leaves the login page showing
-	await fetch('/api/handoff/redeem', {
-		method: 'POST',
-		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ code: handoffCode }),
-	});
+	await redeemHandoff(handoffCode);
 
 	if (handoffProject && handoffDraft)
 		keepDraft(decodeURIComponent(handoffProject), decodeURIComponent(handoffDraft), handoffLifetime);
 	window.location.replace(`#${handoffTo ?? '/'}`);
 }
 
-const { authenticated, passwordSet, identity, name } = await (await fetch('/api/auth')).json();
+const {
+	body: { authenticated, passwordSet, identity, name },
+} = await getAuth();
 
 setIdentity(identity);
 setServerName(name);

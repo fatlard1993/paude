@@ -1,5 +1,7 @@
 import { Button, Elem, Input, View, styled } from '@vanilla-bean/components';
 
+import { login } from './api';
+
 const Card = styled(
 	Elem,
 	({ colors, fonts }) => `
@@ -89,19 +91,15 @@ export default class Login extends View {
 		this.busy = true;
 		this.message.elem.textContent = '';
 
-		const response = await fetch('/api/login', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ password }),
-		});
+		const { response } = await login(password);
 
 		this.busy = false;
 
-		if (response.ok) return window.location.reload();
+		if (response?.ok) return window.location.reload();
 
 		this.password.elem.value = '';
 		this.message.elem.textContent =
-			response.status === 429
+			response?.status === 429
 				? `Too many tries. Wait ${response.headers.get('retry-after')}s.`
 				: 'That password is not right.';
 	}

@@ -12,6 +12,7 @@ import {
 	getRemoteSessions,
 	getRemotes,
 	getWatching,
+	logout,
 	openRemote,
 	removeFolder,
 	setProjectWatching,
@@ -317,7 +318,7 @@ export default class Home extends View {
 	}
 
 	async logout() {
-		await fetch('/api/logout', { method: 'POST' });
+		await logout();
 		window.location.reload();
 	}
 

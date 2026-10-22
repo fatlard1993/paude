@@ -2,6 +2,18 @@ import { DELETE, GET, PATCH, POST, PUT } from '@vanilla-bean/hypertether';
 
 import { searchParameters } from '../shared/searchQuery';
 
+// { authenticated, passwordSet, identity, name }
+export const getAuth = async () => await GET('/api/auth', { invalidateAfter: 0 });
+
+export const login = async password => await POST('/api/login', { body: { password } });
+
+export const logout = async () => await POST('/api/logout');
+
+// An invite link's token; { sessionId } it was made for
+export const joinInvite = async token => await POST('/api/join', { body: { token } });
+
+export const redeemHandoff = async code => await POST('/api/handoff/redeem', { body: { code } });
+
 export const getProjects = async options =>
 	await GET('/api/projects', { apiId: 'projects', invalidateAfter: 0, ...options });
 

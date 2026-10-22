@@ -13,6 +13,7 @@ import {
 	getLinks,
 	getTurns,
 	listFiles,
+	logout,
 	markLink,
 	nameSession,
 	getArtifacts,
@@ -152,7 +153,7 @@ export default class TerminalView extends View {
 			ghostButton(header, {
 				label: 'Leave',
 				onPress: async () => {
-					await fetch('/api/logout', { method: 'POST' });
+					await logout();
 					window.location.reload();
 				},
 			});
