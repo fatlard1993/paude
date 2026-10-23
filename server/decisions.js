@@ -7,7 +7,7 @@ import { statusOf } from './activity';
 import { changedFiles, concernFor, fileInto, openConcerns } from './backfill';
 import { markInterruptions, steeringOf } from './catchUp';
 import describer from './describer';
-import { repoRoot } from './git';
+import { headCommit, repoRoot } from './git';
 import askHaiku, { jsonIn } from './haiku';
 import { runningSession } from './sessions/running';
 import { claudeHome } from './sessions/transcript';
@@ -37,6 +37,7 @@ const KEEP_WARM_PING = /^keep-?warm ping/i;
 const FOLLOW_MS = 5000;
 const FOLLOW_ROUNDS = 120;
 const SETTLING_ROUNDS = 3;
+const PUSH_POLL_MS = 1000;
 
 // A turn as Haiku reads it: what was asked, how the person steered, what they answered and turned down, what changed,
 // what Claude ended with
@@ -342,25 +343,52 @@ const fileAll = async (root, groups, options) => {
 	}
 };
 
-const following = new Set();
+// { [session id]: the follow under way }
+const following = new Map();
+// Sessions whose Claude waits on its push: filing may run mid-turn, as nothing it does can race it
+const pushing = new Set();
 
 // Without anyone opening the panel: what the session settled is read, looked for and filed as it goes, from when the
 // person's next prompt settles the turn before it until nothing is under way. Filing still waits for the turn to end.
 // A few rounds whatever happens, as a prompt reaches the transcript a moment after its hook.
-export const followDecisions = async (id, cwd) => {
-	if (following.has(id) || !placesFile) return;
-	following.add(id);
-	try {
+export const followDecisions = (id, cwd, { every = FOLLOW_MS, settling = SETTLING_ROUNDS } = {}) => {
+	if (!placesFile) return Promise.resolve();
+	if (following.has(id)) return following.get(id);
+
+	const follow = (async () => {
 		for (let round = 0; round < FOLLOW_ROUNDS; round += 1) {
 			const { reading, decisions } = await sessionDecisions(id, cwd);
 
-			if (round >= SETTLING_ROUNDS && !reading && !decisions.some(decision => decision.looking || decision.filing))
-				return;
-			await Bun.sleep(FOLLOW_MS);
+			if (round >= settling && !reading && !decisions.some(decision => decision.looking || decision.filing)) return;
+			await Bun.sleep(every);
 		}
+	})().finally(() => following.delete(id));
+
+	following.set(id, follow);
+
+	return follow;
+};
+
+// Before Claude pushes from the session's folder: what the session settled is filed first, with Claude waiting on
+// it, so a push never leaves without it. Whether anything was filed: then the stack holds amend! commits to settle
+// before the push, which would otherwise carry them unfolded.
+export const fileBeforePush = async (id, cwd) => {
+	const root = await repoRoot(cwd);
+
+	if (!root || !placesFile) return false;
+
+	const before = await headCommit(root);
+
+	pushing.add(id);
+	try {
+		// One under way since the prompt ran without filing; this one files
+		await following.get(id);
+		await followDecisions(id, cwd, { every: PUSH_POLL_MS, settling: 0 });
 	} finally {
-		following.delete(id);
+		pushing.delete(id);
 	}
+
+	return (await headCommit(root)) !== before;
 };
 
 // The person's answer to what filing one asked them: it's offered to its concern again, with the answer
@@ -426,7 +454,8 @@ export const sessionDecisions = async (id, cwd, { withDismissed = false } = {}) 
 
 		if (unplaced.length) lookFor(unplaced, places);
 		// Not mid-turn: Claude's own commits move HEAD, and a filing would race them
-		else if (!['working', 'waiting'].includes(statusOf(id))) await backfill(open, turns, cwd).catch(() => {});
+		else if (pushing.has(id) || !['working', 'waiting'].includes(statusOf(id)))
+			await backfill(open, turns, cwd).catch(() => {});
 	}
 
 	return {

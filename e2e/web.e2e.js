@@ -1585,6 +1585,73 @@ test(
 );
 
 test(
+	'decisions: a push waits mid-turn while what the session settled is filed, then is turned back to settle first',
+	async () => {
+		const server = await startServer();
+		const origin = await mkdtemp(path.join(os.tmpdir(), 'paude-origin-'));
+		const git = (...args) =>
+			Bun.spawnSync(['git', ...args], { cwd: server.project })
+				.stdout.toString()
+				.trim();
+		const lock = path.join(server.project, 'lock.js');
+
+		git('commit', '-q', '--allow-empty', '-m', 'start');
+		Bun.spawnSync(['git', 'init', '-q', '--bare', origin]);
+		git('remote', 'add', 'origin', origin);
+		git('push', '-q', '-u', 'origin', 'main');
+		await Bun.write(lock, 'per user\n');
+		git('add', 'lock.js');
+		git('commit', '-q', '-m', 'lock accounts');
+
+		const id = await server.newSession();
+
+		await server.writeTranscript(id, [
+			{
+				type: 'user',
+				uuid: 'prompt-1',
+				timestamp: '2026-10-07T12:00:01.000Z',
+				message: { role: 'user', content: 'lock accounts after failed logins' },
+			},
+			{
+				type: 'attachment',
+				timestamp: '2026-10-07T12:00:01.200Z',
+				attachment: {
+					type: 'queued_command',
+					prompt: 'a new session would reset the count',
+					origin: { kind: 'human' },
+				},
+			},
+			{
+				type: 'assistant',
+				timestamp: '2026-10-07T12:00:01.500Z',
+				message: { content: [{ type: 'tool_use', id: 'w', name: 'Write', input: { file_path: lock } }] },
+			},
+			{
+				type: 'user',
+				uuid: 'prompt-2',
+				timestamp: '2026-10-07T12:00:02.000Z',
+				message: { role: 'user', content: 'push it' },
+			},
+		]);
+		// Mid-turn, where filing otherwise waits for the turn to end
+		await server.hook(id, { hook_event_name: 'UserPromptSubmit' });
+
+		const push = { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'git push' } };
+		const held = await server.hook(id, push);
+
+		expect((await held.json()).hookSpecificOutput.permissionDecision).toBe('deny');
+		expect(git('log', '-1', '--format=%s')).toBe('amend! lock accounts');
+
+		// Nothing new to file the next time, so it goes
+		const again = await server.hook(id, push);
+
+		expect(again.status).toBe(204);
+		expect((await server.hook(id, { ...push, tool_input: { command: 'git status' } })).status).toBe(204);
+	},
+	TIMEOUT_MS,
+);
+
+test(
 	'decisions: one recorded nowhere is filed into the commit it shaped, once the person answers what it asks',
 	async () => {
 		const server = await startServer();

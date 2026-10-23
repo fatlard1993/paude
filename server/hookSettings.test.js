@@ -29,6 +29,10 @@ test('the settings post every event to a per-session address, and never fail the
 	expect(Object.keys(hooks).sort()).toEqual([...Object.keys(HOOK_EVENTS), 'PreToolUse'].sort());
 	// Before a tool runs, only the edits report, so the page can show what Claude proposes
 	expect(hooks.PreToolUse[0].matcher).toBe('Edit|MultiEdit|Write');
+	// And every command, whose answer may hold a push while the session's decisions are filed: its output is kept
+	expect(hooks.PreToolUse[1].matcher).toBe('Bash');
+	expect(hooks.PreToolUse[1].hooks[0].command).not.toMatch(/[^2]>\/dev\/null/);
+	expect(hooks.PreToolUse[1].hooks[0].timeout).toBeGreaterThan(240);
 
 	const { command } = hooks.Stop[0].hooks[0];
 

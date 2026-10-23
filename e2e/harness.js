@@ -111,7 +111,7 @@ export const startServer = async ({
 	const hook = async (sessionId, payload) => {
 		const secret = (await Bun.file(path.join(dir, 'data', 'hook-secret')).text()).trim();
 
-		await fetch(`${url}/api/hooks/${secret}/${sessionId}`, { method: 'POST', body: JSON.stringify(payload) });
+		return fetch(`${url}/api/hooks/${secret}/${sessionId}`, { method: 'POST', body: JSON.stringify(payload) });
 	};
 
 	// A transcript as Claude Code keeps one, for a session the fake runs
