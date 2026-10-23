@@ -29,12 +29,14 @@ if (process.argv.includes('-p')) {
 	// The Decisions panel: what each turn settled (a turn about locking settles one), then where each is written down
 	// (in a commit that says so)
 	if (prompt.includes('Find what each turn settled')) {
-		const turns = [...prompt.matchAll(/^Turn (\d+)\n {2}Asked: (.*)$/gm)];
+		const turns = [
+			...prompt.matchAll(/^Turn (\d+)\n {2}Asked: (.*)(?:\n {2}The person added while Claude worked: (.*))?$/gm),
+		];
 
 		write(
 			JSON.stringify(
 				Object.fromEntries(
-					turns.map(([, number, asked]) => [
+					turns.map(([, number, asked, added]) => [
 						number,
 						asked.includes('lock')
 							? [
@@ -42,7 +44,7 @@ if (process.argv.includes('-p')) {
 										kind: 'decision',
 										chose: 'Lock accounts per user',
 										rejected: 'Per session',
-										because: 'A new session would reset the count',
+										because: added ?? 'A new session would reset the count',
 									},
 								]
 							: [],
@@ -63,7 +65,9 @@ if (process.argv.includes('-p')) {
 
 	// Filing one into the commit it shaped: what it can't settle it asks, until the person has answered
 	if (prompt.includes('Write the whole message anew')) {
-		const answered = /They answered: (.*)$/m.exec(prompt)?.[1];
+		// The person's answer settles why, or what they said mid-turn (which the reading took as the reason)
+		const answered =
+			/They answered: (.*)$/m.exec(prompt)?.[1] ?? /Because: (a new session would reset the count)$/m.exec(prompt)?.[1];
 
 		write(
 			JSON.stringify(

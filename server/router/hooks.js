@@ -2,6 +2,7 @@ import { requestMatch } from '@vanilla-bean/components/app';
 
 import { recordChange, setStatus } from '../activity';
 import { turnEnded } from '../claudeInbox';
+import { followDecisions } from '../decisions';
 import { projectOf } from '../projects';
 import { afterTurnTasks, runTask } from '../tasks';
 import { sessionTimeline } from '../timeline';
@@ -45,6 +46,9 @@ const hooksRoutes = async request => {
 	// A keep-warm ping's turn isn't news, and edits nothing
 	if (claudeActive(id, payload)) return new Response(null, { status: 204 });
 	if (payload.hook_event_name === 'Stop') await recordChange(id);
+	// The prompt settles the turn before it, and the turn's end lets what it settled be filed
+	if (['UserPromptSubmit', 'Stop'].includes(payload.hook_event_name))
+		followDecisions(id, runningSession(id).cwd).catch(error => console.error('Following decisions failed:', error));
 	// Not waited for: Claude waits on its hook, and the answer can take a few seconds to reach the transcript
 	if (payload.hook_event_name === 'Stop')
 		runAfterTurn(id).catch(error => console.error('Running the after-turn tasks failed:', error));

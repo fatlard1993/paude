@@ -33,6 +33,10 @@ const FILE_CHARACTERS = 8000;
 // A look for a decision's place that came back with nothing waits this long before it's tried again
 const RETRY_MS = 10 * 60 * 1000;
 const KEEP_WARM_PING = /^keep-?warm ping/i;
+// How often, and how long, a session is followed after a prompt or a turn's end
+const FOLLOW_MS = 5000;
+const FOLLOW_ROUNDS = 120;
+const SETTLING_ROUNDS = 3;
 
 // A turn as Haiku reads it: what was asked, how the person steered, what they answered and turned down, what changed,
 // what Claude ended with
@@ -335,6 +339,27 @@ const fileAll = async (root, groups, options) => {
 	} finally {
 		filingIn.delete(root);
 		for (const decision of all) filingNow.delete(decision.id);
+	}
+};
+
+const following = new Set();
+
+// Without anyone opening the panel: what the session settled is read, looked for and filed as it goes, from when the
+// person's next prompt settles the turn before it until nothing is under way. Filing still waits for the turn to end.
+// A few rounds whatever happens, as a prompt reaches the transcript a moment after its hook.
+export const followDecisions = async (id, cwd) => {
+	if (following.has(id) || !placesFile) return;
+	following.add(id);
+	try {
+		for (let round = 0; round < FOLLOW_ROUNDS; round += 1) {
+			const { reading, decisions } = await sessionDecisions(id, cwd);
+
+			if (round >= SETTLING_ROUNDS && !reading && !decisions.some(decision => decision.looking || decision.filing))
+				return;
+			await Bun.sleep(FOLLOW_MS);
+		}
+	} finally {
+		following.delete(id);
 	}
 };
 

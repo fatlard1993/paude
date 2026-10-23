@@ -1523,6 +1523,68 @@ test(
 );
 
 test(
+	"decisions: a turn's end files what it settled, with nobody opening the panel, its why from a message sent mid-turn",
+	async () => {
+		const server = await startServer();
+		const origin = await mkdtemp(path.join(os.tmpdir(), 'paude-origin-'));
+		const git = (...args) =>
+			Bun.spawnSync(['git', ...args], { cwd: server.project })
+				.stdout.toString()
+				.trim();
+		const lock = path.join(server.project, 'lock.js');
+
+		git('commit', '-q', '--allow-empty', '-m', 'start');
+		Bun.spawnSync(['git', 'init', '-q', '--bare', origin]);
+		git('remote', 'add', 'origin', origin);
+		git('push', '-q', '-u', 'origin', 'main');
+		await Bun.write(lock, 'per user\n');
+		git('add', 'lock.js');
+		git('commit', '-q', '-m', 'lock accounts');
+
+		const id = await server.newSession();
+
+		await server.writeTranscript(id, [
+			{
+				type: 'user',
+				uuid: 'prompt-1',
+				timestamp: '2026-10-07T12:00:01.000Z',
+				message: { role: 'user', content: 'lock accounts after failed logins' },
+			},
+			{
+				type: 'attachment',
+				timestamp: '2026-10-07T12:00:01.200Z',
+				attachment: {
+					type: 'queued_command',
+					prompt: 'a new session would reset the count',
+					origin: { kind: 'human' },
+				},
+			},
+			{
+				type: 'assistant',
+				timestamp: '2026-10-07T12:00:01.500Z',
+				message: { content: [{ type: 'tool_use', id: 'w', name: 'Write', input: { file_path: lock } }] },
+			},
+			{
+				type: 'user',
+				uuid: 'prompt-2',
+				timestamp: '2026-10-07T12:00:02.000Z',
+				message: { role: 'user', content: 'thanks' },
+			},
+		]);
+		await server.hook(id, { hook_event_name: 'Stop' });
+
+		const deadline = Date.now() + 40_000;
+
+		while (git('log', '-1', '--format=%s') !== 'amend! lock accounts' && Date.now() < deadline) await wait(1000);
+		expect(git('log', '-1', '--format=%s')).toBe('amend! lock accounts');
+		expect(git('log', '-1', '--format=%b')).toBe(
+			'lock accounts\n\nLocks per user, not per session: a new session would reset the count',
+		);
+	},
+	TIMEOUT_MS,
+);
+
+test(
 	'decisions: one recorded nowhere is filed into the commit it shaped, once the person answers what it asks',
 	async () => {
 		const server = await startServer();
