@@ -228,16 +228,16 @@ const filesDiff = async (cwd, first, second, seen) => {
 	};
 };
 
-// One commit's changes, titled with its subject
+// One commit's changes, titled with its subject, with its message and the commits recording later what explains it
 const commitDiff = async (cwd, ref) => {
 	const root = await repoRoot(cwd);
 
 	if (!root) throw new DiffError('Not a git repository');
 
 	try {
-		const { short, title, files } = await gitCommit(root, ref);
+		const { short, title, body, files, explainedBy } = await gitCommit(root, ref);
 
-		return { title: `${short} ${title}`, files };
+		return { title: `${short} ${title}`, files, message: body, explainedBy };
 	} catch (error) {
 		if (error instanceof GitError) throw new DiffError(error.message);
 		throw error;

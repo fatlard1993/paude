@@ -1585,6 +1585,93 @@ test(
 );
 
 test(
+	"decisions: a turn's commit is noted at its end, and what it settled is recorded in a commit naming it once pushed",
+	async () => {
+		const server = await startServer();
+		const origin = await mkdtemp(path.join(os.tmpdir(), 'paude-origin-'));
+		const git = (...args) =>
+			Bun.spawnSync(['git', ...args], { cwd: server.project })
+				.stdout.toString()
+				.trim();
+		const lock = path.join(server.project, 'lock.js');
+		const prompt = (text, at) => ({
+			type: 'user',
+			uuid: `prompt-${at}`,
+			timestamp: `2026-10-07T12:00:0${at}.000Z`,
+			message: { role: 'user', content: text },
+		});
+		const wrote = {
+			type: 'assistant',
+			timestamp: '2026-10-07T12:00:01.500Z',
+			message: { content: [{ type: 'tool_use', id: 'w', name: 'Write', input: { file_path: lock } }] },
+		};
+
+		git('commit', '-q', '--allow-empty', '-m', 'start');
+		Bun.spawnSync(['git', 'init', '-q', '--bare', origin]);
+		git('remote', 'add', 'origin', origin);
+		git('push', '-q', '-u', 'origin', 'main');
+
+		const id = await server.newSession();
+
+		// The turn: its prompt, the commit it makes (pushed straight away), its end
+		await server.writeTranscript(id, [prompt('lock accounts after failed logins', 1), wrote]);
+		await server.hook(id, { hook_event_name: 'UserPromptSubmit' });
+		await Bun.write(lock, 'per user\n');
+		git('add', 'lock.js');
+		git('commit', '-q', '-m', 'lock accounts');
+		git('push', '-q');
+
+		const made = git('rev-parse', 'HEAD');
+
+		await server.hook(id, { hook_event_name: 'Stop' });
+		await wait(1500);
+		expect(git('notes', '--ref', 'refs/notes/paude', 'show', made)).toBe(`turn ${id} prompt-1`);
+
+		// The next prompt settles it, and that turn's end files it
+		await server.writeTranscript(id, [prompt('lock accounts after failed logins', 1), wrote, prompt('thanks', 2)]);
+		await server.hook(id, { hook_event_name: 'UserPromptSubmit' });
+		await server.hook(id, { hook_event_name: 'Stop' });
+
+		const deadline = Date.now() + 40_000;
+
+		while (git('log', '-1', '--format=%s') !== 'why accounts lock per user' && Date.now() < deadline) await wait(1000);
+		expect(git('log', '-1', '--format=%B')).toBe(
+			`why accounts lock per user\n\nA new session would reset the count.\n\nExplains ${made}.`,
+		);
+		expect(git('status', '-sb')).toContain('ahead 1');
+
+		// The pushed commit, opened from the history, shows what was recorded about it later
+		const { browser, page } = await openBrowser('dom');
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+
+		try {
+			await page.goto(await server.loginLink(`/sessions/${id}`));
+			await page.waitForSelector('.xterm-screen');
+			await wait(1000);
+			await press('[title^="Git"]');
+			await press('.git .tabs button', 'History');
+			await press('.git .history-item', 'lock accounts');
+			await page.waitForFunction(
+				() => document.querySelector('.commit-message')?.innerText.includes('Recorded later'),
+				{ timeout: 20_000 },
+			);
+			expect(await page.$eval('.commit-message', node => node.innerText)).toContain('why accounts lock per user');
+			expect(await page.$eval('.commit-message', node => node.innerText)).toContain(
+				'A new session would reset the count.',
+			);
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
 	'decisions: a push waits mid-turn while what the session settled is filed, then is turned back to settle first',
 	async () => {
 		const server = await startServer();

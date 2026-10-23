@@ -63,6 +63,11 @@ if (process.argv.includes('-p')) {
 		process.exit(0);
 	}
 
+	// What explains a pushed commit, in a commit of its own
+	if (prompt.includes('already pushed')) {
+		write(JSON.stringify({ message: 'why accounts lock per user\n\nA new session would reset the count.', says: [1] }));
+		process.exit(0);
+	}
 	// Filing one into the commit it shaped: what it can't settle it asks, until the person has answered
 	if (prompt.includes('Write the whole message anew')) {
 		// The person's answer settles why, or what they said mid-turn (which the reading took as the reason)

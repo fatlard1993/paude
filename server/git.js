@@ -276,7 +276,7 @@ const hashOf = async (root, ref) => {
 	return (await must(['rev-parse', '--verify', '-q', `${ref}^{commit}`], root)).trim();
 };
 
-// One commit as the diff view shows any set: { title, body, author, date, files }
+// One commit as the diff view shows any set: { title, body, author, date, files, explainedBy }
 export const gitCommit = async (root, ref) => {
 	const hash = await hashOf(root, ref);
 	const [subject, body, author, date, short] = (
@@ -289,7 +289,16 @@ export const gitCommit = async (root, ref) => {
 
 	if (patch.length > MAX_PATCH_BYTES) patch = patch.slice(0, MAX_PATCH_BYTES);
 
-	return { hash, short, title: subject, body: body.trim(), author, date: date.trim(), files: splitPatch(patch) };
+	return {
+		hash,
+		short,
+		title: subject,
+		body: body.trim(),
+		author,
+		date: date.trim(),
+		files: splitPatch(patch),
+		explainedBy: await explanationsOf(root, hash),
+	};
 };
 
 // { current, local: [{ name, upstream, ahead, behind, date, subject }], remote: [name] }
@@ -452,27 +461,110 @@ export const concernFiles = async (root, concern) => {
 	return [...new Set(lists.flatMap(list => list.split('\0').filter(Boolean)))];
 };
 
-// An open concern's whole new message, filed as an amend! commit on top without touching the index or the working
-// tree, which may hold someone's work in progress. Only on a branch with nothing half done, and only if HEAD hasn't
-// moved meanwhile: the commit that does the moving wins, and this one is not filed.
-export const fileReasoning = async (root, into, message) => {
+// The local notes ref paude links commits to the session turns that made them on; see turnCommits.js
+export const PAUDE_NOTES = 'refs/notes/paude';
+// How a reasoning commit names the pushed commit it explains, on a line of its own
+export const explainsLine = hash => `Explains ${hash}.`;
+const EXPLAINS = /^Explains ([0-9a-f]{40})\.$/m;
+
+export const explainedHash = message => EXPLAINS.exec(message ?? '')?.[1] ?? null;
+
+// A commit on top that changes nothing, without touching the index or the working tree, which may hold someone's
+// work in progress. Only on a branch with nothing half done, and only if HEAD hasn't moved meanwhile: the commit that
+// does the moving wins, and this one is not filed. Noted as paude's, so no turn is taken to have made it.
+const fileOnTop = async (root, message) => {
 	if ((await run(['symbolic-ref', '-q', 'HEAD'], root)).code !== 0) throw new GitError('Not on a branch');
 	if (await operationInProgress(root)) throw new GitError('Something is half done');
 
+	const head = (await must(['rev-parse', 'HEAD'], root)).trim();
+	const filed = (
+		await must(['commit-tree', `${head}^{tree}`, '-p', head, '-F', '-'], root, { input: `${message.trim()}\n` })
+	).trim();
+
+	await must(['update-ref', '-m', 'paude: reasoning filed', 'HEAD', filed, head], root);
+	await run(['notes', '--ref', PAUDE_NOTES, 'add', '-f', '-m', 'reasoning', filed], root);
+
+	return filed;
+};
+
+// An open concern's whole new message, as an amend! commit that folds into it at settling
+export const fileReasoning = async (root, into, message) => {
 	const concern = (await gitStack(root)).concerns.find(open => open.hash === into);
 
 	if (!concern) throw new GitError('That commit is pushed or gone');
 
-	const head = (await must(['rev-parse', 'HEAD'], root)).trim();
-	const filed = (
-		await must(['commit-tree', `${head}^{tree}`, '-p', head, '-F', '-'], root, {
-			input: `amend! ${concern.originalSubject}\n\n${message.trim()}\n`,
-		})
-	).trim();
+	return fileOnTop(root, `amend! ${concern.originalSubject}\n\n${message.trim()}`);
+};
 
-	await must(['update-ref', '-m', 'paude: reasoning filed', 'HEAD', filed, head], root);
+// What was settled about a pushed commit, whose message can't change any more: a commit of its own that names it
+export const fileExplanation = async (root, hash, message) => {
+	const { concerns } = await gitStack(root);
 
-	return filed;
+	if (concerns.some(open => open.hash === hash || open.folds.some(fold => fold.hash === hash)))
+		throw new GitError('That commit is not pushed yet: file into it');
+	if ((await run(['merge-base', '--is-ancestor', hash, 'HEAD'], root)).code !== 0)
+		throw new GitError('That commit is not on this branch');
+
+	return fileOnTop(root, `${message.trim()}\n\n${explainsLine(hash)}`);
+};
+
+// One commit as a decision is filed against it: { hash, short, subject, body, files }
+export const commitOf = async (root, ref) => {
+	const hash = await hashOf(root, ref);
+	const [short, subject, body = ''] = (await must(['show', '-s', `--format=%h${UNIT}%s${UNIT}%b`, hash], root)).split(
+		UNIT,
+	);
+	const files = (await must(['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', '--root', hash], root))
+		.split('\0')
+		.filter(Boolean);
+
+	return { hash, short, subject, body: body.trim(), files };
+};
+
+// The commits on this branch whose messages record what was settled about this one: [{ hash, short, subject, body }]
+export const explanationsOf = async (root, hash) => {
+	const out = await must(
+		[
+			'log',
+			'--fixed-strings',
+			`--grep=${explainsLine(hash)}`,
+			`--format=%H${UNIT}%h${UNIT}%s${UNIT}%b${RECORD}`,
+			'HEAD',
+		],
+		root,
+	);
+
+	return out
+		.split(RECORD)
+		.map(record => record.replace(/^\n/, ''))
+		.filter(record => record.trim())
+		.map(record => {
+			const [full, short, subject, body = ''] = record.split(UNIT);
+
+			return { hash: full, short, subject, body: body.replace(explainsLine(hash), '').trim() };
+		});
+};
+
+// With no turn linked to the commits it made (a session from before paude noted them, or a commit made elsewhere), the
+// commit on this branch a turn's changes went into, by the files they share: the first changing them authored at the
+// turn or after it; failing that, the last before it
+export const commitAfter = async (root, files, at) => {
+	if (!files.length) return null;
+
+	const out = await must(
+		['log', '--reverse', `--format=%H${UNIT}%aI`, '--max-count=500', 'HEAD', '--', ...files],
+		root,
+	);
+	const commits = out
+		.split('\n')
+		.filter(Boolean)
+		.map(line => {
+			const [hash, authored] = line.split(UNIT);
+
+			return { hash, authored: new Date(authored).toISOString() };
+		});
+
+	return (commits.find(commit => !at || commit.authored >= at) ?? commits.at(-1))?.hash ?? null;
 };
 
 // What this branch adds to the base: its commits, and its changes as the diff view's files (since they parted)

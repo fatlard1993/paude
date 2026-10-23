@@ -3,9 +3,19 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 
-import { backfillPrompt, changedFiles, concernFor, fileInto, openConcerns, parseBackfill } from './backfill';
+import {
+	backfillPrompt,
+	changedFiles,
+	concernFor,
+	explainInto,
+	fileInto,
+	openConcerns,
+	parseBackfill,
+	targetFor,
+} from './backfill';
 import { answerDecision, fileAll, initDecisions, lookForPlaces, toFile } from './decisions';
-import { fileReasoning, gitAction } from './git';
+import { explainsLine, fileReasoning, gitAction, gitCommit } from './git';
+import { linkedCommits, turnEnded, turnNote, turnStarted } from './turnCommits';
 
 let dir;
 let repo;
@@ -145,7 +155,7 @@ test("what filing asks waits for the person's answer, and is offered again with 
 
 	const decision = { id: 't1:0', turnId: 't1', kind: 'decision', chose: 'five tries' };
 	const turns = [turn('t1', 'auth.js')];
-	const where = { cwd: repo, root: repo };
+	const where = { cwd: repo, root: repo, sessionId: 's' };
 
 	await lookForPlaces([decision], { fingerprint: 'a', names: new Set(), text: '' }, async () => '{"1": null}');
 
@@ -157,20 +167,113 @@ test("what filing asks waits for the person's answer, and is offered again with 
 		return answer;
 	};
 
-	await fileAll(repo, toFile([decision], turns, concerns, where), {
+	await fileAll(repo, await toFile([decision], turns, { concerns, ...where }), {
 		ask: ask('{"message": "", "says": [], "ask": {"1": "Five tries, or three?"}}'),
 	});
-	expect(toFile([decision], turns, concerns, where)).toEqual([]);
+	expect(await toFile([decision], turns, { concerns, ...where })).toEqual([]);
 	expect(await answerDecision('t1:0', 'Five: three locked people out on typos')).toBe(true);
 	expect(await answerDecision('t1:0', 'again')).toBe(false);
 
-	await fileAll(repo, toFile([decision], turns, concerns, where), {
+	await fileAll(repo, await toFile([decision], turns, { concerns, ...where }), {
 		ask: ask('{"message": "lock accounts\\n\\nFive tries, not three: three locked people out on typos.", "says": [1]}'),
 	});
 	expect(asked[1]).toContain('You asked the person: Five tries, or three?\n   They answered: Five: three locked');
 	expect(git('log', '-1', '--format=%b')).toBe(
 		'lock accounts\n\nFive tries, not three: three locked people out on typos.',
 	);
-	expect(toFile([decision], turns, await openConcerns(repo), where)).toEqual([]);
+	expect(await toFile([decision], turns, { concerns: await openConcerns(repo), ...where })).toEqual([]);
 	expect(backfillPrompt({ message: 'm', files: [], decisions: [] })).toContain('Never guess');
+});
+
+test("a turn's note on the commits it made comes through an amend and a settle, onto the commits they became", async () => {
+	const auth = await concern('auth.js', 'lock accounts');
+
+	await turnStarted('s', repo);
+	await concern('ui.js', 'show the lock');
+	await turnEnded('s', { id: 't1', steps: [] });
+	expect((await linkedCommits(repo))[turnNote('s', 't1')]).toEqual([git('rev-parse', 'HEAD')]);
+	// Made before any turn was noted: not taken for this one
+	expect(Object.values(await linkedCommits(repo)).flat()).not.toContain(auth);
+
+	await turnStarted('s', repo);
+	await writeFile(path.join(repo, 'ui.js'), 'show the lock, louder\n');
+	git('commit', '-q', '-a', '--amend', '--no-edit');
+	await turnEnded('s', { id: 't2', steps: [{ command: 'git commit -a --amend --no-edit' }] });
+
+	const amended = git('rev-parse', 'HEAD');
+
+	expect((await linkedCommits(repo))[turnNote('s', 't1')]).toEqual([amended]);
+	expect((await linkedCommits(repo))[turnNote('s', 't2')]).toEqual([amended]);
+
+	await turnStarted('s', repo);
+	await writeFile(path.join(repo, 'auth.js'), 'lock accounts, per user\n');
+	git('add', 'auth.js');
+	git('commit', '-q', '-m', 'fixup! lock accounts');
+	await turnEnded('s', { id: 't3', steps: [] });
+	expect((await gitAction(repo, 'settle')).ok).toBe(true);
+
+	const links = await linkedCommits(repo);
+
+	// The fixup's turn now names the commit it folded into; the others the rewritten ui commit
+	expect(links[turnNote('s', 't3')]).toEqual([git('rev-parse', 'HEAD~1')]);
+	expect(links[turnNote('s', 't1')]).toEqual([git('rev-parse', 'HEAD')]);
+});
+
+test('a decision goes to the commit its turn made: open, its concern; pushed, that commit; unlinked, by its files', async () => {
+	const pushed = await concern('auth.js', 'lock accounts');
+
+	git('push', '-q');
+
+	const open = await concern('ui.js', 'show the lock');
+	const concerns = await openConcerns(repo);
+
+	expect((await targetFor(repo, { files: ['auth.js'], linked: [pushed], concerns })).commit.subject).toBe(
+		'lock accounts',
+	);
+	expect((await targetFor(repo, { files: ['ui.js'], linked: [open, pushed], concerns })).concern.hash).toBe(open);
+	expect((await targetFor(repo, { files: ['auth.js'], concerns, at: '2000-01-01T00:00:00.000Z' })).commit.hash).toBe(
+		pushed,
+	);
+	expect(await targetFor(repo, { files: ['other.js'], concerns })).toBeNull();
+});
+
+test('what explains a pushed commit is a commit of its own naming it, and the commit view shows it there', async () => {
+	const pushed = await concern('auth.js', 'lock accounts');
+
+	git('push', '-q');
+	await writeFile(path.join(repo, 'wip.js'), 'half done\n');
+	git('add', 'wip.js');
+
+	const commit = (await targetFor(repo, { files: ['auth.js'], linked: [pushed], concerns: [] })).commit;
+	const asked = [];
+	const outcomes = await explainInto(repo, commit, [{ kind: 'decision', chose: 'per user' }], {
+		ask: async prompt => {
+			asked.push(prompt);
+
+			return '{"message": "why accounts lock per user\\n\\nPer user, not per session: a new session would reset the count.", "says": [1]}';
+		},
+	});
+
+	expect(asked[0]).toContain("The pushed commit's message:\nlock accounts");
+	expect(git('log', '-1', '--format=%B')).toBe(
+		`why accounts lock per user\n\nPer user, not per session: a new session would reset the count.\n\n${explainsLine(pushed)}`,
+	);
+	expect(outcomes).toEqual([{ into: pushed, place: git('rev-parse', '--short', 'HEAD') }]);
+	expect(git('diff', '--cached', '--name-only')).toBe('wip.js');
+	expect((await gitCommit(repo, pushed)).explainedBy).toEqual([
+		expect.objectContaining({
+			subject: 'why accounts lock per user',
+			body: 'Per user, not per session: a new session would reset the count.',
+		}),
+	]);
+
+	// More about it, while that commit is open: folded into it, still naming the pushed one
+	const [explaining] = await openConcerns(repo);
+
+	await fileInto(repo, explaining, [{ kind: 'decision', chose: 'five tries' }], {
+		ask: async () => '{"message": "why accounts lock per user\\n\\nPer user, after five tries.", "says": [1]}',
+	});
+	expect(git('log', '-1', '--format=%B')).toContain(explainsLine(pushed));
+	expect((await gitAction(repo, 'settle')).ok).toBe(true);
+	expect((await gitCommit(repo, pushed)).explainedBy.map(later => later.body)).toEqual(['Per user, after five tries.']);
 });

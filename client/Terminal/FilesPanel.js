@@ -1532,8 +1532,29 @@ export default class FilesPanel extends Panel {
 		});
 
 		this.diffFiles = files;
+		if (this.diffSet.message || this.diffSet.explainedBy?.length) container.prepend(this.commitMessage(this.diffSet));
 
 		return container;
+	}
+
+	// A commit's message, and the commits since that recorded what explains it: the why its message, once pushed, could
+	// no longer take
+	commitMessage({ message, explainedBy = [] }) {
+		const box = element('div', 'commit-message');
+
+		if (message) box.append(element('div', 'commit-body', message));
+		for (const later of explainedBy) {
+			const item = element('div', 'commit-later');
+			const open = button(`${later.short} ${later.subject}`, () =>
+				this.openDiffSet({ source: 'commit', ref: later.hash }),
+			);
+
+			item.append(element('div', 'meta', 'Recorded later'), open);
+			if (later.body) item.append(element('div', 'commit-body', later.body));
+			box.append(item);
+		}
+
+		return box;
 	}
 
 	attachDiffLines(path, lines) {

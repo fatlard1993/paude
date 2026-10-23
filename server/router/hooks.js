@@ -5,7 +5,8 @@ import { turnEnded } from '../claudeInbox';
 import { fileBeforePush, followDecisions } from '../decisions';
 import { projectOf } from '../projects';
 import { afterTurnTasks, runTask } from '../tasks';
-import { sessionTimeline } from '../timeline';
+import { sessionTimeline, sessionTurns } from '../timeline';
+import { turnEnded as noteTurnCommits, turnStarted } from '../turnCommits';
 import { HOOK_EVENTS, hookSecret } from '../hookSettings';
 import { claudeActive } from '../keepWarm';
 import { limitHook } from '../usageLimit';
@@ -40,7 +41,7 @@ const beforePush = async (id, payload) => {
 			hookEventName: 'PreToolUse',
 			permissionDecision: 'deny',
 			permissionDecisionReason:
-				'paude filed what this session settled into the commits not pushed yet, as amend! commits. Settle the stack (GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash onto where the branch left its upstream), then push again.',
+				'paude filed what this session settled into the commits not pushed yet. Settle the stack so its amend! commits fold in (GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash onto where the branch left its upstream), then push again.',
 		},
 	});
 };
@@ -67,9 +68,19 @@ const hooksRoutes = async request => {
 	// A keep-warm ping's turn isn't news, and edits nothing
 	if (claudeActive(id, payload)) return new Response(null, { status: 204 });
 	if (payload.hook_event_name === 'Stop') await recordChange(id);
-	// The prompt settles the turn before it, and the turn's end lets what it settled be filed
-	if (['UserPromptSubmit', 'Stop'].includes(payload.hook_event_name))
-		followDecisions(id, runningSession(id).cwd).catch(error => console.error('Following decisions failed:', error));
+
+	const { cwd } = runningSession(id);
+
+	// Where each turn starts, so its end can note the commits it made with it
+	if (payload.hook_event_name === 'UserPromptSubmit') await turnStarted(id, cwd);
+	// The prompt settles the turn before it, and the turn's end lets what it settled be filed: after its commits are
+	// noted, so a decision finds the commit its turn made
+	const ended = ['Stop', 'StopFailure'].includes(payload.hook_event_name);
+
+	if (ended || payload.hook_event_name === 'UserPromptSubmit')
+		(ended ? sessionTurns(id, cwd).then(turns => noteTurnCommits(id, turns.at(-1))) : Promise.resolve())
+			.then(() => followDecisions(id, cwd))
+			.catch(error => console.error('Following decisions failed:', error));
 	// Not waited for: Claude waits on its hook, and the answer can take a few seconds to reach the transcript
 	if (payload.hook_event_name === 'Stop')
 		runAfterTurn(id).catch(error => console.error('Running the after-turn tasks failed:', error));

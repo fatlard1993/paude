@@ -4,14 +4,15 @@ import path from 'path';
 import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
 import { statusOf } from './activity';
-import { changedFiles, concernFor, fileInto, openConcerns } from './backfill';
+import { changedFiles, explainInto, fileInto, openConcerns, targetFor } from './backfill';
 import { markInterruptions, steeringOf } from './catchUp';
 import describer from './describer';
-import { headCommit, repoRoot } from './git';
+import { explainedHash, headCommit, repoRoot } from './git';
 import askHaiku, { jsonIn } from './haiku';
 import { runningSession } from './sessions/running';
 import { claudeHome } from './sessions/transcript';
 import { sessionTurns } from './timeline';
+import { linkedCommits, turnNote } from './turnCommits';
 import gitEnvironment from './utils/gitEnvironment';
 
 // What a session decided that was never written down. The code holds what was decided and a commit can hold why; this
@@ -290,25 +291,38 @@ const lookFor = async (decisions, places, ask = askHaiku) => {
 	}
 };
 
-// Those written down nowhere that an open concern's files say it shaped, grouped by concern: not work put off (no
-// commit's why), not one waiting on the person, not one that concern already left out
-export const toFile = (decisions, turns, concerns, { cwd, root }) => {
+// Those recorded nowhere, grouped by where each is filed: [[{ concern } or { commit }, decisions]]. Not work put off (no
+// commit's why), not one waiting on the person, not one already offered there and left out. One about a pushed commit
+// goes to the open commit already explaining it, when there is one.
+export const toFile = async (decisions, turns, { concerns, links = {}, sessionId, cwd, root }) => {
 	const groups = new Map();
 
 	for (const decision of decisions) {
 		if (decision.kind === 'deferred' || placed[decision.id]?.place !== null || failedAt.has(`file:${decision.id}`))
 			continue;
 
-		const concern = concernFor(concerns, changedFiles(turns, decision.turnId, { cwd, root }), decision.at);
+		const at = turns.findIndex(turn => turn.id === decision.turnId);
+		const linked = [...new Set(turns.slice(at, at + 2).flatMap(turn => links[turnNote(sessionId, turn.id)] ?? []))];
+		let target = await targetFor(root, {
+			files: changedFiles(turns, decision.turnId, { cwd, root }),
+			linked: at === -1 ? [] : linked,
+			concerns,
+			at: decision.at,
+		});
+		const explaining = target?.commit && concerns.find(open => explainedHash(open.body) === target.commit.hash);
+
+		if (explaining) target = { concern: explaining };
+
+		const into = target?.concern?.hash ?? target?.commit?.hash;
 		const offered = filing[decision.id];
 
-		// Answered, but its commit was pushed meanwhile: nothing is left to file it into
-		if (!concern && offered?.answered) filing[decision.id] = { ...offered, answered: false };
-		if (!concern || (offered?.into === concern.hash && !offered.answered)) continue;
-		groups.set(concern, [...(groups.get(concern) ?? []), { ...decision, ...offered }]);
+		// Answered, but there's nowhere left to file it
+		if (!into && offered?.answered) filing[decision.id] = { ...offered, answered: false };
+		if (!into || (offered?.into === into && !offered.answered)) continue;
+		groups.set(into, [target, [...(groups.get(into)?.[1] ?? []), { ...decision, ...offered }]]);
 	}
 
-	return [...groups];
+	return [...groups.values()];
 };
 
 const fileAll = async (root, groups, options) => {
@@ -317,11 +331,13 @@ const fileAll = async (root, groups, options) => {
 	filingIn.add(root);
 	for (const decision of all) filingNow.add(decision.id);
 	try {
-		for (const [concern, decisions] of groups) {
+		for (const [target, decisions] of groups) {
 			let outcomes;
 
 			try {
-				outcomes = await fileInto(root, concern, decisions, options);
+				outcomes = target.concern
+					? await fileInto(root, target.concern, decisions, options)
+					: await explainInto(root, target.commit, decisions, { ask: options?.ask, file: options?.explain });
 			} catch {
 				// No answer, or the stack moved under it: tried again later, against the stack as it is then
 				for (const decision of all) failedAt.set(`file:${decision.id}`, Date.now());
@@ -400,7 +416,7 @@ export const answerDecision = async (decisionId, answer) => {
 	return true;
 };
 
-const backfill = async (decisions, turns, cwd) => {
+const backfill = async (sessionId, decisions, turns, cwd) => {
 	if (!decisions.some(decision => decision.kind !== 'deferred' && placed[decision.id]?.place === null)) return;
 
 	const root = await repoRoot(cwd);
@@ -408,7 +424,8 @@ const backfill = async (decisions, turns, cwd) => {
 	if (!root || filingIn.has(root)) return;
 	for (const [key, at] of failedAt) if (key.startsWith('file:') && Date.now() - at > RETRY_MS) failedAt.delete(key);
 
-	const groups = toFile(decisions, turns, await openConcerns(root), { cwd, root });
+	const [concerns, links] = await Promise.all([openConcerns(root), linkedCommits(root)]);
+	const groups = await toFile(decisions, turns, { concerns, links, sessionId, cwd, root });
 
 	// Started, not waited on: those being filed say so from now on, and the panel keeps reading until they're done
 	if (groups.length && !filingIn.has(root)) fileAll(root, groups).catch(() => {});
@@ -455,7 +472,7 @@ export const sessionDecisions = async (id, cwd, { withDismissed = false } = {}) 
 		if (unplaced.length) lookFor(unplaced, places);
 		// Not mid-turn: Claude's own commits move HEAD, and a filing would race them
 		else if (pushing.has(id) || !['working', 'waiting'].includes(statusOf(id)))
-			await backfill(open, turns, cwd).catch(() => {});
+			await backfill(id, open, turns, cwd).catch(() => {});
 	}
 
 	return {

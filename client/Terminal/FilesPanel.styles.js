@@ -368,6 +368,30 @@ const Panel = styled(
 			font-size: 0.85em;
 		}
 
+		.commit-message {
+			display: flex;
+			flex-direction: column;
+			gap: ${space.sm};
+			padding: ${space.sm};
+			border-bottom: 1px solid ${colors.alpha(colors.white, 0.1)};
+		}
+
+		.commit-message .commit-body {
+			white-space: pre-wrap;
+		}
+
+		.commit-message .commit-later {
+			display: flex;
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 2px;
+		}
+
+		.commit-message .meta {
+			color: ${colors.muted};
+			font-size: 0.85em;
+		}
+
 		.source code.plain {
 			font-family: ui-monospace, monospace;
 			color: ${colors.white};
