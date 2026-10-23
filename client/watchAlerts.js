@@ -50,7 +50,7 @@ export const startWatchAlerts = ({ remotes }) => {
 		const all = [...here, ...remoteWatched];
 		const waiting = all.filter(session => session.status === 'waiting' || session.unseen > 0).sort(byUrgency);
 
-		updateTabTitle({ waiting: waiting.length });
+		updateTabTitle({ waiting });
 		setWaitingSessions(waiting, [...all].sort(byUrgency));
 
 		const onScreen = session =>

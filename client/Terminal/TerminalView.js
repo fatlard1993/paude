@@ -162,7 +162,7 @@ export default class TerminalView extends View {
 
 		this.stateDot = new Elem({ appendTo: title, addClass: 'state' });
 		this.titleLabel = new Elem({ appendTo: title, addClass: 'name' });
-		this.addCleanup('tabTitle', () => updateTabTitle({ page: '' }));
+		this.addCleanup('tabTitle', () => updateTabTitle({ page: '', here: null }));
 		if (identity()?.owner) {
 			// The project's crumb is filled in once the session says which it is
 			const { links, setProject } = breadcrumbs({
@@ -566,6 +566,15 @@ export default class TerminalView extends View {
 
 		document.addEventListener('keydown', fileKeys);
 		this.addCleanup('fileKeys', () => document.removeEventListener('keydown', fileKeys));
+
+		const seeNews = () => {
+			if (document.hidden) return;
+			this.newsWhileAway = false;
+			this.markTab();
+		};
+
+		document.addEventListener('visibilitychange', seeNews);
+		this.addCleanup('seeNews', () => document.removeEventListener('visibilitychange', seeNews));
 		this.addCleanup('connections', () => {
 			this.connection?.close();
 			this.shell?.stop();
@@ -740,6 +749,7 @@ export default class TerminalView extends View {
 			this.files?.changesMayHaveChanged();
 			if (this.git?.elem.classList.contains('open')) this.git.refresh();
 			this.followTurn(busy);
+			if (this.lastPresence.busy && !busy && document.hidden) this.newsWhileAway = true;
 			// The turn's usage lands in the transcript a moment after Claude stops: read now, and again then
 			if (!busy) {
 				this.loadMeter();
@@ -754,6 +764,7 @@ export default class TerminalView extends View {
 		this.limitCard.elem.classList.toggle('shown', Boolean(presence.limit));
 		if (presence.limit) showLimit(this.limitCard, this.options.id, presence.limit, { canAct: canType() });
 		this.lastPresence = presence;
+		this.markTab();
 		this.notes.myName = clients[you]?.name;
 		if (title && this.connectionState !== 'ended') this.showTitle(title);
 
@@ -1407,6 +1418,12 @@ export default class TerminalView extends View {
 	nameTab() {
 		updateTabTitle({
 			page: this.title === this.project ? this.title : [this.title, this.project].filter(Boolean).join(' · '),
+		});
+	}
+
+	markTab() {
+		updateTabTitle({
+			here: { id: this.options.id, asking: Boolean(this.lastPresence?.waiting), news: this.newsWhileAway },
 		});
 	}
 
