@@ -16,6 +16,10 @@ const sessionData = ({ url, token }, id) => {
 		return response.status === 204 ? {} : response.json();
 	};
 	const send = (method, path, body) => call(path, { method, body: JSON.stringify(body) });
+	const artifact = (path, query = '') =>
+		fetch(`${url}/api/sessions/${id}/artifact?path=${encodeURIComponent(path)}${query}`, {
+			headers: { authorization: `Bearer ${token}` },
+		}).catch(() => null);
 
 	return {
 		detail: () => call(''),
@@ -39,9 +43,7 @@ const sessionData = ({ url, token }, id) => {
 
 		// An artifact as the reader opens it, wherever it was made: highlighted lines, or an image it can place
 		readArtifact: async path => {
-			const response = await fetch(`${url}/api/sessions/${id}/artifact?path=${encodeURIComponent(path)}`, {
-				headers: { authorization: `Bearer ${token}` },
-			}).catch(() => null);
+			const response = await artifact(path);
 
 			if (!response?.ok) return { path, error: 'Could not open it.' };
 			if (showsImages() && IMAGE_EXTENSIONS.has(path.split('.').at(-1).toLowerCase())) {
@@ -58,9 +60,7 @@ const sessionData = ({ url, token }, id) => {
 
 		// An artifact's bytes, to save on this machine
 		artifactBytes: async path => {
-			const response = await fetch(`${url}/api/sessions/${id}/artifact?path=${encodeURIComponent(path)}&download=1`, {
-				headers: { authorization: `Bearer ${token}` },
-			}).catch(() => null);
+			const response = await artifact(path, '&download=1');
 
 			return response?.ok ? new Uint8Array(await response.arrayBuffer()) : null;
 		},
