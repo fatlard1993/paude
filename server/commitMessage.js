@@ -29,6 +29,7 @@ const turnText = (turn, index) =>
 		`Turn ${index + 1}`,
 		`  Asked: ${turn.prompt}`,
 		steeringOf(turn).length && `  The person ${steeringOf(turn).join(', ')}.`,
+		...(turn.added ?? []).map(added => `  The person added while Claude worked: ${added}`),
 		...turn.steps
 			.filter(step => step.tool === 'AskUserQuestion' && step.output)
 			.map(step => `  Answered: ${step.output.replace(/\s+/g, ' ').slice(0, ANSWERS)}`),

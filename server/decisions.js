@@ -42,6 +42,7 @@ export const turnText = (turn, index) =>
 		turn.summary
 			? "  (Claude went on from a summary of the conversation before it: nothing here is the person's words.)"
 			: `  Asked: ${turn.asked ?? turn.prompt}`,
+		...(turn.added ?? []).map(added => `  The person added while Claude worked: ${added}`),
 		steeringOf(turn).length && `  The person ${steeringOf(turn).join(', ')}.`,
 		...turn.steps
 			.filter(step => step.declined)

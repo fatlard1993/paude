@@ -58,6 +58,21 @@ test('each turn: its prompt, the tools in order with what came back, its time an
 	]);
 });
 
+test('what the person sent mid-turn stays with the turn it went into, not a turn of its own', () => {
+	const queued = (text, kind = 'human') => ({
+		type: 'attachment',
+		timestamp: at(2),
+		attachment: { type: 'queued_command', prompt: text, origin: { kind } },
+	});
+	const turns = timelineFrom(
+		[prompt('lock accounts', 0), queued('per user, not per session'), queued('a task note', 'task')],
+		'/repo',
+	);
+
+	expect(turns).toHaveLength(1);
+	expect(turns[0].added).toEqual(['per user, not per session']);
+});
+
 test('a pasted prompt shows without the tags Claude Code keeps it in', () => {
 	const [turn] = timelineFrom([prompt('<pasted_content id="1">\nhello\n</pasted_content id="1">', 0)], '/repo');
 

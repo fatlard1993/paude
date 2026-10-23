@@ -131,6 +131,11 @@ export const timelineFrom = (lines, cwd) => {
 
 		if (!turn) continue;
 		if (line.timestamp) turn.endedAt = line.timestamp;
+		// What the person sent while Claude worked, which it takes in mid-turn rather than as a turn of its own
+		if (line.attachment?.type === 'queued_command' && line.attachment.origin?.kind === 'human') {
+			turn.added = [...(turn.added ?? []), String(line.attachment.prompt ?? '').slice(0, ASKED_CHARACTERS)];
+			continue;
+		}
 
 		if (line.type === 'assistant') {
 			const { usage, content = [] } = line.message ?? {};

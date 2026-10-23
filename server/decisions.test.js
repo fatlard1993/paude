@@ -63,6 +63,9 @@ test('a turn reads with how the person steered, what they answered and turned do
 	expect(text).toContain('Answered: User has answered: per user, not per session');
 	expect(text).toContain('Turned down: Bash drop the sessions table');
 	expect(text).toContain('Changed: auth.js');
+	expect(turnText({ asked: 'lock', added: ['per user'], steps: [] }, 0)).toContain(
+		'The person added while Claude worked: per user',
+	);
 	expect(findPrompt([])).toContain('Routine edits, questions and fixes settle nothing');
 });
 
