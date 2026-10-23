@@ -252,6 +252,7 @@ const detailOf = (panel, item, width) => {
 				item.question && `To file it, paude asks: ${item.question}`,
 				`❯ ${item.asked}`,
 				[
+					item.earlier && 'an earlier session',
 					item.at && relativeTime(item.at),
 					item.place
 						? `${item.filed ? 'filed into' : 'recorded in'} ${item.place}`
@@ -303,8 +304,14 @@ const headerOf = panel => {
 
 		return outputOnly && !panel.withOutput ? [dim(`${outputOnly} more only a command printed (i shows them)`)] : [];
 	}
-	if (panel.kind === 'decisions' && panel.data?.reading)
-		return [dim('Reading the conversation for what it settled...')];
+	if (panel.kind === 'decisions')
+		return [
+			panel.data?.reading && dim('Reading the conversation for what it settled...'),
+			panel.data?.lookingBack &&
+				dim(
+					`Looking back over the project's earlier sessions: ${panel.data.lookingBack.done + 1} of ${panel.data.lookingBack.total}...`,
+				),
+		].filter(Boolean);
 	if (panel.kind === 'activity' && !panel.turn && panel.data?.checked) return [dim(printable(panel.data.checked))];
 	if (panel.kind === 'activity' && panel.turn)
 		return [
@@ -435,8 +442,8 @@ export const panelKeys = (panel, keyCap) => {
 			break;
 		case 'decisions':
 			add('a', 'answer what paude asks', item?.question);
-			add('w', 'ask Claude to record it', item && !item.place);
-			add('x', 'set it aside', item);
+			add('w', 'ask Claude to record it', item && !item.place && !item.earlier);
+			add('x', 'set it aside', item && !item.earlier);
 			break;
 		case 'activity':
 			if (panel.turn) {
@@ -552,8 +559,8 @@ export const panelKey = (panel, key) => {
 		case 'decisions':
 			if (!item) break;
 			if (key === 'a' && item.question) return { type: 'answerDecision', id: item.id, question: item.question };
-			if (key === 'w' && !item.place) return { type: 'writeDecision', id: item.id };
-			if (key === 'x') return { type: 'dismissDecision', id: item.id };
+			if (key === 'w' && !item.place && !item.earlier) return { type: 'writeDecision', id: item.id };
+			if (key === 'x' && !item.earlier) return { type: 'dismissDecision', id: item.id };
 			break;
 		case 'activity':
 			if (panel.turn) {

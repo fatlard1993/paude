@@ -57,13 +57,14 @@ export default class DecisionsPanel extends Panel {
 		if (read !== this.read) {
 			this.read = read;
 			this.reading = body.reading;
+			this.lookingBack = body.lookingBack;
 			this.decisions = body.decisions;
 			this.renderDecisions();
 		}
 		// Haiku is still reading turns, looking for where some are recorded, or filing them: look again shortly, while
 		// it's showing
 		clearTimeout(this.again);
-		if (body.reading || body.decisions.some(decision => decision.looking || decision.filing))
+		if (body.reading || body.lookingBack || body.decisions.some(decision => decision.looking || decision.filing))
 			this.again = setTimeout(() => this.showing() && this.refresh(), READING_MS);
 	}
 
@@ -110,6 +111,15 @@ export default class DecisionsPanel extends Panel {
 		this.body.replaceChildren(
 			...(list.length ? list.map(decision => this.row(decision)) : [element('div', 'empty', empty)]),
 			...(this.reading && this.decisions.length ? [element('div', 'meta', 'Still reading the latest turns…')] : []),
+			...(this.lookingBack
+				? [
+						element(
+							'div',
+							'meta',
+							`Looking back over the project's earlier sessions: ${this.lookingBack.done + 1} of ${this.lookingBack.total}…`,
+						),
+					]
+				: []),
 		);
 	}
 
@@ -118,7 +128,8 @@ export default class DecisionsPanel extends Panel {
 		const head = element('div', 'link-head');
 
 		head.append(icon(KIND_ICONS[decision.kind]), element('span', 'name', decision.chose));
-		if (!decision.place && identity()?.owner) {
+		// One from an earlier session is answered here, and nothing more: it isn't this session's Claude's to record
+		if (!decision.place && !decision.earlier && identity()?.owner) {
 			const write = button('', () => this.writeDown(decision, write), {
 				icon: 'pen-to-square',
 				title: 'Ask Claude to record it where it belongs',
@@ -127,7 +138,7 @@ export default class DecisionsPanel extends Panel {
 
 			head.append(write);
 		}
-		if (canNote())
+		if (canNote() && !decision.earlier)
 			head.append(
 				button('', () => this.dismiss(decision), {
 					icon: 'eye-slash',
@@ -148,6 +159,7 @@ export default class DecisionsPanel extends Panel {
 				'meta',
 				[
 					KIND_LABELS[decision.kind],
+					decision.earlier && 'an earlier session',
 					decision.at && relativeTime(Date.parse(decision.at)),
 					decision.place
 						? `${decision.filed ? 'filed into' : 'recorded in'} ${decision.place}`

@@ -32,28 +32,12 @@ export const changedFiles = (turns, turnId, { cwd, root }) => {
 	return [...new Set(changed.filter(file => !file.startsWith('..')))];
 };
 
-// The open concern a turn's changes went into, of those sharing its files (null when none does): one opened at the turn
-// or after it, since a concern opens with its first change, the oldest of those on a tie; failing that, the newest
-// opened before it, which the turn amended. Of either, the one sharing the most files.
-export const concernFor = (concerns, files, at) => {
-	const wanted = new Set(files);
-	const sharing = concerns
-		.map(concern => ({ concern, shared: concern.files.filter(file => wanted.has(file)).length }))
-		.filter(({ shared }) => shared);
-	const after = sharing.filter(({ concern }) => !at || !concern.authored || concern.authored >= at);
-	const [best] = (after.length ? after.toReversed() : sharing).toSorted((a, b) => b.shared - a.shared);
-
-	return best?.concern ?? null;
-};
-
 // Where a decision is filed: { concern } (open) or { commit } (pushed); null when nothing it changed is in a commit.
-// `linked` are the commits its turn and the next made; of those, the one sharing the most of its files.
+// `linked` are the commits its turn and the next made; of those, the one sharing the most of its files. With none, the
+// first commit after the turn to change its files, open or pushed: a session looked back on weeks later files into the
+// commits of its day, not the concerns open today.
 export const targetFor = async (root, { files, linked = [], concerns, at }) => {
 	const inStack = hash => concerns.find(open => open.hash === hash || open.folds.some(fold => fold.hash === hash));
-	const concern = !linked.length && concernFor(concerns, files, at);
-
-	if (concern) return { concern };
-
 	const hash = linked.length ? await mostShared(root, linked, files, inStack) : await commitAfter(root, files, at);
 
 	if (!hash) return null;

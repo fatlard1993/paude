@@ -131,6 +131,10 @@ test('the places are the commits since, the instruction files and the design doc
 	expect(places.text).toContain('Every commit says why.');
 	expect(places.names.has(path.join(dir, '.claude-home', 'skills', 'commits', 'SKILL.md'))).toBe(true);
 
+	git('commit', '-q', '--allow-empty', '-m', 'later');
+	// Oldest first: what records a decision is usually made soon after it
+	expect((await placesFor(dir, '2024-01-01T00:00:00Z')).text).toMatch(/per session\.[\s\S]*later/);
+
 	const before = places.fingerprint;
 
 	await writeFile(path.join(dir, 'CLAUDE.md'), 'Commits carry their reasoning. And more.\n');
@@ -147,14 +151,38 @@ test('a place found stays found; nowhere is looked into again once the places ch
 	const places = { fingerprint: 'a', names: new Set(['382a290']), text: 'commit 382a290\nper user' };
 	const asked = [];
 
-	await lookForPlaces(decisions, places, async prompt => {
-		asked.push(prompt);
+	await lookForPlaces(
+		decisions,
+		async () => places,
+		async prompt => {
+			asked.push(prompt);
 
-		return '{"1": "382a290", "2": null}';
-	});
+			return '{"1": "382a290", "2": null}';
+		},
+	);
 	expect(asked[0]).toContain('1. per user');
 	expect(toLookFor(decisions, 'a')).toEqual([]);
 	expect(toLookFor(decisions, 'b').map(decision => decision.id)).toEqual(['t2:0']);
+});
+
+test('each batch is looked for in the places since its earliest', async () => {
+	await initDecisions(dir);
+
+	const asked = [];
+
+	await lookForPlaces(
+		[
+			{ id: 't2:0', at: '2026-10-02T00:00:00.000Z', chose: 'five tries' },
+			{ id: 't1:0', at: '2026-10-01T00:00:00.000Z', chose: 'per user' },
+		],
+		async since => {
+			asked.push(since);
+
+			return { fingerprint: 'a', names: new Set(), text: '' };
+		},
+		async () => '{"1": null, "2": null}',
+	);
+	expect(asked).toEqual(['2026-10-01T00:00:00.000Z']);
 });
 
 test('writing one down asks for its place, and says what was rejected and why', () => {

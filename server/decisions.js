@@ -9,7 +9,7 @@ import { markInterruptions, steeringOf } from './catchUp';
 import describer from './describer';
 import { explainedHash, headCommit, repoRoot } from './git';
 import askHaiku, { jsonIn } from './haiku';
-import { runningSession } from './sessions/running';
+import { allRunning, runningSession } from './sessions/running';
 import { claudeHome } from './sessions/transcript';
 import { sessionTurns } from './timeline';
 import { linkedCommits, turnNote } from './turnCommits';
@@ -27,7 +27,6 @@ const JUDGED_AT_ONCE = 15;
 const ANSWERS = 600;
 // What the person said next, read with a turn
 const REPLY = 1000;
-const COMMITS = 200;
 // How much of each kind of place Haiku reads, at most, and of any one file
 const PLACE_CHARACTERS = 30_000;
 const FILE_CHARACTERS = 8000;
@@ -156,7 +155,8 @@ const skillFiles = async () => {
 
 // The places a decision would be written down, as Haiku reads them, with the names it may answer with and a
 // fingerprint that changes when any of them does: the commits since `since`, the instruction files (the project's, and
-// the person's own CLAUDE.md and skills), the design documents
+// the person's own CLAUDE.md and skills), the design documents. The commits oldest first: what records a decision is
+// usually made soon after it, and a session looked back on weeks later has more since than Haiku reads.
 export const placesFor = async (cwd, since) => {
 	const root = await repoRoot(cwd);
 	const userInstructions = path.join(claudeHome(), 'CLAUDE.md');
@@ -164,9 +164,7 @@ export const placesFor = async (cwd, since) => {
 		root ? (await gitOut(['ls-files', '-z', '--', ...patterns], root)).split('\0').filter(Boolean) : [];
 	const [head, log, instructions, designs] = await Promise.all([
 		root ? gitOut(['rev-parse', 'HEAD'], root) : '',
-		root && since
-			? gitOut(['log', `--since=${since}`, `--max-count=${COMMITS}`, '--format=commit %h%n%B%x00'], root)
-			: '',
+		root && since ? gitOut(['log', '--reverse', `--since=${since}`, '--format=commit %h%n%B%x00'], root) : '',
 		listed(['CLAUDE.md', '*/CLAUDE.md', 'AGENTS.md', '*/AGENTS.md']),
 		listed(['*.lld.md']),
 	]);
@@ -178,10 +176,15 @@ export const placesFor = async (cwd, since) => {
 			return info ? `${file}:${info.size}:${info.mtimeMs}` : '';
 		}),
 	);
-	const commits = log
-		.split('\0')
-		.map(entry => entry.trim())
-		.filter(Boolean);
+	const commits = [];
+	let length = 0;
+
+	for (const entry of log.split('\0').map(text => text.trim())) {
+		if (!entry) continue;
+		if (length + entry.length > PLACE_CHARACTERS) break;
+		commits.push(entry);
+		length += entry.length + 2;
+	}
 
 	return {
 		fingerprint: [head.trim(), ...stamps].join('|'),
@@ -191,7 +194,7 @@ export const placesFor = async (cwd, since) => {
 			...designs,
 		]),
 		text: [
-			commits.length && `Commits since:\n${commits.join('\n\n').slice(0, PLACE_CHARACTERS)}`,
+			commits.length && `Commits since:\n${commits.join('\n\n')}`,
 			`Instruction files:\n${await filesText(instructionFiles, root)}`,
 			designs.length && `Design documents:\n${await filesText(designs, root)}`,
 		]
@@ -270,15 +273,19 @@ const toLookFor = (decisions, fingerprint) =>
 			(!placed[decision.id] || (placed[decision.id].place === null && placed[decision.id].fingerprint !== fingerprint)),
 	);
 
-const lookFor = async (decisions, places, ask = askHaiku) => {
+// Each batch against the places since its earliest: `placesSince` gives them
+const lookFor = async (decisions, placesSince, ask = askHaiku) => {
+	const sorted = decisions.toSorted((a, b) => String(a.at).localeCompare(String(b.at)));
+
 	for (const decision of decisions) looking.add(decision.id);
 	try {
-		for (let at = 0; at < decisions.length; at += JUDGED_AT_ONCE) {
-			const batch = decisions.slice(at, at + JUDGED_AT_ONCE);
+		for (let at = 0; at < sorted.length; at += JUDGED_AT_ONCE) {
+			const batch = sorted.slice(at, at + JUDGED_AT_ONCE);
+			const places = await placesSince(batch[0].at);
 			const answer = parsePlaces(await ask(placePrompt(batch, places.text)), places.names);
 
 			if (!answer) {
-				for (const decision of decisions.slice(at)) failedAt.set(decision.id, Date.now());
+				for (const decision of sorted.slice(at)) failedAt.set(decision.id, Date.now());
 				break;
 			}
 			batch.forEach((decision, index) => {
@@ -367,17 +374,21 @@ const pushing = new Set();
 // Without anyone opening the panel: what the session settled is read, looked for and filed as it goes, from when the
 // person's next prompt settles the turn before it until nothing is under way. Filing still waits for the turn to end.
 // A few rounds whatever happens, as a prompt reaches the transcript a moment after its hook.
-export const followDecisions = (id, cwd, { every = FOLLOW_MS, settling = SETTLING_ROUNDS } = {}) => {
+export const followDecisions = (id, cwd, { every = FOLLOW_MS, settling = SETTLING_ROUNDS, whole = false } = {}) => {
 	if (!placesFile) return Promise.resolve();
 	if (following.has(id)) return following.get(id);
 
+	// Whether it settled: nothing left reading, looking or filing
 	const follow = (async () => {
 		for (let round = 0; round < FOLLOW_ROUNDS; round += 1) {
-			const { reading, decisions } = await sessionDecisions(id, cwd);
+			const { reading, held, decisions } = await sessionDecisions(id, cwd, { whole });
 
-			if (round >= settling && !reading && !decisions.some(decision => decision.looking || decision.filing)) return;
+			if (round >= settling && !reading && !held && !decisions.some(decision => decision.looking || decision.filing))
+				return true;
 			await Bun.sleep(every);
 		}
+
+		return false;
 	})().finally(() => following.delete(id));
 
 	following.set(id, follow);
@@ -416,12 +427,25 @@ export const answerDecision = async (decisionId, answer) => {
 	return true;
 };
 
+// Another session working in the repository: its commits would race a filing, unless it's this one's Claude waiting
+// on its push
+const othersWorkIn = (root, sessionId) =>
+	!pushing.has(sessionId) &&
+	[...allRunning()].some(
+		session =>
+			session.id !== sessionId &&
+			(session.cwd === root || session.cwd?.startsWith(`${root}${path.sep}`)) &&
+			statusOf(session.id) === 'working',
+	);
+
+// Whether it was held back for another session at work, to file once that one stops
 const backfill = async (sessionId, decisions, turns, cwd) => {
-	if (!decisions.some(decision => decision.kind !== 'deferred' && placed[decision.id]?.place === null)) return;
+	if (!decisions.some(decision => decision.kind !== 'deferred' && placed[decision.id]?.place === null)) return false;
 
 	const root = await repoRoot(cwd);
 
-	if (!root || filingIn.has(root)) return;
+	if (!root || filingIn.has(root)) return false;
+	if (othersWorkIn(root, sessionId)) return true;
 	for (const [key, at] of failedAt) if (key.startsWith('file:') && Date.now() - at > RETRY_MS) failedAt.delete(key);
 
 	const [concerns, links] = await Promise.all([openConcerns(root), linkedCommits(root)]);
@@ -429,6 +453,8 @@ const backfill = async (sessionId, decisions, turns, cwd) => {
 
 	// Started, not waited on: those being filed say so from now on, and the panel keeps reading until they're done
 	if (groups.length && !filingIn.has(root)) fileAll(root, groups).catch(() => {});
+
+	return false;
 };
 
 // The session's turns worth reading, each with what the person said next (which settles what Claude proposed): not a
@@ -445,9 +471,9 @@ export const turnsToRead = (turns, { running }) => {
 };
 
 // What the session settled, newest first: [{ id, turnId, at, asked, kind, chose, rejected, because, place, looking,
-// dismissed }], and whether Haiku is still reading turns or looking for places
-export const sessionDecisions = async (id, cwd, { withDismissed = false } = {}) => {
-	const turns = turnsToRead(await sessionTurns(id, cwd), {
+// dismissed }], whether Haiku is still reading turns or looking for places, and whether filing waits on another session
+export const sessionDecisions = async (id, cwd, { withDismissed = false, whole = false } = {}) => {
+	const turns = turnsToRead(await sessionTurns(id, cwd, { whole }), {
 		running: Boolean(runningSession(id)) || statusOf(id) === 'working',
 	});
 
@@ -464,19 +490,22 @@ export const sessionDecisions = async (id, cwd, { withDismissed = false } = {}) 
 	);
 	const set = new Set(dismissed[id] ?? []);
 	const open = decisions.filter(decision => !set.has(decision.id));
+	let held = false;
 
 	if (open.length && placesFile) {
-		const places = await placesFor(cwd, open.map(decision => decision.at).sort()[0]);
-		const unplaced = toLookFor(open, places.fingerprint);
+		// Without a since, no commits: only the fingerprint is wanted here
+		const { fingerprint } = await placesFor(cwd);
+		const unplaced = toLookFor(open, fingerprint);
 
-		if (unplaced.length) lookFor(unplaced, places);
+		if (unplaced.length) lookFor(unplaced, since => placesFor(cwd, since));
 		// Not mid-turn: Claude's own commits move HEAD, and a filing would race them
 		else if (pushing.has(id) || !['working', 'waiting'].includes(statusOf(id)))
-			await backfill(id, open, turns, cwd).catch(() => {});
+			held = await backfill(id, open, turns, cwd).catch(() => false);
 	}
 
 	return {
 		reading: turns.some(turn => found.describingOf(keyOf(turn))),
+		held,
 		decisions: decisions
 			.map(decision => ({
 				...decision,

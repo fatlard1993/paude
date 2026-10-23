@@ -7,6 +7,7 @@ import { listChanges } from '../changes';
 import { DiffError, diffSet, turnsWithChanges } from '../diffs';
 import { markLink, sessionLinks } from '../links';
 import { answerDecision, dismissDecision, sessionDecisions, writeDownPrompt } from '../decisions';
+import { lookedBack } from '../lookBack';
 import { askClaude } from '../claudeInbox';
 import { definitions, outline, searchSymbols } from '../symbols';
 import { sessionTimeline } from '../timeline';
@@ -405,8 +406,15 @@ const filesRoutes = async request => {
 
 		return Response.json(await sessionFeed(match.id, cwd, match.after));
 	}
-	if (pathname.endsWith('/decisions'))
-		return Response.json(await sessionDecisions(match.id, cwd, { withDismissed: match.all === '1' }));
+	// With what looking back over the project's other sessions has got to, and still needs
+	if (pathname.endsWith('/decisions')) {
+		const [settled, { lookingBack, earlier }] = await Promise.all([
+			sessionDecisions(match.id, cwd, { withDismissed: match.all === '1' }),
+			lookedBack(match.id, cwd),
+		]);
+
+		return Response.json({ ...settled, lookingBack, decisions: [...settled.decisions, ...earlier] });
+	}
 	if (pathname.endsWith('/links'))
 		return Response.json(await sessionLinks(match.id, cwd, { withHidden: match.all === '1' }));
 	// A file's outline, where a name is defined, or the names matching what's typed

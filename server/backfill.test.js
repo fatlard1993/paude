@@ -6,7 +6,6 @@ import { afterEach, beforeEach, expect, test } from 'bun:test';
 import {
 	backfillPrompt,
 	changedFiles,
-	concernFor,
 	explainInto,
 	fileInto,
 	openConcerns,
@@ -61,19 +60,31 @@ test("a decision's files are what its turn and the next one changed, as git name
 	expect(changedFiles(turns, 'gone', { cwd: repo, root: repo })).toEqual([]);
 });
 
-test("a turn's changes go to a concern opened at it or after, the oldest on a tie; else the newest it amended", () => {
-	// Newest first, as the stack lists them
-	const concerns = [
-		{ hash: 'c', authored: '2026-10-22T03:00:00.000Z', files: ['y.js', 'z.js'] },
-		{ hash: 'b', authored: '2026-10-22T02:00:00.000Z', files: ['x.js', 'y.js'] },
-		{ hash: 'a', authored: '2026-10-22T01:00:00.000Z', files: ['y.js', 'w.js'] },
-	];
+test("unlinked, a turn's changes go to the first commit after it to change its files, open or pushed", async () => {
+	const dated = async (subject, date) => {
+		await writeFile(path.join(repo, 'auth.js'), `${subject}\n`);
+		git('add', 'auth.js');
+		git('commit', '-q', '-m', subject, '--date', date);
 
-	expect(concernFor(concerns, ['y.js'], '2026-10-22T01:30:00.000Z')?.hash).toBe('b');
-	expect(concernFor(concerns, ['y.js', 'z.js'], '2026-10-22T01:30:00.000Z')?.hash).toBe('c');
-	expect(concernFor(concerns, ['w.js'], '2026-10-22T01:30:00.000Z')?.hash).toBe('a');
-	expect(concernFor(concerns, ['y.js'], '2026-10-22T04:00:00.000Z')?.hash).toBe('c');
-	expect(concernFor(concerns, ['other.js'], '2026-10-22T01:30:00.000Z')).toBeNull();
+		return git('rev-parse', 'HEAD');
+	};
+	const pushed = await dated('lock accounts', '2026-10-01T00:00:00Z');
+
+	git('push', '-q');
+
+	const open = await dated('lock per user', '2026-10-20T00:00:00Z');
+	const concerns = await openConcerns(repo);
+	const target = async at => {
+		const found = await targetFor(repo, { files: ['auth.js'], concerns, at });
+
+		return found.concern?.hash ?? found.commit.hash;
+	};
+
+	// A session looked back on weeks later: the commit of its day, not the concern open today
+	expect(await target('2026-09-30T00:00:00.000Z')).toBe(pushed);
+	expect(await target('2026-10-10T00:00:00.000Z')).toBe(open);
+	// After both, as a turn amending the latest would be
+	expect(await target('2026-10-21T00:00:00.000Z')).toBe(open);
 });
 
 test("Claude's reply keeps only questions with words in them", () => {
@@ -157,7 +168,11 @@ test("what filing asks waits for the person's answer, and is offered again with 
 	const turns = [turn('t1', 'auth.js')];
 	const where = { cwd: repo, root: repo, sessionId: 's' };
 
-	await lookForPlaces([decision], { fingerprint: 'a', names: new Set(), text: '' }, async () => '{"1": null}');
+	await lookForPlaces(
+		[decision],
+		async () => ({ fingerprint: 'a', names: new Set(), text: '' }),
+		async () => '{"1": null}',
+	);
 
 	const concerns = await openConcerns(repo);
 	const asked = [];

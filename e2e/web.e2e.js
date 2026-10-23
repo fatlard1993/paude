@@ -1672,6 +1672,72 @@ test(
 );
 
 test(
+	"decisions: when a turn ends, the project's earlier sessions are looked back on, and filed into the commits of their day",
+	async () => {
+		const server = await startServer();
+		const origin = await mkdtemp(path.join(os.tmpdir(), 'paude-origin-'));
+		const git = (...args) =>
+			Bun.spawnSync(['git', ...args], { cwd: server.project })
+				.stdout.toString()
+				.trim();
+		const lock = path.join(server.project, 'lock.js');
+		const earlier = crypto.randomUUID();
+
+		git('commit', '-q', '--allow-empty', '-m', 'start');
+		Bun.spawnSync(['git', 'init', '-q', '--bare', origin]);
+		git('remote', 'add', 'origin', origin);
+		git('push', '-q', '-u', 'origin', 'main');
+
+		// A session from before paude followed sessions: what it settled, and the commit it made, pushed long since
+		await server.writeTranscript(earlier, [
+			{
+				type: 'user',
+				uuid: 'old-1',
+				timestamp: '2026-10-01T12:00:01.000Z',
+				message: { role: 'user', content: 'lock accounts after failed logins' },
+			},
+			{
+				type: 'assistant',
+				timestamp: '2026-10-01T12:00:02.000Z',
+				message: { content: [{ type: 'tool_use', id: 'w', name: 'Write', input: { file_path: lock } }] },
+			},
+			{
+				type: 'user',
+				uuid: 'old-2',
+				timestamp: '2026-10-01T12:01:00.000Z',
+				message: { role: 'user', content: 'thanks' },
+			},
+		]);
+		await Bun.write(lock, 'per user\n');
+		git('add', 'lock.js');
+		git('commit', '-q', '-m', 'lock accounts', '--date', '2026-10-01T12:00:30Z');
+		git('push', '-q');
+
+		const pushed = git('rev-parse', 'HEAD');
+		const id = await server.newSession();
+
+		await server.writeTranscript(id, [
+			{
+				type: 'user',
+				uuid: 'now-1',
+				timestamp: '2026-10-20T12:00:01.000Z',
+				message: { role: 'user', content: 'tidy the readme' },
+			},
+		]);
+		await server.hook(id, { hook_event_name: 'UserPromptSubmit' });
+		await server.hook(id, { hook_event_name: 'Stop' });
+
+		const deadline = Date.now() + 100_000;
+
+		while (git('log', '-1', '--format=%s') !== 'why accounts lock per user' && Date.now() < deadline) await wait(1000);
+		expect(git('log', '-1', '--format=%B')).toBe(
+			`why accounts lock per user\n\nA new session would reset the count.\n\nExplains ${pushed}.`,
+		);
+	},
+	2 * TIMEOUT_MS,
+);
+
+test(
 	'decisions: a push waits mid-turn while what the session settled is filed, then is turned back to settle first',
 	async () => {
 		const server = await startServer();

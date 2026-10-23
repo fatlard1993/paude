@@ -9,6 +9,7 @@ import { sessionTimeline, sessionTurns } from '../timeline';
 import { turnEnded as noteTurnCommits, turnStarted } from '../turnCommits';
 import { HOOK_EVENTS, hookSecret } from '../hookSettings';
 import { claudeActive } from '../keepWarm';
+import { lookBack } from '../lookBack';
 import { limitHook } from '../usageLimit';
 import { trackProposals } from '../sessions/proposals';
 import { runningSession } from '../sessions/running';
@@ -80,6 +81,8 @@ const hooksRoutes = async request => {
 	if (ended || payload.hook_event_name === 'UserPromptSubmit')
 		(ended ? sessionTurns(id, cwd).then(turns => noteTurnCommits(id, turns.at(-1))) : Promise.resolve())
 			.then(() => followDecisions(id, cwd))
+			// Then the project's other sessions, once each
+			.then(() => ended && lookBack(cwd))
 			.catch(error => console.error('Following decisions failed:', error));
 	// Not waited for: Claude waits on its hook, and the answer can take a few seconds to reach the transcript
 	if (payload.hook_event_name === 'Stop')

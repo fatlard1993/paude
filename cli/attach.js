@@ -296,7 +296,10 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 		// Haiku is still reading turns, looking for where some are recorded, or filing them: read again shortly, while
 		// it's open
 		const followDecisions = panel => {
-			const busy = panel.data?.reading || panel.data?.decisions?.some(decision => decision.looking || decision.filing);
+			const busy =
+				panel.data?.reading ||
+				panel.data?.lookingBack ||
+				panel.data?.decisions?.some(decision => decision.looking || decision.filing);
 
 			if (!busy || state.panel !== panel) return;
 			setTimeout(async () => {

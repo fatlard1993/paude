@@ -18,11 +18,11 @@ const SAID_CHARACTERS = 800;
 const cache = new Map();
 const DECLINED = /doesn't want to proceed with this tool use/;
 
-export const lastLines = async file => {
+export const lastLines = async (file, bytes = TAIL_BYTES) => {
 	const size = file.size;
-	const text = await file.slice(Math.max(0, size - TAIL_BYTES)).text();
+	const text = await file.slice(Math.max(0, size - bytes)).text();
 	// Read from partway through a line: the first is cut short
-	const lines = text.split('\n').slice(size > TAIL_BYTES ? 1 : 0);
+	const lines = text.split('\n').slice(size > bytes ? 1 : 0);
 
 	return lines.flatMap(line => {
 		if (!line) return [];
@@ -184,17 +184,20 @@ export const timelineFrom = (lines, cwd) => {
 	return turns;
 };
 
-// Every turn in the part of the transcript read, oldest first, read again only when it has grown
-export const sessionTurns = async (id, cwd) => {
+// Every turn in the part of the transcript read, oldest first, read again only when it has grown; `whole` for every
+// turn it holds, for looking back over a session once
+export const sessionTurns = async (id, cwd, { whole = false } = {}) => {
 	const file = await transcriptFile(id, cwd);
 
 	if (!file) return [];
 
-	const key = `${file.name}:${file.size}`;
+	const key = `${file.name}:${file.size}:${whole}`;
+	const cached = `${id}:${whole}`;
 
-	if (cache.get(id)?.key !== key) cache.set(id, { key, turns: timelineFrom(await lastLines(file), cwd) });
+	if (cache.get(cached)?.key !== key)
+		cache.set(cached, { key, turns: timelineFrom(await lastLines(file, whole ? file.size : TAIL_BYTES), cwd) });
 
-	return cache.get(id).turns;
+	return cache.get(cached).turns;
 };
 
 // The latest turns, newest first, and how full the context is now
