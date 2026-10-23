@@ -693,6 +693,19 @@ test(
 			await page.type('.files .bar input', 'app.js');
 			await wait(500);
 			await press('.files .entry', 'app.js');
+
+			// The space between the button's icon and its label
+			const iconGap = await page.$$eval('.files .head button', buttons => {
+				const walk = buttons.find(button => button.textContent === 'Walk me through');
+				const label = document.createRange();
+
+				label.selectNodeContents(walk.lastChild);
+
+				return label.getBoundingClientRect().left - walk.firstChild.getBoundingClientRect().right;
+			});
+
+			expect(iconGap).toBeGreaterThan(0);
+
 			await press('.files .head button', 'Walk me through');
 			await press('[role=menu] li', 'This file');
 			await wait(1500);

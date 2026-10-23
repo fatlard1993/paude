@@ -1,4 +1,4 @@
-import { Button, Link } from '@vanilla-bean/components';
+import { Button, Link, theme } from '@vanilla-bean/components';
 
 // The page styles no bare elements, so fields carry the library's look by class, as its own components do; a button is
 // the library's Button and a link its Link, with no tooltip: a link here says where it goes by its title, if at all
@@ -24,11 +24,13 @@ export const element = (tag, className, text) => {
 
 export const icon = name => element('i', `fa-solid fa-${name}`);
 
-// A button with a label, an icon, or both
+// A button with a label, an icon, or both. The glyph is a child, which Button's own icon spacing doesn't reach, and
+// callers swap it by firstChild
 export const button = (label, onPress, { icon: name, title, className = '' } = {}) => {
 	const node = element('button', className);
 
 	if (name) node.append(icon(name));
+	if (name && label) node.firstChild.style.marginRight = theme.space.sm;
 	if (label) node.append(label);
 	if (title) node.title = title;
 	node.addEventListener('click', onPress);

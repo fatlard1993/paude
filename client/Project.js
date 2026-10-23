@@ -58,8 +58,7 @@ export default class Project extends View {
 		});
 		this.watchButton = ghostButton(this.bar, {
 			icon: 'eye-slash',
-			// The space parts the label from the icon, as the session bar's tools with text do
-			label: ' Watch',
+			label: 'Watch',
 			onPress: () => this.toggleWatching(),
 		});
 
@@ -208,7 +207,7 @@ export default class Project extends View {
 		this.watching = Boolean(watching);
 		this.watchButton.classList.toggle('active', this.watching);
 		this.watchButton.firstChild.className = `fa-solid fa-${this.watching ? 'eye' : 'eye-slash'}`;
-		this.watchButton.lastChild.textContent = this.watching ? ' Watching' : ' Watch';
+		this.watchButton.lastChild.textContent = this.watching ? 'Watching' : 'Watch';
 		this.watchButton.title = this.watching
 			? 'Watching every session here, new ones too. Click to stop watching them all.'
 			: 'Not watching. Click to watch every session here, new ones too.';
