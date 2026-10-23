@@ -26,6 +26,7 @@ const sessionData = ({ url, token }, id) => {
 		decisions: () => call('/decisions'),
 		dismissDecision: decision => send('POST', '/decisions/dismiss', { id: decision }),
 		writeDownDecision: decision => send('POST', '/decisions/write', { id: decision }),
+		answerDecision: (decision, answer) => send('POST', '/decisions/answer', { id: decision, answer }),
 		timeline: () => call('/timeline'),
 		verification: () => call('/verification'),
 		catchUp: since => send('POST', '/catch-up', { since }),

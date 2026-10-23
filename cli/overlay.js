@@ -81,6 +81,7 @@ const DRAFT_PROMPTS = {
 	chat: draft => (draft.ask ? 'Ask Claude:' : 'Message:'),
 	comment: draft => `Comment on "${firstLine(draft.quote)}":`,
 	reply: draft => (draft.ask ? 'Ask Claude in this thread:' : `Reply to ${printable(draft.author)}:`),
+	answer: draft => printable(draft.question),
 };
 
 const listView = state => {
@@ -282,6 +283,7 @@ const send = draft => {
 	if (draft.ask) return { type: 'ask', kind: draft.kind, text, commentId: draft.commentId };
 	if (draft.kind === 'comment') return { type: 'comment', quote: draft.quote, text, anchor: draft.anchor };
 	if (draft.kind === 'reply') return { type: 'reply', commentId: draft.commentId, text };
+	if (draft.kind === 'answer') return { type: 'sendAnswer', id: draft.id, text };
 
 	return { type: 'chat', text };
 };

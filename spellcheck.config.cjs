@@ -9,6 +9,7 @@ module.exports = {
 		'autostash',
 		'codebase',
 		'unpushed',
+		'backfill',
 		'favicon',
 		'tsv',
 		'visibilitychange',

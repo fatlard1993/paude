@@ -350,6 +350,15 @@ const Panel = styled(
 			font: inherit;
 		}
 
+		.decision-answer {
+			display: flex;
+			gap: 4px;
+		}
+
+		.decision-answer .link-search {
+			flex: 1;
+		}
+
 		.link {
 			display: flex;
 			flex-direction: column;

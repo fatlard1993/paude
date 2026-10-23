@@ -1459,7 +1459,7 @@ test(
 );
 
 test(
-	'the decisions panel leads with what was settled and not written down, until a commit says it',
+	'the decisions panel leads with what was settled and unrecorded, until a commit says it',
 	async () => {
 		const server = servers.turns;
 		const id = await server.newSession();
@@ -1500,7 +1500,7 @@ test(
 				() => document.querySelector('.decisions-panel')?.innerText.includes('Lock accounts per user'),
 				{ timeout: 20_000 },
 			);
-			expect(await panel()).toContain('Not written down 1');
+			expect(await panel()).toContain('Unrecorded 1');
 			expect(await panel()).toContain('Rejected: Per session');
 			expect(await panel()).toContain('❯ lock accounts after failed logins');
 
@@ -1510,12 +1510,94 @@ test(
 			);
 			await press('.decisions-panel .bar .close');
 			await press('[title^="Decisions"]');
-			await page.waitForFunction(
-				() => document.querySelector('.decisions-panel')?.innerText.includes('Written down 1'),
-				{ timeout: 20_000 },
+			await page.waitForFunction(() => document.querySelector('.decisions-panel')?.innerText.includes('Recorded 1'), {
+				timeout: 20_000,
+			});
+			await press('.decisions-panel .tabs button', 'Recorded');
+			expect(await panel()).toMatch(/recorded in [0-9a-f]{7}/);
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	'decisions: one recorded nowhere is filed into the commit it shaped, once the person answers what it asks',
+	async () => {
+		const server = await startServer();
+		const origin = await mkdtemp(path.join(os.tmpdir(), 'paude-origin-'));
+		const git = (...args) =>
+			Bun.spawnSync(['git', ...args], { cwd: server.project })
+				.stdout.toString()
+				.trim();
+		const lock = path.join(server.project, 'lock.js');
+
+		git('commit', '-q', '--allow-empty', '-m', 'start');
+		Bun.spawnSync(['git', 'init', '-q', '--bare', origin]);
+		git('remote', 'add', 'origin', origin);
+		git('push', '-q', '-u', 'origin', 'main');
+		await Bun.write(lock, 'per user\n');
+		git('add', 'lock.js');
+		git('commit', '-q', '-m', 'lock accounts');
+
+		const concern = git('rev-parse', '--short', 'HEAD');
+		const id = await server.newSession();
+
+		await server.writeTranscript(id, [
+			{
+				type: 'user',
+				uuid: 'prompt-1',
+				timestamp: '2026-10-07T12:00:01.000Z',
+				message: { role: 'user', content: 'lock accounts after failed logins' },
+			},
+			{
+				type: 'assistant',
+				timestamp: '2026-10-07T12:00:01.500Z',
+				message: { content: [{ type: 'tool_use', id: 'w', name: 'Write', input: { file_path: lock } }] },
+			},
+			{
+				type: 'user',
+				uuid: 'prompt-2',
+				timestamp: '2026-10-07T12:00:02.000Z',
+				message: { role: 'user', content: 'thanks' },
+			},
+		]);
+
+		const { browser, page } = await openBrowser('dom');
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+		const showing = text =>
+			page.waitForFunction(
+				found => document.querySelector('.decisions-panel')?.innerText.includes(found),
+				{
+					timeout: 30_000,
+				},
+				text,
 			);
-			await press('.decisions-panel .tabs button', 'Written down');
-			expect(await panel()).toMatch(/in [0-9a-f]{7}/);
+
+		try {
+			await page.goto(await server.loginLink(`/sessions/${id}`));
+			await page.waitForSelector('.xterm-screen');
+			await wait(1000);
+			await press('[title^="Decisions"]');
+			// Found nowhere, then offered to the commit that changed lock.js, which asks rather than guesses
+			await showing('Why per user and not per session?');
+			expect(git('log', '-1', '--format=%s')).toBe('lock accounts');
+
+			await page.type('.decision-answer input', 'a new session would reset the count');
+			await press('.decision-answer button', 'Answer');
+			await showing('Recorded 1');
+			expect(git('log', '-1', '--format=%s')).toBe('amend! lock accounts');
+			expect(git('log', '-1', '--format=%b')).toBe(
+				'lock accounts\n\nLocks per user, not per session: a new session would reset the count',
+			);
+			await press('.decisions-panel .tabs button', 'Recorded');
+			expect(await page.$eval('.decisions-panel', node => node.innerText)).toContain(`filed into ${concern}`);
 		} finally {
 			await browser.close();
 		}

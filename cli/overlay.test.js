@@ -33,6 +33,17 @@ describe('overlayKey', () => {
 		expect(state.draft).toBeNull();
 	});
 
+	test('an answer to what filing a decision asks is typed under the question, and enter sends it', () => {
+		const state = fresh({
+			presence: { clients: [] },
+			draft: { kind: 'answer', id: 't2:0', question: 'Main, or a branch?', text: '' },
+		});
+
+		typeAll(state, ['m', 'a', 'i', 'n']);
+		expect(overlayBox(state, 80, 30).lines.join('\n')).toContain('Main, or a branch? main');
+		expect(overlayKey(state, '\r')).toEqual({ type: 'sendAnswer', id: 't2:0', text: 'main' });
+	});
+
 	test('escape abandons the draft, and an empty one sends nothing', () => {
 		const state = fresh();
 

@@ -421,24 +421,58 @@ export const parseStack = commits => {
 	return concerns.reverse();
 };
 
-// { base, concerns: [{ hash, short, subject, body, folds: [{ hash, short, kind }] }] }
+// { base, concerns: [{ hash, short, authored, subject, originalSubject, body, folds: [{ hash, short, kind }] }] }
 export const gitStack = async root => {
 	const base = await openBase(root);
 
 	if (!base) return { base: null, concerns: [] };
 
-	const out = await must(['log', `--format=%H${UNIT}%h${UNIT}%s${UNIT}%b${RECORD}`, `${base}..HEAD`], root);
+	const out = await must(['log', `--format=%H${UNIT}%h${UNIT}%aI${UNIT}%s${UNIT}%b${RECORD}`, `${base}..HEAD`], root);
 	const commits = out
 		.split(RECORD)
 		.map(record => record.replace(/^\n/, ''))
 		.filter(record => record.trim())
 		.map(record => {
-			const [hash, short, subject, body = ''] = record.split(UNIT);
+			const [hash, short, authored, subject, body = ''] = record.split(UNIT);
 
-			return { hash, short, subject, body: body.trim() };
+			return { hash, short, authored: new Date(authored).toISOString(), subject, body: body.trim() };
 		});
 
 	return { base, concerns: parseStack(commits) };
+};
+
+// The files an open concern changes: its own commit's and those folding into it
+export const concernFiles = async (root, concern) => {
+	const lists = await Promise.all(
+		[concern.hash, ...concern.folds.map(fold => fold.hash)].map(hash =>
+			must(['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', '--root', hash], root),
+		),
+	);
+
+	return [...new Set(lists.flatMap(list => list.split('\0').filter(Boolean)))];
+};
+
+// An open concern's whole new message, filed as an amend! commit on top without touching the index or the working
+// tree, which may hold someone's work in progress. Only on a branch with nothing half done, and only if HEAD hasn't
+// moved meanwhile: the commit that does the moving wins, and this one is not filed.
+export const fileReasoning = async (root, into, message) => {
+	if ((await run(['symbolic-ref', '-q', 'HEAD'], root)).code !== 0) throw new GitError('Not on a branch');
+	if (await operationInProgress(root)) throw new GitError('Something is half done');
+
+	const concern = (await gitStack(root)).concerns.find(open => open.hash === into);
+
+	if (!concern) throw new GitError('That commit is pushed or gone');
+
+	const head = (await must(['rev-parse', 'HEAD'], root)).trim();
+	const filed = (
+		await must(['commit-tree', `${head}^{tree}`, '-p', head, '-F', '-'], root, {
+			input: `amend! ${concern.originalSubject}\n\n${message.trim()}\n`,
+		})
+	).trim();
+
+	await must(['update-ref', '-m', 'paude: reasoning filed', 'HEAD', filed, head], root);
+
+	return filed;
 };
 
 // What this branch adds to the base: its commits, and its changes as the diff view's files (since they parted)

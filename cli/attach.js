@@ -293,9 +293,10 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			if (kind === 'decisions') followDecisions(panel);
 		};
 
-		// Haiku is still reading turns, or looking for where some are written: read again shortly, while it's open
+		// Haiku is still reading turns, looking for where some are recorded, or filing them: read again shortly, while
+		// it's open
 		const followDecisions = panel => {
-			const busy = panel.data?.reading || panel.data?.decisions?.some(decision => decision.looking);
+			const busy = panel.data?.reading || panel.data?.decisions?.some(decision => decision.looking || decision.filing);
 
 			if (!busy || state.panel !== panel) return;
 			setTimeout(async () => {
@@ -547,7 +548,18 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			writeDecision: async ({ id: decision }) => {
 				const asked = await data.writeDownDecision(decision);
 
-				state.hint = asked.error ?? 'Asked: Claude writes it down once its prompt box is free.';
+				state.hint = asked.error ?? 'Asked: Claude records it once its prompt box is free.';
+				redraw();
+			},
+			answerDecision: ({ id: decision, question }) => {
+				state.draft = { kind: 'answer', id: decision, question, text: '' };
+				redraw();
+			},
+			sendAnswer: async ({ id: decision, text }) => {
+				const answered = await data.answerDecision(decision, text);
+
+				state.hint = answered.error ?? 'Answered: it goes into the commit when paude files it again.';
+				await reloadPanel();
 				redraw();
 			},
 			dismissDecision: async ({ id: decision }) => {

@@ -61,6 +61,20 @@ if (process.argv.includes('-p')) {
 		process.exit(0);
 	}
 
+	// Filing one into the commit it shaped: what it can't settle it asks, until the person has answered
+	if (prompt.includes('Write the whole message anew')) {
+		const answered = /They answered: (.*)$/m.exec(prompt)?.[1];
+
+		write(
+			JSON.stringify(
+				answered
+					? { message: `lock accounts\n\nLocks per user, not per session: ${answered}`, says: [1] }
+					: { message: '', says: [], ask: { 1: 'Why per user and not per session?' } },
+			),
+		);
+		process.exit(0);
+	}
+
 	write(
 		process.argv.includes('haiku')
 			? JSON.stringify(Object.fromEntries(links.map(([, number, url]) => [number, `described ${new URL(url).host}`])))

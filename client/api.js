@@ -80,8 +80,8 @@ export const getVerification = async sessionId =>
 export const getSymbols = async (sessionId, searchParameters) =>
 	await GET('/api/sessions/:id/symbols', { urlParameters: { id: sessionId }, searchParameters, invalidateAfter: 0 });
 
-// What the session settled, newest first, and whether each is written down: { reading, decisions: [{ id, kind, chose,
-// rejected, because, asked, at, place, looking }] }
+// What the session settled, newest first, and whether each is recorded: { reading, decisions: [{ id, kind, chose,
+// rejected, because, asked, at, place, filed, question, looking }] }
 export const getDecisions = async sessionId =>
 	await GET('/api/sessions/:id/decisions', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 
@@ -91,6 +91,10 @@ export const dismissDecision = async (sessionId, id) =>
 // Typed into Claude once its prompt box is free: write this one down where it belongs
 export const writeDownDecision = async (sessionId, id) =>
 	await POST('/api/sessions/:id/decisions/write', { urlParameters: { id: sessionId }, body: { id } });
+
+// The person's answer to what filing one into its commit asked them
+export const answerDecision = async (sessionId, id, answer) =>
+	await POST('/api/sessions/:id/decisions/answer', { urlParameters: { id: sessionId }, body: { id, answer } });
 
 // The links that came up in the session, newest first: [{ url, kind, context, by, count, firstAt, pinned }]
 export const getLinks = async sessionId =>

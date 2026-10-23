@@ -4,6 +4,7 @@ import path from 'path';
 import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
 import { statusOf } from './activity';
+import { changedFiles, concernFor, fileInto, openConcerns } from './backfill';
 import { markInterruptions, steeringOf } from './catchUp';
 import describer from './describer';
 import { repoRoot } from './git';
@@ -16,7 +17,9 @@ import gitEnvironment from './utils/gitEnvironment';
 // What a session decided that was never written down. The code holds what was decided and a commit can hold why; this
 // finds the rest: Haiku reads each finished turn once for its decisions (chosen, rejected, why), the directions the
 // person gave and the work put off, then looks for each in the places they'd be written down (the commits since, the
-// instruction files, the design documents). What's found nowhere is what the panel leads with.
+// instruction files, the design documents). What's found nowhere is filed into the open commit it shaped, once the
+// session is idle (backfill.js); what has no open commit, or needs the person to settle it, is what the panel leads
+// with.
 const KINDS = new Set(['decision', 'direction', 'deferred']);
 const TURNS_AT_ONCE = 4;
 const JUDGED_AT_ONCE = 15;
@@ -231,12 +234,24 @@ let marksFile;
 let dismissed = {};
 const looking = new Set();
 const failedAt = new Map();
+let filingFile;
+// { [decision id]: { into, question, answer, waiting, answered } }: the concern it was offered to, and what the person
+// was asked about it and answered. It isn't offered to that concern again unless an answer came since.
+let filing = {};
+// Repositories a filing runs in, one at a time each, and the decisions it's filing
+const filingIn = new Set();
+const filingNow = new Set();
 
 export const initDecisions = async dataDir => {
 	await found.init(dataDir);
 	placesFile = path.join(dataDir, 'decision-places.json');
 	marksFile = path.join(dataDir, 'decision-marks.json');
-	[placed, dismissed] = await Promise.all([readJsonFile(placesFile, {}), readJsonFile(marksFile, {})]);
+	filingFile = path.join(dataDir, 'decision-filing.json');
+	[placed, dismissed, filing] = await Promise.all([
+		readJsonFile(placesFile, {}),
+		readJsonFile(marksFile, {}),
+		readJsonFile(filingFile, {}),
+	]);
 };
 
 // Those still to look for: never looked for, or found nowhere since the places last changed
@@ -267,6 +282,82 @@ const lookFor = async (decisions, places, ask = askHaiku) => {
 	} finally {
 		for (const decision of decisions) looking.delete(decision.id);
 	}
+};
+
+// Those written down nowhere that an open concern's files say it shaped, grouped by concern: not work put off (no
+// commit's why), not one waiting on the person, not one that concern already left out
+export const toFile = (decisions, turns, concerns, { cwd, root }) => {
+	const groups = new Map();
+
+	for (const decision of decisions) {
+		if (decision.kind === 'deferred' || placed[decision.id]?.place !== null || failedAt.has(`file:${decision.id}`))
+			continue;
+
+		const concern = concernFor(concerns, changedFiles(turns, decision.turnId, { cwd, root }), decision.at);
+		const offered = filing[decision.id];
+
+		// Answered, but its commit was pushed meanwhile: nothing is left to file it into
+		if (!concern && offered?.answered) filing[decision.id] = { ...offered, answered: false };
+		if (!concern || (offered?.into === concern.hash && !offered.answered)) continue;
+		groups.set(concern, [...(groups.get(concern) ?? []), { ...decision, ...offered }]);
+	}
+
+	return [...groups];
+};
+
+const fileAll = async (root, groups, options) => {
+	const all = groups.flatMap(([, decisions]) => decisions);
+
+	filingIn.add(root);
+	for (const decision of all) filingNow.add(decision.id);
+	try {
+		for (const [concern, decisions] of groups) {
+			let outcomes;
+
+			try {
+				outcomes = await fileInto(root, concern, decisions, options);
+			} catch {
+				// No answer, or the stack moved under it: tried again later, against the stack as it is then
+				for (const decision of all) failedAt.set(`file:${decision.id}`, Date.now());
+				break;
+			}
+			decisions.forEach((decision, index) => {
+				const { into, place, question } = outcomes[index];
+
+				if (place) placed[decision.id] = { place, filed: true };
+				filing[decision.id] = question
+					? { into, question, waiting: true }
+					: { into, question: decision.question, answer: decision.answer };
+			});
+			await Promise.all([writeJsonFile(placesFile, () => placed), writeJsonFile(filingFile, () => filing)]);
+		}
+	} finally {
+		filingIn.delete(root);
+		for (const decision of all) filingNow.delete(decision.id);
+	}
+};
+
+// The person's answer to what filing one asked them: it's offered to its concern again, with the answer
+export const answerDecision = async (decisionId, answer) => {
+	if (!filing[decisionId]?.waiting) return false;
+	filing = { ...filing, [decisionId]: { ...filing[decisionId], answer, waiting: false, answered: true } };
+	await writeJsonFile(filingFile, () => filing);
+
+	return true;
+};
+
+const backfill = async (decisions, turns, cwd) => {
+	if (!decisions.some(decision => decision.kind !== 'deferred' && placed[decision.id]?.place === null)) return;
+
+	const root = await repoRoot(cwd);
+
+	if (!root || filingIn.has(root)) return;
+	for (const [key, at] of failedAt) if (key.startsWith('file:') && Date.now() - at > RETRY_MS) failedAt.delete(key);
+
+	const groups = toFile(decisions, turns, await openConcerns(root), { cwd, root });
+
+	// Started, not waited on: those being filed say so from now on, and the panel keeps reading until they're done
+	if (groups.length && !filingIn.has(root)) fileAll(root, groups).catch(() => {});
 };
 
 // The session's turns worth reading, each with what the person said next (which settles what Claude proposed): not a
@@ -308,6 +399,8 @@ export const sessionDecisions = async (id, cwd, { withDismissed = false } = {}) 
 		const unplaced = toLookFor(open, places.fingerprint);
 
 		if (unplaced.length) lookFor(unplaced, places);
+		// Not mid-turn: Claude's own commits move HEAD, and a filing would race them
+		else if (!['working', 'waiting'].includes(statusOf(id))) await backfill(open, turns, cwd).catch(() => {});
 	}
 
 	return {
@@ -317,6 +410,10 @@ export const sessionDecisions = async (id, cwd, { withDismissed = false } = {}) 
 				...decision,
 				place: placed[decision.id]?.place ?? null,
 				looking: looking.has(decision.id),
+				filed: Boolean(placed[decision.id]?.filed),
+				// Being filed, or answered and about to be
+				filing: filingNow.has(decision.id) || Boolean(filing[decision.id]?.answered),
+				question: filing[decision.id]?.waiting ? filing[decision.id].question : null,
 				dismissed: set.has(decision.id),
 			}))
 			.filter(decision => withDismissed || !decision.dismissed)
@@ -344,4 +441,4 @@ export const writeDownPrompt = decision =>
 		.filter(Boolean)
 		.join('\n');
 
-export { lookFor as lookForPlaces, toLookFor };
+export { fileAll, lookFor as lookForPlaces, toLookFor };

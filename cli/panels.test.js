@@ -239,35 +239,55 @@ describe('decisions', () => {
 		],
 	};
 
-	test('leads with what is not written down; Tab shows what is, and where', () => {
+	test('leads with what is unrecorded; Tab shows what is, and where', () => {
 		const panel = loaded('decisions', data);
 
 		expect(itemsOf(panel).map(item => item.id)).toEqual(['t2:0']);
-		expect(panelView(panel, 80, 20).join('\n')).toContain('Not written down 1');
+		expect(panelView(panel, 80, 20).join('\n')).toContain('Unrecorded 1');
 		panelKey(panel, '\t');
 		expect(itemsOf(panel).map(item => item.id)).toEqual(['t1:0']);
 
 		const lines = panelView(panel, 80, 20).join('\n');
 
 		expect(lines).toContain('Rejected: Per session');
-		expect(lines).toContain('in 382a290');
+		expect(lines).toContain('recorded in 382a290');
 	});
 
-	test('asks Claude to write down one not written down, or sets it aside', () => {
+	test('asks Claude to record one that is unrecorded, or sets it aside', () => {
 		const panel = loaded('decisions', data);
 
 		expect(panelKey(panel, 'w')).toEqual({ type: 'writeDecision', id: 't2:0' });
 		expect(panelKey(panel, 'x')).toEqual({ type: 'dismissDecision', id: 't2:0' });
 		panelKey(panel, '\t');
 		expect(panelKey(panel, 'w')).toEqual({ type: 'ignore' });
-		expect(panelKeys(panel, key => key).join(' ')).not.toContain('write it down');
+		expect(panelKeys(panel, key => key).join(' ')).not.toContain('record it');
+	});
+
+	test('what filing one asks is shown, and a answers it; one filed says which commit took it', () => {
+		const panel = loaded('decisions', {
+			reading: false,
+			decisions: [
+				{ ...data.decisions[0], question: 'Main, or a branch per change?' },
+				{ ...data.decisions[1], filed: true },
+			],
+		});
+
+		expect(panelView(panel, 80, 20).join('\n')).toContain('To file it, paude asks: Main, or a branch per change?');
+		expect(panelKey(panel, 'a')).toEqual({
+			type: 'answerDecision',
+			id: 't2:0',
+			question: 'Main, or a branch per change?',
+		});
+		panelKey(panel, '\t');
+		expect(panelView(panel, 80, 20).join('\n')).toContain('filed into 382a290');
+		expect(panelKey(panel, 'a')).toEqual({ type: 'ignore' });
 	});
 
 	test('says while it is still reading, and what an empty tab means', () => {
 		const lines = panelView(loaded('decisions', { reading: true, decisions: [] }), 80, 20).join('\n');
 
 		expect(lines).toContain('Reading the conversation for what it settled');
-		expect(lines).toContain('Nothing settled here waits to be written down.');
+		expect(lines).toContain('Nothing settled here waits to be recorded.');
 	});
 });
 

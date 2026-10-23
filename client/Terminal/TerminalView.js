@@ -20,6 +20,7 @@ import {
 	getDecisions,
 	dismissDecision,
 	writeDownDecision,
+	answerDecision,
 	getAsking,
 	getMeter,
 	setLifetime,
@@ -226,7 +227,7 @@ export default class TerminalView extends View {
 			});
 			this.decisionsButton = ghostButton(header, {
 				icon: 'scale-balanced',
-				title: "Decisions: what was settled here, and what isn't written down anywhere",
+				title: "Decisions: what was settled here, and what isn't recorded anywhere",
 				className: 'tool',
 				onPress: () => this.toggleDecisions(),
 			});
@@ -448,6 +449,7 @@ export default class TerminalView extends View {
 				load: () => getDecisions(this.options.id),
 				dismiss: id => dismissDecision(this.options.id, id),
 				writeDown: id => writeDownDecision(this.options.id, id),
+				answer: (id, answer) => answerDecision(this.options.id, id, answer),
 				close: () => this.toggleDecisions(false),
 			});
 			this.addResizeHandle(this.decisions.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });

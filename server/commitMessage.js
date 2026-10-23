@@ -108,10 +108,8 @@ export const draftCommitMessage = async (root, { sessionId, cwd, amend = false, 
 					since: since.trim() && new Date(since.trim()).toISOString(),
 				})
 			: [];
-	const child = Bun.spawn([claudeCommand(), '-p', '--output-format', 'text'], {
-		cwd: os.tmpdir(),
-		env: sessionEnvironment(),
-		stdin: new TextEncoder().encode(
+	return cleanMessage(
+		await claudeWrites(
 			commitPrompt({
 				subjects,
 				stat,
@@ -120,6 +118,15 @@ export const draftCommitMessage = async (root, { sessionId, cwd, amend = false, 
 				into: concern && [concern.subject, concern.body].filter(Boolean).join('\n\n'),
 			}),
 		),
+	);
+};
+
+// What a Claude of its own (claude -p) answers: run outside any project so it isn't listed among its sessions
+export const claudeWrites = async prompt => {
+	const child = Bun.spawn([claudeCommand(), '-p', '--output-format', 'text'], {
+		cwd: os.tmpdir(),
+		env: sessionEnvironment(),
+		stdin: new TextEncoder().encode(prompt),
 		stdout: 'pipe',
 		stderr: 'pipe',
 		timeout: TIMEOUT_MS,
@@ -129,5 +136,5 @@ export const draftCommitMessage = async (root, { sessionId, cwd, amend = false, 
 	if ((await child.exited) !== 0 || !out.trim())
 		throw new GitError(`Claude couldn't write one: ${(err || out).trim().slice(0, 500) || 'no answer'}`);
 
-	return cleanMessage(out);
+	return out;
 };

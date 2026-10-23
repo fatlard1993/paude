@@ -29,8 +29,8 @@ const ARTIFACT_KINDS = [
 	['archive', 'Archives'],
 ];
 const DECISION_TABS = [
-	['open', 'Not written down'],
-	['placed', 'Written down'],
+	['open', 'Unrecorded'],
+	['placed', 'Recorded'],
 ];
 const DECISION_KINDS = { decision: 'decided', direction: 'direction', deferred: 'put off' };
 const GIT_TABS = [
@@ -84,7 +84,7 @@ const mentionedLinks = panel =>
 
 const gitData = panel => panel.data?.[tabKey(panel)];
 
-// Those in a decisions tab: written down somewhere, or not
+// Those in a decisions tab: recorded somewhere, or not
 const decisionsIn = (panel, tab) =>
 	(panel.data?.decisions ?? []).filter(item => (tab === 'placed') === Boolean(item.place));
 
@@ -165,8 +165,8 @@ const EMPTY = {
 	links: 'No links came up yet.',
 	artifacts: 'Nothing made here yet: screenshots, pages and scripts show up as they are.',
 	activity: 'No turns yet.',
-	'decisions.open': 'Nothing settled here waits to be written down.',
-	'decisions.placed': 'Nothing settled here is written down yet.',
+	'decisions.open': 'Nothing settled here waits to be recorded.',
+	'decisions.placed': 'Nothing settled here is recorded yet.',
 	services: 'Nothing shared: a server the session starts shows here once it listens.',
 	'git.log': 'No commits yet.',
 	'git.stack': 'Nothing beyond what is pushed.',
@@ -249,10 +249,13 @@ const detailOf = (panel, item, width) => {
 			return lines(
 				item.rejected && `Rejected: ${item.rejected}`,
 				item.because && `Because: ${item.because}`,
+				item.question && `To file it, paude asks: ${item.question}`,
 				`❯ ${item.asked}`,
 				[
 					item.at && relativeTime(item.at),
-					item.place ? `in ${item.place}` : item.looking && 'looking for where it is written',
+					item.place
+						? `${item.filed ? 'filed into' : 'recorded in'} ${item.place}`
+						: item.looking && 'looking for where it is recorded',
 				]
 					.filter(Boolean)
 					.join(' · '),
@@ -431,7 +434,8 @@ export const panelKeys = (panel, keyCap) => {
 			add('y', 'copy its path', item);
 			break;
 		case 'decisions':
-			add('w', 'ask Claude to write it down', item && !item.place);
+			add('a', 'answer what paude asks', item?.question);
+			add('w', 'ask Claude to record it', item && !item.place);
 			add('x', 'set it aside', item);
 			break;
 		case 'activity':
@@ -547,6 +551,7 @@ export const panelKey = (panel, key) => {
 			break;
 		case 'decisions':
 			if (!item) break;
+			if (key === 'a' && item.question) return { type: 'answerDecision', id: item.id, question: item.question };
 			if (key === 'w' && !item.place) return { type: 'writeDecision', id: item.id };
 			if (key === 'x') return { type: 'dismissDecision', id: item.id };
 			break;

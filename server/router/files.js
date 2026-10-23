@@ -6,7 +6,7 @@ import { sessionArtifacts } from '../artifacts';
 import { listChanges } from '../changes';
 import { DiffError, diffSet, turnsWithChanges } from '../diffs';
 import { markLink, sessionLinks } from '../links';
-import { dismissDecision, sessionDecisions, writeDownPrompt } from '../decisions';
+import { answerDecision, dismissDecision, sessionDecisions, writeDownPrompt } from '../decisions';
 import { askClaude } from '../claudeInbox';
 import { definitions, outline, searchSymbols } from '../symbols';
 import { sessionTimeline } from '../timeline';
@@ -321,12 +321,12 @@ const filesRoutes = async request => {
 		return new Response(null, { status: 204 });
 	}
 
-	// Typed into the session's Claude, which writes it down where it belongs: a prompt, so the owner's alone
+	// Typed into the session's Claude, which records it where it belongs: a prompt, so the owner's alone
 	const writing = requestMatch('POST', '/api/sessions/:id/decisions/write', request);
 
 	if (writing) {
 		if (!identityOf(credentialOf(request))?.owner)
-			return new Response('Only the owner asks Claude to write it down', { status: 403 });
+			return new Response('Only the owner asks Claude to record it', { status: 403 });
 
 		const cwd = await sessionFolder(writing.id);
 		const { id } = await request.json();
@@ -335,6 +335,23 @@ const filesRoutes = async request => {
 		if (!decision) return new Response('That one is gone', { status: 404 });
 		if (!(await openSession(writing.id))) return new Response('Session not found', { status: 404 });
 		askClaude(writing.id, { prompt: writeDownPrompt(decision), answer: async () => {} });
+
+		return new Response(null, { status: 204 });
+	}
+
+	// What filing one into its commit asked the person: the answer goes into the commit's message, so the owner's alone
+	const answering = requestMatch('POST', '/api/sessions/:id/decisions/answer', request);
+
+	if (answering) {
+		if (!identityOf(credentialOf(request))?.owner)
+			return new Response('Only the owner answers for the commit', { status: 403 });
+
+		const { id, answer } = await request.json();
+
+		if (typeof id !== 'string' || typeof answer !== 'string' || !answer.trim())
+			return new Response('Which one, and what answer?', { status: 400 });
+		if (!(await answerDecision(id, answer.trim())))
+			return new Response('Nothing asked about that one', { status: 404 });
 
 		return new Response(null, { status: 204 });
 	}
