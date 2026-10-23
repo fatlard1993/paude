@@ -7,7 +7,7 @@ import path from 'path';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
 import { sessionHue, tintsOf } from '../shared/hues';
-import { VARIANTS, cellCenter, centerOf, openBrowser, startServer } from './harness';
+import { VARIANTS, cellCenter, centerOf, eventually, openBrowser, startServer, typeInDialog } from './harness';
 
 const TIMEOUT_MS = 60_000;
 const wait = ms => Bun.sleep(ms);
@@ -48,7 +48,7 @@ describe.each(VARIANTS)('%s', variant => {
 			const { browser, page } = await openSession(variant, servers.turns);
 
 			try {
-				expect(await page.$$eval('.fork-here', buttons => buttons.length)).toBe(2);
+				await eventually(async () => expect(await page.$$eval('.fork-here', buttons => buttons.length)).toBe(2));
 
 				// Clear of all the line, not only its done time: Claude goes on after it
 				const lineEnd = await cellCenter(
@@ -64,7 +64,9 @@ describe.each(VARIANTS)('%s', variant => {
 
 				await page.mouse.click(fork.x, fork.y);
 				await wait(800);
-				expect(await page.evaluate(() => document.body.innerText)).toMatch(/New session from here\?|Could not/);
+				await eventually(async () =>
+					expect(await page.evaluate(() => document.body.innerText)).toMatch(/New session from here\?|Could not/),
+				);
 			} finally {
 				await browser.close();
 			}
@@ -103,13 +105,17 @@ describe.each(VARIANTS)('%s', variant => {
 				await page.keyboard.press('c');
 				await page.keyboard.up('Control');
 				await wait(500);
-				expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('side-shell-copy');
+				await eventually(async () =>
+					expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('side-shell-copy'),
+				);
 
 				await page.evaluate(() => navigator.clipboard.writeText('before'));
 				await selectAll(6);
 				await page.click('.bar button[title^="Copy the selected"]');
 				await wait(500);
-				expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('side-shell-copy');
+				await eventually(async () =>
+					expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('side-shell-copy'),
+				);
 			} finally {
 				await browser.close();
 			}
@@ -130,7 +136,9 @@ describe.each(VARIANTS)('%s', variant => {
 				expect(copy).toBeTruthy();
 				await page.mouse.click(copy.x, copy.y);
 				await wait(500);
-				expect((await page.evaluate(() => navigator.clipboard.readText())).length).toBeGreaterThan(5);
+				await eventually(async () =>
+					expect((await page.evaluate(() => navigator.clipboard.readText())).length).toBeGreaterThan(5),
+				);
 			} finally {
 				await browser.close();
 			}
@@ -150,12 +158,16 @@ describe.each(VARIANTS)('%s', variant => {
 				await wait(300);
 				await page.mouse.click(where.x, where.y);
 				await wait(1000);
-				expect(await page.$eval('.files', panel => panel.classList.contains('open'))).toBe(true);
-				expect(await page.$eval('.files .band', band => band.style.top)).toBe('40px');
+				await eventually(async () =>
+					expect(await page.$eval('.files', panel => panel.classList.contains('open'))).toBe(true),
+				);
+				await eventually(async () => expect(await page.$eval('.files .band', band => band.style.top)).toBe('40px'));
 
 				await page.keyboard.press('Escape');
 				await wait(300);
-				expect(await page.$eval('.files', panel => panel.classList.contains('open'))).toBe(false);
+				await eventually(async () =>
+					expect(await page.$eval('.files', panel => panel.classList.contains('open'))).toBe(false),
+				);
 			} finally {
 				await browser.close();
 			}
@@ -202,17 +214,19 @@ test(
 
 		try {
 			await press('[title^="Git"]');
-			expect(await page.$eval('.git', panel => panel.classList.contains('open'))).toBe(true);
-			expect(await git('.bar .repository')).toBe('demo');
-			expect(await git('.body')).toContain('server/app.js');
+			await eventually(async () =>
+				expect(await page.$eval('.git', panel => panel.classList.contains('open'))).toBe(true),
+			);
+			await eventually(async () => expect(await git('.bar .repository')).toBe('demo'));
+			await eventually(async () => expect(await git('.body')).toContain('server/app.js'));
 
 			await page.type('.git .commit-box textarea', 'first from the panel');
 			await press('.git .commit-box button', 'Commit');
-			expect(await git('.body')).toContain('Nothing changed since the last commit');
-			expect(await page.$eval('.git .commit-box textarea', box => box.value)).toBe('');
+			await eventually(async () => expect(await git('.body')).toContain('Nothing changed since the last commit'));
+			await eventually(async () => expect(await page.$eval('.git .commit-box textarea', box => box.value)).toBe(''));
 
 			await press('.git .tabs button', 'History');
-			expect(await git('.body')).toContain('first from the panel');
+			await eventually(async () => expect(await git('.body')).toContain('first from the panel'));
 
 			// A big project's file list loads after the commit's diff, and leaves the diff showing
 			const slowList = request =>
@@ -223,22 +237,28 @@ test(
 			await page.setRequestInterception(true);
 			page.on('request', slowList);
 			await press('.git .history-item');
-			expect(await page.$eval('.files', panel => panel.classList.contains('open'))).toBe(true);
+			await eventually(async () =>
+				expect(await page.$eval('.files', panel => panel.classList.contains('open'))).toBe(true),
+			);
 			await wait(1500);
-			expect(await page.$eval('.files .viewer', viewer => viewer.textContent)).toContain('first from the panel');
+			await eventually(async () =>
+				expect(await page.$eval('.files .viewer', viewer => viewer.textContent)).toContain('first from the panel'),
+			);
 			page.off('request', slowList);
 			await page.setRequestInterception(false);
 
 			await press('.git .tabs button', 'Branches');
 			await page.type('.git .new-branch input', 'idea');
 			await press('.git .new-branch button', 'Create');
-			expect(await git('.bar .branch')).toBe('idea');
+			await eventually(async () => expect(await git('.bar .branch')).toBe('idea'));
 
 			await Bun.write(`${servers.turns.project}/server/app.js`, 'edited\n');
 			await press('.git .tabs button', 'Changes');
 			await press('.git .file [title="Discard"]');
 			await press('button', 'Discard');
-			expect(await Bun.file(`${servers.turns.project}/server/app.js`).text()).toStartWith('line 1');
+			await eventually(async () =>
+				expect(await Bun.file(`${servers.turns.project}/server/app.js`).text()).toStartWith('line 1'),
+			);
 		} finally {
 			await browser.close();
 		}
@@ -278,23 +298,25 @@ test(
 
 		try {
 			await press('[title^="Git"]');
-			expect(await body()).toContain('Not pushed 1');
-			expect(await body()).toContain('Chose per user over per session.');
+			await eventually(async () => expect(await body()).toContain('Not pushed 1'));
+			await eventually(async () => expect(await body()).toContain('Chose per user over per session.'));
 
 			await Bun.write(path.join(server.project, 'lock.js'), 'per user, five tries\n');
 			await press('.git .tabs button', 'Changes');
 			await press('.git .section-head button', 'Stage all');
 			await page.select('.git .commit-box select', concern);
-			expect(await page.$eval('.git .commit-box textarea', box => box.value)).toBe(
-				'lock per user\n\nChose per user over per session.',
+			await eventually(async () =>
+				expect(await page.$eval('.git .commit-box textarea', box => box.value)).toBe(
+					'lock per user\n\nChose per user over per session.',
+				),
 			);
 			await page.type('.git .commit-box textarea', ' Five tries, then locked.');
 			await press('.git .commit-box button', 'Commit');
-			expect(await body()).toContain('1 change to fold in');
-			expect(await page.$eval('.git .commit-box textarea', box => box.value)).toBe('');
+			await eventually(async () => expect(await body()).toContain('1 change to fold in'));
+			await eventually(async () => expect(await page.$eval('.git .commit-box textarea', box => box.value)).toBe(''));
 
 			await press('.git .section-head button', 'Settle');
-			expect(await body()).not.toContain('to fold in');
+			await eventually(async () => expect(await body()).not.toContain('to fold in'));
 			expect(git('log', '--format=%s%n%b', 'origin/main..HEAD')).toBe(
 				'lock per user\nChose per user over per session. Five tries, then locked.',
 			);
@@ -330,7 +352,7 @@ test(
 			const saved = /\/\S+\/attachments\/\S+-Screen-Shot\.png/.exec(await screenText())?.[0];
 
 			expect(saved).toBeTruthy();
-			expect(await Bun.file(saved).text()).toBe('png bytes');
+			await eventually(async () => expect(await Bun.file(saved).text()).toBe('png bytes'));
 		} finally {
 			await browser.close();
 		}
@@ -377,8 +399,8 @@ test(
 			await page.waitForSelector('.xterm-screen');
 			await page.goto(link);
 			await wait(1500);
-			expect(await page.title()).toBe('app loaded');
-			expect(await page.evaluate(() => document.body.dataset.echo)).toBe('echo ping');
+			await eventually(async () => expect(await page.title()).toBe('app loaded'));
+			await eventually(async () => expect(await page.evaluate(() => document.body.dataset.echo)).toBe('echo ping'));
 
 			const reachedPaude = await page.evaluate(async origin => {
 				try {
@@ -393,7 +415,7 @@ test(
 			expect(reachedPaude).toBe(false);
 
 			await stranger.page.goto(link);
-			expect(await stranger.page.title()).toBe('Log in to paude first');
+			await eventually(async () => expect(await stranger.page.title()).toBe('Log in to paude first'));
 		} finally {
 			dev.kill();
 			await Promise.all([browser.close(), stranger.browser.close()]);
@@ -433,7 +455,7 @@ test(
 			const sitePage = await browser.newPage();
 
 			await sitePage.goto(links[1][1].replace(/^https?:\/\/[^/]+/, server.previewUrl));
-			expect(await sitePage.title()).toBe('the site');
+			await eventually(async () => expect(await sitePage.title()).toBe('the site'));
 
 			const download = await sitePage.evaluate(
 				async url => (await fetch(url)).headers.get('content-disposition'),
@@ -463,16 +485,18 @@ test(
 				document.querySelector('.breadcrumbs a.trail').textContent,
 			]);
 
-			expect(await page.title()).toStartWith(name === project ? `${name} · ` : `${name} · ${project} · `);
-			expect(await page.title()).toEndWith('paude');
+			await eventually(async () =>
+				expect(await page.title()).toStartWith(name === project ? `${name} · ` : `${name} · ${project} · `),
+			);
+			await eventually(async () => expect(await page.title()).toEndWith('paude'));
 
 			await page.evaluate(target => (window.location.hash = `#/projects/${encodeURIComponent(target)}`), project);
 			await wait(800);
-			expect(await page.title()).toStartWith(`${project} · `);
+			await eventually(async () => expect(await page.title()).toStartWith(`${project} · `));
 
 			await page.evaluate(() => (window.location.hash = '#/'));
 			await wait(800);
-			expect(await page.title()).not.toContain(project);
+			await eventually(async () => expect(await page.title()).not.toContain(project));
 		} finally {
 			await browser.close();
 		}
@@ -495,8 +519,12 @@ test(
 			await page.waitForFunction(() => document.querySelector('.breadcrumbs a.trail + .waiting')?.offsetParent, {
 				timeout: 20_000,
 			});
-			expect(await page.$eval('.breadcrumbs a.trail + .waiting', badge => badge.textContent)).toBe('1');
-			expect(await page.$eval('.breadcrumbs .server-switch + .waiting', badge => badge.offsetParent)).toBeNull();
+			await eventually(async () =>
+				expect(await page.$eval('.breadcrumbs a.trail + .waiting', badge => badge.textContent)).toBe('1'),
+			);
+			await eventually(async () =>
+				expect(await page.$eval('.breadcrumbs .server-switch + .waiting', badge => badge.offsetParent)).toBeNull(),
+			);
 
 			const badge = await centerOf(page, '.breadcrumbs a.trail + .waiting');
 
@@ -510,7 +538,9 @@ test(
 			expect(rows.length).toBe(1);
 			await page.click('[role=menu] li:has(.detail)');
 			await wait(800);
-			expect(await page.evaluate(() => window.location.hash)).toBe(`#/sessions/${waiting}`);
+			await eventually(async () =>
+				expect(await page.evaluate(() => window.location.hash)).toBe(`#/sessions/${waiting}`),
+			);
 		} finally {
 			await browser.close();
 		}
@@ -562,17 +592,17 @@ test(
 			await page.type('textarea', 'rename the widget');
 			await page.evaluate(() => (window.location.hash = '#/'));
 			await page.waitForSelector('textarea');
-			expect(await box()).toBe('');
+			await eventually(async () => expect(await box()).toBe(''));
 			await page.type('textarea', 'where does this go?');
 			await page.evaluate(() => (window.location.hash = '#/projects/demo'));
 			await wait(500);
-			expect(await box()).toBe('rename the widget');
+			await eventually(async () => expect(await box()).toBe('rename the widget'));
 			await page.reload();
 			await page.waitForSelector('textarea');
-			expect(await box()).toBe('rename the widget');
+			await eventually(async () => expect(await box()).toBe('rename the widget'));
 			await page.evaluate(() => (window.location.hash = '#/'));
 			await wait(500);
-			expect(await box()).toBe('where does this go?');
+			await eventually(async () => expect(await box()).toBe('where does this go?'));
 
 			await page.evaluate(() => (window.location.hash = '#/projects/demo'));
 			await wait(500);
@@ -580,7 +610,7 @@ test(
 			await page.waitForFunction(() => window.location.hash.startsWith('#/sessions/'), { timeout: 20_000 });
 			await page.evaluate(() => (window.location.hash = '#/projects/demo'));
 			await wait(500);
-			expect(await box()).toBe('');
+			await eventually(async () => expect(await box()).toBe(''));
 		} finally {
 			await browser.close();
 		}
@@ -605,7 +635,9 @@ test(
 			Bun.spawnSync(['git', 'add', 'notes.txt'], { cwd: server.project });
 			await press('[title^="Git"]');
 			await press('.git button', 'Claude, write it');
-			expect(await page.$eval('.git .commit-box textarea', box => box.value)).toBe('describe the staged change');
+			await eventually(async () =>
+				expect(await page.$eval('.git .commit-box textarea', box => box.value)).toBe('describe the staged change'),
+			);
 			await press('.git .commit-box button', 'Commit');
 
 			await press('[title="Project files"]');
@@ -613,10 +645,14 @@ test(
 			await wait(500);
 			await press('.files .entry', 'notes.txt');
 			await press('.files .head button', 'Blame');
-			expect(await page.$eval('.files .blame', column => column.textContent)).toContain('Tester');
+			await eventually(async () =>
+				expect(await page.$eval('.files .blame', column => column.textContent)).toContain('Tester'),
+			);
 			await press('.files .head button', 'History');
-			expect(await page.$eval('.files .file-history', list => list.textContent)).toContain(
-				'describe the staged change',
+			await eventually(async () =>
+				expect(await page.$eval('.files .file-history', list => list.textContent)).toContain(
+					'describe the staged change',
+				),
 			);
 		} finally {
 			await browser.close();
@@ -652,23 +688,32 @@ test(
 			await page.keyboard.press('Enter');
 			await wait(800);
 
-			expect(await page.$eval('.notes .comment .place', place => place.textContent)).toContain('server/app.js line 1');
-			expect(await page.$$eval('.files .comment-mark', marks => marks.length)).toBe(1);
+			await eventually(async () =>
+				expect(await page.$eval('.notes .comment .place', place => place.textContent)).toContain(
+					'server/app.js line 1',
+				),
+			);
+			await eventually(async () => expect(await page.$$eval('.files .comment-mark', marks => marks.length)).toBe(1));
 
 			// The bar is over the line numbers: pressing it opens the comment rather than picking the line
 			await press('.files .source .comment-mark');
-			expect(await page.$$eval('.notes .comment.flash', comments => comments.length)).toBe(1);
+			await eventually(async () =>
+				expect(await page.$$eval('.notes .comment.flash', comments => comments.length)).toBe(1),
+			);
 
-			await press('.files .back');
 			await press('.notes .comment .place .where');
-			expect(await page.$eval('.files .viewer .path', path => path.textContent)).toBe('server/app.js');
-			expect(await page.$eval('.files .band', band => band.style.top)).toBe('0px');
+			await eventually(async () =>
+				expect(await page.$eval('.files .viewer .path', path => path.textContent)).toBe('server/app.js'),
+			);
+			await eventually(async () => expect(await page.$eval('.files .band', band => band.style.top)).toBe('0px'));
 
 			// A line added above it: the comment moves down with its line
 			await Bun.write(`${server.project}/server/app.js`, `line 0\n${original}`);
 			await press('.notes .comment .place .where');
-			expect(await page.$eval('.files .band', band => band.style.top)).toBe('20px');
-			expect(await page.$eval('.files .comment-mark', mark => mark.style.top)).toBe('20px');
+			await eventually(async () => expect(await page.$eval('.files .band', band => band.style.top)).toBe('20px'));
+			await eventually(async () =>
+				expect(await page.$eval('.files .comment-mark', mark => mark.style.top)).toBe('20px'),
+			);
 
 			// Its own line changed: it no longer marks it
 			await Bun.write(
@@ -676,7 +721,7 @@ test(
 				`line 0\nline one\n${original.split('\n').slice(1).join('\n')}`,
 			);
 			await press('.notes .comment .place .where');
-			expect(await page.$$eval('.files .comment-mark', marks => marks.length)).toBe(0);
+			await eventually(async () => expect(await page.$$eval('.files .comment-mark', marks => marks.length)).toBe(0));
 		} finally {
 			await Bun.write(`${server.project}/server/app.js`, original);
 			await browser.close();
@@ -717,20 +762,28 @@ test(
 			await page.keyboard.press('Enter');
 			await wait(1000);
 
-			expect(await page.$eval('.notes .comment .place', place => place.textContent)).toContain(
-				'server/app.js line 3, and line 3 before the change',
+			await eventually(async () =>
+				expect(await page.$eval('.notes .comment .place', place => place.textContent)).toContain(
+					'server/app.js line 3, and line 3 before the change',
+				),
 			);
 			// A bar on each side of the change
-			expect(await page.$$eval('.files .diff .comment-mark', marks => marks.length)).toBe(2);
+			await eventually(async () =>
+				expect(await page.$$eval('.files .diff .comment-mark', marks => marks.length)).toBe(2),
+			);
 
 			await press('.files .diff .added .comment-mark');
-			expect(await page.$$eval('.notes .comment.flash', comments => comments.length)).toBe(1);
+			await eventually(async () =>
+				expect(await page.$$eval('.notes .comment.flash', comments => comments.length)).toBe(1),
+			);
 
 			// Opened from the comments, it's back in the diff with its lines picked, both sides of the change
-			await press('.files .back');
+			// Away from the diff, then back to it from the comment
+			await press('.files .head button', 'Open file');
+			await eventually(async () => expect(await page.$$eval('.files .diff', diffs => diffs.length)).toBe(0));
 			await press('.notes .comment .place .where');
-			expect(await page.$$eval('.files .diff', diffs => diffs.length)).toBe(1);
-			expect(await page.$$eval('.files .diff .picked', rows => rows.length)).toBe(2);
+			await eventually(async () => expect(await page.$$eval('.files .diff', diffs => diffs.length)).toBe(1));
+			await eventually(async () => expect(await page.$$eval('.files .diff .picked', rows => rows.length)).toBe(2));
 		} finally {
 			await Bun.write(`${server.project}/server/app.js`, original);
 			await browser.close();
@@ -775,19 +828,19 @@ test(
 
 			const strip = () => page.$eval('.files .tour-strip', card => card.innerText);
 
-			expect(await strip()).toContain('It sets lines up, one after another.');
-			expect(await strip()).toContain('Not in it: No stop is on lines 6-20.');
+			await eventually(async () => expect(await strip()).toContain('It sets lines up, one after another.'));
+			await eventually(async () => expect(await strip()).toContain('Not in it: No stop is on lines 6-20.'));
 
 			await press('.files .tour-strip button', 'Start the tour');
-			expect(await strip()).toContain('The first two lines.');
-			expect(await page.$eval('.files .band', band => band.style.top)).toBe('0px');
+			await eventually(async () => expect(await strip()).toContain('The first two lines.'));
+			await eventually(async () => expect(await page.$eval('.files .band', band => band.style.top)).toBe('0px'));
 
 			await press('.files .tour-strip button', 'Next');
-			expect(await strip()).toContain('Two more, a little further on.');
-			expect(await page.$eval('.files .band', band => band.style.top)).toBe('60px');
+			await eventually(async () => expect(await strip()).toContain('Two more, a little further on.'));
+			await eventually(async () => expect(await page.$eval('.files .band', band => band.style.top)).toBe('60px'));
 
 			await press('.files .tour-strip button', 'Done');
-			expect(await page.$$eval('.files .tour-strip', strips => strips.length)).toBe(0);
+			await eventually(async () => expect(await page.$$eval('.files .tour-strip', strips => strips.length)).toBe(0));
 		} finally {
 			await browser.close();
 		}
@@ -820,8 +873,12 @@ test(
 			await wait(1500);
 			await press('.files .tour-strip button', 'Start the tour');
 
-			expect(await page.$eval('.files .tour-strip', card => card.innerText)).toContain('server/app.js');
-			expect(await page.$$eval('.files .body .picked', rows => rows.length)).toBeGreaterThan(0);
+			await eventually(async () =>
+				expect(await page.$eval('.files .tour-strip', card => card.innerText)).toContain('server/app.js'),
+			);
+			await eventually(async () =>
+				expect(await page.$$eval('.files .body .picked', rows => rows.length)).toBeGreaterThan(0),
+			);
 		} finally {
 			await Bun.write(`${server.project}/server/app.js`, original);
 			await browser.close();
@@ -864,25 +921,33 @@ test(
 					]),
 				);
 
-			expect(await heads()).toEqual([
-				['web/lib.js', ''],
-				['web/lib.test.js', 'tests lib.js'],
-				['web/app.js', ''],
-				['bun.lock', 'generated'],
-			]);
-			expect(await page.$eval('.files .diff', diff => diff.textContent)).not.toContain('three');
+			await eventually(async () =>
+				expect(await heads()).toEqual([
+					['web/lib.js', ''],
+					['web/lib.test.js', 'tests lib.js'],
+					['web/app.js', ''],
+					['bun.lock', 'generated'],
+				]),
+			);
+			await eventually(async () =>
+				expect(await page.$eval('.files .diff', diff => diff.textContent)).not.toContain('three'),
+			);
 
 			await press('.files .diff .file-head button', 'Show 3 changed lines');
-			expect(await page.$eval('.files .diff', diff => diff.textContent)).toContain('three');
+			await eventually(async () =>
+				expect(await page.$eval('.files .diff', diff => diff.textContent)).toContain('three'),
+			);
 
 			await press('.files .head button', 'Reading order');
 			await press('[role=menu] li', 'Alphabetical');
-			expect((await heads()).map(([path]) => path)).toEqual([
-				'bun.lock',
-				'web/app.js',
-				'web/lib.js',
-				'web/lib.test.js',
-			]);
+			await eventually(async () =>
+				expect((await heads()).map(([path]) => path)).toEqual([
+					'bun.lock',
+					'web/app.js',
+					'web/lib.js',
+					'web/lib.test.js',
+				]),
+			);
 		} finally {
 			await page.evaluate(() => localStorage.removeItem('paude.diffOrder'));
 			await browser.close();
@@ -927,16 +992,22 @@ test(
 			await press('.git .tabs button', 'History');
 			await press('.git .history-item', 'scale by two, and addUp');
 
-			expect(await groups()).toEqual(['Renamed sumUp → addUp in 2 files']);
-			expect(await page.$eval('.files .diff', diff => diff.textContent)).not.toContain('addUp(1)');
+			await eventually(async () => expect(await groups()).toEqual(['Renamed sumUp → addUp in 2 files']));
+			await eventually(async () =>
+				expect(await page.$eval('.files .diff', diff => diff.textContent)).not.toContain('addUp(1)'),
+			);
 
 			await press('.files .head button', 'Reading order');
 			await press('[role=menu] li', 'By function');
-			expect(await groups()).toEqual([
-				'scale in kit/lib.js: its signature changed',
-				'Renamed sumUp → addUp in 2 files',
-			]);
-			expect(await page.$eval('.files .diff', diff => diff.textContent)).toContain('uses scale');
+			await eventually(async () =>
+				expect(await groups()).toEqual([
+					'scale in kit/lib.js: its signature changed',
+					'Renamed sumUp → addUp in 2 files',
+				]),
+			);
+			await eventually(async () =>
+				expect(await page.$eval('.files .diff', diff => diff.textContent)).toContain('uses scale'),
+			);
 		} finally {
 			await page.evaluate(() => localStorage.removeItem('paude.diffOrder'));
 			await browser.close();
@@ -1012,14 +1083,20 @@ test(
 
 			await page.mouse.click(open.x, open.y);
 			await wait(800);
-			expect(await page.$eval('.activity .bar', bar => bar.textContent)).toContain('context 42k tokens');
-			expect(await page.$eval('.activity .turn-head', head => head.textContent)).toContain('1 failed');
+			await eventually(async () =>
+				expect(await page.$eval('.activity .bar', bar => bar.textContent)).toContain('context 42k tokens'),
+			);
+			await eventually(async () =>
+				expect(await page.$eval('.activity .turn-head', head => head.textContent)).toContain('1 failed'),
+			);
 
 			const step = await centerOf(page, '.activity .step-line');
 
 			await page.mouse.click(step.x, step.y);
 			await wait(300);
-			expect(await page.$eval('.activity .step-output', output => output.textContent)).toBe('3 pass\n1 fail');
+			await eventually(async () =>
+				expect(await page.$eval('.activity .step-output', output => output.textContent)).toBe('3 pass\n1 fail'),
+			);
 		} finally {
 			await browser.close();
 		}
@@ -1049,23 +1126,29 @@ test(
 
 		try {
 			await press('[title^="Tasks"]');
-			expect(await page.$$eval('.tasks .task-name', names => names.map(name => name.textContent.trim()))).toEqual([
-				'check',
-				'hello',
-			]);
+			await eventually(async () =>
+				expect(await page.$$eval('.tasks .task-name', names => names.map(name => name.textContent.trim()))).toEqual([
+					'check',
+					'hello',
+				]),
+			);
 
 			await press('.tasks .task [title^="Run "][title$="run check"]');
 			// The script takes as long as it takes to start and fail: waited for, not given a second
 			await page.waitForFunction(() => document.querySelector('.tasks .run-head')?.textContent.includes('failed'), {
 				timeout: 20_000,
 			});
-			expect(await page.$eval('.tasks .run-output', output => output.textContent)).toContain('something is off');
+			await eventually(async () =>
+				expect(await page.$eval('.tasks .run-output', output => output.textContent)).toContain('something is off'),
+			);
 
 			await press('.tasks .run-head [title="Back to the tasks"]');
-			expect(await page.$eval('.tasks .problem', problem => problem.textContent)).toContain('server/app.js:4');
+			await eventually(async () =>
+				expect(await page.$eval('.tasks .problem', problem => problem.textContent)).toContain('server/app.js:4'),
+			);
 
 			await press('.tasks .problem');
-			expect(await page.$eval('.files .band', band => band.style.top)).toBe('60px');
+			await eventually(async () => expect(await page.$eval('.files .band', band => band.style.top)).toBe('60px'));
 		} finally {
 			await browser.close();
 		}
@@ -1098,7 +1181,9 @@ test(
 			await press('.files .bar button', 'Symbols');
 			await page.type('.files .bar input', 'Tot');
 			await wait(1000);
-			expect(await page.$eval('.files .list', list => list.textContent)).toContain('lib/math.js:3');
+			await eventually(async () =>
+				expect(await page.$eval('.files .list', list => list.textContent)).toContain('lib/math.js:3'),
+			);
 
 			await page.$eval('.files .bar input', input => (input.value = ''));
 			await press('.files .bar button', 'Names');
@@ -1125,10 +1210,14 @@ test(
 			await page.mouse.click(where.x, where.y);
 			await page.keyboard.up('Control');
 			await wait(1000);
-			expect(await page.$eval('.files .viewer .path', path => path.textContent)).toBe('lib/math.js');
+			await eventually(async () =>
+				expect(await page.$eval('.files .viewer .path', path => path.textContent)).toBe('lib/math.js'),
+			);
 
 			await press('.files .head button', 'Outline');
-			expect(await page.$eval('.files .list', list => list.textContent)).toContain('Totals');
+			await eventually(async () =>
+				expect(await page.$eval('.files .list', list => list.textContent)).toContain('Totals'),
+			);
 
 			// Selecting a name (a double-click here, a long press on a phone) offers where it's used
 			const name = await page.evaluate(() => {
@@ -1147,8 +1236,12 @@ test(
 			await page.mouse.click(name.x, name.y, { count: 2, clickCount: 2 });
 			await wait(300);
 			await press('.files .name-actions button', 'Uses');
-			expect(await page.$eval('.files .list', list => list.textContent)).toContain('uses of add');
-			expect(await page.$eval('.files .list', list => list.textContent)).toContain('lib/use.js:3');
+			await eventually(async () =>
+				expect(await page.$eval('.files .list', list => list.textContent)).toContain('uses of add'),
+			);
+			await eventually(async () =>
+				expect(await page.$eval('.files .list', list => list.textContent)).toContain('lib/use.js:3'),
+			);
 		} finally {
 			await browser.close();
 		}
@@ -1182,17 +1275,25 @@ test(
 		try {
 			await press('[title^="Git"]');
 			await press('.git .tabs button', 'Review');
-			expect(await page.$eval('.git .body', body => body.textContent)).toContain('1 commit beyond main');
-			expect(await page.$eval('.git .body', body => body.textContent)).toContain('my change');
+			await eventually(async () =>
+				expect(await page.$eval('.git .body', body => body.textContent)).toContain('1 commit beyond main'),
+			);
+			await eventually(async () =>
+				expect(await page.$eval('.git .body', body => body.textContent)).toContain('my change'),
+			);
 			await press('.git .body button', 'Show the changes');
-			expect(await page.$eval('.files .viewer', viewer => viewer.textContent)).toContain('1 commit beyond main');
+			await eventually(async () =>
+				expect(await page.$eval('.files .viewer', viewer => viewer.textContent)).toContain('1 commit beyond main'),
+			);
 
 			git('merge', 'theirs');
 			await press('.git .tabs button', 'Changes');
-			expect(await page.$eval('.git .output', output => output.textContent)).toContain('A merge is half done');
+			await eventually(async () =>
+				expect(await page.$eval('.git .output', output => output.textContent)).toContain('A merge is half done'),
+			);
 			await press('.git .file button', 'Theirs');
 			await press('.git .output button', 'Continue');
-			expect(await Bun.file(`${server.project}/server/app.js`).text()).toBe('theirs\n');
+			await eventually(async () => expect(await Bun.file(`${server.project}/server/app.js`).text()).toBe('theirs\n'));
 			expect(git('log', '-1', '--format=%s').stdout.toString()).toContain('Merge');
 		} finally {
 			await browser.close();
@@ -1226,24 +1327,32 @@ test(
 		try {
 			await press('[title^="Git"]');
 			await press('.git .tabs button', 'Review');
-			expect(await body()).toContain('1 commit beyond main, and 1 file not committed');
-			expect(await body()).toContain('1 file changed and not committed, which it leaves out: server/extra.js');
-			expect(await body()).toContain('No comments open.');
-			expect(await page.$$eval('.git .ready-item.todo', items => items.length)).toBeGreaterThan(0);
+			await eventually(async () => expect(await body()).toContain('1 commit beyond main, and 1 file not committed'));
+			await eventually(async () =>
+				expect(await body()).toContain('1 file changed and not committed, which it leaves out: server/extra.js'),
+			);
+			await eventually(async () => expect(await body()).toContain('No comments open.'));
+			await eventually(async () =>
+				expect(await page.$$eval('.git .ready-item.todo', items => items.length)).toBeGreaterThan(0),
+			);
 
 			// The branch's diff reads with the work not committed
 			await press('.git .body button', 'Show the changes');
-			expect(await page.$eval('.files .viewer', viewer => viewer.textContent)).toContain(
-				'1 commit beyond main, and 1 file changed and not committed',
+			await eventually(async () =>
+				expect(await page.$eval('.files .viewer', viewer => viewer.textContent)).toContain(
+					'1 commit beyond main, and 1 file changed and not committed',
+				),
 			);
-			expect(await page.$eval('.files .viewer', viewer => viewer.textContent)).toContain('server/extra.js');
+			await eventually(async () =>
+				expect(await page.$eval('.files .viewer', viewer => viewer.textContent)).toContain('server/extra.js'),
+			);
 
 			// Committed, it's ready on that count
 			git('add', '-A');
 			git('commit', '-qm', 'extra');
 			await press('.git .tabs button', 'Changes');
 			await press('.git .tabs button', 'Review');
-			expect(await body()).toContain('Everything is committed.');
+			await eventually(async () => expect(await body()).toContain('Everything is committed.'));
 		} finally {
 			await browser.close();
 			await server.stop();
@@ -1273,7 +1382,9 @@ test(
 			await press('[title="Project files"]');
 			await press('.files .bar button', 'Contents');
 			await press('.files .list button', 'list the to-dos');
-			expect(await page.$eval('.files .list', list => list.textContent)).toContain('lib/a.js:1');
+			await eventually(async () =>
+				expect(await page.$eval('.files .list', list => list.textContent)).toContain('lib/a.js:1'),
+			);
 
 			await page.type('.files .bar input', 'oldName');
 			await wait(800);
@@ -1292,8 +1403,10 @@ test(
 
 			await page.mouse.click(confirm.x, confirm.y);
 			await wait(1000);
-			expect(await Bun.file(`${server.project}/lib/a.js`).text()).toBe(
-				'// TODO: rename\nconst newName = 1;\nexport default newName;\n',
+			await eventually(async () =>
+				expect(await Bun.file(`${server.project}/lib/a.js`).text()).toBe(
+					'// TODO: rename\nconst newName = 1;\nexport default newName;\n',
+				),
 			);
 
 			await press('[title^="Tasks"]');
@@ -1329,8 +1442,10 @@ test(
 			);
 
 			expect(visible).toEqual(['Menu']);
-			expect(await page.$eval('.breadcrumbs', crumbs => crumbs.innerText.replace(/\s+/g, ' ').trim())).toMatch(
-				/\/ demo (\d+ )?\/ New session$/,
+			await eventually(async () =>
+				expect(await page.$eval('.breadcrumbs', crumbs => crumbs.innerText.replace(/\s+/g, ' ').trim())).toMatch(
+					/\/ demo (\d+ )?\/ New session$/,
+				),
 			);
 
 			const menu = await centerOf(page, '.ghost.tools');
@@ -1342,7 +1457,9 @@ test(
 
 			await page.touchscreen.tap(chat.x, chat.y);
 			await wait(600);
-			expect(await page.$eval('.notes', notes => notes.classList.contains('open'))).toBe(true);
+			await eventually(async () =>
+				expect(await page.$eval('.notes', notes => notes.classList.contains('open'))).toBe(true),
+			);
 		} finally {
 			await browser.close();
 		}
@@ -1389,26 +1506,30 @@ test(
 			await page.goto(await server.loginLink(`/sessions/${id}`));
 			await page.waitForSelector('.xterm-screen');
 			await press('[title^="Links"]');
-			expect(await shown()).toEqual(['docs.acme.dev/api', 'github.com/acme/shop/issues/12']);
+			await eventually(async () =>
+				expect(await shown()).toEqual(['docs.acme.dev/api', 'github.com/acme/shop/issues/12']),
+			);
 
 			// Haiku describes each in the background; the panel looks again until it has
 			const described = () => page.$$eval('.links .link-context', lines => lines.map(line => line.textContent));
 
 			for (let tries = 0; tries < 20 && !(await described()).includes('described docs.acme.dev'); tries++)
 				await wait(500);
-			expect(await described()).toEqual(['described docs.acme.dev', 'described github.com']);
+			await eventually(async () =>
+				expect(await described()).toEqual(['described docs.acme.dev', 'described github.com']),
+			);
 
 			await press('.links .body button', 'Include what only commands printed');
-			expect((await shown()).length).toBe(3);
+			await eventually(async () => expect((await shown()).length).toBe(3));
 
 			await press('.links .tabs button', 'Tickets');
-			expect(await shown()).toEqual(['github.com/acme/shop/issues/12']);
+			await eventually(async () => expect(await shown()).toEqual(['github.com/acme/shop/issues/12']));
 
 			// Newest first, until the oldest is pinned
 			await press('.links .tabs button', 'All');
-			expect((await shown()).at(-1)).toBe('github.com/acme/shop/issues/12');
+			await eventually(async () => expect((await shown()).at(-1)).toBe('github.com/acme/shop/issues/12'));
 			await press('.links .link:last-of-type [title="Pin it to the top"]');
-			expect((await shown())[0]).toBe('github.com/acme/shop/issues/12');
+			await eventually(async () => expect((await shown())[0]).toBe('github.com/acme/shop/issues/12'));
 		} finally {
 			await browser.close();
 		}
@@ -1442,14 +1563,16 @@ test(
 
 			await page.mouse.click(links.x, links.y);
 			await page.waitForSelector('.links .link a');
-			expect(await shown()).toEqual(['docs.acme.dev/api']);
+			await eventually(async () => expect(await shown()).toEqual(['docs.acme.dev/api']));
 
 			await page.click('.xterm-screen');
 			await page.keyboard.type('work\n');
 			await page.waitForSelector('.state.busy', { timeout: 10_000 });
 			await server.writeTranscript(id, [first, said('Opened https://github.com/acme/shop/issues/12 for it.', 2)]);
 			await page.waitForFunction(() => document.querySelectorAll('.links .link a').length === 2, { timeout: 10_000 });
-			expect(await shown()).toEqual(['github.com/acme/shop/issues/12', 'docs.acme.dev/api']);
+			await eventually(async () =>
+				expect(await shown()).toEqual(['github.com/acme/shop/issues/12', 'docs.acme.dev/api']),
+			);
 			await page.keyboard.type('rest\n');
 		} finally {
 			await browser.close();
@@ -1500,9 +1623,9 @@ test(
 				() => document.querySelector('.decisions-panel')?.innerText.includes('Lock accounts per user'),
 				{ timeout: 20_000 },
 			);
-			expect(await panel()).toContain('Unrecorded 1');
-			expect(await panel()).toContain('Rejected: Per session');
-			expect(await panel()).toContain('❯ lock accounts after failed logins');
+			await eventually(async () => expect(await panel()).toContain('Unrecorded 1'));
+			await eventually(async () => expect(await panel()).toContain('Rejected: Per session'));
+			await eventually(async () => expect(await panel()).toContain('❯ lock accounts after failed logins'));
 
 			Bun.spawnSync(
 				['git', 'commit', '-q', '--allow-empty', '-m', 'lock per user', '-m', 'Chose per user over per session.'],
@@ -1514,7 +1637,7 @@ test(
 				timeout: 20_000,
 			});
 			await press('.decisions-panel .tabs button', 'Recorded');
-			expect(await panel()).toMatch(/recorded in [0-9a-f]{7}/);
+			await eventually(async () => expect(await panel()).toMatch(/recorded in [0-9a-f]{7}/));
 		} finally {
 			await browser.close();
 		}
@@ -1660,9 +1783,13 @@ test(
 				() => document.querySelector('.commit-message')?.innerText.includes('Recorded later'),
 				{ timeout: 20_000 },
 			);
-			expect(await page.$eval('.commit-message', node => node.innerText)).toContain('why accounts lock per user');
-			expect(await page.$eval('.commit-message', node => node.innerText)).toContain(
-				'A new session would reset the count.',
+			await eventually(async () =>
+				expect(await page.$eval('.commit-message', node => node.innerText)).toContain('why accounts lock per user'),
+			);
+			await eventually(async () =>
+				expect(await page.$eval('.commit-message', node => node.innerText)).toContain(
+					'A new session would reset the count.',
+				),
 			);
 		} finally {
 			await browser.close();
@@ -1792,7 +1919,7 @@ test(
 		const push = { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'git push' } };
 		const held = await server.hook(id, push);
 
-		expect((await held.json()).hookSpecificOutput.permissionDecision).toBe('deny');
+		await eventually(async () => expect((await held.json()).hookSpecificOutput.permissionDecision).toBe('deny'));
 		expect(git('log', '-1', '--format=%s')).toBe('amend! lock accounts');
 
 		// Nothing new to file the next time, so it goes
@@ -1879,7 +2006,9 @@ test(
 				'lock accounts\n\nLocks per user, not per session: a new session would reset the count',
 			);
 			await press('.decisions-panel .tabs button', 'Recorded');
-			expect(await page.$eval('.decisions-panel', node => node.innerText)).toContain(`filed into ${concern}`);
+			await eventually(async () =>
+				expect(await page.$eval('.decisions-panel', node => node.innerText)).toContain(`filed into ${concern}`),
+			);
 		} finally {
 			await browser.close();
 		}
@@ -1917,9 +2046,13 @@ test(
 
 			// The ticket came up in both sessions, the docs in one; each session named by what began it
 			expect(links).toEqual({ 'github.com/acme/shop/issues/12': 2, 'docs.acme.dev/api': 1 });
-			expect(await page.$eval('.project-links .link-sessions', line => line.textContent)).toContain('see https://');
+			await eventually(async () =>
+				expect(await page.$eval('.project-links .link-sessions', line => line.textContent)).toContain('see https://'),
+			);
 			// Shown, not only there: the panel's body is sized for a session's side and could collapse to nothing here
-			expect(await page.$eval('.project-links .body', body => body.clientHeight >= body.scrollHeight - 1)).toBe(true);
+			await eventually(async () =>
+				expect(await page.$eval('.project-links .body', body => body.clientHeight >= body.scrollHeight - 1)).toBe(true),
+			);
 		} finally {
 			await browser.close();
 			await server.stop();
@@ -1969,11 +2102,13 @@ test(
 			const opened = await shown();
 
 			await page.keyboard.press('ArrowRight');
-			expect(await shown()).not.toBe(opened);
-			expect(await page.$eval('.viewer-count', count => count.textContent)).toMatch(/ of 2$/);
+			await eventually(async () => expect(await shown()).not.toBe(opened));
+			await eventually(async () =>
+				expect(await page.$eval('.viewer-count', count => count.textContent)).toMatch(/ of 2$/),
+			);
 
 			await page.keyboard.press('Escape');
-			expect(await shown()).toBeNull();
+			await eventually(async () => expect(await shown()).toBeNull());
 		} finally {
 			await browser.close();
 			await server.stop();
@@ -2034,13 +2169,15 @@ test(
 
 		try {
 			await press('[title^="Catch me up"]');
-			expect(await page.$eval('body', body => body.innerText)).toContain('Catch up on this session?');
+			await eventually(async () =>
+				expect(await page.$eval('body', body => body.innerText)).toContain('Catch up on this session?'),
+			);
 			await press('button', 'Not now');
-			expect(await touring()).toBe(false);
+			await eventually(async () => expect(await touring()).toBe(false));
 
 			await press('[title^="Catch me up"]');
 			await press('button', 'Take the tour');
-			expect(await touring()).toBe(true);
+			await eventually(async () => expect(await touring()).toBe(true));
 		} finally {
 			await browser.close();
 		}
@@ -2086,14 +2223,16 @@ test(
 
 			await press('.links .artifact .name', 'notes.txt');
 			expect(page.url()).toContain(`/sessions/${id}`);
-			expect(await page.$eval('.files', panel => panel.classList.contains('open'))).toBe(true);
-			expect(await reading()).toContain('made outside');
-			expect(await reading()).not.toContain('Edit');
+			await eventually(async () =>
+				expect(await page.$eval('.files', panel => panel.classList.contains('open'))).toBe(true),
+			);
+			await eventually(async () => expect(await reading()).toContain('made outside'));
+			await eventually(async () => expect(await reading()).not.toContain('Edit'));
 
 			// The list stays open beside the files on a wide screen
 			await press('.links .artifact .name', 'report.txt');
-			expect(await reading()).toContain('made inside');
-			expect(await reading()).toContain('Edit');
+			await eventually(async () => expect(await reading()).toContain('made inside'));
+			await eventually(async () => expect(await reading()).toContain('Edit'));
 		} finally {
 			await browser.close();
 			await server.stop();
@@ -2142,22 +2281,28 @@ test(
 			await page.waitForFunction(() => document.body.innerText.includes('Start Claude in this pull request?'), {
 				timeout: 20_000,
 			});
-			expect(await page.evaluate(() => document.body.innerText)).toContain(
-				'This pull request adds or changes files Claude Code reads and can run on start: .claude/settings.json.',
+			await eventually(async () =>
+				expect(await page.evaluate(() => document.body.innerText)).toContain(
+					'This pull request adds or changes files Claude Code reads and can run on start: .claude/settings.json.',
+				),
 			);
-			expect(await sessions()).toBe(0);
+			await eventually(async () => expect(await sessions()).toBe(0));
 
 			await press('button', "Don't start");
-			expect(await page.evaluate(() => document.body.innerText)).toContain(
-				`Claude wasn't started. The worktree is at ${worktree}`,
+			await eventually(async () =>
+				expect(await page.evaluate(() => document.body.innerText)).toContain(
+					`Claude wasn't started. The worktree is at ${worktree}`,
+				),
 			);
-			expect(await Bun.file(path.join(worktree, '.claude', 'settings.json')).exists()).toBe(true);
-			expect(await sessions()).toBe(0);
+			await eventually(async () =>
+				expect(await Bun.file(path.join(worktree, '.claude', 'settings.json')).exists()).toBe(true),
+			);
+			await eventually(async () => expect(await sessions()).toBe(0));
 
 			// The worktree is picked, so starting is one press away once it's been looked over
 			await press('button', 'Start session');
 			await page.waitForFunction(() => window.location.hash.startsWith('#/sessions/'), { timeout: 10_000 });
-			expect(await sessions()).toBe(1);
+			await eventually(async () => expect(await sessions()).toBe(1));
 		} finally {
 			await browser.close();
 			await server.stop();
@@ -2185,23 +2330,29 @@ test(
 			await press('.files .entry.folder', 'server');
 			await press('.files [title="New file or folder"]');
 			await press('[role=menu] li', 'New file');
-			expect(await page.$eval('dialog[open] input', input => input.value)).toBe('server/');
-			await page.keyboard.type('util.js');
+			await eventually(async () =>
+				expect(await page.$eval('dialog[open] input', input => input.value)).toBe('server/'),
+			);
+			await typeInDialog(page, 'util.js');
 			await page.keyboard.press('Enter');
 			await wait(1500);
 
-			expect(await page.$eval('.files .viewer .path', path => path.textContent)).toBe('server/util.js');
-			expect(await page.$$eval('.files .cm-editor', editors => editors.length)).toBe(1);
-			expect(await Bun.file(`${server.project}/server/util.js`).exists()).toBe(true);
+			await eventually(async () =>
+				expect(await page.$eval('.files .viewer .path', path => path.textContent)).toBe('server/util.js'),
+			);
+			await eventually(async () => expect(await page.$$eval('.files .cm-editor', editors => editors.length)).toBe(1));
+			await eventually(async () => expect(await Bun.file(`${server.project}/server/util.js`).exists()).toBe(true));
 
 			await press('.files .head button', 'Cancel');
 			await press('.files [title="New file or folder"]');
 			await press('[role=menu] li', 'New folder');
-			await page.keyboard.type('empty');
+			await typeInDialog(page, 'empty');
 			await page.keyboard.press('Enter');
 			await wait(1500);
 
-			expect(await labels()).toEqual(expect.arrayContaining(['server', 'empty', 'util.js']));
+			await eventually(async () =>
+				expect(await labels()).toEqual(expect.arrayContaining(['server', 'empty', 'util.js'])),
+			);
 		} finally {
 			await rm(`${server.project}/server/util.js`, { force: true });
 			await rm(`${server.project}/server/empty`, { recursive: true, force: true });
@@ -2234,7 +2385,7 @@ test(
 			await press('[role=menu] li', item);
 		};
 		const answer = async text => {
-			await page.keyboard.type(text);
+			await typeInDialog(page, text);
 			await page.keyboard.press('Enter');
 			await wait(1500);
 		};
@@ -2248,17 +2399,19 @@ test(
 			// A rename picks the name short of its extension to type over
 			await menu('notes.md', 'Rename...');
 			await answer('readme');
-			expect([await there('readme.md'), await there('notes.md')]).toEqual([true, false]);
+			await eventually(async () => expect([await there('readme.md'), await there('notes.md')]).toEqual([true, false]));
 
 			await menu('readme.md', 'Duplicate');
-			expect(await there('readme copy.md')).toBe(true);
+			await eventually(async () => expect(await there('readme copy.md')).toBe(true));
 
 			await menu('readme copy.md', 'Cut');
 			await menu('server', 'Paste');
-			expect([await there('server/readme copy.md'), await there('readme copy.md')]).toEqual([true, false]);
+			await eventually(async () =>
+				expect([await there('server/readme copy.md'), await there('readme copy.md')]).toEqual([true, false]),
+			);
 
 			await menu('readme.md', 'Delete');
-			expect(await there('readme.md')).toBe(false);
+			await eventually(async () => expect(await there('readme.md')).toBe(false));
 			// The newest toast's Undo, as the move's may still be showing
 			await page.$$eval('button', found =>
 				found
@@ -2267,21 +2420,23 @@ test(
 					.click(),
 			);
 			await wait(1500);
-			expect(await there('readme.md')).toBe(true);
-			expect(await there('server/readme copy.md')).toBe(true);
+			await eventually(async () => expect(await there('readme.md')).toBe(true));
+			await eventually(async () => expect(await there('server/readme copy.md')).toBe(true));
 
 			await press('.files .list .entry', 'readme.md');
 			await page.focus('.files .list');
 			await page.keyboard.press('F2');
 			await wait(500);
 			await answer('guide');
-			expect(await there('guide.md')).toBe(true);
+			await eventually(async () => expect(await there('guide.md')).toBe(true));
 
 			const [chooser] = await Promise.all([page.waitForFileChooser(), menu('server', 'Upload files...')]);
 
 			await chooser.accept([upload]);
 			await wait(1500);
-			expect(await Bun.file(path.join(server.project, 'server/logo.svg')).text()).toBe('<svg/>\n');
+			await eventually(async () =>
+				expect(await Bun.file(path.join(server.project, 'server/logo.svg')).text()).toBe('<svg/>\n'),
+			);
 		} finally {
 			await browser.close();
 			await server.stop();
@@ -2321,7 +2476,7 @@ test(
 			await page.keyboard.down('Control');
 			await press('.files .list .entry', 'two.md');
 			await page.keyboard.up('Control');
-			expect(await selected()).toEqual(['one.md', 'two.md']);
+			await eventually(async () => expect(await selected()).toEqual(['one.md', 'two.md']));
 
 			// What a browser does when a row is dragged onto a folder
 			await page.evaluate(() => {
@@ -2338,11 +2493,13 @@ test(
 				fire(row('server'), 'drop');
 			});
 			await wait(1500);
-			expect([await there('server/one.md'), await there('server/two.md'), await there('one.md')]).toEqual([
-				true,
-				true,
-				false,
-			]);
+			await eventually(async () =>
+				expect([await there('server/one.md'), await there('server/two.md'), await there('one.md')]).toEqual([
+					true,
+					true,
+					false,
+				]),
+			);
 
 			// A finger held on a row opens its menu, for the selection the row is part of
 			await page.evaluate(() => {
@@ -2407,32 +2564,34 @@ test(
 			await chord('Control', 'd');
 			await chord('Control', 'd');
 			await page.keyboard.type('gamma');
-			expect(await text()).toBe('gamma beta gamma\nbeta\n');
+			await eventually(async () => expect(await text()).toBe('gamma beta gamma\nbeta\n'));
 
 			await chord('Control', 'h');
 			await page.type('.files .cm-search [name=search]', 'beta');
 			await page.type('.files .cm-search [name=replace]', 'delta');
 			await press('.files .cm-search button[name=replaceAll]');
 
-			expect(await text()).toBe('gamma delta gamma\ndelta\n');
+			await eventually(async () => expect(await text()).toBe('gamma delta gamma\ndelta\n'));
 
 			await page.focus('.files .cm-content');
 			await chord('Control', 'z');
-			expect(await text()).toBe('gamma beta gamma\nbeta\n');
+			await eventually(async () => expect(await text()).toBe('gamma beta gamma\nbeta\n'));
 
 			await chord('Control', 'g');
 			expect(await page.$$eval('.files .cm-goto-line', panels => panels.length)).toBe(1);
 			await page.keyboard.press('Escape');
 			await page.focus('.files .cm-content');
 			await chord('Alt', 'z');
-			expect(await page.$eval('.files .cm-content', content => content.classList.contains('cm-lineWrapping'))).toBe(
-				true,
+			await eventually(async () =>
+				expect(await page.$eval('.files .cm-content', content => content.classList.contains('cm-lineWrapping'))).toBe(
+					true,
+				),
 			);
 			await chord('Alt', 'z');
 
 			await chord('Control', 's');
 			await wait(1000);
-			expect(await Bun.file(file).text()).toBe('gamma beta gamma\nbeta\n');
+			await eventually(async () => expect(await Bun.file(file).text()).toBe('gamma beta gamma\nbeta\n'));
 		} finally {
 			await browser.close();
 			await server.stop();
@@ -2480,21 +2639,23 @@ test(
 			await chord('Control', '/');
 			await page.keyboard.press('End');
 			await page.keyboard.type('(');
-			expect(await text()).toBe('// const a = 1;()\n');
+			await eventually(async () => expect(await text()).toBe('// const a = 1;()\n'));
 			await wait(800);
 
 			await openNotes();
-			expect(await page.$eval('.files .viewer', viewer => viewer.innerText)).toContain(
-				"An edit of this file you didn't save",
+			await eventually(async () =>
+				expect(await page.$eval('.files .viewer', viewer => viewer.innerText)).toContain(
+					"An edit of this file you didn't save",
+				),
 			);
 			await press('.files .conflict button', 'Restore it');
-			expect(await text()).toBe('// const a = 1;()\n');
+			await eventually(async () => expect(await text()).toBe('// const a = 1;()\n'));
 			await chord('Control', 's');
 			await wait(1000);
-			expect(await Bun.file(file).text()).toBe('// const a = 1;()\n');
+			await eventually(async () => expect(await Bun.file(file).text()).toBe('// const a = 1;()\n'));
 
 			await openNotes();
-			expect(await page.$$eval('.files .conflict', notices => notices.length)).toBe(0);
+			await eventually(async () => expect(await page.$$eval('.files .conflict', notices => notices.length)).toBe(0));
 		} finally {
 			await browser.close();
 			await server.stop();
@@ -2533,12 +2694,18 @@ test(
 			await page.evaluate(() => document.activeElement?.blur());
 
 			await chord('Control', 'p');
-			expect(await page.$eval('.files', panel => panel.classList.contains('open'))).toBe(true);
-			expect(await page.evaluate(() => document.activeElement.matches('.files .bar input'))).toBe(true);
+			await eventually(async () =>
+				expect(await page.$eval('.files', panel => panel.classList.contains('open'))).toBe(true),
+			);
+			await eventually(async () =>
+				expect(await page.evaluate(() => document.activeElement.matches('.files .bar input'))).toBe(true),
+			);
 
 			await page.keyboard.type('#helper');
 			await wait(1500);
-			expect(await page.$eval('.files .bar button.active', active => active.textContent)).toBe('Symbols');
+			await eventually(async () =>
+				expect(await page.$eval('.files .bar button.active', active => active.textContent)).toBe('Symbols'),
+			);
 
 			await page.$eval('.files .bar input', input => (input.value = ''));
 			await press('.files .bar button', 'Names');
@@ -2569,15 +2736,15 @@ test(
 			await page.mouse.click(call.x, call.y);
 			await page.keyboard.up('Control');
 			await wait(1500);
-			expect(await reading()).toBe('server/help.js');
+			await eventually(async () => expect(await reading()).toBe('server/help.js'));
 
 			await page.focus('.files');
 			await chord('Alt', 'ArrowLeft');
-			expect(await reading()).toBe('server/use.js');
+			await eventually(async () => expect(await reading()).toBe('server/use.js'));
 			await chord('Alt', 'ArrowRight');
-			expect(await reading()).toBe('server/help.js');
+			await eventually(async () => expect(await reading()).toBe('server/help.js'));
 			await press('.files .head [title^="Back"]');
-			expect(await reading()).toBe('server/use.js');
+			await eventually(async () => expect(await reading()).toBe('server/use.js'));
 		} finally {
 			await browser.close();
 			await server.stop();
@@ -2614,24 +2781,28 @@ test(
 		try {
 			await page.goto(await server.loginLink(''));
 			await wait(2500);
-			expect(await page.$$eval('.group', groups => groups.map(group => group.firstChild.textContent))).toContain(
-				'Today',
+			await eventually(async () =>
+				expect(await page.$$eval('.group', groups => groups.map(group => group.firstChild.textContent))).toContain(
+					'Today',
+				),
 			);
-			expect(await titlesShown()).toEqual(expect.arrayContaining(titles));
+			await eventually(async () => expect(await titlesShown()).toEqual(expect.arrayContaining(titles)));
 
 			await press('.cards a', 'Tidy the attic', { button: 'right' });
 			await press('[role=menu] li', 'Archive');
-			expect(await titlesShown()).not.toContain('Tidy the attic');
-			expect(await listed('&filter=archived')).toEqual([ids[0]]);
+			await eventually(async () => expect(await titlesShown()).not.toContain('Tidy the attic'));
+			await eventually(async () => expect(await listed('&filter=archived')).toEqual([ids[0]]));
 
 			await press('.toolbar button', 'Archived');
-			expect(await titlesShown()).toEqual(['Tidy the attic']);
+			await eventually(async () => expect(await titlesShown()).toEqual(['Tidy the attic']));
 			await press('.toolbar button', 'Archived');
 
 			await page.type('input.search', 'attic');
 			await wait(1200);
-			expect(await titlesShown()).toEqual(['Tidy the attic']);
-			expect(await page.$eval('.cards a', card => card.textContent)).toContain('archived');
+			await eventually(async () => expect(await titlesShown()).toEqual(['Tidy the attic']));
+			await eventually(async () =>
+				expect(await page.$eval('.cards a', card => card.textContent)).toContain('archived'),
+			);
 			await page.$eval('input.search', input => {
 				input.value = '';
 				input.dispatchEvent(new Event('input'));
@@ -2640,25 +2811,31 @@ test(
 
 			await press('.cards a', 'Weed the garden', { button: 'right' });
 			await press('[role=menu] li', 'Rename...');
-			await page.keyboard.type('Weed the beds');
+			await typeInDialog(page, 'Weed the beds');
 			await page.keyboard.press('Enter');
 			await wait(1500);
-			expect(await titlesShown()).toContain('Weed the beds');
+			await eventually(async () => expect(await titlesShown()).toContain('Weed the beds'));
 
 			await press('.toolbar button', 'Select');
 			await press('.cards a', 'Fix the shed');
 			await press('.cards a', 'Paint the porch');
-			expect(await page.$eval('.bulk .picked', picked => picked.textContent)).toBe('2 picked');
+			await eventually(async () =>
+				expect(await page.$eval('.bulk .picked', picked => picked.textContent)).toBe('2 picked'),
+			);
 			await press('.bulk button', 'Delete 2');
 			await press('dialog[open] button', 'Delete');
 			await wait(1500);
-			expect(await listed('&q=the')).toEqual(expect.arrayContaining([ids[0], ids[1]]));
-			expect(await listed('&q=the')).not.toEqual(expect.arrayContaining([ids[2]]));
-			expect(await listed('&q=the')).not.toEqual(expect.arrayContaining([ids[3]]));
+			await eventually(async () => expect(await listed('&q=the')).toEqual(expect.arrayContaining([ids[0], ids[1]])));
+			await eventually(async () => expect(await listed('&q=the')).not.toEqual(expect.arrayContaining([ids[2]])));
+			await eventually(async () => expect(await listed('&q=the')).not.toEqual(expect.arrayContaining([ids[3]])));
 
 			await press('.toolbar button', 'Done');
 			await press('.toolbar button', 'By project');
-			expect(await page.$$eval('.project-head .name', names => names.map(name => name.textContent))).toEqual(['demo']);
+			await eventually(async () =>
+				expect(await page.$$eval('.project-head .name', names => names.map(name => name.textContent))).toEqual([
+					'demo',
+				]),
+			);
 		} finally {
 			await browser.close();
 			await server.stop();

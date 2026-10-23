@@ -95,8 +95,9 @@ export const startServer = async ({
 	);
 	const url = `http://127.0.0.1:${port}`;
 
-	for (let tries = 0; !(await fetch(`${url}/api/auth`).catch(() => null))?.ok; tries++) {
-		if (tries > 50) throw new Error('The test server never answered');
+	// Slow to start on a loaded machine
+	for (const until = Date.now() + 30_000; !(await fetch(`${url}/api/auth`).catch(() => null))?.ok;) {
+		if (Date.now() > until) throw new Error('The test server never answered');
 		await Bun.sleep(100);
 	}
 
@@ -207,8 +208,10 @@ export const cellCenter = async (page, row, column) =>
 		{ row, column },
 	);
 
-// Where a button is, to click it as a person would: some of paude's buttons act on the press, not on click()
-export const centerOf = async (page, selector, text) =>
+// How long a test waits on the page before it gives up: a loaded machine draws slowly
+export const PATIENCE_MS = 15_000;
+
+const boxOf = (page, selector, text) =>
 	page.evaluate(
 		({ selector, text }) => {
 			const found = [...document.querySelectorAll(selector)].find(node => !text || node.textContent.includes(text));
@@ -218,7 +221,56 @@ export const centerOf = async (page, selector, text) =>
 
 			const box = found?.getBoundingClientRect();
 
-			return box && { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+			if (!box?.width) return null;
+
+			const x = box.x + box.width / 2;
+			const y = box.y + box.height / 2;
+			const hit = document.elementFromPoint(x, y);
+
+			// What a click there would reach: this, or something it holds
+			return { x, y, reached: Boolean(hit && (found.contains(hit) || hit.contains(found))) };
 		},
 		{ selector, text },
 	);
+
+// Where a button is, to click it as a person would: some of paude's buttons act on the press, not on click(). Once
+// it's there, has stopped moving and a click would reach it: a panel slides in, a menu fades in over what's under it,
+// and a click at where it was mid-way lands on something else.
+export const centerOf = async (page, selector, text) => {
+	const until = Date.now() + PATIENCE_MS;
+	let last;
+
+	for (;;) {
+		const now = await boxOf(page, selector, text);
+		const settled = now?.reached && last && now.x === last.x && now.y === last.y;
+
+		if (settled) return { x: now.x, y: now.y };
+		if (Date.now() > until) {
+			if (!now) throw new Error(`Nothing to press: ${selector}${text ? ` with "${text}"` : ''}`);
+			// Covered on purpose, or always moving: where it is, as a person would aim at it anyway
+			return { x: now.x, y: now.y };
+		}
+		last = now;
+		await Bun.sleep(100);
+	}
+};
+
+// Reads until the checks in it pass, rather than once after a guess at how long the page takes
+export const eventually = async (check, timeout = PATIENCE_MS) => {
+	const until = Date.now() + timeout;
+
+	for (;;) {
+		try {
+			return await check();
+		} catch (error) {
+			if (Date.now() > until) throw error;
+			await Bun.sleep(200);
+		}
+	}
+};
+
+// Typed into the dialog just opened, once its input has the focus: it takes it a moment after it opens
+export const typeInDialog = async (page, text) => {
+	await page.waitForFunction(() => document.activeElement?.matches('dialog[open] input'), { timeout: PATIENCE_MS });
+	await page.keyboard.type(text);
+};
