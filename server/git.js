@@ -568,13 +568,13 @@ export const commitAfter = async (root, files, at) => {
 	return (commits.find(commit => !at || commit.authored >= at) ?? commits.at(-1))?.hash ?? null;
 };
 
-// What this branch adds to the base: its commits, and its changes as the diff view's files (since they parted)
+// What this branch adds to the base: its commits with their messages, and its changes as the diff view's files (since they parted)
 export const gitCompare = async (root, { base, working = false } = {}) => {
 	const against = base || (await defaultBase(root));
 
 	if (!against || against.startsWith('-')) throw new GitError('There is no branch to compare with');
 
-	const commits = await gitLog(root, { ref: `${against}..HEAD` });
+	const commits = await gitLog(root, { ref: `${against}..HEAD`, bodies: true });
 
 	if (!working) {
 		const patch = await must(['diff', '--no-color', '--full-index', '--find-renames', `${against}...HEAD`], root);

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { codeLeftOut, codePrompt, diffLeftOut, diffPrompt, fittingFiles, parseStops, tellOnce } from './tours';
+import { codeLeftOut, codePrompt, diffLeftOut, diffPrompt, fittingFiles, parseStops, tellOnce, whyOf } from './tours';
 
 const range = (from, to) => Array.from({ length: to - from + 1 }, (_, index) => from + index);
 
@@ -20,6 +20,28 @@ test('a diff tour numbers each line on its side', () => {
 	]);
 
 	expect(prompt).toContain('File a.js (modified)\n  1 | keep\n- 2 | old\n+ 2 | new');
+});
+
+test("a diff's tour takes its why from the commits: a commit's message and what explains it, a branch's oldest first", () => {
+	expect(whyOf({ message: 'Per user: sessions reset.', explainedBy: [{ body: 'Five, as support asked.' }] })).toBe(
+		'Per user: sessions reset.\n\nFive, as support asked.',
+	);
+	expect(
+		whyOf({
+			commits: [
+				{ subject: 'lock accounts', body: 'Per user: sessions reset.' },
+				{ subject: 'tidy', body: '' },
+				{ subject: 'count failures', body: 'In memory; a restart forgives.' },
+			],
+		}),
+	).toBe('count failures\nIn memory; a restart forgives.\n\nlock accounts\nPer user: sessions reset.');
+	expect(whyOf({ commits: [{ subject: 'tidy', body: '' }] })).toBe('');
+	expect(whyOf({ message: 'x'.repeat(20_000), explainedBy: [{ body: 'later' }] })).toBe('x'.repeat(12_000));
+
+	const files = [{ path: 'a.js', status: 'modified', diff: '@@ -1 +1 @@\n-old\n+new' }];
+
+	expect(diffPrompt('a commit', files, 'Per user: sessions reset.')).toContain('say why');
+	expect(diffPrompt('a commit', files, '')).not.toContain('say why');
 });
 
 test('stops stay on lines that are there, turned the right way round; the rest are dropped and counted', () => {

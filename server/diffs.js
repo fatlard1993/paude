@@ -245,7 +245,7 @@ const commitDiff = async (cwd, ref) => {
 };
 
 // What this branch changes since it parted from the base (origin's default branch, unless named), with the work not
-// committed yet unless only what's `committed` is asked for (what a pull request would hold now)
+// committed yet unless only what's `committed` is asked for (what a pull request would hold now), and its commits
 const compareDiff = async (cwd, base, committed) => {
 	const root = await repoRoot(cwd);
 
@@ -270,6 +270,7 @@ const compareDiff = async (cwd, base, committed) => {
 		return {
 			title: leftOut ? `${work} (${leftOut} more file${leftOut === 1 ? '' : 's'} left out, past what fits here)` : work,
 			files,
+			commits,
 		};
 	} catch (error) {
 		if (error instanceof GitError) throw new DiffError(error.message);

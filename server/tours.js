@@ -8,6 +8,8 @@ import askHaiku, { jsonIn } from './haiku';
 const MAX_LINES = 1500;
 const MAX_CHARACTERS = 90_000;
 const MAX_STOPS = 14;
+// The most of the commit messages a diff's tour is told, besides the diff
+const MAX_WHY = 12_000;
 // A stretch no stop covers is worth saying from this long
 const GAP_LINES = 8;
 const NAMED_GAPS = 3;
@@ -78,14 +80,18 @@ const shownDiff = files =>
 		})
 		.join('\n\n');
 
-export const diffPrompt = (title, files) =>
+export const diffPrompt = (title, files, why) =>
 	[
 		`Walk someone through this change (${title}) as a guided tour: what it does and why, in the order that makes it make sense.`,
 		...STYLE,
+		why &&
+			`Its commit messages say why, and what was chosen over what; take the why from them where the lines don't show it, and never invent one they don't state:\n${why}`,
 		'Lines marked + were added, - removed, the rest unchanged; each is numbered as it is on its side: + and unchanged lines by the file after the change, - lines by the file before it.',
 		'Reply with only a JSON object: {"overview": "…", "stops": [{"file": "path", "side": "new", "from": 12, "to": 30, "text": "…"}]}, where side is "old" for removed lines and "new" otherwise.',
 		shownDiff(files),
-	].join('\n\n');
+	]
+		.filter(Boolean)
+		.join('\n\n');
 
 const lineNumber = value => (Number.isInteger(value) ? value : Number.parseInt(value, 10));
 
@@ -230,8 +236,32 @@ export const fittingFiles = ({ files, imports, outlines }, most = MAX_CHARACTERS
 	return fitting;
 };
 
-// A tour of a diff set, any kind paude shows ({ title, files, imports }), as much of it as fits
-export const diffTour = async ({ title, files, imports, outlines }) => {
+// Why a diff set's changes were made, as its commits tell it: a commit's message and those recording later what
+// explains it, or a branch's commits, oldest first, as many as fit
+export const whyOf = ({ message, explainedBy = [], commits = [] }) => {
+	const told = [
+		message,
+		...explainedBy.map(explanation => explanation.body),
+		...commits.toReversed().map(commit => commit.body && `${commit.subject}\n${commit.body}`),
+	].filter(Boolean);
+	const fitting = [];
+	let size = 0;
+
+	for (const text of told) {
+		size += text.length;
+		// One too long on its own is cut short rather than lost
+		if (size > MAX_WHY) {
+			if (!fitting.length) fitting.push(text.slice(0, MAX_WHY));
+			break;
+		}
+		fitting.push(text);
+	}
+
+	return fitting.join('\n\n');
+};
+
+// A tour of a diff set, any kind paude shows ({ title, files, imports, and what says why }), as much of it as fits
+export const diffTour = async ({ title, files, imports, outlines, ...set }) => {
 	const fitting = fittingFiles({ files, imports, outlines });
 
 	const valid = new Map();
@@ -247,7 +277,7 @@ export const diffTour = async ({ title, files, imports, outlines }) => {
 		valid.set(path, sides);
 	}
 
-	const tour = await tellOnce(diffPrompt(title, fitting), reply =>
+	const tour = await tellOnce(diffPrompt(title, fitting, whyOf(set)), reply =>
 		parseStops(reply, { valid: (path, side) => valid.get(path)?.[side] }),
 	);
 
