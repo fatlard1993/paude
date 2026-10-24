@@ -1,3 +1,6 @@
 #!/usr/bin/env sh
 # Lint, tests, and the pushed lld documents: the library's shared pre-push
+# Pushed from a worktree, git points the hook at the repo by an absolute GIT_DIR, which the repos tests make would
+# inherit; from here, git finds the repo from the folder as it does anywhere else
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_PREFIX
 sh node_modules/@vanilla-bean/components/githooks/pre-push "$@" || exit 1
