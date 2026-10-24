@@ -368,8 +368,10 @@ const fileAll = async (root, groups, options) => {
 
 // { [session id]: the follow under way }
 const following = new Map();
-// Sessions whose Claude waits on its push: filing may run mid-turn, as nothing it does can race it
-const pushing = new Set();
+// Sessions whose Claude waits on its push, in the order they came: { [session id]: its place }. Its own filing may run
+// mid-turn, as nothing it does can race it; anyone else's waits, as the push may go to their repository.
+const pushing = new Map();
+let pushesWaited = 0;
 // The pushes running now, any session's, by the call running each: { [call id]: session id }. Filing waits them out,
 // since where one goes (git -C "$repo" push, in a loop) can't be told from its command, and a commit filed meanwhile
 // would leave with it unsettled.
@@ -407,6 +409,16 @@ export const followDecisions = (id, cwd, { every = FOLLOW_MS, settling = SETTLIN
 	return follow;
 };
 
+// The session's Claude waiting on its push for as long as wait runs
+export const waitingToPush = async (id, wait) => {
+	pushing.set(id, (pushesWaited += 1));
+	try {
+		return await wait();
+	} finally {
+		pushing.delete(id);
+	}
+};
+
 // Before Claude pushes from the session's folder: what the session settled is filed first, with Claude waiting on
 // it, so a push never leaves without it. Whether anything was filed: then the stack holds amend! commits to settle
 // before the push, which would otherwise carry them unfolded.
@@ -417,14 +429,11 @@ export const fileBeforePush = async (id, cwd) => {
 
 	const before = await headCommit(root);
 
-	pushing.add(id);
-	try {
+	await waitingToPush(id, async () => {
 		// One under way since the prompt ran without filing; this one files
 		await following.get(id);
 		await followDecisions(id, cwd, { every: PUSH_POLL_MS, settling: 0 });
-	} finally {
-		pushing.delete(id);
-	}
+	});
 
 	return (await headCommit(root)) !== before;
 };
@@ -439,9 +448,11 @@ export const answerDecision = async (decisionId, answer) => {
 };
 
 // Another session working in the repository: its commits would race a filing, unless it's this one's Claude waiting
-// on its push. Any push under way, wherever it goes.
+// on its push. Any push under way, wherever it goes, or waiting before this session's own: one waiting since after
+// waits on this one instead, so two pushing at once don't hold each other.
 export const othersWorkIn = (root, sessionId) =>
 	pushesUnderWay.size > 0 ||
+	[...pushing].some(([other, place]) => other !== sessionId && place < (pushing.get(sessionId) ?? Infinity)) ||
 	(!pushing.has(sessionId) &&
 		[...allRunning()].some(
 			session =>

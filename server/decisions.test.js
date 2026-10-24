@@ -16,6 +16,7 @@ import {
 	toLookFor,
 	turnsToRead,
 	turnText,
+	waitingToPush,
 	writeDownPrompt,
 } from './decisions';
 
@@ -207,5 +208,28 @@ test("filing waits out any session's push, wherever it goes, until its call or t
 
 	pushStarted('elsewhere', 'call');
 	pushEnded('elsewhere');
+	expect(othersWorkIn('/repo', 'filing')).toBe(false);
+});
+
+test("filing waits out another session's push waiting to go, and the first to wait isn't held by one after", async () => {
+	const { promise: firstGoes, resolve: firstPushes } = Promise.withResolvers();
+	const { promise: secondGoes, resolve: secondPushes } = Promise.withResolvers();
+	const first = waitingToPush('first', async () => {
+		expect(othersWorkIn('/repo', 'filing')).toBe(true);
+		expect(othersWorkIn('/repo', 'first')).toBe(false);
+		await firstGoes;
+	});
+	const second = waitingToPush('second', async () => {
+		expect(othersWorkIn('/repo', 'first')).toBe(false);
+		expect(othersWorkIn('/repo', 'second')).toBe(true);
+		await secondGoes;
+	});
+
+	firstPushes();
+	await first;
+	expect(othersWorkIn('/repo', 'second')).toBe(false);
+	expect(othersWorkIn('/repo', 'filing')).toBe(true);
+	secondPushes();
+	await second;
 	expect(othersWorkIn('/repo', 'filing')).toBe(false);
 });
