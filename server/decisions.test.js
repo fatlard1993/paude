@@ -7,9 +7,12 @@ import {
 	findPrompt,
 	initDecisions,
 	lookForPlaces,
+	othersWorkIn,
 	parseFound,
 	parsePlaces,
 	placesFor,
+	pushEnded,
+	pushStarted,
 	toLookFor,
 	turnsToRead,
 	turnText,
@@ -190,4 +193,19 @@ test('writing one down asks for its place, and says what was rejected and why', 
 
 	expect(prompt).toContain('Decided: per user\nRejected: per session\nBecause: resets');
 	expect(prompt).toContain('amend!');
+});
+
+test("filing waits out any session's push, wherever it goes, until its call or turn is over", () => {
+	expect(othersWorkIn('/repo', 'filing')).toBe(false);
+
+	pushStarted('elsewhere', 'call');
+	expect(othersWorkIn('/repo', 'filing')).toBe(true);
+	pushEnded('elsewhere', 'another call');
+	expect(othersWorkIn('/repo', 'filing')).toBe(true);
+	pushEnded('elsewhere', 'call');
+	expect(othersWorkIn('/repo', 'filing')).toBe(false);
+
+	pushStarted('elsewhere', 'call');
+	pushEnded('elsewhere');
+	expect(othersWorkIn('/repo', 'filing')).toBe(false);
 });

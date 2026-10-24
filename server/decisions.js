@@ -370,6 +370,17 @@ const fileAll = async (root, groups, options) => {
 const following = new Map();
 // Sessions whose Claude waits on its push: filing may run mid-turn, as nothing it does can race it
 const pushing = new Set();
+// The pushes running now, any session's, by the call running each: { [call id]: session id }. Filing waits them out,
+// since where one goes (git -C "$repo" push, in a loop) can't be told from its command, and a commit filed meanwhile
+// would leave with it unsettled.
+const pushesUnderWay = new Map();
+
+export const pushStarted = (sessionId, callId) => pushesUnderWay.set(callId ?? sessionId, sessionId);
+// Its call done, or the session's turn over: a push it ran then is over too
+export const pushEnded = (sessionId, callId) => {
+	if (callId) pushesUnderWay.delete(callId);
+	else for (const [call, session] of pushesUnderWay) if (session === sessionId) pushesUnderWay.delete(call);
+};
 
 // Without anyone opening the panel: what the session settled is read, looked for and filed as it goes, from when the
 // person's next prompt settles the turn before it until nothing is under way. Filing still waits for the turn to end.
@@ -428,15 +439,16 @@ export const answerDecision = async (decisionId, answer) => {
 };
 
 // Another session working in the repository: its commits would race a filing, unless it's this one's Claude waiting
-// on its push
-const othersWorkIn = (root, sessionId) =>
-	!pushing.has(sessionId) &&
-	[...allRunning()].some(
-		session =>
-			session.id !== sessionId &&
-			(session.cwd === root || session.cwd?.startsWith(`${root}${path.sep}`)) &&
-			statusOf(session.id) === 'working',
-	);
+// on its push. Any push under way, wherever it goes.
+export const othersWorkIn = (root, sessionId) =>
+	pushesUnderWay.size > 0 ||
+	(!pushing.has(sessionId) &&
+		[...allRunning()].some(
+			session =>
+				session.id !== sessionId &&
+				(session.cwd === root || session.cwd?.startsWith(`${root}${path.sep}`)) &&
+				statusOf(session.id) === 'working',
+		));
 
 // Whether it was held back for another session at work, to file once that one stops
 const backfill = async (sessionId, decisions, turns, cwd) => {

@@ -2,7 +2,7 @@ import { requestMatch } from '@vanilla-bean/components/app';
 
 import { recordChange, setStatus } from '../activity';
 import { turnEnded } from '../claudeInbox';
-import { fileBeforePush, followDecisions } from '../decisions';
+import { fileBeforePush, followDecisions, pushEnded, pushStarted } from '../decisions';
 import { projectOf } from '../projects';
 import { afterTurnTasks, runTask } from '../tasks';
 import { sessionTimeline, sessionTurns } from '../timeline';
@@ -35,7 +35,11 @@ export const isPush = command =>
 // Claude waits on this answer before its push runs: turned back once anything was filed, so it settles first
 const beforePush = async (id, payload) => {
 	if (!isPush(payload.tool_input?.command)) return null;
-	if (!(await fileBeforePush(id, runningSession(id).cwd))) return null;
+	if (!(await fileBeforePush(id, runningSession(id).cwd))) {
+		pushStarted(id, payload.tool_use_id);
+
+		return null;
+	}
 
 	return Response.json({
 		hookSpecificOutput: {
@@ -61,6 +65,9 @@ const hooksRoutes = async request => {
 
 	if (typeof id !== 'string' || !runningSession(id)) return new Response(null, { status: 204 });
 	trackProposals(id, payload);
+	if (['PostToolUse', 'PostToolUseFailure', 'PermissionDenied'].includes(payload.hook_event_name))
+		pushEnded(id, payload.tool_use_id);
+	if (['Stop', 'StopFailure'].includes(payload.hook_event_name)) pushEnded(id);
 	if (payload.hook_event_name === 'PreToolUse' && payload.tool_name === 'Bash')
 		return (await beforePush(id, payload)) ?? new Response(null, { status: 204 });
 	// Before the status, so the presence that goes out with it says whether a usage limit stopped the turn
