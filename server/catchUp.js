@@ -41,10 +41,17 @@ export const didOf = steps => {
 		.join('; ');
 };
 
-export const tourPrompt = turns =>
+// What a turn settled, in a line: the decision, the direction, or the work put off, what it was chosen over, and why
+const SETTLED_AS = { decision: 'Decided', direction: 'Direction set', deferred: 'Put off' };
+export const settledLine = ({ kind, chose, rejected, because }) =>
+	`${SETTLED_AS[kind] ?? 'Settled'}: ${chose}${rejected ? ` Not: ${rejected}` : ''}${because ? ` Because: ${because}` : ''}`;
+
+// `waiting`: the questions about where something settled is written down, left for the person to answer
+export const tourPrompt = (turns, { waiting = [] } = {}) =>
 	[
 		'You are catching someone up on a coding session between a person and Claude, a coding assistant.',
 		'Write an overview of 2 or 3 sentences: where things stand now, and anything left waiting on them. Then one stop per turn: 1 or 2 sentences on what was asked and what came of it.',
+		'Where a turn settled something (a decision, a direction, work put off), say what and why in its stop: what was settled outlasts what was done.',
 		'Plain words, past tense, no markdown, no filler, no praise. The reader may not be who asked: never say "you"; start a stop with what was asked, like "Asked for a smaller icon; Claude…".',
 		'Where the person stopped Claude partway, redirected it, or turned down a step, say so plainly in that stop: those are where they steered, and they matter most to someone catching up.',
 		'Reply with only a JSON object: {"overview": "…", "stops": {"1": "…", "2": "…"}}, one stop for each numbered turn.',
@@ -57,12 +64,17 @@ export const tourPrompt = turns =>
 					turn.stopped && '  The person stopped Claude partway through this.',
 					turn.steps.length && `  Did: ${didOf(turn.steps)}`,
 					turn.said && `  Claude ended with: ${turn.said.slice(-SAID_IN_PROMPT)}`,
+					...(turn.settled ?? []).map(decision => `  ${settledLine(decision)}`),
 				]
 					.filter(Boolean)
 					.join('\n'),
 			)
 			.join('\n\n'),
-	].join('\n\n');
+		waiting.length &&
+			`Questions waiting on the person, about writing what was settled into the commits:\n${waiting.map(question => `- ${question}`).join('\n')}`,
+	]
+		.filter(Boolean)
+		.join('\n\n');
 
 // How the person steered a turn, if they did: stopped it, redirected it, turned down a step in it
 export const steeringOf = turn =>
@@ -122,8 +134,9 @@ export const leftOutOf = ({ read, told, picked, since, reachesBack }) => {
 	].filter(Boolean);
 };
 
-// since: a time (ms); without it, the latest turns
-export const catchUp = async (id, cwd, { since } = {}) => {
+// since: a time (ms); without it, the latest turns. decisions: what the session settled (decisions.js), told with
+// the turns that settled them, and the questions about them still waiting
+export const catchUp = async (id, cwd, { since, decisions = [] } = {}) => {
 	const file = await transcriptFile(id, cwd);
 	const all = file ? markInterruptions(timelineFrom(await lastLines(file), cwd)) : [];
 	const read = since ? all.filter(turn => Date.parse(turn.at) > since) : all;
@@ -139,8 +152,16 @@ export const catchUp = async (id, cwd, { since } = {}) => {
 
 	if (!picked.length) return { overview: 'Nothing has happened here since you last looked.', stops: [], leftOut };
 
+	const settled = turn => decisions.filter(decision => decision.turnId === turn.id);
+	const waiting = decisions.filter(decision => decision.question).map(decision => decision.question);
 	const [tour, checked] = await Promise.all([
-		tellOnce(tourPrompt(picked), reply => parseTour(reply, picked)),
+		tellOnce(
+			tourPrompt(
+				picked.map(turn => ({ ...turn, settled: settled(turn) })),
+				{ waiting },
+			),
+			reply => parseTour(reply, picked),
+		),
 		verification(id, cwd),
 	]);
 

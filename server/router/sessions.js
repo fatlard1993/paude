@@ -22,6 +22,7 @@ import { LIFETIMES, lastSwitch, lifetimeOf, setLifetime, switchLifetime } from '
 import removeSession from '../removeSession';
 import { meterOf } from '../cacheMeter';
 import { catchUp } from '../catchUp';
+import { sessionDecisions } from '../decisions';
 import { findHome, localCandidates } from '../promptHome';
 import { askClaude } from '../claudeInbox';
 import { pinName, pinnedName } from '../names';
@@ -382,7 +383,8 @@ const sessionsRoutes = async (request, server) => {
 		if (!record) return new Response('Session not found', { status: 404 });
 
 		const { since } = await request.json();
-		const tour = await catchUp(match.id, record.cwd, { since: Number(since) || undefined });
+		const { decisions } = await sessionDecisions(match.id, record.cwd).catch(() => ({ decisions: [] }));
+		const tour = await catchUp(match.id, record.cwd, { since: Number(since) || undefined, decisions });
 
 		return tour ? Response.json(tour) : new Response("Haiku couldn't tell it just now", { status: 502 });
 	}

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { didOf, leftOutOf, markInterruptions, parseTour, steeringOf, tourPrompt } from './catchUp';
+import { didOf, leftOutOf, markInterruptions, parseTour, settledLine, steeringOf, tourPrompt } from './catchUp';
 
 const turns = [
 	{
@@ -28,6 +28,26 @@ test('the prompt numbers each turn with what was asked, done and said', () => {
 	expect(prompt).toContain('Turn 1, 2026-10-09T01:00:00Z\n  Asked: fix the flaky test\n  Did: changed a.test.js');
 	expect(prompt).toContain('Claude ended with: Fixed: the test waited on a timer.');
 	expect(prompt).toContain('Turn 2, 2026-10-09T01:05:00Z\n  Asked: commit it');
+});
+
+test('what a turn settled goes with it, and the questions left waiting go with the whole', () => {
+	const settled = {
+		kind: 'decision',
+		chose: 'Wait on the event.',
+		rejected: 'A longer timer.',
+		because: 'Timers flake.',
+	};
+	const prompt = tourPrompt([{ ...turns[0], settled: [settled] }, turns[1]], {
+		waiting: ['Is this the fix for the flaky test?'],
+	});
+
+	expect(settledLine(settled)).toBe('Decided: Wait on the event. Not: A longer timer. Because: Timers flake.');
+	expect(settledLine({ kind: 'deferred', chose: 'Retries.', rejected: '', because: '' })).toBe('Put off: Retries.');
+	expect(prompt).toContain('Claude ended with: Fixed: the test waited on a timer.\n  Decided: Wait on the event.');
+	expect(prompt).toContain(
+		'Questions waiting on the person, about writing what was settled into the commits:\n- Is this the fix',
+	);
+	expect(tourPrompt(turns)).not.toContain('Questions waiting');
 });
 
 test('each stop lands on its turn, and a stop Haiku skipped falls back to the prompt', () => {
