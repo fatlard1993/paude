@@ -169,6 +169,7 @@ module.exports = {
 		'br',
 		'codespan',
 		'unregister',
+		'unobserve',
 
 		'handoff',
 		'handoffs',

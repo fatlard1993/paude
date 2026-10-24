@@ -61,8 +61,25 @@ const keyButton = ({ label, icon: name, title }, press) => {
 	return button;
 };
 
+// Toasts stack above the tallest key bar showing; one that leaves the page measures nothing and is let go
+const heights = new Map();
+const liftToasts = new ResizeObserver(entries => {
+	for (const { target, borderBoxSize } of entries) {
+		heights.set(target, borderBoxSize[0]?.blockSize ?? 0);
+		if (!target.isConnected) liftToasts.unobserve(target);
+	}
+	for (const [bar, height] of heights) if (!height) heights.delete(bar);
+
+	const tallest = Math.max(0, ...heights.values());
+
+	if (tallest) document.documentElement.style.setProperty('--vbc-notify-offset', `${tallest}px`);
+	else document.documentElement.style.removeProperty('--vbc-notify-offset');
+});
+
 export default class KeyBar extends Bar {
 	build() {
+		liftToasts.observe(this.elem);
+
 		const select = keyButton({ label: 'Select' }, () => this.options.selectLines());
 
 		select.title = this.options.selectTitle ?? 'Comment on lines: tap the first, then the last';
