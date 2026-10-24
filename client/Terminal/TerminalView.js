@@ -470,7 +470,7 @@ export default class TerminalView extends View {
 				attach: text => this.attachToPrompt(text),
 				ended: why => {
 					this.toggleShell(false);
-					if (why) new Notify({ type: 'warning', content: why });
+					if (why) new Notify({ intent: 'warning', content: why });
 				},
 			});
 		}
@@ -679,7 +679,7 @@ export default class TerminalView extends View {
 		if (state === 'ended') this.titleLabel.elem.textContent = 'Session ended. Open it again to resume.';
 		if (state === 'failed') {
 			this.titleLabel.elem.textContent = `Won't start: ${reason}`;
-			new Notify({ type: 'error', content: `This session won't start: ${reason}`, timeout: 0 });
+			new Notify({ intent: 'danger', content: `This session won't start: ${reason}`, timeout: 0 });
 		}
 
 		this.renderPresence(this.lastPresence ?? { clients: [] });
@@ -704,7 +704,7 @@ export default class TerminalView extends View {
 		} else if (message.type === 'shares') {
 			this.showShares(message.shares);
 		} else if (message.type === 'notice') {
-			new Notify({ type: 'warning', content: message.text });
+			new Notify({ intent: 'warning', content: message.text });
 		} else if (NOTE_TYPES.includes(message.type)) {
 			this.notes.receive(message);
 			// The chat brings links too
@@ -959,7 +959,7 @@ export default class TerminalView extends View {
 			if (this.seenPorts.has(share.port)) continue;
 			this.seenPorts.add(share.port);
 			new Notify({
-				type: 'info',
+				intent: 'info',
 				content: `Sharing port ${share.port} (${share.command}): open it from Shared`,
 				timeout: 5000,
 			});
@@ -988,13 +988,13 @@ export default class TerminalView extends View {
 	// until someone presses Enter
 	attachToPrompt(text) {
 		if (!this.sendInput(`\x1b[200~${text}\x1b[201~`)) {
-			new Notify({ type: 'warning', content: 'Not attached: reconnecting. Try again in a moment.' });
+			new Notify({ intent: 'warning', content: 'Not attached: reconnecting. Try again in a moment.' });
 
 			return false;
 		}
 
 		this.terminal.focus();
-		new Notify({ type: 'success', content: 'Added to the prompt', timeout: 1500 });
+		new Notify({ intent: 'success', content: 'Added to the prompt', timeout: 1500 });
 
 		return true;
 	}
@@ -1014,7 +1014,7 @@ export default class TerminalView extends View {
 			return;
 		}
 
-		if (!this.notesOpen || this.notes.tab !== tab) new Notify({ type: 'info', content: what, timeout: 6000 });
+		if (!this.notesOpen || this.notes.tab !== tab) new Notify({ intent: 'info', content: what, timeout: 6000 });
 	}
 
 	// The bar's buttons, as a menu: each item presses its button, and says what its badge says and whether its panel is
@@ -1225,7 +1225,7 @@ export default class TerminalView extends View {
 			const { response, body } = await attachFile(this.options.id, file);
 
 			if (response.ok) paths.push(body.path);
-			else new Notify({ type: 'warning', content: `${file.name || 'The file'} wasn't attached: ${body}` });
+			else new Notify({ intent: 'warning', content: `${file.name || 'The file'} wasn't attached: ${body}` });
 		}
 		if (paths.length) this.attachToPrompt(`${paths.join(' ')} `);
 	}
@@ -1452,13 +1452,13 @@ export default class TerminalView extends View {
 
 		const { body, response } = await getTurns(this.options.id);
 
-		if (!response?.ok) return new Notify({ type: 'error', content: "Could not read this session's history." });
+		if (!response?.ok) return new Notify({ intent: 'danger', content: "Could not read this session's history." });
 
 		// A turn still in progress has replies but no marker yet
 		const turns = body.busy && body.turns.at(-1)?.last ? body.turns.slice(0, -1) : body.turns;
 		const turn = turns[turns.length - 1 - markersBelow];
 
-		if (!turn) return new Notify({ type: 'warning', content: 'Could not match that line to a turn in the history.' });
+		if (!turn) return new Notify({ intent: 'warning', content: 'Could not match that line to a turn in the history.' });
 
 		const confirmed = await confirmDialog({
 			header: 'New session from here?',
@@ -1470,7 +1470,7 @@ export default class TerminalView extends View {
 
 		const forked = await forkSession(this.options.id, turn.endUuid);
 
-		if (!forked.response?.ok) return new Notify({ type: 'error', content: 'Could not start the new session.' });
+		if (!forked.response?.ok) return new Notify({ intent: 'danger', content: 'Could not start the new session.' });
 
 		window.location.hash = `#/sessions/${forked.body.id}`;
 	}
@@ -1672,7 +1672,7 @@ export default class TerminalView extends View {
 		const { body, response } = await setLifetime(this.options.id, lifetime);
 
 		if (!response?.ok)
-			return new Notify({ type: 'error', content: "Couldn't change it (only a running session stays warm)" });
+			return new Notify({ intent: 'danger', content: "Couldn't change it (only a running session stays warm)" });
 		this.showLifetime(body.lifetime, body.warmUntil, body.switched);
 	}
 
@@ -1684,7 +1684,7 @@ export default class TerminalView extends View {
 
 		const { response } = await nameSession(this.options.id, name);
 
-		if (!response?.ok) return new Notify({ type: 'error', content: 'Could not rename it.' });
+		if (!response?.ok) return new Notify({ intent: 'danger', content: 'Could not rename it.' });
 
 		// A session that isn't running has no presence to bring the new name, so the page fetches it
 		const { body: renamed } = await getSession(this.options.id);
@@ -1737,6 +1737,6 @@ export default class TerminalView extends View {
 			return;
 		}
 
-		new Notify({ type: 'warning', content: 'That text is no longer in the terminal history.' });
+		new Notify({ intent: 'warning', content: 'That text is no longer in the terminal history.' });
 	}
 }

@@ -206,7 +206,7 @@ const openThere = async (url, to) => {
 	const { body, response } = await openRemote(url, to);
 
 	if (response?.ok) window.location.href = body.link;
-	else new Notify({ type: 'error', content: 'Could not reach that server' });
+	else new Notify({ intent: 'danger', content: 'Could not reach that server' });
 
 	return Boolean(response?.ok);
 };
@@ -234,7 +234,7 @@ const costOf = meter => {
 export const placePrompt = async ({ places, prompt, project, startFresh, onSent }) => {
 	const into = places.elem;
 
-	if (!prompt) return new Notify({ type: 'warning', content: 'Say what Claude should do first' });
+	if (!prompt) return new Notify({ intent: 'warning', content: 'Say what Claude should do first' });
 
 	into.replaceChildren(element('div', 'heading', 'Finding where it goes…'));
 
@@ -243,7 +243,7 @@ export const placePrompt = async ({ places, prompt, project, startFresh, onSent 
 	if (!response?.ok) {
 		into.replaceChildren();
 
-		return new Notify({ type: 'warning', content: "Couldn't place it just now" });
+		return new Notify({ intent: 'warning', content: "Couldn't place it just now" });
 	}
 
 	const { matches, fresh } = body;
@@ -270,7 +270,7 @@ export const placePrompt = async ({ places, prompt, project, startFresh, onSent 
 					? await sendRemotePrompt(remote.url, session.id, prompt)
 					: await sendPrompt(session.id, prompt);
 
-				if (!sent?.ok) return new Notify({ type: 'error', content: 'Could not send it there' });
+				if (!sent?.ok) return new Notify({ intent: 'danger', content: 'Could not send it there' });
 				onSent?.();
 				if (!remote) return (window.location.hash = `#/sessions/${session.id}`);
 				await openThere(remote.url, { sessionId: session.id });

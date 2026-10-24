@@ -82,7 +82,7 @@ export const showAsking = (card, sessionId, asking, { canAnswer, onAnswered }) =
 			const { response } = await answerAsking(sessionId, asking.question, option.key);
 
 			if (response?.ok) onAnswered?.();
-			else new Notify({ type: 'warning', content: 'Claude is no longer asking that' });
+			else new Notify({ intent: 'warning', content: 'Claude is no longer asking that' });
 		});
 
 		if (option.detail) choice.append(element('small', '', option.detail));
@@ -125,7 +125,7 @@ export const showLimit = (card, sessionId, limit, { canAct, onChanged }) => {
 			const { response } = await continueAfterLimit(sessionId, when);
 
 			if (response?.ok) onChanged?.(when);
-			else new Notify({ type: 'warning', content: "Claude can't take it now: busy, asking, or something is typed" });
+			else new Notify({ intent: 'warning', content: "Claude can't take it now: busy, asking, or something is typed" });
 		});
 
 	if (limit.armed) answers.append(act("Don't wait", 'cancel'));

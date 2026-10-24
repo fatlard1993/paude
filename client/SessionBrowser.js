@@ -197,7 +197,7 @@ export default class SessionBrowser {
 				{ id: 'project', label: 'By project' },
 			],
 			selected: this.groupBy,
-			onChange: name => this.setGroupBy(name),
+			onChange: ({ value }) => this.setGroupBy(value),
 		});
 		this.pickButton = button('Select', () => this.setPicking(!this.picking), {
 			className: 'variant-chip',

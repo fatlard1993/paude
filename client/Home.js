@@ -184,13 +184,13 @@ export default class Home extends View {
 
 			const { body, response } = await addFolder(input.value.trim());
 
-			if (!response?.ok) return new Notify({ type: 'error', content: body || 'Could not add that folder.' });
+			if (!response?.ok) return new Notify({ intent: 'danger', content: body || 'Could not add that folder.' });
 
 			const { names } = JSON.parse(body);
 
 			close();
 			new Notify({
-				type: 'success',
+				intent: 'success',
 				content: names.length === 1 ? `Added "${names[0]}"` : `Added ${names.length} projects: ${names.join(', ')}`,
 				timeout: 4000,
 			});
@@ -205,7 +205,7 @@ export default class Home extends View {
 		const { body, response } = await openRemote(remote.url, to);
 
 		if (response?.ok) window.location.href = body.link;
-		else new Notify({ type: 'error', content: `Could not reach ${remote.name}.` });
+		else new Notify({ intent: 'danger', content: `Could not reach ${remote.name}.` });
 	}
 
 	remoteCard(session) {
@@ -295,7 +295,7 @@ export default class Home extends View {
 					const { response } = await setProjectWatching(project.name, !project.watching);
 
 					if (response?.ok) this.load();
-					else new Notify({ type: 'error', content: `Could not change watching ${project.name}.` });
+					else new Notify({ intent: 'danger', content: `Could not change watching ${project.name}.` });
 				},
 			},
 			{

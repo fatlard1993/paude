@@ -216,7 +216,7 @@ export default class Project extends View {
 	async toggleWatching() {
 		const { response } = await setProjectWatching(this.options.project, !this.watching);
 
-		if (!response?.ok) return new Notify({ type: 'error', content: 'Could not change watching.' });
+		if (!response?.ok) return new Notify({ intent: 'danger', content: 'Could not change watching.' });
 
 		this.showWatching(!this.watching);
 		this.load();
@@ -340,7 +340,7 @@ export default class Project extends View {
 		if (checkout?.from === '') {
 			this.fromInput.focus();
 
-			return new Notify({ type: 'warning', content: 'Name the branch, tag, commit or pull request to start from.' });
+			return new Notify({ intent: 'warning', content: 'Name the branch, tag, commit or pull request to start from.' });
 		}
 
 		this.starting = true;
@@ -358,7 +358,7 @@ export default class Project extends View {
 		if (result.error) {
 			if (checkout?.join) this.loadCheckouts();
 
-			return new Notify({ type: 'error', content: result.error, timeout: 10_000 });
+			return new Notify({ intent: 'danger', content: result.error, timeout: 10_000 });
 		}
 
 		if (result.files) return this.startAnyway(result, text, mode);
@@ -383,14 +383,14 @@ export default class Project extends View {
 
 		if (!confirmed)
 			return new Notify({
-				type: 'info',
+				intent: 'info',
 				content: `Claude wasn't started. The worktree is at ${worktree}; once you've looked, Start session starts Claude there.`,
 				timeout: 20_000,
 			});
 
 		const started = await this.startSession(text, { join: worktree }, mode);
 
-		if (started.error) return new Notify({ type: 'error', content: started.error, timeout: 10_000 });
+		if (started.error) return new Notify({ intent: 'danger', content: started.error, timeout: 10_000 });
 		this.sent();
 		window.location.hash = `#/sessions/${started.id}`;
 	}

@@ -45,8 +45,8 @@ export default class GitPanel extends Panel {
 		this.tabStrip = new Tabs({
 			addClass: 'tabs',
 			tabs: TABS.map(([id, label]) => ({ id, label })),
-			onChange: id => {
-				this.tab = id;
+			onChange: ({ value }) => {
+				this.tab = value;
 				this.refresh();
 			},
 		});
@@ -172,7 +172,7 @@ export default class GitPanel extends Panel {
 		} else {
 			onSuccess?.();
 			this.output.classList.remove('shown');
-			new Notify({ type: 'success', content: done ?? (result.output.split('\n').at(-1) || 'Done'), timeout: 2500 });
+			new Notify({ intent: 'success', content: done ?? (result.output.split('\n').at(-1) || 'Done'), timeout: 2500 });
 		}
 
 		await this.refresh();

@@ -726,7 +726,7 @@ export default class FilesPanel extends Panel {
 			const query = this.query.value.trim();
 
 			if (query.length < 2)
-				return new Notify({ type: 'warning', content: 'Search for something first.', timeout: 2500 });
+				return new Notify({ intent: 'warning', content: 'Search for something first.', timeout: 2500 });
 
 			const shown = this.list.querySelectorAll('.entry').length;
 			const confirmed = await confirmDialog({
@@ -745,10 +745,10 @@ export default class FilesPanel extends Panel {
 			);
 
 			if (!response?.ok)
-				return new Notify({ type: 'error', content: typeof body === 'string' ? body : 'Could not replace.' });
+				return new Notify({ intent: 'danger', content: typeof body === 'string' ? body : 'Could not replace.' });
 
 			new Notify({
-				type: 'success',
+				intent: 'success',
 				content: `Replaced ${body.replacements} in ${body.files} file${body.files === 1 ? '' : 's'}`,
 				timeout: 3000,
 			});
@@ -814,7 +814,7 @@ export default class FilesPanel extends Panel {
 		const { body } = await getSymbols(this.options.sessionId, { name, from: this.current ?? '' });
 
 		if (!body?.length)
-			return new Notify({ type: 'warning', content: `No definition of ${name} found.`, timeout: 2500 });
+			return new Notify({ intent: 'warning', content: `No definition of ${name} found.`, timeout: 2500 });
 		if (body.length === 1) return this.open(body[0].file, body[0].line);
 
 		this.showSymbols(body, '', `${body.length} definitions of ${name}`);
@@ -1231,7 +1231,7 @@ export default class FilesPanel extends Panel {
 		const { body, response } = await getGit(this.options.sessionId, 'log', { path });
 
 		if (this.current !== path) return;
-		if (!response?.ok) return new Notify({ type: 'warning', content: 'No git history here.' });
+		if (!response?.ok) return new Notify({ intent: 'warning', content: 'No git history here.' });
 
 		this.fileHistory = body;
 		this.renderViewer();
@@ -1269,7 +1269,7 @@ export default class FilesPanel extends Panel {
 
 		if (this.current !== path) return;
 		if (!response?.ok)
-			return new Notify({ type: 'warning', content: typeof body === 'string' ? body : 'No blame for this file.' });
+			return new Notify({ intent: 'warning', content: typeof body === 'string' ? body : 'No blame for this file.' });
 
 		this.blame = new Map(body.map(line => [line.line, line]));
 		this.renderViewer();
@@ -1695,7 +1695,7 @@ export default class FilesPanel extends Panel {
 		}
 
 		if (!response?.ok) {
-			new Notify({ type: 'error', content: typeof body === 'string' ? body : 'Could not save it.' });
+			new Notify({ intent: 'danger', content: typeof body === 'string' ? body : 'Could not save it.' });
 
 			return;
 		}
@@ -1706,7 +1706,7 @@ export default class FilesPanel extends Panel {
 		this.forgetDraft();
 		this.editing = null;
 		this.conflict = null;
-		new Notify({ type: 'success', content: 'Saved', timeout: 1500 });
+		new Notify({ intent: 'success', content: 'Saved', timeout: 1500 });
 		await this.refreshChanges();
 		this.renderList();
 		this.renderViewer();
@@ -2060,7 +2060,10 @@ export default class FilesPanel extends Panel {
 		if (!response?.ok) {
 			close();
 
-			return new Notify({ type: 'warning', content: typeof body === 'string' ? body : "Couldn't walk you through it" });
+			return new Notify({
+				intent: 'warning',
+				content: typeof body === 'string' ? body : "Couldn't walk you through it",
+			});
 		}
 
 		stepThrough({
@@ -2143,7 +2146,7 @@ export default class FilesPanel extends Panel {
 		if (anchor.diff && (await this.openInDiff(id, anchor))) return;
 		if (anchor.side === 'old')
 			return new Notify({
-				type: 'warning',
+				intent: 'warning',
 				content: anchor.diff
 					? 'The change it is on is not in that diff any more.'
 					: 'It is on lines before a change, which no diff here shows.',
@@ -2153,7 +2156,7 @@ export default class FilesPanel extends Panel {
 		const now = response?.ok && id in body ? body[id] : anchor;
 
 		if (now === null)
-			new Notify({ type: 'warning', content: 'Its lines have changed since; this is where they were.' });
+			new Notify({ intent: 'warning', content: 'Its lines have changed since; this is where they were.' });
 		await this.open(anchor.path, (now ?? anchor).from, (now ?? anchor).to);
 	}
 

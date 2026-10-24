@@ -133,14 +133,14 @@ const openWaiting = async session => {
 	const { body, response } = await openRemote(session.remote.url, { sessionId: session.id });
 
 	if (response?.ok) window.location.href = body.link;
-	else new Notify({ type: 'error', content: `Could not reach ${session.remote.name}.` });
+	else new Notify({ intent: 'danger', content: `Could not reach ${session.remote.name}.` });
 };
 
 const goToServer = async server => {
 	const { body, response } = await openRemote(server.url, { home: true });
 
 	if (response?.ok) window.location.href = body.link;
-	else new Notify({ type: 'error', content: `Could not reach ${server.name}.` });
+	else new Notify({ intent: 'danger', content: `Could not reach ${server.name}.` });
 };
 
 const summaryOf = server => {

@@ -23,8 +23,8 @@ export const confirmDeleteSession = async (session, deleteSession) => {
 	if (response?.ok && body?.worktree) {
 		new Notify(
 			body.removed
-				? { type: 'success', content: `Worktree ${body.worktree} removed too; its branch stays.` }
-				: { type: 'warning', content: `Kept worktree ${body.worktree}: ${body.why}`, timeout: 10_000 },
+				? { intent: 'success', content: `Worktree ${body.worktree} removed too; its branch stays.` }
+				: { intent: 'warning', content: `Kept worktree ${body.worktree}: ${body.why}`, timeout: 10_000 },
 		);
 	}
 

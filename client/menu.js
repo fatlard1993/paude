@@ -77,7 +77,7 @@ const GlassMenu = styled(
 let menu = null;
 
 export const closeMenu = () => {
-	if (menu?.shown) menu.hide();
+	if (menu?.isOpen) menu.close();
 };
 
 // A menu under a button, or at a point ({ x, y }): items ({ label, detail, icon, accent, onPress }) and headings
@@ -105,7 +105,7 @@ export const openMenu = (anchor, items) => {
 		'marked',
 		items.some(item => item.icon),
 	);
-	menu.show(anchor instanceof Element || !Number.isFinite(anchor?.x) ? { anchor } : anchor);
+	menu.open(anchor instanceof Element || !Number.isFinite(anchor?.x) ? { anchor } : anchor);
 };
 
 const HOLD_MS = 500;

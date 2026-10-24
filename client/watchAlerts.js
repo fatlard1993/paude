@@ -26,7 +26,7 @@ const alert = async (session, what) => {
 	});
 
 	if (!shown && !document.hidden)
-		new Notify({ type: 'info', content: `${session.title || 'A session'}${what}`, timeout: 8000 });
+		new Notify({ intent: 'info', content: `${session.title || 'A session'}${what}`, timeout: 8000 });
 };
 
 export const startWatchAlerts = ({ remotes }) => {

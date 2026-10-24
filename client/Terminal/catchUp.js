@@ -81,7 +81,7 @@ export const startCatchUp = async ({ card, sessionId, since, terminal, openActiv
 
 	if (!response?.ok) {
 		close();
-		new Notify({ type: 'warning', content: "Couldn't catch you up just now" });
+		new Notify({ intent: 'warning', content: "Couldn't catch you up just now" });
 
 		return;
 	}

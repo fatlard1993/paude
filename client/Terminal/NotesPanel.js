@@ -43,7 +43,7 @@ const composer = ({ placeholder, label, onSend, onAsk, drafts, draftKey }) => {
 
 		// While reconnecting nothing can go out; the text stays for another try
 		if (handler(text) === false) {
-			new Notify({ type: 'warning', content: 'Not sent: reconnecting. Try again in a moment.' });
+			new Notify({ intent: 'warning', content: 'Not sent: reconnecting. Try again in a moment.' });
 
 			return;
 		}
@@ -91,7 +91,7 @@ export default class NotesPanel extends Panel {
 				{ id: 'comments', label: 'Comments' },
 				...(identity()?.owner ? [{ id: 'people', label: 'People' }] : []),
 			],
-			onChange: id => this.showTab(id),
+			onChange: ({ value }) => this.showTab(value),
 		});
 
 		const tabs = this.tabStrip.elem;

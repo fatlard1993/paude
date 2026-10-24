@@ -1,4 +1,4 @@
-import { DELETE, GET, PATCH, POST, PUT } from '@vanilla-bean/hypertether';
+import { DELETE, GET, PATCH, POST, PUT } from '@vanilla-bean/components';
 
 import { searchParameters } from '../shared/searchQuery';
 

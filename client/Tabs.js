@@ -30,7 +30,7 @@ export const tabs = ({ appendTo, key, names }) => {
 	const strip = new Strip({
 		appendTo,
 		tabs: names.map(({ name, label }) => ({ id: name, label })),
-		onChange: name => remember(key, name),
+		onChange: ({ value }) => remember(key, value),
 	});
 
 	return {

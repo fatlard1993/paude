@@ -9,7 +9,7 @@ const UNDO_MS = 8000;
 const counted = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 const named = sessions => (sessions.length === 1 ? `"${sessions[0].title}"` : counted(sessions.length, 'session'));
 
-const failed = what => new Notify({ type: 'error', content: `Could not ${what}.` });
+const failed = what => new Notify({ intent: 'danger', content: `Could not ${what}.` });
 
 const archive = async (sessions, archived, changed, { undoing = false } = {}) => {
 	const ids = sessions.map(({ id }) => id);
@@ -21,10 +21,10 @@ const archive = async (sessions, archived, changed, { undoing = false } = {}) =>
 	if (undoing) return;
 
 	new Notify({
-		type: 'success',
+		intent: 'success',
 		timeout: UNDO_MS,
 		content: `${archived ? 'Archived' : 'Unarchived'} ${named(sessions)}`,
-		actions: [{ textContent: 'Undo', onPress: () => archive(sessions, !archived, changed, { undoing: true }) }],
+		actions: [{ textContent: 'Undo', onPointerPress: () => archive(sessions, !archived, changed, { undoing: true }) }],
 	});
 };
 

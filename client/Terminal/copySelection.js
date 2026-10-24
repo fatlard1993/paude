@@ -21,12 +21,12 @@ export const copySelection = async terminal => {
 
 	if (copied) {
 		terminal.clearSelection();
-		new Notify({ type: 'success', content: 'Copied', timeout: 1500 });
-	} else new Notify({ type: 'error', content: "The browser wouldn't let paude copy; its own Copy still works." });
+		new Notify({ intent: 'success', content: 'Copied', timeout: 1500 });
+	} else new Notify({ intent: 'danger', content: "The browser wouldn't let paude copy; its own Copy still works." });
 };
 
 // Copies with a toast saying so, or saying the browser refused
 export const copyWithNotice = async (text, content) => {
-	if (await copyToClipboard(text)) new Notify({ type: 'success', content, timeout: 1500 });
-	else new Notify({ type: 'warning', content: 'The browser would not allow copying here.' });
+	if (await copyToClipboard(text)) new Notify({ intent: 'success', content, timeout: 1500 });
+	else new Notify({ intent: 'warning', content: 'The browser would not allow copying here.' });
 };

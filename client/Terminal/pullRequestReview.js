@@ -94,7 +94,7 @@ const reviewDialog = plan =>
 		});
 	});
 
-const say = (type, content) => new Notify({ type, content, timeout: type === 'error' ? 10_000 : 4000 });
+const say = (intent, content) => new Notify({ intent, content, timeout: intent === 'danger' ? 10_000 : 4000 });
 
 const bringIn = async (sessionId, button) => {
 	button.disabled = true;
@@ -102,7 +102,7 @@ const bringIn = async (sessionId, button) => {
 	const { body } = await runGit(sessionId, 'pr-threads');
 
 	button.disabled = false;
-	if (!body?.ok) return say('error', body?.output ?? 'Could not read the pull request.');
+	if (!body?.ok) return say('danger', body?.output ?? 'Could not read the pull request.');
 	say(
 		'success',
 		body.changed
@@ -117,7 +117,7 @@ const post = async (sessionId, button) => {
 	const { body: plan, response } = await getGit(sessionId, 'pr-review');
 
 	button.disabled = false;
-	if (!response?.ok) return say('error', typeof plan === 'string' ? plan : 'Could not read the pull request.');
+	if (!response?.ok) return say('danger', typeof plan === 'string' ? plan : 'Could not read the pull request.');
 
 	const choice = await reviewDialog(plan);
 
@@ -125,7 +125,7 @@ const post = async (sessionId, button) => {
 
 	const { body: posted } = await runGit(sessionId, 'pr-review', choice);
 
-	if (!posted?.ok) return say('error', posted?.output ?? 'GitHub did not take it.');
+	if (!posted?.ok) return say('danger', posted?.output ?? 'GitHub did not take it.');
 	say('success', 'Posted to the pull request');
 	window.open(posted.url, '_blank', 'noopener');
 };

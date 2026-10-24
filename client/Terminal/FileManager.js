@@ -25,7 +25,7 @@ const counted = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one 
 const named = paths => (paths.length === 1 ? paths[0] : counted(paths.length, 'item'));
 
 const failed = (body, fallback) =>
-	new Notify({ type: 'error', content: typeof body === 'string' && body ? body : fallback });
+	new Notify({ intent: 'danger', content: typeof body === 'string' && body ? body : fallback });
 
 // A file's name is split at its extension; a folder's isn't
 const splitName = (name, folder) => {
@@ -344,7 +344,7 @@ export default class FileManager {
 		this.select([body.path]);
 		if (isFolder) return;
 		if (!body.listed)
-			return new Notify({ type: 'warning', content: `Made ${body.path}, but git ignores it, so it isn't listed.` });
+			return new Notify({ intent: 'warning', content: `Made ${body.path}, but git ignores it, so it isn't listed.` });
 
 		await this.panel.open(body.path);
 		if (this.panel.current === body.path && this.panel.lines) this.panel.startEditing();
@@ -378,7 +378,7 @@ export default class FileManager {
 		const renamed = body.moved.length === 1 && parentOf(first.from) === parentOf(first.to);
 
 		new Notify({
-			type: 'success',
+			intent: 'success',
 			timeout: UNDO_MS,
 			content: renamed
 				? `Renamed to ${nameOf(first.to)}`
@@ -386,7 +386,7 @@ export default class FileManager {
 			actions: [
 				{
 					textContent: 'Undo',
-					onPress: () =>
+					onPointerPress: () =>
 						this.move(
 							body.moved.map(({ from, to }) => ({ from: to, to: from })),
 							{ undoing: true },
@@ -461,10 +461,10 @@ export default class FileManager {
 		this.select([]);
 		await this.panel.refresh();
 		new Notify({
-			type: 'success',
+			intent: 'success',
 			timeout: UNDO_MS,
 			content: `Deleted ${named(body.deleted)}`,
-			actions: [{ textContent: 'Undo', onPress: () => this.restore(body.trash) }],
+			actions: [{ textContent: 'Undo', onPointerPress: () => this.restore(body.trash) }],
 		});
 	}
 
@@ -506,7 +506,7 @@ export default class FileManager {
 		if (!wanted.length) return;
 
 		const progress = new Notify({
-			type: 'info',
+			intent: 'info',
 			content: `Uploading ${counted(wanted.length, 'file')}...`,
 			timeout: 0,
 		});
@@ -522,7 +522,7 @@ export default class FileManager {
 		};
 
 		for (const item of wanted) await send(item, false);
-		progress.hide();
+		progress.close();
 
 		if (conflicts.length) {
 			const names = conflicts.map(({ path }) => joined(folder, path));
@@ -548,7 +548,7 @@ export default class FileManager {
 		if (refused.length) failed(refused.join('\n'));
 		if (made.length)
 			new Notify({
-				type: unlisted ? 'warning' : 'success',
+				intent: unlisted ? 'warning' : 'success',
 				content: `Uploaded ${counted(made.length, 'file')}${unlisted ? `; git ignores ${unlisted}, so ${unlisted === 1 ? "it isn't" : "they aren't"} listed` : ''}`,
 			});
 	}
