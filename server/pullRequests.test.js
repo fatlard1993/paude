@@ -32,6 +32,33 @@ test('without a walk-through or a test result, a draft is from the commits alone
 	expect(prompt).toContain('- add formatDistance');
 });
 
+test('a draft reads the commits oldest first with their messages, for the decisions they record', () => {
+	const prompt = draftPrompt({
+		commits: [
+			{ subject: 'lock after five tries', body: 'Per user, not per session:\nsessions reset.' },
+			{ subject: 'count failed logins', body: '' },
+		],
+		stat: ' auth.js | 9 +',
+	});
+
+	expect(prompt).toContain(
+		'- count failed logins\n- lock after five tries\n  Per user, not per session:\n  sessions reset.',
+	);
+	expect(prompt).toContain('"Decisions"');
+});
+
+test('past what fits, the latest commits are named by subject alone', () => {
+	const long = 'why '.repeat(3000);
+	const prompt = draftPrompt({
+		commits: ['third', 'second', 'first'].map(subject => ({ subject, body: long })),
+		stat: ' a | 1 +',
+	});
+
+	expect(prompt).toContain(`- first\n  ${long.trim()}`);
+	expect(prompt).toContain('- third\n');
+	expect(prompt.split(long.trim()).length - 1).toBe(1);
+});
+
 test('the drafting Claude runs with no tools, no settings and nothing saved', () => {
 	const argv = draftCommand();
 	const after = flag => argv[argv.indexOf(flag) + 1];

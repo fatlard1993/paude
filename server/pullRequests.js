@@ -8,6 +8,8 @@ import { claudeCommand } from './sessions/running';
 // Pull requests through GitHub's own command, gh: the one for this branch with its checks, and opening one with a
 // title and description Claude drafts.
 const DRAFT_TIMEOUT_MS = 180_000;
+// The most of the commits' messages a draft is given; past it, the latest commits are named by subject alone
+const MESSAGE_CHARACTERS = 16_000;
 const FIELDS = 'number,title,url,state,isDraft,baseRefName,headRefName,headRefOid,statusCheckRollup';
 
 // One check, whichever kind GitHub reports it as (a workflow run, or a commit status)
@@ -71,14 +73,31 @@ const walkThrough = tour =>
 		),
 	].join('\n');
 
-// The prompt for a draft: the commits and what they change, and where they're known, a walk-through of the change
-// (`tour`) and whether it was tested (`tested`, a sentence)
+// The commits oldest first, each with its body while they fit: where a commit's why lives, the decisions in it
+const commitList = commits => {
+	let size = 0;
+
+	return commits
+		.toReversed()
+		.map(({ subject, body }) => {
+			const told = body ? `${subject}\n${body.replace(/^/gm, '  ')}` : subject;
+
+			size += told.length;
+
+			return `- ${size > MESSAGE_CHARACTERS ? subject : told}`;
+		})
+		.join('\n');
+};
+
+// The prompt for a draft: the commits, newest first as git lists them, and what they change, and where they're
+// known, a walk-through of the change (`tour`) and whether it was tested (`tested`, a sentence)
 export const draftPrompt = ({ commits, stat, tour, tested }) =>
 	[
 		'Write a pull request title and description for this branch.',
 		'Reply with the title on the first line, a blank line, then the description in Markdown. Nothing before or after.',
 		[
 			'The description: what changes and why, briefly.',
+			'Then, where the commit messages record decisions (what was chosen over what, and why), a short "Decisions" list of those a reviewer would question; only what the messages say, and none at all when they record none.',
 			tour &&
 				'Then a short "How to review it" list that follows the walk-through below, in its order, naming the files.',
 			tested &&
@@ -86,7 +105,7 @@ export const draftPrompt = ({ commits, stat, tour, tested }) =>
 		]
 			.filter(Boolean)
 			.join(' '),
-		`Its commits:\n${commits.map(commit => `- ${commit.subject}`).join('\n')}`,
+		`Its commits, oldest first, with their messages:\n${commitList(commits)}`,
 		`What it changes:\n${stat}`,
 		tour && `A walk-through of the change, in the order that makes sense of it:\n${walkThrough(tour)}`,
 		tested && `Testing, as seen in the session that made it: ${tested}`,
@@ -116,7 +135,7 @@ export const draftPullRequest = async (root, { tour, tested } = {}) => {
 
 	if (!base) throw new GitError('There is no branch to compare with');
 
-	const commits = await gitLog(root, { ref: `${base}..HEAD`, limit: 100 });
+	const commits = await gitLog(root, { ref: `${base}..HEAD`, limit: 100, bodies: true });
 
 	if (!commits.length) throw new GitError(`This branch has nothing ${base} doesn't`);
 

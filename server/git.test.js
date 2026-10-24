@@ -153,6 +153,8 @@ describe('history', () => {
 		expect(log.map(({ subject }) => subject)).toEqual(['second', 'first']);
 		expect(log[0]).toMatchObject({ author: 'Ana', parents: [log[1].hash] });
 		expect(log[0].refs).toContain('HEAD -> main');
+		expect(log[0].body).toBeUndefined();
+		expect((await gitLog(repo, { bodies: true })).map(({ body }) => body)).toEqual(['with a body', '']);
 
 		const commit = await gitCommit(repo, log[0].hash);
 

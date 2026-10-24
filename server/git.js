@@ -213,13 +213,13 @@ export const gitStatus = async root => {
 	};
 };
 
-// Newest first, a page at a time: [{ hash, short, parents, author, date, refs, subject }]. `path` narrows it to the
-// commits that touched one file, following it through renames.
-export const gitLog = async (root, { ref, path, skip = 0, limit = LOG_PAGE } = {}) => {
+// Newest first, a page at a time: [{ hash, short, parents, author, date, refs, subject }], and each one's body with
+// `bodies`. `path` narrows it to the commits that touched one file, following it through renames.
+export const gitLog = async (root, { ref, path, skip = 0, limit = LOG_PAGE, bodies = false } = {}) => {
 	const { code, out } = await run(
 		[
 			'log',
-			`--format=%H${UNIT}%h${UNIT}%P${UNIT}%an${UNIT}%aI${UNIT}%D${UNIT}%s${RECORD}`,
+			`--format=%H${UNIT}%h${UNIT}%P${UNIT}%an${UNIT}%aI${UNIT}%D${UNIT}%s${bodies ? `${UNIT}%b` : ''}${RECORD}`,
 			`--skip=${Math.max(0, Number(skip) || 0)}`,
 			`--max-count=${Math.min(Math.max(1, Number(limit) || LOG_PAGE), 200)}`,
 			...(ref ? [ref] : []),
@@ -235,7 +235,7 @@ export const gitLog = async (root, { ref, path, skip = 0, limit = LOG_PAGE } = {
 		.map(record => record.trim())
 		.filter(Boolean)
 		.map(record => {
-			const [hash, short, parents, author, date, refs, subject] = record.split(UNIT);
+			const [hash, short, parents, author, date, refs, subject, body] = record.split(UNIT);
 
 			return {
 				hash,
@@ -245,6 +245,7 @@ export const gitLog = async (root, { ref, path, skip = 0, limit = LOG_PAGE } = {
 				date,
 				refs: refs ? refs.split(', ') : [],
 				subject,
+				...(bodies && { body: body?.trim() ?? '' }),
 			};
 		});
 };
