@@ -105,6 +105,7 @@ export const bulkActions = (sessions, changed) => {
 					header: `Delete ${named(sessions)}?`,
 					body: 'Their conversations, chat and comments are removed, and anyone invited loses access. This cannot be undone.',
 					confirmLabel: 'Delete',
+					intent: 'danger',
 				});
 
 				if (!sure) return;

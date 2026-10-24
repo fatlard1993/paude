@@ -3,8 +3,8 @@ import { Dialog, Notify } from '@vanilla-bean/components';
 import { element } from './dom';
 
 // Resolves to whether the confirming button was pressed
-const confirmDialog = ({ header, body, cancelLabel = 'Cancel', confirmLabel }) =>
-	Dialog.confirm({ size: 'small', header, body, cancelLabel, confirmLabel });
+const confirmDialog = ({ header, body, cancelLabel = 'Cancel', confirmLabel, intent }) =>
+	Dialog.confirm({ size: 'small', header, body, cancelLabel, confirmLabel, intent });
 
 export default confirmDialog;
 
@@ -13,6 +13,7 @@ export const confirmDeleteSession = async (session, deleteSession) => {
 		header: `Delete "${session.title || 'this session'}"?`,
 		body: 'Its conversation, chat and comments are removed, and anyone invited to it loses access. This cannot be undone.',
 		confirmLabel: 'Delete',
+		intent: 'danger',
 	});
 
 	if (!confirmed) return false;
