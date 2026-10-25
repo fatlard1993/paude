@@ -250,6 +250,7 @@ const detailOf = (panel, item, width) => {
 				item.rejected && `Rejected: ${item.rejected}`,
 				item.because && `Because: ${item.because}`,
 				item.overrules && `Overrules ${item.overrules.file}: "${item.overrules.claim}"`,
+				item.belongs && `A claim for ${item.belongs}`,
 				item.question && `To file it, paude asks: ${item.question}`,
 				`❯ ${item.asked}`,
 				[
@@ -445,7 +446,9 @@ export const panelKeys = (panel, keyCap) => {
 			add('a', 'answer what paude asks', item?.question);
 			add(
 				'w',
-				item?.overrules ? 'ask Claude to change the claim' : 'ask Claude to record it',
+				(item?.overrules && 'ask Claude to change the claim') ||
+					(item?.belongs && 'ask Claude to add the claim') ||
+					'ask Claude to record it',
 				item && !item.place && !item.earlier,
 			);
 			add('x', 'set it aside', item && !item.earlier);

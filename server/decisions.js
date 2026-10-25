@@ -226,7 +226,8 @@ export const placePrompt = (decisions, placesText) =>
 		'Each item below was settled in a conversation about a codebase. After them are the places its people write things down: commit messages, instruction files, design documents.',
 		'For each item, say where it is written down: a commit by its short sha, or a file by its path, as given below. Written down means that place says the same thing, not that it touches the topic. When no place says it, null.',
 		'Where a design document still claims what an item overrules (it states the opposite, or what the item rejected), answer that instead, as {"overrules": its path, "claim": the claim, quoted from it}. Only a claim the item cannot hold beside: a claim on a nearby topic is not overruled.',
-		'Reply with only a JSON object from each number to its answer, like {"1": "382a290", "2": null, "3": {"overrules": "auth/auth.lld.md", "claim": "Failed attempts are tracked per session."}}.',
+		'Where no place says an item, but it is design intent for what a design document describes (the kind of thing that document claims, about the code it covers), answer {"belongs": its path}. Not a standing direction, a process or a preference: those belong elsewhere.',
+		'Reply with only a JSON object from each number to its answer, like {"1": "382a290", "2": null, "3": {"overrules": "auth/auth.lld.md", "claim": "Failed attempts are tracked per session."}, "4": {"belongs": "auth/auth.lld.md"}}.',
 		decisions
 			.map((decision, index) =>
 				[
@@ -241,18 +242,17 @@ export const placePrompt = (decisions, placesText) =>
 		placesText,
 	].join('\n\n');
 
+// A design document named as one of those given
+const designDocument = (file, names) => typeof file === 'string' && file.endsWith('.lld.md') && names.has(file);
+
 // A design document's claim an item overrules, when Haiku's answer names one of those given and quotes it
 const overruled = (answer, names) =>
-	typeof answer?.overrules === 'string' &&
-	answer.overrules.endsWith('.lld.md') &&
-	names.has(answer.overrules) &&
-	typeof answer.claim === 'string' &&
-	answer.claim.trim()
+	designDocument(answer?.overrules, names) && typeof answer.claim === 'string' && answer.claim.trim()
 		? { file: answer.overrules, claim: answer.claim.trim() }
 		: null;
 
-// Haiku's reply as { [number]: place | { overrules: { file, claim } } | null }, a place only when it is one of those
-// given; null for no reply at all
+// Haiku's reply as { [number]: place | { overrules: { file, claim } } | { belongs: file } | null }, a place only when
+// it is one of those given; null for no reply at all
 export const parsePlaces = (reply, names) => {
 	const json = jsonIn(reply);
 
@@ -263,6 +263,7 @@ export const parsePlaces = (reply, names) => {
 			const overrules = overruled(answer, names);
 
 			if (overrules) return [number, { overrules }];
+			if (designDocument(answer?.belongs, names)) return [number, { belongs: answer.belongs }];
 
 			return [number, typeof answer === 'string' && names.has(answer) ? answer : null];
 		}),
@@ -270,8 +271,9 @@ export const parsePlaces = (reply, names) => {
 };
 
 let placesFile;
-// { [decision id]: { place, overrules, fingerprint } }: a place found is kept; nowhere is looked into again when the
-// places change, as is a design document's claim it overrules (by then, perhaps changed to agree)
+// { [decision id]: { place, overrules, belongs, fingerprint } }: a place found is kept; nowhere is looked into again
+// when the places change, as is a design document's claim it overrules (by then, perhaps changed to agree) and one it
+// belongs in
 let placed = {};
 let marksFile;
 // { [session id]: [decision id] }: the ones set aside as not worth writing down
@@ -328,6 +330,7 @@ const lookFor = async (decisions, placesSince, ask = askHaiku) => {
 				placed[decision.id] = {
 					place: typeof said === 'string' ? said : null,
 					...(said?.overrules && { overrules: said.overrules }),
+					...(said?.belongs && { belongs: said.belongs }),
 					fingerprint: places.fingerprint,
 				};
 			});
@@ -580,6 +583,7 @@ export const sessionDecisions = async (id, cwd, { withDismissed = false, whole =
 				...decision,
 				place: placed[decision.id]?.place ?? null,
 				overrules: placed[decision.id]?.overrules ?? null,
+				belongs: placed[decision.id]?.belongs ?? null,
 				looking: looking.has(decision.id),
 				filed: Boolean(placed[decision.id]?.filed),
 				// Being filed, or answered and about to be
@@ -606,7 +610,10 @@ export const writeDownPrompt = decision =>
 	[
 		decision.overrules &&
 			`This was settled earlier in the session, and it overrules a claim the design document ${decision.overrules.file} still makes: "${decision.overrules.claim}". Change that claim (and its perspectives) to what was settled, and commit the document with why the design moved. If the claim should hold after all, leave it and say why.`,
+		decision.belongs &&
+			`This was settled earlier in the session, and it is design intent for what the design document ${decision.belongs} describes, which doesn't claim it yet. Add it there as a claim in the document's own style, with a perspective that checks it and what was rejected where a naive implementer would choose that, and commit the document with why. If it isn't design intent after all, write it into the message of the commit it shaped instead, and say so.`,
 		!decision.overrules &&
+			!decision.belongs &&
 			"This was settled earlier in the session and is not written down anywhere yet. Write it down where it belongs, then say where: in the message of the commit it shaped (folded in with amend! while that commit is unpushed), in CLAUDE.md if it is a standing direction, in the slice's .lld.md if it is design intent, or nowhere if it no longer holds (say why).",
 		`${{ decision: 'Decided', direction: 'Direction', deferred: 'Put off' }[decision.kind]}: ${decision.chose}`,
 		decision.rejected && `Rejected: ${decision.rejected}`,

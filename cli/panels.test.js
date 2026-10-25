@@ -292,6 +292,16 @@ describe('decisions', () => {
 		expect(panelKey(panel, 'w')).toEqual({ type: 'writeDecision', id: 't2:0' });
 	});
 
+	test('a design document one belongs in is named, and w asks Claude to add the claim', () => {
+		const panel = loaded('decisions', {
+			reading: false,
+			decisions: [{ ...data.decisions[0], belongs: 'auth/auth.lld.md' }],
+		});
+
+		expect(panelView(panel, 120, 20).join('\n')).toContain('A claim for auth/auth.lld.md');
+		expect(panelKeys(panel, key => key).join(' ')).toContain('add the claim');
+	});
+
 	test('says while it is still reading, and what an empty tab means', () => {
 		const lines = panelView(loaded('decisions', { reading: true, decisions: [] }), 80, 20).join('\n');
 

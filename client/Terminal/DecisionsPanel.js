@@ -132,9 +132,10 @@ export default class DecisionsPanel extends Panel {
 		if (!decision.place && !decision.earlier && identity()?.owner) {
 			const write = button('', () => this.writeDown(decision, write), {
 				icon: 'pen-to-square',
-				title: decision.overrules
-					? `Ask Claude to change the claim in ${decision.overrules.file}`
-					: 'Ask Claude to record it where it belongs',
+				title:
+					(decision.overrules && `Ask Claude to change the claim in ${decision.overrules.file}`) ||
+					(decision.belongs && `Ask Claude to add it to ${decision.belongs} as a claim`) ||
+					'Ask Claude to record it where it belongs',
 				className: 'icon-only',
 			});
 
@@ -156,6 +157,7 @@ export default class DecisionsPanel extends Panel {
 			...(decision.overrules
 				? [this.said(`Overrules ${decision.overrules.file}`, `"${decision.overrules.claim}"`)]
 				: []),
+			...(decision.belongs ? [this.said('A claim for', decision.belongs)] : []),
 			...(decision.question ? [this.said('To file it, paude asks', decision.question)] : []),
 			...(decision.question && identity()?.owner ? [this.answerForm(decision)] : []),
 			element('div', 'link-address', `❯ ${decision.asked}`),

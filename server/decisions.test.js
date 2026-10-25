@@ -127,13 +127,15 @@ test('a place is only one of those given', () => {
 	expect(parsePlaces('no idea', names)).toBeNull();
 });
 
-test("a design document's claim is overruled only when it's one of those given, and the claim is quoted", () => {
+test("a design document's claim is overruled, or one belongs in it, only when it's one of those given", () => {
 	const names = new Set(['382a290', 'CLAUDE.md', 'auth/auth.lld.md']);
 	const reply = JSON.stringify({
 		1: { overrules: 'auth/auth.lld.md', claim: ' Failed attempts are tracked per session. ' },
 		2: { overrules: 'other.lld.md', claim: 'Tokens never expire.' },
 		3: { overrules: 'CLAUDE.md', claim: 'Commit often.' },
 		4: { overrules: 'auth/auth.lld.md', claim: '' },
+		5: { belongs: 'auth/auth.lld.md' },
+		6: { belongs: 'CLAUDE.md' },
 	});
 
 	expect(parsePlaces(reply, names)).toEqual({
@@ -141,6 +143,8 @@ test("a design document's claim is overruled only when it's one of those given, 
 		2: null,
 		3: null,
 		4: null,
+		5: { belongs: 'auth/auth.lld.md' },
+		6: null,
 	});
 });
 
@@ -168,6 +172,12 @@ test('an overruled claim is kept with the decision, and looked at again once the
 
 	expect(prompt).toContain('overrules a claim the design document auth/auth.lld.md still makes: "Failed attempts');
 	expect(prompt).not.toContain('is not written down anywhere yet');
+
+	const adding = writeDownPrompt({ kind: 'decision', chose: 'per user', belongs: 'auth/auth.lld.md' });
+
+	expect(adding).toContain('design intent for what the design document auth/auth.lld.md describes');
+	expect(adding).toContain('with a perspective that checks it');
+	expect(adding).not.toContain('is not written down anywhere yet');
 });
 
 test('the places are the commits since, the instruction files and the design documents', async () => {
