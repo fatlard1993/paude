@@ -5,6 +5,8 @@ import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
 import { statusOf } from './activity';
 import { changedFiles, explainInto, fileInto, openConcerns, targetFor } from './backfill';
+import { claudeWrites } from './commitMessage';
+import { fileDesign } from './designFiling';
 import { markInterruptions, steeringOf } from './catchUp';
 import describer from './describer';
 import { explainedHash, headCommit, repoRoot } from './git';
@@ -295,9 +297,9 @@ export const parsePlaces = (reply, names) => {
 };
 
 let placesFile;
-// { [decision id]: { place, overrules, belongs, fingerprint } }: a place found is kept; nowhere is looked into again
-// when the places change, as is a design document's claim it overrules (by then, perhaps changed to agree) and one it
-// belongs in
+// { [decision id]: { place, overrules, belongs, refuted, unchecked, fingerprint } }: a place found is kept; nowhere is
+// looked into again when the places change, as is a design document's claim it overrules (by then, perhaps changed to
+// agree) and one it belongs in, with whether the code was found not to hold it (refuted) or couldn't be checked
 let placed = {};
 let marksFile;
 // { [session id]: [decision id] }: the ones set aside as not worth writing down
@@ -433,6 +435,47 @@ const fileAll = async (root, groups, options) => {
 	}
 };
 
+// Those with a design document to go into, each filed there once the code is shown to hold it (designFiling.js)
+const designsToFile = decisions =>
+	decisions.filter(decision => {
+		const found = placed[decision.id];
+
+		return (
+			decision.kind !== 'deferred' &&
+			found?.place === null &&
+			(found.belongs || found.overrules) &&
+			!found.refuted &&
+			!found.unchecked &&
+			!failedAt.has(`design:${decision.id}`)
+		);
+	});
+
+const fileDesigns = async (root, decisions, { ask = claudeWrites, run, file } = {}) => {
+	filingIn.add(root);
+	for (const decision of decisions) filingNow.add(decision.id);
+	try {
+		for (const decision of decisions) {
+			const found = placed[decision.id];
+			let outcome;
+
+			try {
+				outcome = await fileDesign(root, { ...decision, ...found }, { ask, run, file });
+			} catch {
+				// No answer, the document being changed, or HEAD moving under it: tried again later
+				failedAt.set(`design:${decision.id}`, Date.now());
+				continue;
+			}
+			placed[decision.id] = outcome?.place
+				? { place: outcome.place, filed: true }
+				: { ...found, ...(outcome?.refuted ? { refuted: true } : { unchecked: true }) };
+			await writeJsonFile(placesFile, () => placed);
+		}
+	} finally {
+		filingIn.delete(root);
+		for (const decision of decisions) filingNow.delete(decision.id);
+	}
+};
+
 // { [session id]: the follow under way }
 const following = new Map();
 // Sessions whose Claude waits on its push, in the order they came: { [session id]: its place }. Its own filing may run
@@ -536,7 +579,16 @@ const backfill = async (sessionId, decisions, turns, cwd) => {
 
 	if (!root || filingIn.has(root)) return false;
 	if (othersWorkIn(root, sessionId)) return true;
-	for (const [key, at] of failedAt) if (key.startsWith('file:') && Date.now() - at > RETRY_MS) failedAt.delete(key);
+	for (const [key, at] of failedAt) if (/^(file|design):/.test(key) && Date.now() - at > RETRY_MS) failedAt.delete(key);
+
+	const designs = designsToFile(decisions);
+
+	// Into their documents first: one filed there has its place, and isn't filed into a commit as well
+	if (designs.length) {
+		fileDesigns(root, designs).catch(() => {});
+
+		return false;
+	}
 
 	const [concerns, links] = await Promise.all([openConcerns(root), linkedCommits(root)]);
 	const groups = await toFile(decisions, turns, { concerns, links, sessionId, cwd, root });
@@ -612,6 +664,7 @@ export const sessionDecisions = async (id, cwd, { withDismissed = false, whole =
 				place: placed[decision.id]?.place ?? null,
 				overrules: placed[decision.id]?.overrules ?? null,
 				belongs: placed[decision.id]?.belongs ?? null,
+				refuted: Boolean(placed[decision.id]?.refuted),
 				looking: looking.has(decision.id),
 				filed: Boolean(placed[decision.id]?.filed),
 				// Being filed, or answered and about to be
@@ -650,4 +703,4 @@ export const writeDownPrompt = decision =>
 		.filter(Boolean)
 		.join('\n');
 
-export { fileAll, lookFor as lookForPlaces, toLookFor };
+export { designsToFile, fileAll, fileDesigns, lookFor as lookForPlaces, toLookFor };

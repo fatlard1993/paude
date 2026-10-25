@@ -251,6 +251,8 @@ const detailOf = (panel, item, width) => {
 				item.because && `Because: ${item.because}`,
 				item.overrules && `Overrules ${item.overrules.file}: "${item.overrules.claim}"`,
 				item.belongs && `A claim for ${item.belongs}`,
+				item.refuted &&
+					`Checked: ${item.overrules ? `the code still does what ${item.overrules.file} claims` : "the code doesn't hold it now, so it isn't claimed"}`,
 				item.question && `To file it, paude asks: ${item.question}`,
 				`❯ ${item.asked}`,
 				[

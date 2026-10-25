@@ -509,6 +509,45 @@ export const fileExplanation = async (root, hash, message) => {
 	return fileOnTop(root, `${message.trim()}\n\n${explainsLine(hash)}`);
 };
 
+// A design document's new text, as a commit of its own on top, made beside the working tree: the document has to be as
+// HEAD has it, in the index and the working tree both, which then take the new text, so no one's edit to it is lost
+// and nothing else of theirs is touched. Only if HEAD hasn't moved meanwhile, as fileOnTop.
+export const fileDocument = async (root, file, text, message) => {
+	if ((await run(['symbolic-ref', '-q', 'HEAD'], root)).code !== 0) throw new GitError('Not on a branch');
+	if (await operationInProgress(root)) throw new GitError('Something is half done');
+
+	const head = (await must(['rev-parse', 'HEAD'], root)).trim();
+	const [mode, , blob] = (await must(['ls-tree', head, '--', file], root)).split(/\s+/);
+	const staged = (await must(['ls-files', '-s', '--', file], root)).split(/\s+/)[1];
+	const working = (await run(['hash-object', '--', file], root)).out.trim();
+
+	if (!blob || staged !== blob || working !== blob) throw new GitError(`${file} is being changed`);
+
+	const written = (await must(['hash-object', '-w', '--stdin'], root, { input: text })).trim();
+	const index = join(os.tmpdir(), `paude-index-${process.pid}-${Date.now()}`);
+
+	try {
+		const env = { GIT_INDEX_FILE: index };
+
+		await must(['read-tree', head], root, { env });
+		await must(['update-index', '--cacheinfo', `${mode},${written},${file}`], root, { env });
+
+		const tree = (await must(['write-tree'], root, { env })).trim();
+		const filed = (
+			await must(['commit-tree', tree, '-p', head, '-F', '-'], root, { input: `${message.trim()}\n` })
+		).trim();
+
+		await must(['update-ref', '-m', 'paude: design filed', 'HEAD', filed, head], root);
+		await Bun.write(join(root, file), text);
+		await must(['update-index', '--cacheinfo', `${mode},${written},${file}`], root);
+		await run(['notes', '--ref', PAUDE_NOTES, 'add', '-f', '-m', 'reasoning', filed], root);
+
+		return filed;
+	} finally {
+		await rm(index, { force: true });
+	}
+};
+
 // One commit as a decision is filed against it: { hash, short, subject, body, files }
 export const commitOf = async (root, ref) => {
 	const hash = await hashOf(root, ref);

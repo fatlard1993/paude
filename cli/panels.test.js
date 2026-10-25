@@ -300,6 +300,13 @@ describe('decisions', () => {
 
 		expect(panelView(panel, 120, 20).join('\n')).toContain('A claim for auth/auth.lld.md');
 		expect(panelKeys(panel, key => key).join(' ')).toContain('add the claim');
+
+		const checked = loaded('decisions', {
+			reading: false,
+			decisions: [{ ...data.decisions[0], belongs: 'auth/auth.lld.md', refuted: true }],
+		});
+
+		expect(panelView(checked, 120, 20).join('\n')).toContain("Checked: the code doesn't hold it now");
 	});
 
 	test('says while it is still reading, and what an empty tab means', () => {

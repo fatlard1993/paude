@@ -4,6 +4,8 @@ import path from 'path';
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 
 import {
+	designsToFile,
+	fileDesigns,
 	findPrompt,
 	initDecisions,
 	lookForPlaces,
@@ -309,4 +311,41 @@ test("filing waits out another session's push waiting to go, and the first to wa
 	secondPushes();
 	await second;
 	expect(othersWorkIn('/repo', 'filing')).toBe(false);
+});
+
+test('one belonging in a design document is filed there once the code holds it; one it does not is refuted', async () => {
+	await initDecisions(dir);
+	await writeFile(path.join(dir, 'a.lld.md'), '# A\n- one\n');
+
+	const decisions = [
+		{ id: 't4:0', kind: 'decision', chose: 'two' },
+		{ id: 't5:0', kind: 'decision', chose: 'three' },
+	];
+	const places = { fingerprint: 'a', names: new Set(['a.lld.md']), text: '# A\n- one' };
+
+	await lookForPlaces(
+		decisions,
+		async () => places,
+		async () => '{"1": {"belongs": "a.lld.md"}, "2": {"belongs": "a.lld.md"}}',
+	);
+	expect(designsToFile(decisions).map(decision => decision.id)).toEqual(['t4:0', 't5:0']);
+
+	const asked = [];
+	const ask = async prompt => {
+		const chose = prompt.includes('Settled: two') ? 'two' : 'three';
+
+		asked.push(chose);
+
+		return JSON.stringify({ document: `# A\n- one\n- ${chose}\n`, message: `a: ${chose}` });
+	};
+	const outcome = passed => ({ passed, failed: 0, pending: 0, indirect: 0, shallow: 0 });
+	const run = async (root, file, [, drafted]) => [outcome(1), outcome(drafted.includes('two') ? 2 : 1)];
+	const filed = [];
+
+	await fileDesigns(dir, designsToFile(decisions), { ask, run, file: async (...args) => filed.push(args[3]) });
+	expect(asked).toEqual(['two', 'three']);
+	expect(filed).toEqual(['a: two']);
+	// Neither is tried again: one is in its document, the other is what the code doesn't do
+	expect(designsToFile(decisions)).toEqual([]);
+	expect(toLookFor(decisions, 'a')).toEqual([]);
 });

@@ -4,6 +4,7 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import {
+	fileDocument,
 	gitAction,
 	gitBlame,
 	gitBranches,
@@ -61,6 +62,35 @@ const firstCommit = async () => {
 	git('add', '-A');
 	git('commit', '-q', '-m', 'first');
 };
+
+test("a design document's new text is a commit of its own, made beside the person's work, which it leaves alone", async () => {
+	await write('a.lld.md', '# A\n- one\n');
+	await firstCommit();
+	await write('a.txt', 'one\nmine, not committed\n');
+	await write('b.txt', 'staged\n');
+	git('add', 'b.txt');
+
+	const filed = await fileDocument(repo, 'a.lld.md', '# A\n- one\n- two\n', 'a: two\n\nBecause.');
+
+	expect(git('rev-parse', 'HEAD')).toBe(filed);
+	expect(git('log', '-1', '--format=%B')).toBe('a: two\n\nBecause.');
+	expect(git('show', '--format=', '--name-only', 'HEAD')).toBe('a.lld.md');
+	expect(await Bun.file(path.join(repo, 'a.lld.md')).text()).toBe('# A\n- one\n- two\n');
+	// The document's change is committed in the index and the working tree alike; theirs stays as it was
+	expect(git('status', '--porcelain')).toBe('M a.txt\nA  b.txt');
+});
+
+test('a design document someone is changing is not filed into', async () => {
+	await write('a.lld.md', '# A\n- one\n');
+	await firstCommit();
+	await write('a.lld.md', '# A\n- one\n- theirs\n');
+
+	const head = git('rev-parse', 'HEAD');
+
+	await expect(fileDocument(repo, 'a.lld.md', '# A\n- one\n- two\n', 'a: two')).rejects.toThrow('being changed');
+	expect(git('rev-parse', 'HEAD')).toBe(head);
+	expect(await Bun.file(path.join(repo, 'a.lld.md')).text()).toBe('# A\n- one\n- theirs\n');
+});
 
 test('the repository is found from its folder; outside git there is none', async () => {
 	expect(await repoRoot(repo)).toBe(repo);

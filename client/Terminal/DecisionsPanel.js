@@ -158,6 +158,16 @@ export default class DecisionsPanel extends Panel {
 				? [this.said(`Overrules ${decision.overrules.file}`, `"${decision.overrules.claim}"`)]
 				: []),
 			...(decision.belongs ? [this.said('A claim for', decision.belongs)] : []),
+			...(decision.refuted
+				? [
+						this.said(
+							'Checked',
+							decision.overrules
+								? `the code still does what ${decision.overrules.file} claims`
+								: "the code doesn't hold it now, so it isn't claimed",
+						),
+					]
+				: []),
 			...(decision.question ? [this.said('To file it, paude asks', decision.question)] : []),
 			...(decision.question && identity()?.owner ? [this.answerForm(decision)] : []),
 			element('div', 'link-address', `❯ ${decision.asked}`),
