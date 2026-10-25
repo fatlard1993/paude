@@ -30,8 +30,9 @@ const REPLY = 1000;
 // How much of each kind of place Haiku reads, at most, and of any one file
 const PLACE_CHARACTERS = 30_000;
 // What looking for a place asks, by version: changing what it asks looks again for every one found nowhere, as the
-// places changing does. 2: whether one overrules a design document's claim, or belongs in one.
-const PLACES_ASKED = 2;
+// places changing does. 2: whether one overrules a design document's claim, or belongs in one. 3: the design documents
+// shown by what it says, not only by where its turn changed files.
+const PLACES_ASKED = 3;
 const FILE_CHARACTERS = 8000;
 // A look for a decision's place that came back with nothing waits this long before it's tried again
 const RETRY_MS = 10 * 60 * 1000;
@@ -166,19 +167,33 @@ const sharedDepth = (file, document) => {
 	return depth;
 };
 
-// Documents by the most folders shared with any of the files, deepest first; otherwise as they were
-export const nearestFirst = (documents, files) => {
-	const nearness = document => Math.max(0, ...files.map(file => sharedDepth(file, document)));
+// The words a text is about: identifiers and words of four letters or more, a call kept as one
+const termsOf = text => [...new Set(text.toLowerCase().match(/[a-z_][a-z0-9_]{3,}(?:\(\))?/g) ?? [])];
 
-	return documents.toSorted((a, b) => nearness(b) - nearness(a));
+// Documents by how much they share with what the decisions say (`about`), each word counting by how few documents
+// have it, then by the most folders shared with any of the files `near`; otherwise as they were. A decision about a
+// base class is in a document nowhere near the files its turn changed. `texts`: each document's text.
+export const rankedDocuments = (documents, { texts = {}, near = [], about = '' } = {}) => {
+	const lower = Object.fromEntries(documents.map(document => [document, (texts[document] ?? '').toLowerCase()]));
+	const weights = termsOf(about)
+		.map(term => [term, documents.filter(document => lower[document].includes(term)).length])
+		.filter(([, having]) => having)
+		.map(([term, having]) => [term, Math.log(documents.length / having)]);
+	const score = document =>
+		weights.reduce((sum, [term, weight]) => sum + (lower[document].includes(term) ? weight : 0), 0) +
+		Math.max(0, ...near.map(file => sharedDepth(file, document)));
+	const scores = new Map(documents.map(document => [document, score(document)]));
+
+	return documents.toSorted((a, b) => scores.get(b) - scores.get(a));
 };
 
 // The places a decision would be written down, as Haiku reads them, with the names it may answer with and a
 // fingerprint that changes when any of them does: the commits since `since`, the instruction files (the project's, and
 // the person's own CLAUDE.md and skills), the design documents. The commits oldest first: what records a decision is
 // usually made soon after it, and a session looked back on weeks later has more since than Haiku reads. The design
-// documents nearest the files `near` first (those the decisions' turns changed), as a project's whole set doesn't fit.
-export const placesFor = async (cwd, since, { near = [] } = {}) => {
+// documents most about what the decisions say (`about`) and nearest the files `near` (those their turns changed)
+// first, as a project's whole set doesn't fit.
+export const placesFor = async (cwd, since, { near = [], about = '' } = {}) => {
 	const root = await repoRoot(cwd);
 	const userInstructions = path.join(claudeHome(), 'CLAUDE.md');
 	const listed = async patterns =>
@@ -187,7 +202,13 @@ export const placesFor = async (cwd, since, { near = [] } = {}) => {
 		root ? gitOut(['rev-parse', 'HEAD'], root) : '',
 		root && since ? gitOut(['log', '--reverse', `--since=${since}`, '--format=commit %h%n%B%x00'], root) : '',
 		listed(['CLAUDE.md', '*/CLAUDE.md', 'AGENTS.md', '*/AGENTS.md']),
-		listed(['*.lld.md']).then(files => nearestFirst(files, near)),
+		listed(['*.lld.md']).then(async files => {
+			const texts = Object.fromEntries(
+				await Promise.all(files.map(async file => [file, await readCapped(path.join(root, file))])),
+			);
+
+			return rankedDocuments(files, { texts, near, about });
+		}),
 	]);
 	const instructionFiles = [...instructions, userInstructions, ...(await skillFiles())];
 	const stamps = await Promise.all(
@@ -571,7 +592,11 @@ export const sessionDecisions = async (id, cwd, { withDismissed = false, whole =
 				const root = await repoRoot(cwd);
 				const near = root ? batch.flatMap(decision => changedFiles(turns, decision.turnId, { cwd, root })) : [];
 
-				return placesFor(cwd, since, { near });
+				const about = batch
+					.map(decision => [decision.chose, decision.rejected, decision.because].filter(Boolean).join(' '))
+					.join('\n');
+
+				return placesFor(cwd, since, { near, about });
 			});
 		// Not mid-turn: Claude's own commits move HEAD, and a filing would race them
 		else if (pushing.has(id) || !['working', 'waiting'].includes(statusOf(id)))

@@ -7,11 +7,11 @@ import {
 	findPrompt,
 	initDecisions,
 	lookForPlaces,
-	nearestFirst,
 	othersWorkIn,
 	parseFound,
 	parsePlaces,
 	placesFor,
+	rankedDocuments,
 	pushEnded,
 	pushStarted,
 	toLookFor,
@@ -99,21 +99,27 @@ test('what Haiku found keeps only the three kinds, each with what was chosen', (
 	});
 });
 
-test('the design documents nearest what the decisions changed come first, as all of them may not fit', () => {
-	const documents = [
-		'api/api.lld.md',
-		'components/Button/Button.lld.md',
-		'components/Tooltip/Tooltip.lld.md',
-		'top.lld.md',
-	];
+test('the design documents most about what the decisions say come first, then those nearest what they changed', () => {
+	const texts = {
+		'api/api.lld.md': 'Requests retry twice.',
+		'components/Button/Button.lld.md': 'A press is the release.',
+		'components/Tooltip/Tooltip.lld.md': 'An unknown position throws.',
+		'lld/component.lld.md': 'build() runs in the constructor, before the options are set.',
+	};
+	const documents = Object.keys(texts);
 
-	expect(nearestFirst(documents, ['components/Tooltip/Tooltip.js', 'components/index.js'])).toEqual([
-		'components/Tooltip/Tooltip.lld.md',
-		'components/Button/Button.lld.md',
-		'api/api.lld.md',
-		'top.lld.md',
-	]);
-	expect(nearestFirst(documents, [])).toEqual(documents);
+	// A base class's decision, though its turn changed a Tooltip
+	expect(
+		rankedDocuments(documents, {
+			texts,
+			near: ['components/Tooltip/Tooltip.js'],
+			about: 'Leave build() in the base constructor, before subclass fields exist',
+		})[0],
+	).toBe('lld/component.lld.md');
+	expect(rankedDocuments(documents, { texts, near: ['components/Tooltip/Tooltip.js', 'components/index.js'] })).toEqual(
+		['components/Tooltip/Tooltip.lld.md', 'components/Button/Button.lld.md', 'api/api.lld.md', 'lld/component.lld.md'],
+	);
+	expect(rankedDocuments(documents)).toEqual(documents);
 });
 
 test('a place is only one of those given', () => {
