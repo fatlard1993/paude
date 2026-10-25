@@ -7,6 +7,7 @@ import {
 	findPrompt,
 	initDecisions,
 	lookForPlaces,
+	nearestFirst,
 	othersWorkIn,
 	parseFound,
 	parsePlaces,
@@ -98,6 +99,23 @@ test('what Haiku found keeps only the three kinds, each with what was chosen', (
 	});
 });
 
+test('the design documents nearest what the decisions changed come first, as all of them may not fit', () => {
+	const documents = [
+		'api/api.lld.md',
+		'components/Button/Button.lld.md',
+		'components/Tooltip/Tooltip.lld.md',
+		'top.lld.md',
+	];
+
+	expect(nearestFirst(documents, ['components/Tooltip/Tooltip.js', 'components/index.js'])).toEqual([
+		'components/Tooltip/Tooltip.lld.md',
+		'components/Button/Button.lld.md',
+		'api/api.lld.md',
+		'top.lld.md',
+	]);
+	expect(nearestFirst(documents, [])).toEqual(documents);
+});
+
 test('a place is only one of those given', () => {
 	const names = new Set(['382a290', 'CLAUDE.md']);
 
@@ -107,6 +125,49 @@ test('a place is only one of those given', () => {
 		3: null,
 	});
 	expect(parsePlaces('no idea', names)).toBeNull();
+});
+
+test("a design document's claim is overruled only when it's one of those given, and the claim is quoted", () => {
+	const names = new Set(['382a290', 'CLAUDE.md', 'auth/auth.lld.md']);
+	const reply = JSON.stringify({
+		1: { overrules: 'auth/auth.lld.md', claim: ' Failed attempts are tracked per session. ' },
+		2: { overrules: 'other.lld.md', claim: 'Tokens never expire.' },
+		3: { overrules: 'CLAUDE.md', claim: 'Commit often.' },
+		4: { overrules: 'auth/auth.lld.md', claim: '' },
+	});
+
+	expect(parsePlaces(reply, names)).toEqual({
+		1: { overrules: { file: 'auth/auth.lld.md', claim: 'Failed attempts are tracked per session.' } },
+		2: null,
+		3: null,
+		4: null,
+	});
+});
+
+test('an overruled claim is kept with the decision, and looked at again once the documents change', async () => {
+	await initDecisions(dir);
+
+	const decisions = [{ id: 't3:0', chose: 'per user', rejected: 'per session' }];
+	const places = {
+		fingerprint: 'a',
+		names: new Set(['auth/auth.lld.md']),
+		text: 'Failed attempts are tracked per session.',
+	};
+	const ask = async () =>
+		'{"1": {"overrules": "auth/auth.lld.md", "claim": "Failed attempts are tracked per session."}}';
+
+	await lookForPlaces(decisions, async () => places, ask);
+	expect(toLookFor(decisions, 'a')).toEqual([]);
+	expect(toLookFor(decisions, 'b').map(decision => decision.id)).toEqual(['t3:0']);
+
+	const prompt = writeDownPrompt({
+		kind: 'decision',
+		chose: 'per user',
+		overrules: { file: 'auth/auth.lld.md', claim: 'Failed attempts are tracked per session.' },
+	});
+
+	expect(prompt).toContain('overrules a claim the design document auth/auth.lld.md still makes: "Failed attempts');
+	expect(prompt).not.toContain('is not written down anywhere yet');
 });
 
 test('the places are the commits since, the instruction files and the design documents', async () => {

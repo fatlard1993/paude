@@ -283,6 +283,15 @@ describe('decisions', () => {
 		expect(panelKey(panel, 'a')).toEqual({ type: 'ignore' });
 	});
 
+	test("a design document's claim one overrules is shown, and w asks Claude to change it", () => {
+		const overrules = { file: 'auth/auth.lld.md', claim: 'Tracked per session.' };
+		const panel = loaded('decisions', { reading: false, decisions: [{ ...data.decisions[0], overrules }] });
+
+		expect(panelView(panel, 120, 20).join('\n')).toContain('Overrules auth/auth.lld.md: "Tracked per session."');
+		expect(panelKeys(panel, key => key).join(' ')).toContain('change the claim');
+		expect(panelKey(panel, 'w')).toEqual({ type: 'writeDecision', id: 't2:0' });
+	});
+
 	test('says while it is still reading, and what an empty tab means', () => {
 		const lines = panelView(loaded('decisions', { reading: true, decisions: [] }), 80, 20).join('\n');
 

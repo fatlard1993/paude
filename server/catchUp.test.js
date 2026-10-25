@@ -1,6 +1,15 @@
 import { expect, test } from 'bun:test';
 
-import { didOf, leftOutOf, markInterruptions, parseTour, settledLine, steeringOf, tourPrompt } from './catchUp';
+import {
+	didOf,
+	leftOutOf,
+	markInterruptions,
+	parseTour,
+	settledLine,
+	steeringOf,
+	tourPrompt,
+	waitingOf,
+} from './catchUp';
 
 const turns = [
 	{
@@ -44,10 +53,18 @@ test('what a turn settled goes with it, and the questions left waiting go with t
 	expect(settledLine(settled)).toBe('Decided: Wait on the event. Not: A longer timer. Because: Timers flake.');
 	expect(settledLine({ kind: 'deferred', chose: 'Retries.', rejected: '', because: '' })).toBe('Put off: Retries.');
 	expect(prompt).toContain('Claude ended with: Fixed: the test waited on a timer.\n  Decided: Wait on the event.');
-	expect(prompt).toContain(
-		'Questions waiting on the person, about writing what was settled into the commits:\n- Is this the fix',
-	);
-	expect(tourPrompt(turns)).not.toContain('Questions waiting');
+	expect(prompt).toContain('Waiting on the person, about writing down what was settled:\n- Is this the fix');
+	expect(tourPrompt(turns)).not.toContain('Waiting on the person');
+});
+
+test("what waits on the person: filing's questions, and the design documents' claims overruled", () => {
+	expect(
+		waitingOf([
+			{ chose: 'Main.', question: 'Main, or a branch?' },
+			{ chose: 'Per user.', overrules: { file: 'auth.lld.md', claim: 'Tracked per session.' } },
+			{ chose: 'Five tries.' },
+		]),
+	).toEqual(['Main, or a branch?', '"Per user." overrules what auth.lld.md still claims: "Tracked per session."']);
 });
 
 test('each stop lands on its turn, and a stop Haiku skipped falls back to the prompt', () => {

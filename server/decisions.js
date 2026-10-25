@@ -153,11 +153,29 @@ const skillFiles = async () => {
 	return files.sort();
 };
 
+// How many folders down a file and a document share
+const sharedDepth = (file, document) => {
+	const [a, b] = [path.dirname(file), path.dirname(document)].map(folder => (folder === '.' ? [] : folder.split('/')));
+	let depth = 0;
+
+	while (depth < a.length && a[depth] === b[depth]) depth += 1;
+
+	return depth;
+};
+
+// Documents by the most folders shared with any of the files, deepest first; otherwise as they were
+export const nearestFirst = (documents, files) => {
+	const nearness = document => Math.max(0, ...files.map(file => sharedDepth(file, document)));
+
+	return documents.toSorted((a, b) => nearness(b) - nearness(a));
+};
+
 // The places a decision would be written down, as Haiku reads them, with the names it may answer with and a
 // fingerprint that changes when any of them does: the commits since `since`, the instruction files (the project's, and
 // the person's own CLAUDE.md and skills), the design documents. The commits oldest first: what records a decision is
-// usually made soon after it, and a session looked back on weeks later has more since than Haiku reads.
-export const placesFor = async (cwd, since) => {
+// usually made soon after it, and a session looked back on weeks later has more since than Haiku reads. The design
+// documents nearest the files `near` first (those the decisions' turns changed), as a project's whole set doesn't fit.
+export const placesFor = async (cwd, since, { near = [] } = {}) => {
 	const root = await repoRoot(cwd);
 	const userInstructions = path.join(claudeHome(), 'CLAUDE.md');
 	const listed = async patterns =>
@@ -166,7 +184,7 @@ export const placesFor = async (cwd, since) => {
 		root ? gitOut(['rev-parse', 'HEAD'], root) : '',
 		root && since ? gitOut(['log', '--reverse', `--since=${since}`, '--format=commit %h%n%B%x00'], root) : '',
 		listed(['CLAUDE.md', '*/CLAUDE.md', 'AGENTS.md', '*/AGENTS.md']),
-		listed(['*.lld.md']),
+		listed(['*.lld.md']).then(files => nearestFirst(files, near)),
 	]);
 	const instructionFiles = [...instructions, userInstructions, ...(await skillFiles())];
 	const stamps = await Promise.all(
@@ -207,7 +225,8 @@ export const placePrompt = (decisions, placesText) =>
 	[
 		'Each item below was settled in a conversation about a codebase. After them are the places its people write things down: commit messages, instruction files, design documents.',
 		'For each item, say where it is written down: a commit by its short sha, or a file by its path, as given below. Written down means that place says the same thing, not that it touches the topic. When no place says it, null.',
-		'Reply with only a JSON object from each number to a place or null, like {"1": "382a290", "2": null}.',
+		'Where a design document still claims what an item overrules (it states the opposite, or what the item rejected), answer that instead, as {"overrules": its path, "claim": the claim, quoted from it}. Only a claim the item cannot hold beside: a claim on a nearby topic is not overruled.',
+		'Reply with only a JSON object from each number to its answer, like {"1": "382a290", "2": null, "3": {"overrules": "auth/auth.lld.md", "claim": "Failed attempts are tracked per session."}}.',
 		decisions
 			.map((decision, index) =>
 				[
@@ -222,22 +241,37 @@ export const placePrompt = (decisions, placesText) =>
 		placesText,
 	].join('\n\n');
 
-// Haiku's reply as { [number]: place | null }, a place only when it is one of those given; null for no reply at all
+// A design document's claim an item overrules, when Haiku's answer names one of those given and quotes it
+const overruled = (answer, names) =>
+	typeof answer?.overrules === 'string' &&
+	answer.overrules.endsWith('.lld.md') &&
+	names.has(answer.overrules) &&
+	typeof answer.claim === 'string' &&
+	answer.claim.trim()
+		? { file: answer.overrules, claim: answer.claim.trim() }
+		: null;
+
+// Haiku's reply as { [number]: place | { overrules: { file, claim } } | null }, a place only when it is one of those
+// given; null for no reply at all
 export const parsePlaces = (reply, names) => {
 	const json = jsonIn(reply);
 
 	if (!json) return null;
 
 	return Object.fromEntries(
-		Object.entries(json).map(([number, place]) => [
-			number,
-			typeof place === 'string' && names.has(place) ? place : null,
-		]),
+		Object.entries(json).map(([number, answer]) => {
+			const overrules = overruled(answer, names);
+
+			if (overrules) return [number, { overrules }];
+
+			return [number, typeof answer === 'string' && names.has(answer) ? answer : null];
+		}),
 	);
 };
 
 let placesFile;
-// { [decision id]: { place, fingerprint } }: a place found is kept; nowhere is looked into again when the places change
+// { [decision id]: { place, overrules, fingerprint } }: a place found is kept; nowhere is looked into again when the
+// places change, as is a design document's claim it overrules (by then, perhaps changed to agree)
 let placed = {};
 let marksFile;
 // { [session id]: [decision id] }: the ones set aside as not worth writing down
@@ -273,7 +307,7 @@ const toLookFor = (decisions, fingerprint) =>
 			(!placed[decision.id] || (placed[decision.id].place === null && placed[decision.id].fingerprint !== fingerprint)),
 	);
 
-// Each batch against the places since its earliest: `placesSince` gives them
+// Each batch against the places since its earliest: `placesSince(since, batch)` gives them
 const lookFor = async (decisions, placesSince, ask = askHaiku) => {
 	const sorted = decisions.toSorted((a, b) => String(a.at).localeCompare(String(b.at)));
 
@@ -281,7 +315,7 @@ const lookFor = async (decisions, placesSince, ask = askHaiku) => {
 	try {
 		for (let at = 0; at < sorted.length; at += JUDGED_AT_ONCE) {
 			const batch = sorted.slice(at, at + JUDGED_AT_ONCE);
-			const places = await placesSince(batch[0].at);
+			const places = await placesSince(batch[0].at, batch);
 			const answer = parsePlaces(await ask(placePrompt(batch, places.text)), places.names);
 
 			if (!answer) {
@@ -289,7 +323,13 @@ const lookFor = async (decisions, placesSince, ask = askHaiku) => {
 				break;
 			}
 			batch.forEach((decision, index) => {
-				placed[decision.id] = { place: answer[String(index + 1)] ?? null, fingerprint: places.fingerprint };
+				const said = answer[String(index + 1)] ?? null;
+
+				placed[decision.id] = {
+					place: typeof said === 'string' ? said : null,
+					...(said?.overrules && { overrules: said.overrules }),
+					fingerprint: places.fingerprint,
+				};
 			});
 			await writeJsonFile(placesFile, () => placed);
 		}
@@ -520,7 +560,13 @@ export const sessionDecisions = async (id, cwd, { withDismissed = false, whole =
 		const { fingerprint } = await placesFor(cwd);
 		const unplaced = toLookFor(open, fingerprint);
 
-		if (unplaced.length) lookFor(unplaced, since => placesFor(cwd, since));
+		if (unplaced.length)
+			lookFor(unplaced, async (since, batch) => {
+				const root = await repoRoot(cwd);
+				const near = root ? batch.flatMap(decision => changedFiles(turns, decision.turnId, { cwd, root })) : [];
+
+				return placesFor(cwd, since, { near });
+			});
 		// Not mid-turn: Claude's own commits move HEAD, and a filing would race them
 		else if (pushing.has(id) || !['working', 'waiting'].includes(statusOf(id)))
 			held = await backfill(id, open, turns, cwd).catch(() => false);
@@ -533,6 +579,7 @@ export const sessionDecisions = async (id, cwd, { withDismissed = false, whole =
 			.map(decision => ({
 				...decision,
 				place: placed[decision.id]?.place ?? null,
+				overrules: placed[decision.id]?.overrules ?? null,
 				looking: looking.has(decision.id),
 				filed: Boolean(placed[decision.id]?.filed),
 				// Being filed, or answered and about to be
@@ -557,7 +604,10 @@ export const dismissDecision = async (sessionId, decisionId, dismiss = true) => 
 // What the session's Claude is asked, to write one down where it belongs
 export const writeDownPrompt = decision =>
 	[
-		"This was settled earlier in the session and is not written down anywhere yet. Write it down where it belongs, then say where: in the message of the commit it shaped (folded in with amend! while that commit is unpushed), in CLAUDE.md if it is a standing direction, in the slice's .lld.md if it is design intent, or nowhere if it no longer holds (say why).",
+		decision.overrules &&
+			`This was settled earlier in the session, and it overrules a claim the design document ${decision.overrules.file} still makes: "${decision.overrules.claim}". Change that claim (and its perspectives) to what was settled, and commit the document with why the design moved. If the claim should hold after all, leave it and say why.`,
+		!decision.overrules &&
+			"This was settled earlier in the session and is not written down anywhere yet. Write it down where it belongs, then say where: in the message of the commit it shaped (folded in with amend! while that commit is unpushed), in CLAUDE.md if it is a standing direction, in the slice's .lld.md if it is design intent, or nowhere if it no longer holds (say why).",
 		`${{ decision: 'Decided', direction: 'Direction', deferred: 'Put off' }[decision.kind]}: ${decision.chose}`,
 		decision.rejected && `Rejected: ${decision.rejected}`,
 		decision.because && `Because: ${decision.because}`,

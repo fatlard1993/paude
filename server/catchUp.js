@@ -46,7 +46,8 @@ const SETTLED_AS = { decision: 'Decided', direction: 'Direction set', deferred: 
 export const settledLine = ({ kind, chose, rejected, because }) =>
 	`${SETTLED_AS[kind] ?? 'Settled'}: ${chose}${rejected ? ` Not: ${rejected}` : ''}${because ? ` Because: ${because}` : ''}`;
 
-// `waiting`: the questions about where something settled is written down, left for the person to answer
+// `waiting`: what's left for the person: the questions about where something settled is written down, and the design
+// documents' claims it overrules
 export const tourPrompt = (turns, { waiting = [] } = {}) =>
 	[
 		'You are catching someone up on a coding session between a person and Claude, a coding assistant.',
@@ -71,7 +72,7 @@ export const tourPrompt = (turns, { waiting = [] } = {}) =>
 			)
 			.join('\n\n'),
 		waiting.length &&
-			`Questions waiting on the person, about writing what was settled into the commits:\n${waiting.map(question => `- ${question}`).join('\n')}`,
+			`Waiting on the person, about writing down what was settled:\n${waiting.map(question => `- ${question}`).join('\n')}`,
 	]
 		.filter(Boolean)
 		.join('\n\n');
@@ -134,6 +135,17 @@ export const leftOutOf = ({ read, told, picked, since, reachesBack }) => {
 	].filter(Boolean);
 };
 
+// What the session settled that waits on the person: the questions filing it asked, and the design documents' claims
+// it overrules
+export const waitingOf = decisions =>
+	decisions.flatMap(decision =>
+		[
+			decision.question,
+			decision.overrules &&
+				`"${decision.chose}" overrules what ${decision.overrules.file} still claims: "${decision.overrules.claim}"`,
+		].filter(Boolean),
+	);
+
 // since: a time (ms); without it, the latest turns. decisions: what the session settled (decisions.js), told with
 // the turns that settled them, and the questions about them still waiting
 export const catchUp = async (id, cwd, { since, decisions = [] } = {}) => {
@@ -153,7 +165,7 @@ export const catchUp = async (id, cwd, { since, decisions = [] } = {}) => {
 	if (!picked.length) return { overview: 'Nothing has happened here since you last looked.', stops: [], leftOut };
 
 	const settled = turn => decisions.filter(decision => decision.turnId === turn.id);
-	const waiting = decisions.filter(decision => decision.question).map(decision => decision.question);
+	const waiting = waitingOf(decisions);
 	const [tour, checked] = await Promise.all([
 		tellOnce(
 			tourPrompt(
