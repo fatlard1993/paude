@@ -29,6 +29,9 @@ const ANSWERS = 600;
 const REPLY = 1000;
 // How much of each kind of place Haiku reads, at most, and of any one file
 const PLACE_CHARACTERS = 30_000;
+// What looking for a place asks, by version: changing what it asks looks again for every one found nowhere, as the
+// places changing does. 2: whether one overrules a design document's claim, or belongs in one.
+const PLACES_ASKED = 2;
 const FILE_CHARACTERS = 8000;
 // A look for a decision's place that came back with nothing waits this long before it's tried again
 const RETRY_MS = 10 * 60 * 1000;
@@ -205,7 +208,7 @@ export const placesFor = async (cwd, since, { near = [] } = {}) => {
 	}
 
 	return {
-		fingerprint: [head.trim(), ...stamps].join('|'),
+		fingerprint: [`asked ${PLACES_ASKED}`, head.trim(), ...stamps].join('|'),
 		names: new Set([
 			...commits.map(commit => commit.split('\n')[0].replace('commit ', '')),
 			...instructionFiles,
