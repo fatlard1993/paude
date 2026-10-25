@@ -47,6 +47,15 @@ test('a draft reads the commits oldest first with their messages, for the decisi
 	expect(prompt).toContain('"Decisions"');
 });
 
+test("a draft says how the design documents' claims moved, when the branch changes any", () => {
+	const design = '--- a/auth.lld.md\n+++ b/auth.lld.md\n-- tracked per session\n+- tracked per user';
+	const prompt = draftPrompt({ commits, stat: ' auth.lld.md | 2 +-', design });
+
+	expect(prompt).toContain('"Design changes"');
+	expect(prompt).toContain(`changed:\n${design}`);
+	expect(draftPrompt({ commits, stat: ' a | 1 +', design: '' })).not.toContain('Design changes');
+});
+
 test('past what fits, the latest commits are named by subject alone', () => {
 	const long = 'why '.repeat(3000);
 	const prompt = draftPrompt({

@@ -10,6 +10,8 @@ import { claudeCommand } from './sessions/running';
 const DRAFT_TIMEOUT_MS = 180_000;
 // The most of the commits' messages a draft is given; past it, the latest commits are named by subject alone
 const MESSAGE_CHARACTERS = 16_000;
+// The most of the design documents' changes a draft is given
+const DESIGN_CHARACTERS = 12_000;
 const FIELDS = 'number,title,url,state,isDraft,baseRefName,headRefName,headRefOid,statusCheckRollup';
 
 // One check, whichever kind GitHub reports it as (a workflow run, or a commit status)
@@ -90,13 +92,16 @@ const commitList = commits => {
 };
 
 // The prompt for a draft: the commits, newest first as git lists them, and what they change, and where they're
-// known, a walk-through of the change (`tour`) and whether it was tested (`tested`, a sentence)
-export const draftPrompt = ({ commits, stat, tour, tested }) =>
+// known, a walk-through of the change (`tour`), whether it was tested (`tested`, a sentence), and how the design
+// documents' claims changed (`design`, their diff)
+export const draftPrompt = ({ commits, stat, tour, tested, design }) =>
 	[
 		'Write a pull request title and description for this branch.',
 		'Reply with the title on the first line, a blank line, then the description in Markdown. Nothing before or after.',
 		[
 			'The description: what changes and why, briefly.',
+			design &&
+				'Then "Design changes": each claim the design documents below add, change or drop, in a line, saying which document; this is how the intended behavior moved, so a reviewer reads it first.',
 			'Then, where the commit messages record decisions (what was chosen over what, and why), a short "Decisions" list of those a reviewer would question; only what the messages say, and none at all when they record none.',
 			tour &&
 				'Then a short "How to review it" list that follows the walk-through below, in its order, naming the files.',
@@ -109,6 +114,7 @@ export const draftPrompt = ({ commits, stat, tour, tested }) =>
 		`What it changes:\n${stat}`,
 		tour && `A walk-through of the change, in the order that makes sense of it:\n${walkThrough(tour)}`,
 		tested && `Testing, as seen in the session that made it: ${tested}`,
+		design && `How the design documents (.lld.md, the claims the code is held to) changed:\n${design}`,
 	]
 		.filter(Boolean)
 		.join('\n\n');
@@ -140,7 +146,10 @@ export const draftPullRequest = async (root, { tour, tested } = {}) => {
 	if (!commits.length) throw new GitError(`This branch has nothing ${base} doesn't`);
 
 	const stat = Bun.spawnSync(['git', 'diff', '--stat', `${base}...HEAD`], { cwd: root }).stdout.toString();
-	const prompt = draftPrompt({ commits, stat, tour, tested });
+	const design = Bun.spawnSync(['git', 'diff', '--no-color', `${base}...HEAD`, '--', '*.lld.md'], { cwd: root })
+		.stdout.toString()
+		.slice(0, DESIGN_CHARACTERS);
+	const prompt = draftPrompt({ commits, stat, tour, tested, design });
 	const child = Bun.spawn(draftCommand(), {
 		cwd: os.tmpdir(),
 		env: sessionEnvironment(),
