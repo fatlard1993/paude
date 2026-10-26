@@ -91,9 +91,13 @@ export const holds = (before, after) =>
 	(after.passed + after.indirect > before.passed + before.indirect || after.failed < before.failed);
 
 // The document run by lldtdd as each text, in a checkout of HEAD of its own beside the person's, with the project's
-// installed packages: [outcome per text]. Null when the project hasn't lldtdd installed.
+// installed packages: [outcome per text]. Null when lldtdd isn't there to import: installed, or the project being it.
 export const runTexts = async (root, file, texts) => {
-	if (!(await Bun.file(path.join(root, 'node_modules', 'lldtdd', 'package.json')).exists())) return null;
+	try {
+		Bun.resolveSync('lldtdd', root);
+	} catch {
+		return null;
+	}
 
 	const folder = await mkdtemp(path.join(os.tmpdir(), 'paude-design-'));
 	const checkout = path.join(folder, 'checkout');

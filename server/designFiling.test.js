@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 
-import { changedOnly, describedModule, designPrompt, fileDesign, holds, parseDesign } from './designFiling';
+import { changedOnly, describedModule, designPrompt, fileDesign, holds, parseDesign, runTexts } from './designFiling';
 
 const DOCUMENT = `# Tooltip
 > ./Tooltip.js
@@ -116,4 +116,8 @@ test('a claim that holds is filed into its document; one the code does not hold 
 		await fileDesign(root, decision, { ask: async () => '{"document": "", "message": ""}', run: async () => [], file }),
 	).toBeNull();
 	expect(filed).toEqual([]);
+});
+
+test("a project lldtdd can't be imported in isn't run", async () => {
+	expect(await runTexts(root, 'Tooltip/Tooltip.lld.md', [DOCUMENT])).toBeNull();
 });
