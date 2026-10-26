@@ -91,15 +91,19 @@ test("a turn going on from a summary isn't read as the person's words, nor answe
 	expect(turnText(turns[1], 1)).toContain("nothing here is the person's words");
 });
 
-test('what Haiku found keeps only the three kinds, each with what was chosen', () => {
+test('what Haiku found keeps only the four kinds, each with what was chosen or found', () => {
 	expect(
 		parseFound(
-			'Here: {"1": [], "2": [{"kind": "decision", "chose": " per user ", "rejected": "per session", "because": "a new session would reset it"}, {"kind": "musing", "chose": "x"}, {"kind": "direction", "chose": ""}], "3": "none"}',
+			'Here: {"1": [], "2": [{"kind": "decision", "chose": " per user ", "rejected": "per session", "because": "a new session would reset it"}, {"kind": "musing", "chose": "x"}, {"kind": "direction", "chose": ""}, {"kind": "finding", "chose": "Jest workers leak memory", "rejected": "", "because": "RSS grew per worker"}], "3": "none"}',
 		),
 	).toEqual({
 		1: [],
-		2: [{ kind: 'decision', chose: 'per user', rejected: 'per session', because: 'a new session would reset it' }],
+		2: [
+			{ kind: 'decision', chose: 'per user', rejected: 'per session', because: 'a new session would reset it' },
+			{ kind: 'finding', chose: 'Jest workers leak memory', rejected: '', because: 'RSS grew per worker' },
+		],
 	});
+	expect(findPrompt([])).toContain('- finding: something found out about how things are');
 });
 
 test('the design documents most about what the decisions say come first, then those nearest what they changed', () => {
@@ -385,6 +389,22 @@ test('one the code does not hold is tried again once the document or its code ch
 	expect(await tried()).toBe(false);
 	await writeFile(path.join(dir, 'a.js'), 'export default 2;\n');
 	expect(await tried()).toBe(true);
+});
+
+test('what was found out never goes into a design document, whatever looking answers', async () => {
+	await initDecisions(dir);
+
+	const decisions = [
+		{ id: 't8:0', kind: 'finding', chose: 'Unknown positions are dropped silently' },
+		{ id: 't8:1', kind: 'decision', chose: 'An unknown position falls back to top' },
+	];
+
+	await lookForPlaces(
+		decisions,
+		async () => ({ fingerprint: 'a', names: new Set(['a.lld.md']), text: '# A' }),
+		async () => '{"1": {"belongs": "a.lld.md"}, "2": {"belongs": "a.lld.md"}}',
+	);
+	expect((await designsToFile(dir, decisions)).map(decision => decision.id)).toEqual(['t8:1']);
 });
 
 test("one being looked for again isn't filed until the look settles where it goes", async () => {

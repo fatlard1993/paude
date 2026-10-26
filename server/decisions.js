@@ -19,11 +19,11 @@ import gitEnvironment from './utils/gitEnvironment';
 
 // What a session decided that was never written down. The code holds what was decided and a commit can hold why; this
 // finds the rest: Haiku reads each finished turn once for its decisions (chosen, rejected, why), the directions the
-// person gave and the work put off, then looks for each in the places they'd be written down (the commits since, the
+// person gave, the work put off and what was found out, then looks for each in the places they'd be written down (the commits since, the
 // instruction files, the design documents). What's found nowhere is filed into the open commit it shaped, once the
 // session is idle (backfill.js); what has no open commit, or needs the person to settle it, is what the panel leads
 // with.
-const KINDS = new Set(['decision', 'direction', 'deferred']);
+const KINDS = new Set(['decision', 'direction', 'deferred', 'finding']);
 const TURNS_AT_ONCE = 4;
 const JUDGED_AT_ONCE = 15;
 const ANSWERS = 600;
@@ -71,13 +71,14 @@ export const turnText = (turn, index) =>
 
 export const findPrompt = turns =>
 	[
-		'Below are turns of a conversation between a person and Claude, a coding assistant. Find what each turn settled that someone working on this later would need to know. Three kinds:',
+		'Below are turns of a conversation between a person and Claude, a coding assistant. Find what each turn settled that someone working on this later would need to know. Four kinds:',
 		'- decision: a choice about what the work is or how it is built, one someone later could get wrong without knowing it: what it should do, which way was taken, what was turned down',
 		'- direction: an instruction from the person about how the work is done from now on, a convention or a limit that outlasts the turn',
 		'- deferred: work agreed to but put off for later',
+		'- finding: something found out about how things are that the work now rests on: a cause found, a limit or constraint discovered, how something actually behaves. Not what was done, and only what was shown (by a run, a read, a measurement), not guessed, even in a turn that only fixed something',
 		'The person\'s own words settle the most, so read each turn\'s Asked first: when it says how the work should behave, that is a decision of its own, settled by asking, whatever else the turn settled and even put as a fix: "X should do Y" settles that X does Y. Where they steered (stopped Claude, redirected it, turned something down, answered a question), look there next. What Claude proposed, offered or asked is settled only when the person agreed to it: read what they said next, and when they turned it down, it is what was rejected. What they said next is their following turn, shown here only for that: what it asks for belongs to that turn, not this one.',
 		'Questions, routine edits, and fixes that restore what was plainly meant (a typo, a crash) settle nothing. Nor does carrying the work out: committing, pushing, running the tests, opening a pull request are how work happens, never a direction. Leave a turn that settled nothing empty.',
-		'Each as {"kind", "chose", "rejected", "because"}: chose is the decision, the direction or the work put off, in one plain sentence; rejected is what was turned down, "" when nothing was; because is why, in one sentence, "" when no reason was given. Never invent a reason. Call them "the person", never "the user".',
+		'Each as {"kind", "chose", "rejected", "because"}: chose is the decision, the direction, the work put off or what was found, in one plain sentence; rejected is what was turned down (for a finding, what it was taken for before), "" when nothing was; because is why (for a finding, what showed it), in one sentence, "" when no reason was given. Never invent a reason. Call them "the person", never "the user".',
 		'Reply with only a JSON object from each turn number to its list, every number given one: {"1": [], "2": [{"kind": "decision", "chose": "…", "rejected": "…", "because": "…"}]}.',
 		turns.map(turnText).join('\n\n'),
 	].join('\n\n');
@@ -363,14 +364,15 @@ const lookFor = async (decisions, placesSince, ask = askHaiku) => {
 			}
 			batch.forEach((decision, index) => {
 				const said = answer[String(index + 1)] ?? null;
-
+				// What was found out is how the code is, not intent: never a design document's claim
+				const design = decision.kind !== 'finding' && said;
 				const was = placed[decision.id];
-				const target = said?.overrules?.file ?? said?.belongs;
+				const target = design?.overrules?.file ?? design?.belongs;
 
 				placed[decision.id] = {
 					place: typeof said === 'string' ? said : null,
-					...(said?.overrules && { overrules: said.overrules }),
-					...(said?.belongs && { belongs: said.belongs }),
+					...(design?.overrules && { overrules: design.overrules }),
+					...(design?.belongs && { belongs: design.belongs }),
 					// Checked against the same document: kept, until it or its code changes
 					...(target &&
 						target === (was?.overrules?.file ?? was?.belongs) && {
@@ -746,7 +748,7 @@ export const writeDownPrompt = decision =>
 		!decision.overrules &&
 			!decision.belongs &&
 			"This was settled earlier in the session and is not written down anywhere yet. Write it down where it belongs, then say where: in the message of the commit it shaped (folded in with amend! while that commit is unpushed), in CLAUDE.md if it is a standing direction, in the slice's .lld.md if it is design intent, or nowhere if it no longer holds (say why).",
-		`${{ decision: 'Decided', direction: 'Direction', deferred: 'Put off' }[decision.kind]}: ${decision.chose}`,
+		`${{ decision: 'Decided', direction: 'Direction', deferred: 'Put off', finding: 'Found' }[decision.kind]}: ${decision.chose}`,
 		decision.rejected && `Rejected: ${decision.rejected}`,
 		decision.because && `Because: ${decision.because}`,
 	]

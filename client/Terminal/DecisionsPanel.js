@@ -7,11 +7,16 @@ const TABS = [
 	['open', 'Unrecorded'],
 	['placed', 'Recorded'],
 ];
-const KIND_ICONS = { decision: 'scale-balanced', direction: 'signs-post', deferred: 'hourglass-half' };
-const KIND_LABELS = { decision: 'Decided', direction: 'Direction', deferred: 'Put off' };
+const KIND_ICONS = {
+	decision: 'scale-balanced',
+	direction: 'signs-post',
+	deferred: 'hourglass-half',
+	finding: 'magnifying-glass',
+};
+const KIND_LABELS = { decision: 'Decided', direction: 'Direction', deferred: 'Put off', finding: 'Found' };
 const READING_MS = 4000;
 
-// What the session settled (decisions, directions, work put off), and whether each is recorded anywhere: a commit,
+// What the session settled (decisions, directions, work put off, what was found out), and whether each is recorded anywhere: a commit,
 // an instruction file, a design document. What isn't leads; paude files what it can into the open commit it shaped,
 // asks the owner what it can't settle from the conversation, and the owner can ask Claude to record one where it
 // belongs. Anyone with notes can set one aside as not worth it.

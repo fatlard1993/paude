@@ -198,6 +198,9 @@ test("what filing asks waits for the person's answer, and is offered again with 
 	);
 	expect(await toFile([decision], turns, { concerns: await openConcerns(repo), ...where })).toEqual([]);
 	expect(backfillPrompt({ message: 'm', files: [], decisions: [] })).toContain('Never guess');
+	expect(
+		backfillPrompt({ message: 'm', files: [], decisions: [{ kind: 'finding', chose: 'Workers leak memory' }] }),
+	).toContain('1. Found: Workers leak memory');
 });
 
 test('what filing asks is dropped once the decision is written down elsewhere, now or found since', async () => {

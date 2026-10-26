@@ -52,6 +52,9 @@ test('what a turn settled goes with it, and the questions left waiting go with t
 
 	expect(settledLine(settled)).toBe('Decided: Wait on the event. Not: A longer timer. Because: Timers flake.');
 	expect(settledLine({ kind: 'deferred', chose: 'Retries.', rejected: '', because: '' })).toBe('Put off: Retries.');
+	expect(settledLine({ kind: 'finding', chose: 'The timer fires late under load.', rejected: '', because: '' })).toBe(
+		'Found: The timer fires late under load.',
+	);
 	expect(prompt).toContain('Claude ended with: Fixed: the test waited on a timer.\n  Decided: Wait on the event.');
 	expect(prompt).toContain('Waiting on the person, about writing down what was settled:\n- Is this the fix');
 	expect(tourPrompt(turns)).not.toContain('Waiting on the person');

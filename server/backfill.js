@@ -60,7 +60,7 @@ const mostShared = async (root, hashes, files, inStack) => {
 
 const decisionText = (decision, index) =>
 	[
-		`${index + 1}. ${{ decision: 'Decided', direction: 'Direction' }[decision.kind] ?? 'Settled'}: ${decision.chose}`,
+		`${index + 1}. ${{ decision: 'Decided', direction: 'Direction', finding: 'Found' }[decision.kind] ?? 'Settled'}: ${decision.chose}`,
 		decision.rejected && `   Rejected: ${decision.rejected}`,
 		decision.because && `   Because: ${decision.because}`,
 		decision.question && `   You asked the person: ${decision.question}`,

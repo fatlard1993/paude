@@ -32,7 +32,7 @@ const DECISION_TABS = [
 	['open', 'Unrecorded'],
 	['placed', 'Recorded'],
 ];
-const DECISION_KINDS = { decision: 'decided', direction: 'direction', deferred: 'put off' };
+const DECISION_KINDS = { decision: 'decided', direction: 'direction', deferred: 'put off', finding: 'found' };
 const GIT_TABS = [
 	['status', 'Status'],
 	['log', 'History'],

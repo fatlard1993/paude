@@ -41,8 +41,9 @@ export const didOf = steps => {
 		.join('; ');
 };
 
-// What a turn settled, in a line: the decision, the direction, or the work put off, what it was chosen over, and why
-const SETTLED_AS = { decision: 'Decided', direction: 'Direction set', deferred: 'Put off' };
+// What a turn settled, in a line: the decision, the direction, the work put off or what was found, what it was chosen
+// over, and why
+const SETTLED_AS = { decision: 'Decided', direction: 'Direction set', deferred: 'Put off', finding: 'Found' };
 export const settledLine = ({ kind, chose, rejected, because }) =>
 	`${SETTLED_AS[kind] ?? 'Settled'}: ${chose}${rejected ? ` Not: ${rejected}` : ''}${because ? ` Because: ${because}` : ''}`;
 
@@ -52,7 +53,7 @@ export const tourPrompt = (turns, { waiting = [] } = {}) =>
 	[
 		'You are catching someone up on a coding session between a person and Claude, a coding assistant.',
 		'Write an overview of 2 or 3 sentences: where things stand now, and anything left waiting on them. Then one stop per turn: 1 or 2 sentences on what was asked and what came of it.',
-		'Where a turn settled something (a decision, a direction, work put off), say what and why in its stop: what was settled outlasts what was done.',
+		'Where a turn settled something (a decision, a direction, work put off, something found out), say what and why in its stop: what was settled outlasts what was done.',
 		'Plain words, past tense, no markdown, no filler, no praise. The reader may not be who asked: never say "you"; start a stop with what was asked, like "Asked for a smaller icon; Claude…".',
 		'Where the person stopped Claude partway, redirected it, or turned down a step, say so plainly in that stop: those are where they steered, and they matter most to someone catching up.',
 		'Reply with only a JSON object: {"overview": "…", "stops": {"1": "…", "2": "…"}}, one stop for each numbered turn.',
