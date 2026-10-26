@@ -80,6 +80,8 @@ const GAP = 6;
 // its own editing.
 const MAC_LINE_KEYS = { Backspace: '\x15', ArrowLeft: '\x01', ArrowRight: '\x05' };
 const MAC_WORD_KEYS = { Backspace: '\x1b\x7f', ArrowLeft: '\x1bb', ArrowRight: '\x1bf' };
+// xterm sends Shift+Enter as a bare Enter, which submits; Claude Code takes Escape then Enter as a new line
+const NEWLINE = '\x1b\r';
 
 const Screen = styled.Component`
 	flex: 1;
@@ -591,7 +593,8 @@ export default class TerminalView extends View {
 		this.terminal.attachCustomKeyEventHandler(event => {
 			const lineKey =
 				(event.metaKey && !event.ctrlKey && !event.altKey && MAC_LINE_KEYS[event.key]) ||
-				(event.altKey && !event.ctrlKey && !event.metaKey && MAC_WORD_KEYS[event.key]);
+				(event.altKey && !event.ctrlKey && !event.metaKey && MAC_WORD_KEYS[event.key]) ||
+				(event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && event.key === 'Enter' && NEWLINE);
 
 			if (lineKey) {
 				event.preventDefault();

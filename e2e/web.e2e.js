@@ -330,6 +330,28 @@ test(
 	TIMEOUT_MS,
 );
 
+// The session's terminal echoes the Escape before the Enter as ^[; a bare Enter shows nothing after the text
+test(
+	'Shift+Enter types a new line rather than sending the prompt',
+	async () => {
+		const { browser, page } = await openSession('dom', servers.turns);
+		const screenText = () =>
+			page.evaluate(() => [...document.querySelectorAll('.xterm-rows > div')].map(row => row.textContent).join('\n'));
+
+		try {
+			await page.click('.xterm-screen');
+			await page.keyboard.type('one');
+			await page.keyboard.down('Shift');
+			await page.keyboard.press('Enter');
+			await page.keyboard.up('Shift');
+			await eventually(async () => expect(await screenText()).toContain('one^['));
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
 // A screenshot dropped on the terminal is saved on the server and its path typed into the prompt
 test(
 	'a file dropped on the terminal goes to Claude by its path',
