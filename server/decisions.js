@@ -368,13 +368,18 @@ const lookFor = async (decisions, placesSince, ask = askHaiku) => {
 };
 
 // Those recorded nowhere, grouped by where each is filed: [[{ concern } or { commit }, decisions]]. Not work put off (no
-// commit's why), not one waiting on the person, not one already offered there and left out. One about a pushed commit
+// commit's why), not one being looked for again (its look would put back what filing found), not one waiting on the person, not one already offered there and left out. One about a pushed commit
 // goes to the open commit already explaining it, when there is one.
 export const toFile = async (decisions, turns, { concerns, links = {}, sessionId, cwd, root }) => {
 	const groups = new Map();
 
 	for (const decision of decisions) {
-		if (decision.kind === 'deferred' || placed[decision.id]?.place !== null || failedAt.has(`file:${decision.id}`))
+		if (
+			decision.kind === 'deferred' ||
+			looking.has(decision.id) ||
+			placed[decision.id]?.place !== null ||
+			failedAt.has(`file:${decision.id}`)
+		)
 			continue;
 
 		const at = turns.findIndex(turn => turn.id === decision.turnId);
@@ -442,6 +447,7 @@ const designsToFile = decisions =>
 
 		return (
 			decision.kind !== 'deferred' &&
+			!looking.has(decision.id) &&
 			found?.place === null &&
 			(found.belongs || found.overrules) &&
 			!found.refuted &&

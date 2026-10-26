@@ -349,3 +349,21 @@ test('one belonging in a design document is filed there once the code holds it; 
 	expect(designsToFile(decisions)).toEqual([]);
 	expect(toLookFor(decisions, 'a')).toEqual([]);
 });
+
+test("one being looked for again isn't filed until the look settles where it goes", async () => {
+	await initDecisions(dir);
+
+	const decisions = [{ id: 't6:0', kind: 'decision', chose: 'two' }];
+	const places = fingerprint => async () => ({ fingerprint, names: new Set(['a.lld.md']), text: '# A' });
+	const { promise: answered, resolve: answer } = Promise.withResolvers();
+
+	await lookForPlaces(decisions, places('a'), async () => '{"1": {"belongs": "a.lld.md"}}');
+	expect(designsToFile(decisions)).toHaveLength(1);
+
+	const lookingAgain = lookForPlaces(decisions, places('b'), () => answered);
+
+	expect(designsToFile(decisions)).toEqual([]);
+	answer('{"1": {"belongs": "a.lld.md"}}');
+	await lookingAgain;
+	expect(designsToFile(decisions)).toHaveLength(1);
+});
