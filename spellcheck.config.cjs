@@ -10,6 +10,7 @@ module.exports = {
 		'codebase',
 		'unpushed',
 		'backfill',
+		'lldtdd',
 		'favicon',
 		'tsv',
 		'visibilitychange',
