@@ -65,9 +65,13 @@ test('a draft may add claims, and remove only the claim it overrules with its pe
 	expect(changedOnly(DOCUMENT, changed)).toBe(false);
 });
 
-test('a draft holds when a claim more passes or one fewer fails, and nothing gets worse', () => {
+test('a draft holds when a claim more passes and nothing gets worse; against none passing, only passing whole', () => {
 	expect(holds(outcome(2), outcome(3))).toBe(true);
-	expect(holds(outcome(2, 1), outcome(2))).toBe(true);
+	expect(holds(outcome(2, 1), outcome(3))).toBe(true);
+	expect(holds(outcome(2, 1), outcome(2))).toBe(false);
+	// The document as it was crashed: every claim counted failed
+	expect(holds(outcome(0, 3), outcome(3))).toBe(true);
+	expect(holds(outcome(0, 3), outcome(2, 1))).toBe(false);
 	expect(holds(outcome(2), outcome(2, 1))).toBe(false);
 	expect(holds(outcome(2), outcome(2))).toBe(false);
 	expect(holds(outcome(2), { ...outcome(3), pending: 1 })).toBe(false);

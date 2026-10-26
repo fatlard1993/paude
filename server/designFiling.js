@@ -9,7 +9,7 @@ import gitEnvironment from './utils/gitEnvironment';
 // What a session settled that is design intent, filed into the design document (.lld.md) it belongs in, or into the
 // claim of one it overrules: the document is what the code is held to now, so a claim goes in only once the code is
 // shown to hold it. Claude drafts the claim with a perspective that checks it; lldtdd runs the document as it is and as
-// drafted, and the draft is filed only if it adds a passing claim (or turns a failing one) and breaks none. One that
+// drafted, and the draft is filed only if it adds a passing claim and breaks none. One that
 // doesn't hold is what the code doesn't do: never built, or overruled since, and nothing is written.
 const SOURCE_CHARACTERS = 16_000;
 const RUN_TIMEOUT_MS = 180_000;
@@ -83,12 +83,19 @@ export const changedOnly = (before, after, overrules) => {
 	return removed.every(line => allowed.has(line));
 };
 
-// Whether the draft holds against the code: a claim more passes, or one fewer fails, and nothing else got worse
-export const holds = (before, after) =>
-	after.failed <= before.failed &&
-	after.pending <= before.pending &&
-	after.shallow <= before.shallow &&
-	(after.passed + after.indirect > before.passed + before.indirect || after.failed < before.failed);
+// Whether the draft holds against the code: a claim more passes and nothing else got worse. A document none of whose
+// claims passed tells nothing to compare with (lldtdd counts a suite that crashed as every claim failing), so then
+// the draft has to pass whole.
+export const holds = (before, after) => {
+	const passing = outcome => outcome.passed + outcome.indirect;
+
+	return (
+		after.failed <= (passing(before) ? before.failed : 0) &&
+		after.pending <= before.pending &&
+		after.shallow <= before.shallow &&
+		passing(after) > passing(before)
+	);
+};
 
 // The document run by lldtdd as each text, in a checkout of HEAD of its own beside the person's, with the project's
 // installed packages: [outcome per text]. Null when lldtdd isn't there to import: installed, or the project being it.
