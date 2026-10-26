@@ -104,6 +104,7 @@ test('what Haiku found keeps only the four kinds, each with what was chosen or f
 		],
 	});
 	expect(findPrompt([])).toContain('- finding: something found out about how things are');
+	expect(findPrompt([])).toContain('not what Claude quotes or reports from elsewhere');
 });
 
 test('the design documents most about what the decisions say come first, then those nearest what they changed', () => {
