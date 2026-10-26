@@ -6,7 +6,7 @@ import writeJsonFile from '../shared/writeJsonFile';
 import { statusOf } from './activity';
 import { changedFiles, explainInto, fileInto, openConcerns, targetFor } from './backfill';
 import { claudeWrites } from './commitMessage';
-import { fileDesign } from './designFiling';
+import { designStamp, fileDesign } from './designFiling';
 import { markInterruptions, steeringOf } from './catchUp';
 import describer from './describer';
 import { explainedHash, headCommit, repoRoot } from './git';
@@ -363,10 +363,20 @@ const lookFor = async (decisions, placesSince, ask = askHaiku) => {
 			batch.forEach((decision, index) => {
 				const said = answer[String(index + 1)] ?? null;
 
+				const was = placed[decision.id];
+				const target = said?.overrules?.file ?? said?.belongs;
+
 				placed[decision.id] = {
 					place: typeof said === 'string' ? said : null,
 					...(said?.overrules && { overrules: said.overrules }),
 					...(said?.belongs && { belongs: said.belongs }),
+					// Checked against the same document: kept, until it or its code changes
+					...(target &&
+						target === (was?.overrules?.file ?? was?.belongs) && {
+							refuted: was.refuted,
+							unchecked: was.unchecked,
+							checked: was.checked,
+						}),
 					fingerprint: places.fingerprint,
 				};
 			});
@@ -450,9 +460,10 @@ const fileAll = async (root, groups, options) => {
 	}
 };
 
-// Those with a design document to go into, each filed there once the code is shown to hold it (designFiling.js)
-const designsToFile = decisions =>
-	decisions.filter(decision => {
+// Those with a design document to go into, each filed there once the code is shown to hold it (designFiling.js). One
+// the code didn't hold, or that couldn't be checked, is tried again once the document or its code changes.
+const designsToFile = async (root, decisions) => {
+	const ready = decisions.filter(decision => {
 		const found = placed[decision.id];
 
 		return (
@@ -460,18 +471,30 @@ const designsToFile = decisions =>
 			!looking.has(decision.id) &&
 			found?.place === null &&
 			(found.belongs || found.overrules) &&
-			!found.refuted &&
-			!found.unchecked &&
 			!failedAt.has(`design:${decision.id}`)
 		);
 	});
+	const changed = await Promise.all(
+		ready.map(async decision => {
+			const found = placed[decision.id];
+
+			return (
+				!(found.refuted || found.unchecked) ||
+				found.checked !== (await designStamp(root, found.overrules?.file ?? found.belongs))
+			);
+		}),
+	);
+
+	return ready.filter((decision, index) => changed[index]);
+};
 
 const fileDesigns = async (root, decisions, { ask = claudeWrites, run, file } = {}) => {
 	filingIn.add(root);
 	for (const decision of decisions) filingNow.add(decision.id);
 	try {
 		for (const decision of decisions) {
-			const found = placed[decision.id];
+			const { refuted, unchecked, ...found } = placed[decision.id];
+			const checked = await designStamp(root, found.overrules?.file ?? found.belongs);
 			let outcome;
 
 			try {
@@ -483,7 +506,7 @@ const fileDesigns = async (root, decisions, { ask = claudeWrites, run, file } = 
 			}
 			placed[decision.id] = outcome?.place
 				? { place: outcome.place, filed: true }
-				: { ...found, ...(outcome?.refuted ? { refuted: true } : { unchecked: true }) };
+				: { ...found, ...(outcome?.refuted ? { refuted: true } : { unchecked: true }), checked };
 			await Promise.all([writeJsonFile(placesFile, () => placed), withoutStaleQuestions()]);
 		}
 	} finally {
@@ -597,7 +620,7 @@ const backfill = async (sessionId, decisions, turns, cwd) => {
 	if (othersWorkIn(root, sessionId)) return true;
 	for (const [key, at] of failedAt) if (/^(file|design):/.test(key) && Date.now() - at > RETRY_MS) failedAt.delete(key);
 
-	const designs = designsToFile(decisions);
+	const designs = await designsToFile(root, decisions);
 
 	// Into their documents first: one filed there has its place, and isn't filed into a commit as well
 	if (designs.length) {

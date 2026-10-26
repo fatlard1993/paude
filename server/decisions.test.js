@@ -328,7 +328,7 @@ test('one belonging in a design document is filed there once the code holds it; 
 		async () => places,
 		async () => '{"1": {"belongs": "a.lld.md"}, "2": {"belongs": "a.lld.md"}}',
 	);
-	expect(designsToFile(decisions).map(decision => decision.id)).toEqual(['t4:0', 't5:0']);
+	expect((await designsToFile(dir, decisions)).map(decision => decision.id)).toEqual(['t4:0', 't5:0']);
 
 	const asked = [];
 	const ask = async prompt => {
@@ -342,12 +342,48 @@ test('one belonging in a design document is filed there once the code holds it; 
 	const run = async (root, file, [, drafted]) => [outcome(1), outcome(drafted.includes('two') ? 2 : 1)];
 	const filed = [];
 
-	await fileDesigns(dir, designsToFile(decisions), { ask, run, file: async (...args) => filed.push(args[3]) });
+	await fileDesigns(dir, await designsToFile(dir, decisions), {
+		ask,
+		run,
+		file: async (...args) => filed.push(args[3]),
+	});
 	expect(asked).toEqual(['two', 'three']);
 	expect(filed).toEqual(['a: two']);
 	// Neither is tried again: one is in its document, the other is what the code doesn't do
-	expect(designsToFile(decisions)).toEqual([]);
+	expect(await designsToFile(dir, decisions)).toEqual([]);
 	expect(toLookFor(decisions, 'a')).toEqual([]);
+});
+
+test('one the code does not hold is tried again once the document or its code changes, not whenever HEAD moves', async () => {
+	await initDecisions(dir);
+	await writeFile(path.join(dir, 'a.lld.md'), '# A\n> ./a.js\n- one\n');
+	await writeFile(path.join(dir, 'a.js'), 'export default 1;\n');
+
+	const decisions = [{ id: 't7:0', kind: 'decision', chose: 'two' }];
+	const places = fingerprint => async () => ({ fingerprint, names: new Set(['a.lld.md']), text: '# A' });
+	const belongs = async () => '{"1": {"belongs": "a.lld.md"}}';
+	const outcome = passed => ({ passed, failed: 0, pending: 0, indirect: 0, shallow: 0 });
+	const tried = async () => {
+		let asked = false;
+
+		await fileDesigns(dir, await designsToFile(dir, decisions), {
+			ask: async () => {
+				asked = true;
+
+				return '{"document": "# A\\n> ./a.js\\n- one\\n- two\\n", "message": "a: two"}';
+			},
+			run: async () => [outcome(1), { ...outcome(1), failed: 1 }],
+		});
+
+		return asked;
+	};
+
+	await lookForPlaces(decisions, places('a'), belongs);
+	expect(await tried()).toBe(true);
+	await lookForPlaces(decisions, places('b'), belongs);
+	expect(await tried()).toBe(false);
+	await writeFile(path.join(dir, 'a.js'), 'export default 2;\n');
+	expect(await tried()).toBe(true);
 });
 
 test("one being looked for again isn't filed until the look settles where it goes", async () => {
@@ -358,12 +394,12 @@ test("one being looked for again isn't filed until the look settles where it goe
 	const { promise: answered, resolve: answer } = Promise.withResolvers();
 
 	await lookForPlaces(decisions, places('a'), async () => '{"1": {"belongs": "a.lld.md"}}');
-	expect(designsToFile(decisions)).toHaveLength(1);
+	expect(await designsToFile(dir, decisions)).toHaveLength(1);
 
 	const lookingAgain = lookForPlaces(decisions, places('b'), () => answered);
 
-	expect(designsToFile(decisions)).toEqual([]);
+	expect(await designsToFile(dir, decisions)).toEqual([]);
 	answer('{"1": {"belongs": "a.lld.md"}}');
 	await lookingAgain;
-	expect(designsToFile(decisions)).toHaveLength(1);
+	expect(await designsToFile(dir, decisions)).toHaveLength(1);
 });

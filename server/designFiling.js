@@ -129,6 +129,18 @@ export const runTexts = async (root, file, texts) => {
 	}
 };
 
+// What a verdict on the document's claims rests on: the document and the code it describes, as they are now
+export const designStamp = async (root, target) => {
+	const read = file =>
+		Bun.file(path.join(root, file))
+			.text()
+			.catch(() => '');
+	const document = await read(target);
+	const module = describedModule(target, document);
+
+	return String(Bun.hash(`${document}\0${module ? await read(module) : ''}`));
+};
+
 // One decision filed into its design document: { place } (the document, now claiming it), { refuted } (the code
 // doesn't hold it, so nothing was written), or null when it can't be told (no lldtdd, nothing Claude could check)
 export const fileDesign = async (root, decision, { ask, run = runTexts, file = fileDocument } = {}) => {
