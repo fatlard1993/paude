@@ -368,8 +368,8 @@ const lookFor = async (decisions, placesSince, ask = askHaiku) => {
 };
 
 // Those recorded nowhere, grouped by where each is filed: [[{ concern } or { commit }, decisions]]. Not work put off (no
-// commit's why), not one being looked for again (its look would put back what filing found), not one waiting on the person, not one already offered there and left out. One about a pushed commit
-// goes to the open commit already explaining it, when there is one.
+// commit's why), not one being looked for again, not one waiting on the person, not one already offered there and left
+// out. One about a pushed commit goes to the open commit already explaining it, when there is one.
 export const toFile = async (decisions, turns, { concerns, links = {}, sessionId, cwd, root }) => {
 	const groups = new Map();
 
