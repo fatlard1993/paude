@@ -12,7 +12,7 @@ import {
 	parseBackfill,
 	targetFor,
 } from './backfill';
-import { answerDecision, fileAll, initDecisions, lookForPlaces, toFile } from './decisions';
+import { answerDecision, designsToFile, fileAll, fileDesigns, initDecisions, lookForPlaces, toFile } from './decisions';
 import { explainsLine, fileReasoning, gitAction, gitCommit } from './git';
 import { linkedCommits, turnEnded, turnNote, turnStarted } from './turnCommits';
 
@@ -220,6 +220,46 @@ test('what filing asks is dropped once the decision is written down elsewhere, n
 	await writeFile(path.join(dir, 'decision-places.json'), JSON.stringify({ 't2:0': { place: '382a290' } }));
 	await initDecisions(dir);
 	expect(await answerDecision('t2:0', 'five')).toBe(false);
+});
+
+test("one the code didn't hold is filed into a commit, and into its design document once the code holds it", async () => {
+	await initDecisions(dir);
+	await concern('auth.js', 'lock accounts');
+	await writeFile(path.join(repo, 'auth.lld.md'), '# Auth\n> ./auth.js\n- locks\n');
+
+	const decision = { id: 't1:0', turnId: 't1', kind: 'decision', chose: 'five tries' };
+	const where = { cwd: repo, root: repo, sessionId: 's' };
+	const outcome = (passed, failed) => ({ passed, failed, pending: 0, indirect: 0, shallow: 0 });
+	const filed = [];
+	const design = holds =>
+		designsToFile(repo, [decision]).then(designs =>
+			fileDesigns(repo, designs, {
+				ask: async () => '{"document": "# Auth\\n> ./auth.js\\n- locks\\n- five tries\\n", "message": "auth: five"}',
+				run: async () => [outcome(1, 0), holds ? outcome(2, 0) : outcome(1, 1)],
+				file: async (...args) => filed.push(args[1]),
+			}),
+		);
+
+	await lookForPlaces(
+		[decision],
+		async () => ({ fingerprint: 'a', names: new Set(['auth.lld.md']), text: '# Auth' }),
+		async () => '{"1": {"belongs": "auth.lld.md"}}',
+	);
+	await design(false);
+	await fileAll(
+		repo,
+		await toFile([decision], [turn('t1', 'auth.js')], { concerns: await openConcerns(repo), ...where }),
+		{
+			ask: async () => '{"message": "lock accounts\\n\\nFive tries.", "says": [1]}',
+		},
+	);
+	expect(git('log', '-1', '--format=%b')).toContain('Five tries.');
+	expect(await designsToFile(repo, [decision])).toEqual([]);
+
+	await writeFile(path.join(repo, 'auth.js'), 'five tries\n');
+	await design(true);
+	expect(filed).toEqual(['auth.lld.md']);
+	expect(await designsToFile(repo, [decision])).toEqual([]);
 });
 
 test("a turn's note on the commits it made comes through an amend and a settle, onto the commits they became", async () => {

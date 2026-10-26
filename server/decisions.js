@@ -447,7 +447,7 @@ const fileAll = async (root, groups, options) => {
 			decisions.forEach((decision, index) => {
 				const { into, place, question } = outcomes[index];
 
-				if (place) placed[decision.id] = { place, filed: true };
+				if (place) placed[decision.id] = { ...designOf(placed[decision.id]), place, filed: true };
 				filing[decision.id] = question
 					? { into, question, waiting: true }
 					: { into, question: decision.question, answer: decision.answer };
@@ -460,8 +460,16 @@ const fileAll = async (root, groups, options) => {
 	}
 };
 
+// Where a decision goes in a design document, and what checking it there found: kept when it's filed into a commit
+const designOf = (found = {}) => {
+	const { belongs, overrules, refuted, unchecked, checked } = found;
+
+	return belongs || overrules ? { belongs, overrules, refuted, unchecked, checked } : {};
+};
+
 // Those with a design document to go into, each filed there once the code is shown to hold it (designFiling.js). One
-// the code didn't hold, or that couldn't be checked, is tried again once the document or its code changes.
+// the code didn't hold, or that couldn't be checked, is tried again once the document or its code changes, though
+// filed into a commit meanwhile.
 const designsToFile = async (root, decisions) => {
 	const ready = decisions.filter(decision => {
 		const found = placed[decision.id];
@@ -469,8 +477,7 @@ const designsToFile = async (root, decisions) => {
 		return (
 			decision.kind !== 'deferred' &&
 			!looking.has(decision.id) &&
-			found?.place === null &&
-			(found.belongs || found.overrules) &&
+			(found?.belongs || found?.overrules) &&
 			!failedAt.has(`design:${decision.id}`)
 		);
 	});
@@ -612,7 +619,10 @@ export const othersWorkIn = (root, sessionId) =>
 
 // Whether it was held back for another session at work, to file once that one stops
 const backfill = async (sessionId, decisions, turns, cwd) => {
-	if (!decisions.some(decision => decision.kind !== 'deferred' && placed[decision.id]?.place === null)) return false;
+	const unsettled = decision =>
+		placed[decision.id]?.place === null || placed[decision.id]?.belongs || placed[decision.id]?.overrules;
+
+	if (!decisions.some(decision => decision.kind !== 'deferred' && unsettled(decision))) return false;
 
 	const root = await repoRoot(cwd);
 
