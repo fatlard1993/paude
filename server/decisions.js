@@ -314,6 +314,15 @@ let filing = {};
 const filingIn = new Set();
 const filingNow = new Set();
 
+// One written down, wherever that happened (its design document, a commit found or filed into), has nothing left to ask
+const withoutStaleQuestions = async () => {
+	const stale = Object.keys(filing).filter(id => placed[id]?.place);
+
+	if (!stale.length) return;
+	filing = Object.fromEntries(Object.entries(filing).filter(([id]) => !stale.includes(id)));
+	await writeJsonFile(filingFile, () => filing);
+};
+
 export const initDecisions = async dataDir => {
 	await found.init(dataDir);
 	placesFile = path.join(dataDir, 'decision-places.json');
@@ -324,6 +333,7 @@ export const initDecisions = async dataDir => {
 		readJsonFile(marksFile, {}),
 		readJsonFile(filingFile, {}),
 	]);
+	await withoutStaleQuestions();
 };
 
 // Those still to look for: never looked for, or found nowhere since the places last changed
@@ -360,7 +370,7 @@ const lookFor = async (decisions, placesSince, ask = askHaiku) => {
 					fingerprint: places.fingerprint,
 				};
 			});
-			await writeJsonFile(placesFile, () => placed);
+			await Promise.all([writeJsonFile(placesFile, () => placed), withoutStaleQuestions()]);
 		}
 	} finally {
 		for (const decision of decisions) looking.delete(decision.id);
@@ -474,7 +484,7 @@ const fileDesigns = async (root, decisions, { ask = claudeWrites, run, file } = 
 			placed[decision.id] = outcome?.place
 				? { place: outcome.place, filed: true }
 				: { ...found, ...(outcome?.refuted ? { refuted: true } : { unchecked: true }) };
-			await writeJsonFile(placesFile, () => placed);
+			await Promise.all([writeJsonFile(placesFile, () => placed), withoutStaleQuestions()]);
 		}
 	} finally {
 		filingIn.delete(root);

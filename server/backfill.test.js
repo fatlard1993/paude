@@ -200,6 +200,28 @@ test("what filing asks waits for the person's answer, and is offered again with 
 	expect(backfillPrompt({ message: 'm', files: [], decisions: [] })).toContain('Never guess');
 });
 
+test('what filing asks is dropped once the decision is written down elsewhere, now or found since', async () => {
+	await initDecisions(dir);
+	await concern('auth.js', 'lock accounts');
+
+	const decisions = ['t1', 't2'].map(id => ({ id: `${id}:0`, turnId: id, kind: 'decision', chose: 'five tries' }));
+	const turns = [turn('t1', 'auth.js'), turn('t2', 'auth.js')];
+	const where = { cwd: repo, root: repo, sessionId: 's' };
+	const places = fingerprint => async () => ({ fingerprint, names: new Set(['382a290']), text: 'commit 382a290' });
+
+	await lookForPlaces(decisions, places('a'), async () => '{"1": null, "2": null}');
+	await fileAll(repo, await toFile(decisions, turns, { concerns: await openConcerns(repo), ...where }), {
+		ask: async () => '{"message": "", "says": [], "ask": {"1": "Five tries, or three?", "2": "Why five?"}}',
+	});
+
+	// The first is found written down since; the second still waits, then too once paude starts again
+	await lookForPlaces(decisions, places('b'), async () => '{"1": "382a290", "2": null}');
+	expect(await answerDecision('t1:0', 'five')).toBe(false);
+	await writeFile(path.join(dir, 'decision-places.json'), JSON.stringify({ 't2:0': { place: '382a290' } }));
+	await initDecisions(dir);
+	expect(await answerDecision('t2:0', 'five')).toBe(false);
+});
+
 test("a turn's note on the commits it made comes through an amend and a settle, onto the commits they became", async () => {
 	const auth = await concern('auth.js', 'lock accounts');
 
