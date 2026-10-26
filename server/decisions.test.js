@@ -73,7 +73,8 @@ test('a turn reads with how the person steered, what they answered and turned do
 	expect(turnText({ asked: 'lock', added: ['per user'], steps: [] }, 0)).toContain(
 		'The person added while Claude worked: per user',
 	);
-	expect(findPrompt([])).toContain('Routine edits, questions and fixes settle nothing');
+	expect(findPrompt([])).toContain('"X should do Y" settles that X does Y');
+	expect(findPrompt([])).toContain('how work happens, never a direction');
 });
 
 test("a turn going on from a summary isn't read as the person's words, nor answers the turn before it", () => {

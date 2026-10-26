@@ -73,9 +73,10 @@ export const findPrompt = turns =>
 	[
 		'Below are turns of a conversation between a person and Claude, a coding assistant. Find what each turn settled that someone working on this later would need to know. Three kinds:',
 		'- decision: a choice about what the work is or how it is built, one someone later could get wrong without knowing it: what it should do, which way was taken, what was turned down',
-		'- direction: an instruction from the person about how the work is done',
+		'- direction: an instruction from the person about how the work is done from now on, a convention or a limit that outlasts the turn',
 		'- deferred: work agreed to but put off for later',
-		"Routine edits, questions and fixes settle nothing: leave those turns empty. The person's own words settle the most; where they steered (stopped Claude, redirected it, turned something down, answered a question), look there first. What Claude proposed, offered or asked is settled only when the person agreed to it: read what they said next, and when they turned it down, it is what was rejected.",
+		'The person\'s own words settle the most, so read each turn\'s Asked first: when it says how the work should behave, that is a decision of its own, settled by asking, whatever else the turn settled and even put as a fix: "X should do Y" settles that X does Y. Where they steered (stopped Claude, redirected it, turned something down, answered a question), look there next. What Claude proposed, offered or asked is settled only when the person agreed to it: read what they said next, and when they turned it down, it is what was rejected. What they said next is their following turn, shown here only for that: what it asks for belongs to that turn, not this one.',
+		'Questions, routine edits, and fixes that restore what was plainly meant (a typo, a crash) settle nothing. Nor does carrying the work out: committing, pushing, running the tests, opening a pull request are how work happens, never a direction. Leave a turn that settled nothing empty.',
 		'Each as {"kind", "chose", "rejected", "because"}: chose is the decision, the direction or the work put off, in one plain sentence; rejected is what was turned down, "" when nothing was; because is why, in one sentence, "" when no reason was given. Never invent a reason. Call them "the person", never "the user".',
 		'Reply with only a JSON object from each turn number to its list, every number given one: {"1": [], "2": [{"kind": "decision", "chose": "…", "rejected": "…", "because": "…"}]}.',
 		turns.map(turnText).join('\n\n'),
