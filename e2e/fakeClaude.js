@@ -16,7 +16,7 @@ const tourOf = prompt => {
 	});
 };
 
-// claude -p: reads its prompt, answers once: a tour, links described (as the Links panel asks Haiku), or a commit
+// claude -p: reads its prompt, answers once: a tour, what to open, links described (as the Links panel asks Haiku), or a commit
 // message
 if (process.argv.includes('-p')) {
 	const prompt = await Bun.stdin.text();
@@ -24,6 +24,19 @@ if (process.argv.includes('-p')) {
 
 	if (prompt.includes('as a guided tour')) {
 		write(tourOf(prompt));
+		process.exit(0);
+	}
+	// What to open for a few words asked aside: the file named by a word of it (app for server/app.js), and the latest
+	// commit when there is one
+	if (prompt.includes('asks to open something')) {
+		const words = /asks to open something: "(.*)"/.exec(prompt)[1].split(' ');
+		const files = /^The project's files:\n([\s\S]*)$/m.exec(prompt)?.[1].split('\n') ?? [];
+		const file = files.find(path => words.includes(path.split('/').pop().split('.')[0]));
+		const commit = /^The latest commits:\n(\w+)/m.exec(prompt)?.[1];
+
+		write(
+			JSON.stringify({ said: 'The app, and the latest commit.', open: [{ file }, ...(commit ? [{ commit }] : [])] }),
+		);
 		process.exit(0);
 	}
 	// The Decisions panel: what each turn settled (a turn about locking settles one), then where each is written down

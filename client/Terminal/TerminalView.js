@@ -25,6 +25,7 @@ import {
 	getMeter,
 	setLifetime,
 	setWatching,
+	findToOpen,
 } from '../api';
 import confirmDialog, { confirmDeleteSession, nameDialog } from '../confirmDialog';
 import { canBrowse, canNote, canType, identity } from '../identity';
@@ -64,6 +65,11 @@ import SideShell from './SideShell';
 import { Body, NARROW, Presence, SelectHint, SelectionActions, TopBar } from './TerminalView.styles';
 
 const FILE_SHORTCUTS = { p: 'names', 'Shift+f': 'contents', 'Shift+o': 'outline' };
+// Ctrl+Shift+L (Cmd+Shift+L) asks what to open, from the terminal too
+const isAskToOpenKey = event =>
+	(event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === 'l';
+// How much of the end of the screen goes with what's asked to open, in rows
+const SCREEN_ROWS = 60;
 // The page's own, for xterm, which takes a color string
 const BACKGROUND = theme.colors.black.toHexString();
 // How far a finger can wander and still be tapping rather than scrolling
@@ -202,6 +208,12 @@ export default class TerminalView extends View {
 				title: 'Project files',
 				className: 'tool',
 				onPress: () => this.toggleFiles(),
+			});
+			ghostButton(header, {
+				icon: 'magnifying-glass-arrow-right',
+				title: 'Open: say what, and Haiku finds the files or changes (Ctrl+Shift+L)',
+				className: 'tool',
+				onPress: () => this.askToOpen(),
 			});
 			this.activityButton = ghostButton(header, {
 				icon: 'clock-rotate-left',
@@ -603,6 +615,9 @@ export default class TerminalView extends View {
 				return false;
 			}
 
+			// Left to the page, which asks what to open
+			if (canBrowse() && isAskToOpenKey(event)) return false;
+
 			const copy = isCopyKey(event, this.terminal);
 
 			if (copy) {
@@ -867,6 +882,12 @@ export default class TerminalView extends View {
 	// Ctrl+P (Cmd+P) finds a file, Ctrl+Shift+F searches inside them, Ctrl+Shift+O lists the open file's outline, as
 	// VS Code has them. In a terminal the keys are its own.
 	fileShortcut(event) {
+		if (canBrowse() && isAskToOpenKey(event)) {
+			event.preventDefault();
+			if (event.type === 'keydown' && !event.repeat) this.askToOpen();
+
+			return;
+		}
 		if (!(event.ctrlKey || event.metaKey) || event.altKey || event.target.closest?.('.xterm')) return;
 
 		const mode = FILE_SHORTCUTS[`${event.shiftKey ? 'Shift+' : ''}${event.key.toLowerCase()}`];
@@ -875,6 +896,36 @@ export default class TerminalView extends View {
 		event.preventDefault();
 		this.toggleFiles(true);
 		this.files.quickOpen(mode);
+	}
+
+	// A few words on what to open ("the test for this", "what Claude changed in the login"), found by Haiku from the
+	// session's work and opened in the files panel
+	async askToOpen() {
+		if (this.askingToOpen) return;
+		this.askingToOpen = true;
+
+		const ask = await nameDialog({
+			current: '',
+			header: 'Open what?',
+			placeholder: 'the test for this file, the last commit, what changed in the login...',
+			confirmLabel: 'Open',
+		}).finally(() => {
+			this.askingToOpen = false;
+		});
+
+		if (!ask) return;
+
+		const looking = new Notify({ intent: 'info', content: 'Haiku is looking...', timeout: 0 });
+		const screen = this.terminal ? bufferLines(this.terminal).slice(-SCREEN_ROWS).join('\n') : '';
+		const { body, response } = await findToOpen(this.options.id, { ask, viewing: this.files.viewing, screen });
+
+		looking.destroy();
+		if (!response?.ok)
+			return new Notify({ intent: 'warning', content: typeof body === 'string' ? body : "Couldn't find it" });
+		if (!body.opened.length) return new Notify({ intent: 'info', content: body.said || 'Found nothing to open.' });
+
+		this.toggleFiles(true);
+		this.files.openFound(ask, body);
 	}
 
 	toggleFiles(open = !this.files.elem.classList.contains('open')) {

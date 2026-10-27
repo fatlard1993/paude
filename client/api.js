@@ -254,6 +254,10 @@ export const catchUpOn = async (sessionId, since) =>
 export const tourOf = async (sessionId, subject) =>
 	await POST('/api/sessions/:id/tour', { urlParameters: { id: sessionId }, body: subject });
 
+// What to open for a few words asked aside: { said, opened: [{ file, line, title } | { diff, title }], dropped }
+export const findToOpen = async (sessionId, { ask, viewing, screen }) =>
+	await POST('/api/sessions/:id/open-asked', { urlParameters: { id: sessionId }, body: { ask, viewing, screen } });
+
 // Where a prompt belongs: { matches: [{ session, why, meter }], fresh: { project, why } }; project keeps it to one
 export const findPromptHome = async (prompt, project) => await POST('/api/prompt-home', { body: { prompt, project } });
 

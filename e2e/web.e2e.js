@@ -951,6 +951,52 @@ test(
 );
 
 test(
+	'asking what to open, from the terminal: the first place found opens, and a bar goes between them',
+	async () => {
+		const server = servers.turns;
+		const { browser, page } = await openSession('dom', server);
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+		const strip = () => page.$eval('.files .tour-strip', card => card.innerText);
+
+		try {
+			Bun.spawnSync(['git', 'commit', '-q', '--allow-empty', '-m', 'mark the start'], { cwd: server.project });
+			await page.click('.xterm');
+			await page.keyboard.down('Control');
+			await page.keyboard.down('Shift');
+			await page.keyboard.press('L');
+			await page.keyboard.up('Shift');
+			await page.keyboard.up('Control');
+			await page.waitForSelector('dialog[open] input', { timeout: 5000 });
+			await page.type('dialog[open] input', 'the app and the last commit');
+			await page.keyboard.press('Enter');
+
+			await eventually(async () => expect(await strip()).toContain('Opened for "the app and the last commit"'));
+			expect(await strip()).toContain('The app, and the latest commit.');
+			await eventually(async () =>
+				expect(await page.$eval('.files .viewer .head', head => head.innerText)).toContain('app.js'),
+			);
+
+			await press('.files .tour-strip button', 'mark the start');
+			await eventually(async () =>
+				expect(await page.$eval('.files .viewer', viewer => viewer.textContent)).toContain('mark the start'),
+			);
+			expect(await strip()).toContain('Opened for');
+
+			await press('.files .tour-strip button', 'Close');
+			await eventually(async () => expect(await page.$$eval('.files .tour-strip', strips => strips.length)).toBe(0));
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
 	"walking through a change picks each stop's lines in the diff",
 	async () => {
 		const server = servers.turns;

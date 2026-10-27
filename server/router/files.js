@@ -13,6 +13,7 @@ import { definitions, outline, searchSymbols } from '../symbols';
 import { sessionTimeline } from '../timeline';
 import { sessionFeed } from '../feed';
 import { codeTour, diffTour } from '../tours';
+import { whatToOpen } from '../toOpen';
 import { verification } from '../verification';
 import { sessionEnvironmentView } from '../environment';
 import {
@@ -277,6 +278,25 @@ const tour = async (request, sessionId) => {
 	return told ? Response.json(told) : new Response("Haiku couldn't tell it just now", { status: 502 });
 };
 
+// What to open for a few words asked aside, for anyone who may read the project: Haiku picks from the session's work
+// (what's open, `viewing`; what changed; its turns and commits; the end of the `screen`)
+const findToOpen = async (request, sessionId) => {
+	if (!may(identityOf(credentialOf(request)), 'files', sessionId))
+		return new Response('Not part of your invite', { status: 403 });
+
+	const cwd = await sessionFolder(sessionId);
+
+	if (!cwd) return new Response('Session not found', { status: 404 });
+
+	const { ask, viewing, screen } = await request.json().catch(() => ({}));
+
+	if (!String(ask ?? '').trim()) return new Response('Open what?', { status: 400 });
+
+	const found = await whatToOpen(sessionId, cwd, { ask: String(ask).trim(), viewing, screen });
+
+	return found ? Response.json(found) : new Response("Haiku couldn't look just now", { status: 502 });
+};
+
 const filesRoutes = async request => {
 	const saving = requestMatch('PUT', '/api/sessions/:id/file', request);
 
@@ -366,6 +386,10 @@ const filesRoutes = async request => {
 	const touring = requestMatch('POST', '/api/sessions/:id/tour', request);
 
 	if (touring) return tour(request, touring.id);
+
+	const finding = requestMatch('POST', '/api/sessions/:id/open-asked', request);
+
+	if (finding) return findToOpen(request, finding.id);
 
 	const environment = requestMatch('GET', '/api/sessions/:id/environment', request);
 

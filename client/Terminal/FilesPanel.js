@@ -38,6 +38,8 @@ import FileManager from './FileManager';
 import { codeEditor, createState, openSearchPanel } from './codeEditor';
 import { copyWithNotice } from './copySelection';
 
+// The longest a button for something found to open is labeled, in characters; its title holds the rest
+const FOUND_LABEL = 60;
 const MAX_MATCHES = 200;
 const TOUCH = window.matchMedia(theme.media.touch);
 const SEARCH_DELAY_MS = 300;
@@ -2081,9 +2083,56 @@ export default class FilesPanel extends Panel {
 		});
 	}
 
-	// Another file or diff opened: a tour of something else ends, so its bar doesn't stay with Next going nowhere
+	// Another file or diff opened: a tour of something else ends, so its bar doesn't stay with Next going nowhere. What
+	// was found to open stays while one of its places is.
 	leaveTour(stillOn) {
-		if (this.tour && !stillOn(this.tour.subject)) this.tour = null;
+		if (this.tour && !(this.tour.subject.found ?? [this.tour.subject]).some(stillOn)) this.tour = null;
+	}
+
+	// The project file open now, read or as a change, for what's asked to open to go by
+	get viewing() {
+		return this.outside ? null : this.current;
+	}
+
+	// What Haiku found for a few words asked aside ({ said, opened, dropped }): the first opened, and when it found more,
+	// a bar to go between them
+	openFound(ask, { said, opened, dropped }) {
+		const goTo = place => (place.diff ? this.openDiffSet(place.diff) : this.open(place.file, place.line));
+		const [first] = opened;
+
+		if (opened.length === 1) {
+			this.tour = null;
+
+			return goTo(first);
+		}
+
+		const into = this.tourCard.elem;
+		const answers = element('div', 'answers');
+
+		this.tour = {
+			subject: { found: opened.map(place => (place.diff ? { diff: place.diff } : { file: { path: place.file } })) },
+		};
+		answers.append(
+			...opened.map(({ title, ...place }) => {
+				const label = title.length > FOUND_LABEL ? `${title.slice(0, FOUND_LABEL - 3)}...` : title;
+
+				return button(label, () => goTo(place), { title });
+			}),
+			button('Close', () => {
+				this.tour = null;
+				this.renderViewer();
+			}),
+		);
+		into.replaceChildren(
+			element('div', 'title', `Opened for "${ask}"`),
+			...(said ? [element('div', 'question', said)] : []),
+			...(dropped
+				? [element('div', 'details', `${dropped} more ${dropped === 1 ? 'pick' : 'picks'} pointed at nothing here.`)]
+				: []),
+			answers,
+		);
+
+		return goTo(first);
 	}
 
 	async goToStop(stop, subject) {
