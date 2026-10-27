@@ -63,6 +63,20 @@ if (process.argv.includes('-p')) {
 		process.exit(0);
 	}
 
+	// Where a prompt goes: the first conversation, for a task that says it carries one on, and the first project
+	if (prompt.includes('Decide where it belongs')) {
+		const task = /^The task:\n(.*)$/m.exec(prompt)?.[1] ?? '';
+		const project = /the projects \(each on its server\) are: ([^,\n]+?)(?:,|\.$)/m.exec(prompt)?.[1];
+		const carries = task.includes('carry on') && prompt.includes('The conversations:');
+
+		write(
+			JSON.stringify({
+				matches: carries ? [{ n: 1, why: 'It carries on the latest conversation.' }] : [],
+				fresh: { ...(project && { project }), lifetime: 'ordinary', why: 'A task of its own.' },
+			}),
+		);
+		process.exit(0);
+	}
 	// What explains a pushed commit, in a commit of its own
 	if (prompt.includes('already pushed')) {
 		write(JSON.stringify({ message: 'why accounts lock per user\n\nA new session would reset the count.', says: [1] }));

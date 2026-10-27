@@ -251,6 +251,27 @@ const sessionsRoutes = async (request, server) => {
 		}
 	}
 
+	// A new session in a project on another server, in its own folder, started there as its owner: { id }
+	if (requestMatch('POST', '/api/remotes/start', request)) {
+		const { url, project, text, mode } = await request.json();
+
+		if (typeof project !== 'string' || !project || project.includes('/'))
+			return new Response('No such project', { status: 400 });
+
+		try {
+			const started = await remoteApi(url, `/api/projects/${encodeURIComponent(project)}/sessions`, {
+				method: 'POST',
+				body: JSON.stringify({ text, mode }),
+			});
+
+			return started === undefined
+				? new Response('Not one of your servers', { status: 404 })
+				: Response.json({ id: started.id });
+		} catch (error) {
+			return new Response(error.message, { status: 502 });
+		}
+	}
+
 	match = requestMatch('GET', '/api/remotes/sessions', request);
 	if (match) {
 		try {

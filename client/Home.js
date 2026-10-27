@@ -26,7 +26,7 @@ import { breadcrumbs } from './Breadcrumbs';
 import { button, element } from './dom';
 import { Bar, ghostButton } from './Bar';
 import { Empty, Scroll, sessionCard } from './Layout';
-import { Places, carryDraft, composeBox, placePrompt } from './PromptHome';
+import { composeBox, placePrompt } from './PromptHome';
 
 // The project list's last row: pressed, it opens into the folder's path
 const AddFolder = styled(
@@ -143,20 +143,11 @@ export default class Home extends View {
 		const { prompt, sent } = composeBox({
 			appendTo,
 			placeholder: 'What should Claude do? paude finds the session it carries on, or the project to start one in',
-			actions: [{ label: 'Find where it goes', onPress: () => place() }],
+			actions: [
+				{ label: 'Find where it goes', onPress: () => placePrompt({ prompt: prompt.value.trim(), onSent: sent }) },
+			],
 			keep: 'paude.prompt',
 		});
-		const places = new Places({ appendTo });
-		const place = () =>
-			placePrompt({
-				places,
-				prompt: prompt.value.trim(),
-				startFresh: (project, lifetime) => {
-					sent();
-					carryDraft(project, prompt.value.trim(), lifetime);
-				},
-				onSent: sent,
-			});
 	}
 
 	addFolderCard() {

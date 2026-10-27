@@ -22,7 +22,7 @@ import SessionBrowser from './SessionBrowser';
 import { bulkActions, sessionMenu } from './sessionActions';
 import { Scroll, sessionCard } from './Layout';
 import { openMenu } from './menu';
-import { Places, composeBox, placePrompt, takeDraft } from './PromptHome';
+import { composeBox, placePrompt, takeDraft } from './PromptHome';
 import LinksPanel from './Terminal/LinksPanel';
 import ArtifactsPanel from './Terminal/ArtifactsPanel';
 import { tabs } from './Tabs';
@@ -73,12 +73,13 @@ export default class Project extends View {
 					title: 'Carry it on in a session already going, if one fits',
 					onPress: () =>
 						placePrompt({
-							places: this.places,
 							prompt: this.prompt.value.trim(),
 							project,
-							startFresh: (_, lifetime) => {
+							// Started as this page starts one, in the checkout picked here
+							startFresh: async (_, lifetime) => {
 								this.pickLifetime(lifetime);
-								this.start();
+
+								return (await this.start()) === true;
 							},
 							onSent: () => this.sent(),
 						}),
@@ -104,7 +105,6 @@ export default class Project extends View {
 		this.lifetimeChip.addEventListener('click', () => this.openLifetimes());
 		compose.options.append(this.checkoutChip, this.newName, this.fromInput, this.lifetimeChip);
 		this.progress = new Progress({ appendTo: scroll, tag: 'pre', style: { display: 'none' } }).elem;
-		this.places = new Places({ appendTo: scroll });
 
 		// Brought here from home to start in this project, in place of what was left typed here
 		const draft = takeDraft(project);
@@ -365,6 +365,8 @@ export default class Project extends View {
 
 		this.sent();
 		window.location.hash = `#/sessions/${result.id}`;
+
+		return true;
 	}
 
 	// A pull request that brings files Claude Code reads on start (hooks it would run among them) is checked out, but

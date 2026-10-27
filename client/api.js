@@ -264,6 +264,10 @@ export const sendPrompt = async (sessionId, text) =>
 export const sendRemotePrompt = async (url, sessionId, text) =>
 	await POST('/api/remotes/prompt', { body: { url, sessionId, text } });
 
+// A new session in a project on another server, in its own folder: { id } there
+export const startRemoteSession = async (url, project, text, mode) =>
+	await POST('/api/remotes/start', { body: { url, project, text, mode } });
+
 export const getArtifacts = async sessionId =>
 	await GET('/api/sessions/:id/artifacts', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 

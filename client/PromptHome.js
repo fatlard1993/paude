@@ -1,11 +1,11 @@
-import { Elem, isMac, Notify, styled } from '@vanilla-bean/components';
+import { Dialog, Elem, isMac, Notify, styled } from '@vanilla-bean/components';
 
+import { tintsOf } from '../shared/hues';
 import tokens from '../shared/tokenCount';
-import { findPromptHome, openRemote, sendPrompt, sendRemotePrompt } from './api';
+import { createSession, findPromptHome, openRemote, sendPrompt, sendRemotePrompt, startRemoteSession } from './api';
 import { serverName } from './identity';
 import { forget, recall, remember } from './storage';
 import { button, element } from './dom';
-import { sessionCard } from './Layout';
 
 const Compose = styled(
 	Elem,
@@ -154,49 +154,90 @@ export const composeBox = ({ appendTo, placeholder, actions, keep }) => {
 	return { prompt, options, buttons, sent: () => forget(keep) };
 };
 
-export const Places = styled(
+// The dialog a prompt is placed in: a spinner while it looks, then a button for each place it could go
+const Placing = styled(
 	Elem,
 	({ colors, radius, space }) => `
 		display: flex;
 		flex-direction: column;
 		gap: ${space.sm};
-		margin-top: ${space.md};
 
-		&:empty {
-			display: none;
+		.looking {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			gap: ${space.md};
+			padding: ${space.lg} 0;
+			color: ${colors.muted};
+		}
+
+		.spinner {
+			width: 28px;
+			height: 28px;
+			border: 3px solid ${colors.alpha(colors.white, 0.12)};
+			border-top-color: ${colors.light(colors.blue)};
+			border-radius: 50%;
+			animation: paude-placing 0.8s linear infinite;
+		}
+
+		@keyframes paude-placing {
+			to {
+				transform: rotate(360deg);
+			}
+		}
+
+		@media (prefers-reduced-motion: reduce) {
+			.spinner {
+				animation-duration: 2.4s;
+			}
 		}
 
 		.heading {
+			margin-top: ${space.sm};
 			color: ${colors.muted};
 			font-size: 0.85em;
 			text-transform: uppercase;
 			letter-spacing: 0.05em;
 		}
 
-		.place {
+		button.place {
 			display: flex;
 			flex-direction: column;
-			gap: ${space.sm};
-			padding: ${space.sm};
-			border-radius: ${radius.lg};
-			background: ${colors.alpha(colors.white, 0.03)};
+			align-items: flex-start;
+			gap: 2px;
+			width: 100%;
+			height: auto;
+			padding: ${space.sm} ${space.md};
+			border-radius: ${radius.md};
+			box-shadow: inset 3px 0 var(--accent, transparent);
+			text-align: left;
+			white-space: normal;
+		}
+
+		.name {
+			font-weight: bold;
+		}
+
+		.where,
+		.cost {
+			color: ${colors.muted};
+			font-size: 0.85em;
 		}
 
 		.why {
 			color: ${colors.alpha(colors.white, 0.85)};
 		}
 
-		.cost {
-			color: ${colors.muted};
-			font-size: 0.85em;
-		}
-
 		.cost.cold {
 			color: ${colors.light(colors.warning)};
 		}
 
-		.place > button {
-			align-self: flex-start;
+		button.place:disabled {
+			opacity: 0.5;
+		}
+
+		button.place.going {
+			opacity: 1;
 		}
 	`,
 );
@@ -229,74 +270,162 @@ const costOf = meter => {
 	);
 };
 
-// Finds where `prompt` belongs and shows it in `places`: the sessions it carries on, each with what sending costs, and
-// a new session (startFresh(project) starts it). onSent once it has gone to a session or another server.
-export const placePrompt = async ({ places, prompt, project, startFresh, onSent }) => {
-	const into = places.elem;
+const failed = content => {
+	new Notify({ intent: 'danger', content });
 
+	return false;
+};
+
+const looking = text => {
+	const node = element('div', 'looking');
+
+	node.append(element('div', 'spinner'), element('div', '', text));
+
+	return node;
+};
+
+// Each place a prompt can go, as { heading, lines, accent, go }: the sessions it carries on, then a new session in the
+// project that fits, here or on another server. go() takes it there and resolves true once it's on its way.
+const placesFor = ({ matches, fresh }, { prompt, project, startFresh }) => {
+	const sessions = matches.map(({ session, remote, why, meter }) => ({
+		heading: 'Carries on',
+		lines: [
+			element('div', 'name', session.title || session.project),
+			element('div', 'where', [session.project, remote?.name ?? serverName()].filter(Boolean).join(' · ')),
+			element('div', 'why', why),
+			costOf(meter),
+		],
+		accent: tintsOf(session.hue)?.accent,
+		go: async () => {
+			const { response } = remote
+				? await sendRemotePrompt(remote.url, session.id, prompt)
+				: await sendPrompt(session.id, prompt);
+
+			if (!response?.ok) return failed('Could not send it there');
+			if (remote) return await openThere(remote.url, { sessionId: session.id });
+			window.location.hash = `#/sessions/${session.id}`;
+
+			return true;
+		},
+	}));
+	const where = fresh.project ?? project;
+	const mode = /^(warm|brief)$/.test(fresh.lifetime ?? '') ? fresh.lifetime : undefined;
+
+	if (!where) return sessions;
+
+	return [
+		...sessions,
+		{
+			heading: 'A new session',
+			lines: [
+				element('div', 'name', `Start it in ${where}`),
+				element('div', 'where', fresh.remote?.name ?? serverName() ?? 'this machine'),
+				fresh.why && element('div', 'why', fresh.why),
+				mode && element('div', 'cost', LIFETIME_NOTES[mode]),
+			],
+			go: async () => {
+				if (fresh.remote) {
+					const { body, response } = await startRemoteSession(fresh.remote.url, where, prompt, mode);
+
+					if (!response?.ok) return failed(`Could not start it on ${fresh.remote.name}`);
+
+					return await openThere(fresh.remote.url, { sessionId: body.id });
+				}
+				if (startFresh) return startFresh(where, fresh.lifetime);
+
+				const { body, response } = await createSession(where, prompt, undefined, mode);
+
+				if (!response?.ok) return failed(`Could not start it in ${where}`);
+				window.location.hash = `#/sessions/${body.id}`;
+
+				return true;
+			},
+		},
+	];
+};
+
+// Finds where `prompt` belongs, in a dialog that shows it looking, then offers each place it could go; each goes
+// straight into its session, and a single place is gone to without asking. A new session here starts in the project's
+// own folder, or with startFresh(project, lifetime) when given (resolving true once started). onSent once it's gone.
+export const placePrompt = async ({ prompt, project, startFresh, onSent }) => {
 	if (!prompt) return new Notify({ intent: 'warning', content: 'Say what Claude should do first' });
 
-	into.replaceChildren(element('div', 'heading', 'Finding where it goes…'));
+	const body = new Placing({});
+	let closed = false;
+	const dialog = new Dialog({
+		size: 'standard',
+		header: 'Where it goes',
+		body,
+		buttons: ['Cancel'],
+		onButtonPress: ({ closeDialog }) => closeDialog(),
+		onClose: () => (closed = true),
+	});
+	const close = () => !closed && dialog.close();
 
-	const { body, response } = await findPromptHome(prompt, project);
+	body.elem.replaceChildren(looking('Finding the sessions it carries on…'));
 
+	const { body: found, response } = await findPromptHome(prompt, project);
+
+	if (closed) return;
 	if (!response?.ok) {
-		into.replaceChildren();
+		close();
 
 		return new Notify({ intent: 'warning', content: "Couldn't place it just now" });
 	}
 
-	const { matches, fresh } = body;
+	const places = placesFor(found, { prompt, project, startFresh });
+	const go = async (place, pressed) => {
+		const buttons = [...body.elem.querySelectorAll('button.place')];
 
-	into.replaceChildren(element('div', 'heading', matches.length ? 'Carries on' : 'No conversation carries this on'));
-	for (const { session, remote, why, meter } of matches) {
-		const place = element('div', 'place');
+		for (const each of buttons) each.disabled = true;
+		pressed?.classList.add('going');
+		body.elem.append(looking('Taking it there…'));
 
-		into.append(place);
-		sessionCard(
-			{ ...session, remote },
-			{
-				appendTo: place,
-				showProject: !project,
-				server: remote?.name ?? serverName(),
-				...(remote && { onOpen: () => openThere(remote.url, { sessionId: session.id }) }),
-			},
+		const gone = await place.go();
+
+		if (gone) {
+			onSent?.();
+			close();
+
+			return;
+		}
+
+		body.elem.querySelector('.looking')?.remove();
+		for (const each of buttons) each.disabled = false;
+		pressed?.classList.remove('going');
+	};
+
+	if (places.length === 1) {
+		body.elem.replaceChildren(looking('Taking it there…'));
+		const gone = await places[0].go();
+
+		if (gone) onSent?.();
+		close();
+
+		return;
+	}
+	if (!places.length) {
+		body.elem.replaceChildren(
+			element('div', 'why', 'Nothing carries this on, and no project fits it: start it from a project of yours.'),
 		);
-		place.append(
-			element('div', 'why', why),
-			...[costOf(meter)].filter(Boolean),
-			button('Send it here', async () => {
-				const { response: sent } = remote
-					? await sendRemotePrompt(remote.url, session.id, prompt)
-					: await sendPrompt(session.id, prompt);
 
-				if (!sent?.ok) return new Notify({ intent: 'danger', content: 'Could not send it there' });
-				onSent?.();
-				if (!remote) return (window.location.hash = `#/sessions/${session.id}`);
-				await openThere(remote.url, { sessionId: session.id });
-			}),
-		);
+		return;
 	}
 
-	const place = element('div', 'place');
+	body.elem.replaceChildren();
+	let heading = null;
 
-	into.append(element('div', 'heading', 'Or a new session'), place);
-	if (fresh.why) place.append(element('div', 'why', fresh.why));
-	if (fresh.lifetime && fresh.lifetime !== 'ordinary')
-		place.append(element('div', 'cost', LIFETIME_NOTES[fresh.lifetime]));
-	if (fresh.remote)
-		place.append(
-			button(
-				`Start it in ${fresh.project} on ${fresh.remote.name}`,
-				async () =>
-					(await openThere(fresh.remote.url, { project: fresh.project, draft: prompt, lifetime: fresh.lifetime })) &&
-					onSent?.(),
-			),
-		);
-	else if (fresh.project || project)
-		place.append(
-			button(`Start it in ${fresh.project ?? project}`, () => startFresh(fresh.project ?? project, fresh.lifetime)),
-		);
+	for (const place of places) {
+		if (place.heading !== heading) body.elem.append(element('div', 'heading', (heading = place.heading)));
+
+		const pressed = element('button', 'place variant-flat');
+
+		pressed.append(...place.lines.filter(Boolean));
+		if (place.accent) pressed.style.setProperty('--accent', place.accent);
+		pressed.addEventListener('click', () => go(place, pressed));
+		body.elem.append(pressed);
+	}
+	body.elem.querySelector('button.place')?.focus();
 };
 
 // A prompt carried from home to the project page it starts in, there to pick its worktree
@@ -309,11 +438,6 @@ export const keepDraft = (project, text, lifetime) => {
 	} catch {
 		// Without storage the project page opens with an empty box
 	}
-};
-
-export const carryDraft = (project, text, lifetime) => {
-	keepDraft(project, text, lifetime);
-	window.location.hash = `#/projects/${encodeURIComponent(project)}`;
 };
 
 // { text, lifetime }, or null for none
