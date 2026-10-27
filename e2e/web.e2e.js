@@ -602,6 +602,38 @@ test(
 );
 
 test(
+	"a right click on the breadcrumb lists the project's other sessions, with nothing waiting, and opens one",
+	async () => {
+		const server = servers.turns;
+		const sibling = await server.newSession();
+		const { browser, page } = await openSession('dom', server);
+
+		try {
+			await page.waitForFunction(() => document.querySelector('.breadcrumbs a.trail')?.offsetParent, {
+				timeout: 20_000,
+			});
+
+			const crumb = await centerOf(page, '.breadcrumbs a.trail');
+
+			await page.mouse.click(crumb.x, crumb.y, { button: 'right' });
+			await page.waitForSelector('[role=menu] li:has(.detail)', { timeout: 5000 });
+
+			const headings = await page.$$eval('[role=menu] li.heading', rows => rows.map(row => row.textContent));
+
+			expect(headings[0]).toBe('In demo');
+			await page.click('[role=menu] li:has(.detail)');
+			await wait(800);
+			await eventually(async () =>
+				expect(await page.evaluate(() => window.location.hash)).toBe(`#/sessions/${sibling}`),
+			);
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
 	"a prompt typed on home or a project page is still there after leaving, until it's sent",
 	async () => {
 		const server = servers.turns;

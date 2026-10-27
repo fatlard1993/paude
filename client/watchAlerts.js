@@ -51,7 +51,7 @@ export const startWatchAlerts = ({ remotes }) => {
 		const waiting = all.filter(session => session.status === 'waiting' || session.unseen > 0).sort(byUrgency);
 
 		updateTabTitle({ waiting: waiting.length });
-		setWaitingSessions(waiting);
+		setWaitingSessions(waiting, [...all].sort(byUrgency));
 
 		const onScreen = session =>
 			!session.remote && window.location.hash === `#/sessions/${session.id}` && !document.hidden;

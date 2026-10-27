@@ -113,13 +113,13 @@ const HOLD_SLOP_PX = 10;
 // The click that ends a press-and-hold is part of the hold, not a tap on what was held
 const HELD_CLICK_MS = 800;
 
-// A right click on `elem`, or on touch a press held still, opens the menu `items()` gives at that point
+// A right click on `elem`, or on touch a press held still, opens the menu `items()` gives (or promises) at that point
 export const contextMenu = (elem, items) => {
 	let timer;
 	let start = null;
 	let heldAt = 0;
-	const open = at => {
-		const listed = items();
+	const open = async at => {
+		const listed = await items();
 
 		if (listed.length) openMenu(at, listed);
 	};

@@ -1,14 +1,14 @@
 import { Elem, Notify, styled } from '@vanilla-bean/components';
 
 import { tintsOf } from '../shared/hues';
-import { openRemote } from './api';
+import { getProjectSessions, openRemote } from './api';
 import { CRAMPED } from './Bar';
 import { element } from './dom';
 import favicon from './favicon.svg';
 import { serverName } from './identity';
-import { openMenu } from './menu';
+import { contextMenu, openMenu } from './menu';
 import { hueOf, onServersChange } from './servers';
-import { onWaitingChange } from './waiting';
+import { onWaitingChange, watchedSessions } from './waiting';
 
 const Trail = styled(
 	Elem,
@@ -136,6 +136,23 @@ const openWaiting = async session => {
 	else new Notify({ intent: 'danger', content: `Could not reach ${session.remote.name}.` });
 };
 
+// A session in a menu: what it needs from you if anything, where it lives, a press to open it
+const sessionItem = session => ({
+	label: session.title || session.project,
+	detail: [
+		session.status === 'waiting' ? 'asking' : session.unseen > 0 && `${session.unseen} new`,
+		session.project,
+		session.remote?.name ?? serverName(),
+	]
+		.filter(Boolean)
+		.join(' · '),
+	accent: tintsOf(session.hue)?.accent,
+	onPress: () => openWaiting(session),
+});
+
+// How many of each kind the trail's right-click menu lists
+const NEARBY = 5;
+
 const goToServer = async server => {
 	const { body, response } = await openRemote(server.url, { home: true });
 
@@ -247,23 +264,7 @@ export const breadcrumbs = ({ appendTo, trail = [], current, project, sessionId,
 
 		button.style.display = 'none';
 		after.after(button);
-		button.addEventListener('click', () =>
-			openMenu(button, [
-				{ heading },
-				...counted.list.map(session => ({
-					label: session.title || session.project,
-					detail: [
-						session.status === 'waiting' ? 'asking' : `${session.unseen} new`,
-						session.project,
-						session.remote?.name ?? serverName(),
-					]
-						.filter(Boolean)
-						.join(' · '),
-					accent: tintsOf(session.hue)?.accent,
-					onPress: () => openWaiting(session),
-				})),
-			]),
-		);
+		button.addEventListener('click', () => openMenu(button, [{ heading }, ...counted.list.map(sessionItem)]));
 
 		return counted;
 	};
@@ -300,6 +301,26 @@ export const breadcrumbs = ({ appendTo, trail = [], current, project, sessionId,
 		}
 		render();
 	};
+
+	// A right click anywhere on the trail: the project's latest sessions and the watched ones, whether or not they
+	// have news
+	contextMenu(into, async () => {
+		const others = session => session.remote || session.id !== sessionId;
+		const adjacent = inProject
+			? ((await getProjectSessions(inProject, { searchParameters: { limit: NEARBY + 1 } })).body ?? [])
+					.filter(others)
+					.slice(0, NEARBY)
+			: [];
+		const listed = new Set(adjacent.map(session => session.id));
+		const watched = watchedSessions()
+			.filter(session => others(session) && (session.remote || !listed.has(session.id)))
+			.slice(0, NEARBY);
+
+		return [
+			...(adjacent.length ? [{ heading: `In ${inProject}` }, ...adjacent.map(sessionItem)] : []),
+			...(watched.length ? [{ heading: 'Watching' }, ...watched.map(sessionItem)] : []),
+		];
+	});
 
 	addCleanup?.(
 		'waitingCount',
