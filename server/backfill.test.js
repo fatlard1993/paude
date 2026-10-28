@@ -3,17 +3,9 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 
-import {
-	backfillPrompt,
-	changedFiles,
-	explainInto,
-	fileInto,
-	openConcerns,
-	parseBackfill,
-	targetFor,
-} from './backfill';
+import { backfillPrompt, changedFiles, fileInto, openConcerns, parseBackfill, targetFor } from './backfill';
 import { answerDecision, designsToFile, fileAll, fileDesigns, initDecisions, lookForPlaces, toFile } from './decisions';
-import { explainsLine, fileReasoning, gitAction, gitCommit } from './git';
+import { fileReasoning, gitAction, gitCommit } from './git';
 import { linkedCommits, turnEnded, turnNote, turnStarted } from './turnCommits';
 
 let dir;
@@ -60,7 +52,7 @@ test("a decision's files are what its turn and the next one changed, as git name
 	expect(changedFiles(turns, 'gone', { cwd: repo, root: repo })).toEqual([]);
 });
 
-test("unlinked, a turn's changes go to the first commit after it to change its files, open or pushed", async () => {
+test("unlinked, a turn's changes go to the first commit after it to change its files, or past a pushed one to the open concern changing them", async () => {
 	const dated = async (subject, date) => {
 		await writeFile(path.join(repo, 'auth.js'), `${subject}\n`);
 		git('add', 'auth.js');
@@ -68,20 +60,17 @@ test("unlinked, a turn's changes go to the first commit after it to change its f
 
 		return git('rev-parse', 'HEAD');
 	};
-	const pushed = await dated('lock accounts', '2026-10-01T00:00:00Z');
-
+	await dated('lock accounts', '2026-10-01T00:00:00Z');
 	git('push', '-q');
+
+	// A session looked back on weeks later, whose day's commit is pushed: nowhere until a concern changes its files
+	expect(await targetFor(repo, { files: ['auth.js'], concerns: [], at: '2026-09-30T00:00:00.000Z' })).toBeNull();
 
 	const open = await dated('lock per user', '2026-10-20T00:00:00Z');
 	const concerns = await openConcerns(repo);
-	const target = async at => {
-		const found = await targetFor(repo, { files: ['auth.js'], concerns, at });
+	const target = async at => (await targetFor(repo, { files: ['auth.js'], concerns, at })).concern.hash;
 
-		return found.concern?.hash ?? found.commit.hash;
-	};
-
-	// A session looked back on weeks later: the commit of its day, not the concern open today
-	expect(await target('2026-09-30T00:00:00.000Z')).toBe(pushed);
+	expect(await target('2026-09-30T00:00:00.000Z')).toBe(open);
 	expect(await target('2026-10-10T00:00:00.000Z')).toBe(open);
 	// After both, as a turn amending the latest would be
 	expect(await target('2026-10-21T00:00:00.000Z')).toBe(open);
@@ -299,7 +288,7 @@ test("a turn's note on the commits it made comes through an amend and a settle, 
 	expect(links[turnNote('s', 't1')]).toEqual([git('rev-parse', 'HEAD')]);
 });
 
-test('a decision goes to the commit its turn made: open, its concern; pushed, that commit; unlinked, by its files', async () => {
+test('a decision goes to the commit its turn made while it is open, and unlinked, to the one its files say', async () => {
 	const pushed = await concern('auth.js', 'lock accounts');
 
 	git('push', '-q');
@@ -307,53 +296,54 @@ test('a decision goes to the commit its turn made: open, its concern; pushed, th
 	const open = await concern('ui.js', 'show the lock');
 	const concerns = await openConcerns(repo);
 
-	expect((await targetFor(repo, { files: ['auth.js'], linked: [pushed], concerns })).commit.subject).toBe(
-		'lock accounts',
-	);
 	expect((await targetFor(repo, { files: ['ui.js'], linked: [open, pushed], concerns })).concern.hash).toBe(open);
-	expect((await targetFor(repo, { files: ['auth.js'], concerns, at: '2000-01-01T00:00:00.000Z' })).commit.hash).toBe(
-		pushed,
+	expect((await targetFor(repo, { files: ['ui.js'], concerns, at: '2000-01-01T00:00:00.000Z' })).concern.hash).toBe(
+		open,
 	);
 	expect(await targetFor(repo, { files: ['other.js'], concerns })).toBeNull();
 });
 
-test('what explains a pushed commit is a commit of its own naming it, and the commit view shows it there', async () => {
+test('what explains a pushed commit waits for an open concern changing its files, and never makes a commit of its own', async () => {
 	const pushed = await concern('auth.js', 'lock accounts');
 
 	git('push', '-q');
-	await writeFile(path.join(repo, 'wip.js'), 'half done\n');
-	git('add', 'wip.js');
 
-	const commit = (await targetFor(repo, { files: ['auth.js'], linked: [pushed], concerns: [] })).commit;
-	const asked = [];
-	const outcomes = await explainInto(repo, commit, [{ kind: 'decision', chose: 'per user' }], {
-		ask: async prompt => {
-			asked.push(prompt);
+	const head = git('rev-parse', 'HEAD');
 
-			return '{"message": "why accounts lock per user\\n\\nPer user, not per session: a new session would reset the count.", "says": [1]}';
-		},
+	expect(
+		await targetFor(repo, { files: ['auth.js'], linked: [pushed], concerns: await openConcerns(repo) }),
+	).toBeNull();
+	expect(git('rev-parse', 'HEAD')).toBe(head);
+
+	await writeFile(path.join(repo, 'auth.js'), 'lock accounts after five tries\n');
+	git('add', 'auth.js');
+	git('commit', '-q', '-m', 'count tries before locking');
+	await concern('ui.js', 'show the lock');
+
+	const concerns = await openConcerns(repo);
+	const target = await targetFor(repo, { files: ['auth.js'], linked: [pushed], concerns });
+
+	expect(target.concern.subject).toBe('count tries before locking');
+
+	await fileInto(repo, target.concern, [{ kind: 'decision', chose: 'per user' }], {
+		ask: async () => '{"message": "count tries before locking\\n\\nPer user, not per session.", "says": [1]}',
 	});
-
-	expect(asked[0]).toContain("The pushed commit's message:\nlock accounts");
-	expect(git('log', '-1', '--format=%B')).toBe(
-		`why accounts lock per user\n\nPer user, not per session: a new session would reset the count.\n\n${explainsLine(pushed)}`,
-	);
-	expect(outcomes).toEqual([{ into: pushed, place: git('rev-parse', '--short', 'HEAD') }]);
-	expect(git('diff', '--cached', '--name-only')).toBe('wip.js');
-	expect((await gitCommit(repo, pushed)).explainedBy).toEqual([
-		expect.objectContaining({
-			subject: 'why accounts lock per user',
-			body: 'Per user, not per session: a new session would reset the count.',
-		}),
-	]);
-
-	// More about it, while that commit is open: folded into it, still naming the pushed one
-	const [explaining] = await openConcerns(repo);
-
-	await fileInto(repo, explaining, [{ kind: 'decision', chose: 'five tries' }], {
-		ask: async () => '{"message": "why accounts lock per user\\n\\nPer user, after five tries.", "says": [1]}',
-	});
-	expect(git('log', '-1', '--format=%B')).toContain(explainsLine(pushed));
 	expect((await gitAction(repo, 'settle')).ok).toBe(true);
-	expect((await gitCommit(repo, pushed)).explainedBy.map(later => later.body)).toEqual(['Per user, after five tries.']);
+	expect(git('log', '--format=%s', `${pushed}..HEAD`).split('\n')).toEqual([
+		'show the lock',
+		'count tries before locking',
+	]);
+	expect(git('log', '-1', '--format=%B', 'HEAD~1')).toBe('count tries before locking\n\nPer user, not per session.');
+	expect((await gitCommit(repo, pushed)).explainedBy).toEqual([]);
+});
+
+test('a commit that recorded what explains a pushed one, from before, still shows under it', async () => {
+	const pushed = await concern('auth.js', 'lock accounts');
+
+	git('push', '-q');
+	await concern('auth.js', 'why accounts lock per user', `A new session would reset the count.\n\nExplains ${pushed}.`);
+
+	expect((await gitCommit(repo, pushed)).explainedBy).toEqual([
+		expect.objectContaining({ subject: 'why accounts lock per user', body: 'A new session would reset the count.' }),
+	]);
 });

@@ -497,18 +497,6 @@ export const fileReasoning = async (root, into, message) => {
 	return fileOnTop(root, `amend! ${concern.originalSubject}\n\n${message.trim()}`);
 };
 
-// What was settled about a pushed commit, whose message can't change any more: a commit of its own that names it
-export const fileExplanation = async (root, hash, message) => {
-	const { concerns } = await gitStack(root);
-
-	if (concerns.some(open => open.hash === hash || open.folds.some(fold => fold.hash === hash)))
-		throw new GitError('That commit is not pushed yet: file into it');
-	if ((await run(['merge-base', '--is-ancestor', hash, 'HEAD'], root)).code !== 0)
-		throw new GitError('That commit is not on this branch');
-
-	return fileOnTop(root, `${message.trim()}\n\n${explainsLine(hash)}`);
-};
-
 // A design document's new text, as a commit of its own on top, made beside the working tree: the document has to be as
 // HEAD has it, in the index and the working tree both, which then take the new text, so no one's edit to it is lost
 // and nothing else of theirs is touched. Only if HEAD hasn't moved meanwhile, as fileOnTop.

@@ -90,9 +90,14 @@ if (process.argv.includes('-p')) {
 		);
 		process.exit(0);
 	}
-	// What explains a pushed commit, in a commit of its own
-	if (prompt.includes('already pushed')) {
-		write(JSON.stringify({ message: 'why accounts lock per user\n\nA new session would reset the count.', says: [1] }));
+	// Filing what explains a pushed commit into the next open one changing its files
+	if (prompt.includes('Write the whole message anew') && prompt.includes('The message now:\ncount tries')) {
+		write(
+			JSON.stringify({
+				message: 'count tries\n\nLocks per user, not per session: a new session would reset the count.',
+				says: [1],
+			}),
+		);
 		process.exit(0);
 	}
 	// Filing one into the commit it shaped: what it can't settle it asks, until the person has answered

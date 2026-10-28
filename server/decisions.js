@@ -4,12 +4,12 @@ import path from 'path';
 import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
 import { statusOf } from './activity';
-import { changedFiles, explainInto, fileInto, openConcerns, targetFor } from './backfill';
+import { changedFiles, fileInto, openConcerns, targetFor } from './backfill';
 import { claudeWrites } from './commitMessage';
 import { designStamp, fileDesign } from './designFiling';
 import { markInterruptions, steeringOf } from './catchUp';
 import describer from './describer';
-import { explainedHash, headCommit, repoRoot } from './git';
+import { headCommit, repoRoot } from './git';
 import askHaiku, { jsonIn } from './haiku';
 import { allRunning, runningSession } from './sessions/running';
 import { claudeHome } from './sessions/transcript';
@@ -392,7 +392,7 @@ const lookFor = async (decisions, placesSince, ask = askHaiku) => {
 
 // Those recorded nowhere, grouped by where each is filed: [[{ concern } or { commit }, decisions]]. Not work put off (no
 // commit's why), not one being looked for again, not one waiting on the person, not one already offered there and left
-// out. One about a pushed commit goes to the open commit already explaining it, when there is one.
+// out. One about a pushed commit goes to the open concern changing its files, and waits while there is none.
 export const toFile = async (decisions, turns, { concerns, links = {}, sessionId, cwd, root }) => {
 	const groups = new Map();
 
@@ -407,17 +407,13 @@ export const toFile = async (decisions, turns, { concerns, links = {}, sessionId
 
 		const at = turns.findIndex(turn => turn.id === decision.turnId);
 		const linked = [...new Set(turns.slice(at, at + 2).flatMap(turn => links[turnNote(sessionId, turn.id)] ?? []))];
-		let target = await targetFor(root, {
+		const target = await targetFor(root, {
 			files: changedFiles(turns, decision.turnId, { cwd, root }),
 			linked: at === -1 ? [] : linked,
 			concerns,
 			at: decision.at,
 		});
-		const explaining = target?.commit && concerns.find(open => explainedHash(open.body) === target.commit.hash);
-
-		if (explaining) target = { concern: explaining };
-
-		const into = target?.concern?.hash ?? target?.commit?.hash;
+		const into = target?.concern?.hash;
 		const offered = filing[decision.id];
 
 		// Answered, but there's nowhere left to file it
@@ -439,9 +435,7 @@ const fileAll = async (root, groups, options) => {
 			let outcomes;
 
 			try {
-				outcomes = target.concern
-					? await fileInto(root, target.concern, decisions, options)
-					: await explainInto(root, target.commit, decisions, { ask: options?.ask, file: options?.explain });
+				outcomes = await fileInto(root, target.concern, decisions, options);
 			} catch {
 				// No answer, or the stack moved under it: tried again later, against the stack as it is then
 				for (const decision of all) failedAt.set(`file:${decision.id}`, Date.now());

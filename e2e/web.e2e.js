@@ -1856,7 +1856,7 @@ test(
 );
 
 test(
-	"decisions: a turn's commit is noted at its end, and what it settled is recorded in a commit naming it once pushed",
+	"decisions: a turn's commit is noted at its end, and what it settled about it once pushed waits for the next open commit changing its files",
 	async () => {
 		const server = await startServer();
 		const origin = await mkdtemp(path.join(os.tmpdir(), 'paude-origin-'));
@@ -1903,51 +1903,34 @@ test(
 		await server.hook(id, { hook_event_name: 'UserPromptSubmit' });
 		await server.hook(id, { hook_event_name: 'Stop' });
 
+		// Nothing open changes lock.js, so nothing is filed: a commit changing no code is never made
+		await wait(8000);
+		expect(git('rev-parse', 'HEAD')).toBe(made);
+
+		// The next commit to change it, not pushed yet, takes it
+		await Bun.write(lock, 'per user, after five tries\n');
+		git('add', 'lock.js');
+		git('commit', '-q', '-m', 'count tries');
+		await server.hook(id, { hook_event_name: 'UserPromptSubmit' });
+		await server.hook(id, { hook_event_name: 'Stop' });
+
 		const deadline = Date.now() + 40_000;
 
-		while (git('log', '-1', '--format=%s') !== 'why accounts lock per user' && Date.now() < deadline) await wait(1000);
-		expect(git('log', '-1', '--format=%B')).toBe(
-			`why accounts lock per user\n\nA new session would reset the count.\n\nExplains ${made}.`,
-		);
-		expect(git('status', '-sb')).toContain('ahead 1');
-
-		// The pushed commit, opened from the history, shows what was recorded about it later
-		const { browser, page } = await openBrowser('dom');
-		const press = async (selector, text) => {
-			const where = await centerOf(page, selector, text);
-
-			await page.mouse.click(where.x, where.y);
-			await wait(800);
-		};
-
-		try {
-			await page.goto(await server.loginLink(`/sessions/${id}`));
-			await page.waitForSelector('.xterm-screen');
-			await wait(1000);
-			await press('[title^="Git"]');
-			await press('.git .tabs button', 'History');
-			await press('.git .history-item', 'lock accounts');
-			await page.waitForFunction(
-				() => document.querySelector('.commit-message')?.innerText.includes('Recorded later'),
-				{ timeout: 20_000 },
-			);
-			await eventually(async () =>
-				expect(await page.$eval('.commit-message', node => node.innerText)).toContain('why accounts lock per user'),
-			);
-			await eventually(async () =>
-				expect(await page.$eval('.commit-message', node => node.innerText)).toContain(
-					'A new session would reset the count.',
-				),
-			);
-		} finally {
-			await browser.close();
+		// Turns go on ending, as they do: a new commit has its decisions looked for again first, and filed at a turn after
+		while (git('log', '-1', '--format=%s') !== 'amend! count tries' && Date.now() < deadline) {
+			await wait(2000);
+			await server.hook(id, { hook_event_name: 'Stop' });
 		}
+		expect(git('log', '--format=%s', `${made}..HEAD`).split('\n')).toEqual(['amend! count tries', 'count tries']);
+		expect(git('log', '-1', '--format=%B')).toContain(
+			'Locks per user, not per session: a new session would reset the count',
+		);
 	},
 	TIMEOUT_MS,
 );
 
 test(
-	"decisions: when a turn ends, the project's earlier sessions are looked back on, and filed into the commits of their day",
+	"decisions: when a turn ends, the project's earlier sessions are looked back on, and what explains a pushed commit waits for an open one changing its files",
 	async () => {
 		const server = await startServer();
 		const origin = await mkdtemp(path.join(os.tmpdir(), 'paude-origin-'));
@@ -2002,12 +1985,23 @@ test(
 		await server.hook(id, { hook_event_name: 'UserPromptSubmit' });
 		await server.hook(id, { hook_event_name: 'Stop' });
 
+		await wait(8000);
+		expect(git('rev-parse', 'HEAD')).toBe(pushed);
+
+		await Bun.write(lock, 'per user, after five tries\n');
+		git('add', 'lock.js');
+		git('commit', '-q', '-m', 'count tries');
+		await server.hook(id, { hook_event_name: 'UserPromptSubmit' });
+		await server.hook(id, { hook_event_name: 'Stop' });
+
 		const deadline = Date.now() + 100_000;
 
-		while (git('log', '-1', '--format=%s') !== 'why accounts lock per user' && Date.now() < deadline) await wait(1000);
-		expect(git('log', '-1', '--format=%B')).toBe(
-			`why accounts lock per user\n\nA new session would reset the count.\n\nExplains ${pushed}.`,
-		);
+		// Turns go on ending, as they do: a new commit has its decisions looked for again first, and filed at a turn after
+		while (git('log', '-1', '--format=%s') !== 'amend! count tries' && Date.now() < deadline) {
+			await wait(2000);
+			await server.hook(id, { hook_event_name: 'Stop' });
+		}
+		expect(git('log', '--format=%s', `${pushed}..HEAD`).split('\n')).toEqual(['amend! count tries', 'count tries']);
 	},
 	2 * TIMEOUT_MS,
 );
