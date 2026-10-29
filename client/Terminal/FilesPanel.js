@@ -22,6 +22,8 @@ import {
 	saveFile,
 	searchFiles,
 	tourOf,
+	placeKey,
+	sessionOf,
 } from '../api';
 import { AskingCard } from '../Asking';
 import { openMenu } from '../menu';
@@ -550,7 +552,7 @@ export default class FilesPanel extends Panel {
 	}
 
 	async refresh() {
-		const [{ body, response }] = await Promise.all([listFiles(this.options.sessionId), this.refreshChanges()]);
+		const [{ body, response }] = await Promise.all([listFiles(this.options.place), this.refreshChanges()]);
 
 		if (!response?.ok) {
 			this.list.replaceChildren(
@@ -572,11 +574,14 @@ export default class FilesPanel extends Panel {
 	// null outside git, which hides the Changes mode
 	// What changed: since the last commit (null outside git), what Claude proposes, and each turn's edits
 	async refreshChanges() {
-		const id = this.options.sessionId;
+		const { place } = this.options;
+		const session = sessionOf(place);
+		// A project's page has no turns, nor anything Claude proposes
+		const none = { response: null };
 		const [changes, turns, proposal] = await Promise.all([
-			getChanges(id),
-			getTurnChanges(id),
-			getDiffSet(id, { source: 'proposal' }),
+			getChanges(place),
+			session ? getTurnChanges(session) : none,
+			session ? getDiffSet(session, { source: 'proposal' }) : none,
 		]);
 
 		this.changes = changes.response?.ok ? changes.body : null;
@@ -635,7 +640,7 @@ export default class FilesPanel extends Panel {
 
 		if (this.mode === 'symbols') {
 			this.searchSoon(async () => {
-				const { body } = await getSymbols(this.options.sessionId, { q: query });
+				const { body } = await getSymbols(this.options.place, { q: query });
 
 				if (this.query.value.trim() === query && this.mode === 'symbols')
 					this.showSymbols(body ?? [], body?.length ? null : 'No definitions match.');
@@ -739,12 +744,7 @@ export default class FilesPanel extends Panel {
 
 			if (!confirmed) return;
 
-			const { body, response } = await replaceInFiles(
-				this.options.sessionId,
-				query,
-				this.searchOptions,
-				replacement.value,
-			);
+			const { body, response } = await replaceInFiles(this.options.place, query, this.searchOptions, replacement.value);
 
 			if (!response?.ok)
 				return new Notify({ intent: 'danger', content: typeof body === 'string' ? body : 'Could not replace.' });
@@ -769,7 +769,7 @@ export default class FilesPanel extends Panel {
 			'Search the files, or ',
 			button('list the to-dos', async () => {
 				const options = { regex: true, wholeWord: true, caseSensitive: true };
-				const { body, response } = await searchFiles(this.options.sessionId, 'TODO|FIXME|HACK|XXX', options);
+				const { body, response } = await searchFiles(this.options.place, 'TODO|FIXME|HACK|XXX', options);
 
 				if (!response?.ok) return;
 
@@ -813,7 +813,7 @@ export default class FilesPanel extends Panel {
 
 	// Where a name is defined: straight there when there's one place, a list to choose from when there are more
 	async goToDefinition(name) {
-		const { body } = await getSymbols(this.options.sessionId, { name, from: this.current ?? '' });
+		const { body } = await getSymbols(this.options.place, { name, from: this.current ?? '' });
 
 		if (!body?.length)
 			return new Notify({ intent: 'warning', content: `No definition of ${name} found.`, timeout: 2500 });
@@ -825,7 +825,7 @@ export default class FilesPanel extends Panel {
 	// Everywhere the name is used, as a whole word
 	async findReferences(name) {
 		const options = { caseSensitive: true, wholeWord: true };
-		const { body, response } = await searchFiles(this.options.sessionId, name, options);
+		const { body, response } = await searchFiles(this.options.place, name, options);
 
 		if (!response?.ok) return;
 
@@ -846,7 +846,7 @@ export default class FilesPanel extends Panel {
 	// The open file's own symbols, in order, in the list beside it
 	async showOutline() {
 		const path = this.current;
-		const { body } = await getSymbols(this.options.sessionId, { file: path });
+		const { body } = await getSymbols(this.options.place, { file: path });
 
 		if (this.current !== path) return;
 		this.showSymbols(body ?? [], 'No functions, classes or types found in it.', `Outline of ${path.split('/').at(-1)}`);
@@ -894,7 +894,7 @@ export default class FilesPanel extends Panel {
 		this.list.replaceChildren(element('div', 'empty', 'Searching...'));
 
 		const options = { ...this.searchOptions };
-		const { body, response } = await searchFiles(this.options.sessionId, query, options);
+		const { body, response } = await searchFiles(this.options.place, query, options);
 
 		if (this.query.value.trim() !== query || this.mode !== 'contents') return;
 		if (!response?.ok) return this.list.replaceChildren(element('div', 'empty', body || 'Search failed.'));
@@ -1117,7 +1117,7 @@ export default class FilesPanel extends Panel {
 		this.markCurrent(single);
 		if (this.mode === 'changes') this.renderList();
 
-		const { body, response } = await getDiffSet(this.options.sessionId, source);
+		const { body, response } = await getDiffSet(this.options.place, source);
 
 		if (this.diffSource !== source) return;
 
@@ -1137,7 +1137,7 @@ export default class FilesPanel extends Panel {
 		);
 		const found = await Promise.all(
 			files.map(async ({ path, blobs }) => {
-				const { body, response } = await getGit(this.options.sessionId, 'anchors', { path, ...blobs });
+				const { body, response } = await getGit(this.options.place, 'anchors', { path, ...blobs });
 
 				return [path, response?.ok ? body : {}];
 			}),
@@ -1169,8 +1169,8 @@ export default class FilesPanel extends Panel {
 	// but not edited, blamed or listed
 	fileUrl() {
 		return this.outside
-			? artifactUrl(this.options.sessionId, this.current)
-			: rawFileUrl(this.options.sessionId, this.current);
+			? artifactUrl(sessionOf(this.options.place), this.current)
+			: rawFileUrl(this.options.place, this.current);
 	}
 
 	async open(path, line, lastLine = line, { outside = false, returning = false } = {}) {
@@ -1198,7 +1198,7 @@ export default class FilesPanel extends Panel {
 					async read => ({ response: read, body: await read.text() }),
 					() => ({ body: null }),
 				)
-			: await readFile(this.options.sessionId, path);
+			: await readFile(this.options.place, path);
 
 		if (this.current !== path) return;
 
@@ -1230,7 +1230,7 @@ export default class FilesPanel extends Panel {
 		}
 
 		const path = this.current;
-		const { body, response } = await getGit(this.options.sessionId, 'log', { path });
+		const { body, response } = await getGit(this.options.place, 'log', { path });
 
 		if (this.current !== path) return;
 		if (!response?.ok) return new Notify({ intent: 'warning', content: 'No git history here.' });
@@ -1267,7 +1267,7 @@ export default class FilesPanel extends Panel {
 		}
 
 		const path = this.current;
-		const { body, response } = await getGit(this.options.sessionId, 'blame', { path });
+		const { body, response } = await getGit(this.options.place, 'blame', { path });
 
 		if (this.current !== path) return;
 		if (!response?.ok)
@@ -1359,7 +1359,8 @@ export default class FilesPanel extends Panel {
 		}
 
 		if (this.selection && this.lines && this.showingSource) {
-			if (canNote() && !this.outside) head.append(button('Comment', () => this.commentOnLines(), { icon: 'comment' }));
+			if (canNote() && this.options.comment && !this.outside)
+				head.append(button('Comment', () => this.commentOnLines(), { icon: 'comment' }));
 			head.append(button('Copy', () => this.copyLines()));
 		}
 		// What made outside the project may be a page: opened as it is (in a sandbox), beside its source here
@@ -1441,7 +1442,7 @@ export default class FilesPanel extends Panel {
 			head.append(this.walkButton(() => this.startTour({ diff: source }, set.title || 'this change')));
 		}
 
-		if (canNote() && this.diffSelection)
+		if (canNote() && this.options.comment && this.diffSelection)
 			head.append(button('Comment', () => this.commentOnPickedLines(), { icon: 'comment' }));
 
 		if (canType() && set?.files.length) {
@@ -1687,7 +1688,7 @@ export default class FilesPanel extends Panel {
 
 	async save(hash = this.editing.hash) {
 		const { text } = this.editing;
-		const { body, response } = await saveFile(this.options.sessionId, this.current, text, hash);
+		const { body, response } = await saveFile(this.options.place, this.current, text, hash);
 
 		if (response?.status === 409) {
 			this.conflict = { text: body.text, hash: body.hash };
@@ -1715,7 +1716,7 @@ export default class FilesPanel extends Panel {
 	}
 
 	draftKey(path) {
-		return `${DRAFT_PREFIX}${this.options.sessionId}:${path}`;
+		return `${DRAFT_PREFIX}${placeKey(this.options.place)}:${path}`;
 	}
 
 	// An edit not yet saved is kept in this browser as it's typed, so a reload or a lost connection doesn't lose it.
@@ -1901,7 +1902,7 @@ export default class FilesPanel extends Panel {
 		for (const image of container.querySelectorAll('img[src]')) {
 			const path = projectPathFrom(this.current, image.getAttribute('src'));
 
-			if (path !== null && !this.outside) image.src = rawFileUrl(this.options.sessionId, path);
+			if (path !== null && !this.outside) image.src = rawFileUrl(this.options.place, path);
 			image.classList.add('enlarges');
 			image.addEventListener('click', event => {
 				if (image.closest('a')) return;
@@ -2010,7 +2011,7 @@ export default class FilesPanel extends Panel {
 	// The file, the lines picked, or one of its functions or classes
 	async walkMenu(anchor) {
 		const path = this.current;
-		const { body: symbols } = await getSymbols(this.options.sessionId, { file: path });
+		const { body: symbols } = await getSymbols(this.options.place, { file: path });
 		const { from, to } = this.selection ?? {};
 
 		openMenu(anchor, [
@@ -2056,7 +2057,7 @@ export default class FilesPanel extends Panel {
 		);
 		this.renderViewer();
 
-		const { body, response } = await tourOf(this.options.sessionId, subject);
+		const { body, response } = await tourOf(this.options.place, subject);
 
 		if (this.tour?.subject !== subject) return;
 		if (!response?.ok) {
@@ -2184,7 +2185,7 @@ export default class FilesPanel extends Panel {
 
 		if (!this.options.commentsOn?.(path).length) return (this.commentLines = null);
 
-		const { body, response } = await getGit(this.options.sessionId, 'anchors', { path });
+		const { body, response } = await getGit(this.options.place, 'anchors', { path });
 
 		if (this.current === path) this.commentLines = response?.ok ? body : null;
 	}
@@ -2201,7 +2202,7 @@ export default class FilesPanel extends Panel {
 					: 'It is on lines before a change, which no diff here shows.',
 			});
 
-		const { body, response } = await getGit(this.options.sessionId, 'anchors', { path: anchor.path });
+		const { body, response } = await getGit(this.options.place, 'anchors', { path: anchor.path });
 		const now = response?.ok && id in body ? body[id] : anchor;
 
 		if (now === null)

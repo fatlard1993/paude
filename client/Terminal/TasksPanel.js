@@ -1,5 +1,5 @@
 import { relativeTime } from '@vanilla-bean/components/utils/date';
-import { getEnvironment, getRun, getTasks, runTask, setAfterTurn, stopProcess, stopRun } from '../api';
+import { getEnvironment, getRun, getTasks, runTask, sessionOf, setAfterTurn, stopProcess, stopRun } from '../api';
 import { button, closeButton, element, icon } from '../dom';
 import { canType } from '../identity';
 import Panel from './GitPanel.styles';
@@ -75,7 +75,7 @@ export default class TasksPanel extends Panel {
 	async refresh() {
 		if (this.viewing) return this.followRun();
 
-		const { body, response } = await getTasks(this.options.sessionId);
+		const { body, response } = await getTasks(this.options.place);
 
 		// A run opened while the list was on its way: the run's output stays
 		if (this.viewing) return;
@@ -146,7 +146,8 @@ export default class TasksPanel extends Panel {
 		}
 
 		nodes.push(element('div', 'section-head', 'Running'));
-		if (!processes.length) nodes.push(element('div', 'empty', 'Nothing but Claude.'));
+		if (!processes.length)
+			nodes.push(element('div', 'empty', sessionOf(this.options.place) ? 'Nothing but Claude.' : 'Nothing.'));
 		for (const found of processes) {
 			const row = element('div', 'branch-row process');
 
@@ -164,7 +165,7 @@ export default class TasksPanel extends Panel {
 					button(
 						'',
 						async () => {
-							const { body, response } = await stopProcess(this.options.sessionId, found.pid);
+							const { body, response } = await stopProcess(this.options.place, found.pid);
 
 							if (!response?.ok) this.say(typeof body === 'string' ? body : 'Could not stop it.');
 							setTimeout(() => this.refresh(), 500);
@@ -186,7 +187,7 @@ export default class TasksPanel extends Panel {
 
 		head.append(
 			button(this.environment ? 'Hide' : 'Show', async () => {
-				this.environment = this.environment ? null : (await getEnvironment(this.options.sessionId)).body;
+				this.environment = this.environment ? null : (await getEnvironment(this.options.place)).body;
 				this.renderTasks();
 			}),
 		);
@@ -230,7 +231,7 @@ export default class TasksPanel extends Panel {
 		const after = button(
 			'',
 			async () => {
-				await setAfterTurn(this.options.sessionId, task.id, !task.afterTurn);
+				await setAfterTurn(this.options.place, task.id, !task.afterTurn);
 				this.refresh();
 			},
 			{
@@ -245,7 +246,7 @@ export default class TasksPanel extends Panel {
 		row.append(
 			after,
 			running
-				? button('', () => stopRun(this.options.sessionId, run.id), {
+				? button('', () => stopRun(this.options.place, run.id), {
 						icon: 'stop',
 						title: 'Stop it',
 						className: 'icon-only danger',
@@ -261,7 +262,7 @@ export default class TasksPanel extends Panel {
 	}
 
 	async start(task) {
-		const { body, response } = await runTask(this.options.sessionId, task.id);
+		const { body, response } = await runTask(this.options.place, task.id);
 
 		if (!response?.ok) return this.say(typeof body === 'string' ? body : `Could not run ${task.name}.`);
 		this.showRun(body.id);
@@ -283,7 +284,7 @@ export default class TasksPanel extends Panel {
 		clearTimeout(this.following);
 
 		const viewing = this.viewing;
-		const { body, response } = await getRun(this.options.sessionId, viewing.id, viewing.text.length);
+		const { body, response } = await getRun(this.options.place, viewing.id, viewing.text.length);
 
 		if (this.viewing !== viewing) return;
 		if (!response?.ok) return this.leaveRun();
@@ -309,7 +310,7 @@ export default class TasksPanel extends Panel {
 		if (canType()) {
 			head.append(
 				running
-					? button('Stop', () => stopRun(this.options.sessionId, body.id))
+					? button('Stop', () => stopRun(this.options.place, body.id))
 					: button('Run again', () => this.start({ id: body.taskId, name: body.name })),
 				button('Attach output', () =>
 					this.options.attach(`Output of ${body.command} (${text}):\n${viewing.text.slice(-12_000)}`),

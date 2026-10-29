@@ -2,6 +2,36 @@ import { DELETE, GET, PATCH, POST, PUT } from '@vanilla-bean/components';
 
 import { searchParameters } from '../shared/searchQuery';
 
+// Where the files, Git and Tasks panels and the side terminal work: a session, by its id, or a project's page, as
+// { project, checkout } (a worktree's path, or none for the project folder). Answers a request's url and options.
+const placed = (place, rest, { urlParameters, searchParameters: search, ...options } = {}) => {
+	const project = typeof place === 'object';
+	const query = { ...search, ...(project && place.checkout && { checkout: place.checkout }) };
+
+	return [
+		project ? `/api/projects/:project${rest}` : `/api/sessions/:id${rest}`,
+		{
+			...options,
+			urlParameters: { ...urlParameters, ...(project ? { project: place.project } : { id: place }) },
+			...(Object.keys(query).length && { searchParameters: query }),
+		},
+	];
+};
+
+// The session a place is, or undefined for a project's page, which has none of a session's own work
+export const sessionOf = place => (typeof place === 'string' ? place : undefined);
+
+// A place as a word, to keep things under: a session's id as it is
+export const placeKey = place => sessionOf(place) ?? `${place.project}:${place.checkout ?? ''}`;
+
+// The same, as an address to open or fetch directly
+export const placeUrl = (place, rest, search) => {
+	const [url, { urlParameters, searchParameters: query }] = placed(place, rest, { searchParameters: search });
+	const path = url.replace(/:(\w+)/g, (_, name) => encodeURIComponent(urlParameters[name]));
+
+	return query ? `${path}?${new URLSearchParams(query)}` : path;
+};
+
 // { authenticated, passwordSet, identity, name }
 export const getAuth = async () => await GET('/api/auth', { invalidateAfter: 0 });
 
@@ -49,24 +79,18 @@ export const createInvite = async (sessionId, invite) =>
 
 export const revokeInvite = async id => await DELETE('/api/invites/:id', { urlParameters: { id } });
 
-export const listFiles = async sessionId =>
-	await GET('/api/sessions/:id/files', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
+export const listFiles = async place => await GET(...placed(place, '/files', { invalidateAfter: 0 }));
 
-export const getChanges = async sessionId =>
-	await GET('/api/sessions/:id/changes', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
+export const getChanges = async place => await GET(...placed(place, '/changes', { invalidateAfter: 0 }));
 
 // `source` is { source: 'changes', path }, { source: 'turn', turn }, { source: 'files', a, b } or { source: 'proposal' }
 // The Git panel: `what` is status, log, commit, branches, stashes or blame
-export const getGit = async (sessionId, what, searchParameters = {}) =>
-	await GET('/api/sessions/:id/git/:what', {
-		urlParameters: { id: sessionId, what },
-		searchParameters,
-		invalidateAfter: 0,
-	});
+export const getGit = async (place, what, search = {}) =>
+	await GET(...placed(place, '/git/:what', { urlParameters: { what }, searchParameters: search, invalidateAfter: 0 }));
 
 // Resolves to { ok, output }: git's own words, for the panel to show
-export const runGit = async (sessionId, action, body = {}) =>
-	await POST('/api/sessions/:id/git/:action', { urlParameters: { id: sessionId, action }, body });
+export const runGit = async (place, action, body = {}) =>
+	await POST(...placed(place, '/git/:action', { urlParameters: { action }, body }));
 
 // { turns: [{ id, prompt, at, endedAt, steps: [{ tool, summary, file, ok, output }] }], context: { tokens, model } }
 export const getTimeline = async sessionId =>
@@ -77,8 +101,8 @@ export const getVerification = async sessionId =>
 	await GET('/api/sessions/:id/verification', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 
 // Symbols: { q } names matching, { name, from } where one is defined, { file } a file's outline
-export const getSymbols = async (sessionId, searchParameters) =>
-	await GET('/api/sessions/:id/symbols', { urlParameters: { id: sessionId }, searchParameters, invalidateAfter: 0 });
+export const getSymbols = async (place, search) =>
+	await GET(...placed(place, '/symbols', { searchParameters: search, invalidateAfter: 0 }));
 
 // What the session settled, newest first, and whether each is recorded: { reading, decisions: [{ id, kind, chose,
 // rejected, because, asked, at, place, filed, question, looking }] }
@@ -111,28 +135,28 @@ export const markLink = async (sessionId, url, change) =>
 	await POST('/api/sessions/:id/links/mark', { urlParameters: { id: sessionId }, body: { url, ...change } });
 
 // The Tasks panel: { tasks, runs, processes }
-export const getTasks = async sessionId =>
-	await GET('/api/sessions/:id/tasks', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
+export const getTasks = async place => await GET(...placed(place, '/tasks', { invalidateAfter: 0 }));
 
 // A run's summary and what it printed from `from` on
-export const getRun = async (sessionId, runId, from = 0) =>
-	await GET('/api/sessions/:id/tasks/runs/:run', {
-		urlParameters: { id: sessionId, run: runId },
-		searchParameters: { from },
-		invalidateAfter: 0,
-	});
+export const getRun = async (place, runId, from = 0) =>
+	await GET(
+		...placed(place, '/tasks/runs/:run', {
+			urlParameters: { run: runId },
+			searchParameters: { from },
+			invalidateAfter: 0,
+		}),
+	);
 
-export const runTask = async (sessionId, task) =>
-	await POST('/api/sessions/:id/tasks/run', { urlParameters: { id: sessionId }, body: { task } });
+export const runTask = async (place, task) => await POST(...placed(place, '/tasks/run', { body: { task } }));
 
-export const stopRun = async (sessionId, runId) =>
-	await POST('/api/sessions/:id/tasks/runs/:run/stop', { urlParameters: { id: sessionId, run: runId } });
+export const stopRun = async (place, runId) =>
+	await POST(...placed(place, '/tasks/runs/:run/stop', { urlParameters: { run: runId } }));
 
-export const setAfterTurn = async (sessionId, task, on) =>
-	await POST('/api/sessions/:id/tasks/after-turn', { urlParameters: { id: sessionId }, body: { task, on } });
+export const setAfterTurn = async (place, task, on) =>
+	await POST(...placed(place, '/tasks/after-turn', { body: { task, on } }));
 
-export const stopProcess = async (sessionId, pid) =>
-	await POST('/api/sessions/:id/processes/:pid/stop', { urlParameters: { id: sessionId, pid } });
+export const stopProcess = async (place, pid) =>
+	await POST(...placed(place, '/processes/:pid/stop', { urlParameters: { pid } }));
 
 // { shares: [{ id, name, kind, port, path, auto, url }], origin }
 export const getShares = async sessionId =>
@@ -148,65 +172,53 @@ export const renameShare = async (sessionId, shareId, name) =>
 export const stopShare = async (sessionId, shareId) =>
 	await DELETE('/api/sessions/:id/shares/:share', { urlParameters: { id: sessionId, share: shareId } });
 
-export const getDiffSet = async (sessionId, source) =>
-	await GET('/api/sessions/:id/diffs', {
-		urlParameters: { id: sessionId },
-		searchParameters: source,
-		invalidateAfter: 0,
-	});
+export const getDiffSet = async (place, source) =>
+	await GET(...placed(place, '/diffs', { searchParameters: source, invalidateAfter: 0 }));
 
 export const getTurnChanges = async sessionId =>
 	await GET('/api/sessions/:id/turn-changes', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 
 // `hash` is the one the file was read with; a 409 answers with the newer text and its hash
-export const saveFile = async (sessionId, path, text, hash) =>
-	await PUT('/api/sessions/:id/file', { urlParameters: { id: sessionId }, body: { path, text, hash } });
+export const saveFile = async (place, path, text, hash) =>
+	await PUT(...placed(place, '/file', { body: { path, text, hash } }));
 
 // Resolves to { path, listed }: whether git lets the new file show in the listing (a folder never says)
-export const createEntry = async (sessionId, path, folder) =>
-	await POST('/api/sessions/:id/files', { urlParameters: { id: sessionId }, body: { path, folder } });
+export const createEntry = async (place, path, folder) =>
+	await POST(...placed(place, '/files', { body: { path, folder } }));
 
 // `action` is move ({ moves: [{ from, to }] }), copy ({ copies }), delete ({ paths }, answering { trash }) or restore
 // ({ trash }); a refusal answers with why, as text
-export const manageFiles = async (sessionId, action, body) =>
-	await POST('/api/sessions/:id/files/:action', { urlParameters: { id: sessionId, action }, body });
+export const manageFiles = async (place, action, body) =>
+	await POST(...placed(place, '/files/:action', { urlParameters: { action }, body }));
 
 // A file from this computer into the project at `path`; a 409 means something is there, which `replace` writes over
-export const uploadFile = async (sessionId, path, file, { replace = false } = {}) => {
-	const response = await fetch(
-		`/api/sessions/${encodeURIComponent(sessionId)}/files/upload?path=${encodeURIComponent(path)}${replace ? '&replace=1' : ''}`,
-		{ method: 'PUT', body: file },
-	).catch(() => null);
+export const uploadFile = async (place, path, file, { replace = false } = {}) => {
+	const response = await fetch(placeUrl(place, '/files/upload', { path, ...(replace && { replace: 1 }) }), {
+		method: 'PUT',
+		body: file,
+	}).catch(() => null);
 
 	return { response, body: response?.ok ? await response.json() : await response?.text() };
 };
 
-export const readFile = async (sessionId, path) =>
-	await GET('/api/sessions/:id/file', {
-		urlParameters: { id: sessionId },
-		searchParameters: { path },
-		responseType: 'text',
-		invalidateAfter: 0,
-	});
+export const readFile = async (place, path) =>
+	await GET(...placed(place, '/file', { searchParameters: { path }, responseType: 'text', invalidateAfter: 0 }));
 
 // Every match of a search across the project replaced: { files, replacements }
-export const replaceInFiles = async (sessionId, query, options, replacement) =>
-	await POST('/api/sessions/:id/replace', {
-		urlParameters: { id: sessionId },
-		body: { ...searchParameters(query, options), replacement },
-	});
+export const replaceInFiles = async (place, query, options, replacement) =>
+	await POST(...placed(place, '/replace', { body: { ...searchParameters(query, options), replacement } }));
 
 // What the session's processes see, and the project's .env files, secrets masked: { variables, files }
-export const getEnvironment = async sessionId =>
-	await GET('/api/sessions/:id/environment', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
+export const getEnvironment = async place => await GET(...placed(place, '/environment', { invalidateAfter: 0 }));
 
-export const searchFiles = async (sessionId, query, options) =>
-	await GET('/api/sessions/:id/search', {
-		urlParameters: { id: sessionId },
-		searchParameters: searchParameters(query, options),
-		responseType: 'text',
-		invalidateAfter: 0,
-	});
+export const searchFiles = async (place, query, options) =>
+	await GET(
+		...placed(place, '/search', {
+			searchParameters: searchParameters(query, options),
+			responseType: 'text',
+			invalidateAfter: 0,
+		}),
+	);
 
 export const getTurns = async sessionId =>
 	await GET('/api/sessions/:id/turns', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
@@ -223,8 +235,8 @@ export const archiveSessions = async (ids, archived) =>
 export const nameSession = async (sessionId, name) =>
 	await PUT('/api/sessions/:id/name', { urlParameters: { id: sessionId }, body: { name } });
 
-export const rawFileUrl = (sessionId, path, { download = false } = {}) =>
-	`/api/sessions/${encodeURIComponent(sessionId)}/raw?path=${encodeURIComponent(path)}${download ? '&download=1' : ''}`;
+export const rawFileUrl = (place, path, { download = false } = {}) =>
+	placeUrl(place, '/raw', { path, ...(download && { download: 1 }) });
 
 export const getWatching = async () => await GET('/api/watching', { invalidateAfter: 0 });
 
@@ -251,8 +263,7 @@ export const catchUpOn = async (sessionId, since) =>
 	await POST('/api/sessions/:id/catch-up', { urlParameters: { id: sessionId }, body: { since } });
 
 // A guided tour of code: { file: { path, from, to, focus } } or { diff: source }; { overview, stops, leftOut }
-export const tourOf = async (sessionId, subject) =>
-	await POST('/api/sessions/:id/tour', { urlParameters: { id: sessionId }, body: subject });
+export const tourOf = async (place, subject) => await POST(...placed(place, '/tour', { body: subject }));
 
 // What to open for a few words asked aside: { said, opened: [{ file, line, title } | { diff, title }], dropped }
 export const findToOpen = async (sessionId, { ask, viewing, screen }) =>

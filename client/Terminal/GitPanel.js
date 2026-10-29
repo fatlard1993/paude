@@ -1,7 +1,7 @@
 import { Notify, Tabs } from '@vanilla-bean/components';
 
 import { relativeTime } from '@vanilla-bean/components/utils/date';
-import { getGit, getVerification, runGit } from '../api';
+import { getGit, getVerification, runGit, sessionOf } from '../api';
 import confirmDialog from '../confirmDialog';
 import { button, closeButton, element, icon } from '../dom';
 import { checkbox } from '../Layout';
@@ -68,7 +68,7 @@ export default class GitPanel extends Panel {
 	}
 
 	async refresh() {
-		const { body, response } = await getGit(this.options.sessionId, 'status');
+		const { body, response } = await getGit(this.options.place, 'status');
 
 		if (!response?.ok) {
 			this.status = null;
@@ -163,7 +163,7 @@ export default class GitPanel extends Panel {
 	async act(action, body = {}, { done, onSuccess } = {}) {
 		this.elem.classList.add('busy');
 
-		const { body: result, response } = await runGit(this.options.sessionId, action, body);
+		const { body: result, response } = await runGit(this.options.place, action, body);
 
 		this.elem.classList.remove('busy');
 
@@ -203,7 +203,7 @@ export default class GitPanel extends Panel {
 	}
 
 	async renderChanges() {
-		const { body: stack } = await getGit(this.options.sessionId, 'stack');
+		const { body: stack } = await getGit(this.options.place, 'stack');
 
 		if (this.tab !== 'changes') return;
 
@@ -358,7 +358,7 @@ export default class GitPanel extends Panel {
 				write.disabled = true;
 				write.textContent = 'Writing…';
 
-				const { body } = await runGit(this.options.sessionId, 'message', {
+				const { body } = await runGit(this.options.place, 'message', {
 					amend: amending.checked,
 					into: intoConcern()?.hash,
 				});
@@ -385,7 +385,7 @@ export default class GitPanel extends Panel {
 	}
 
 	async renderHistory({ more = false } = {}) {
-		const { body } = await getGit(this.options.sessionId, 'log', { skip: more ? this.history.length : 0 });
+		const { body } = await getGit(this.options.place, 'log', { skip: more ? this.history.length : 0 });
 
 		this.history = more ? [...this.history, ...(body ?? [])] : (body ?? []);
 		if (this.tab !== 'history') return;
@@ -415,11 +415,11 @@ export default class GitPanel extends Panel {
 	// What this branch adds to the main line, and its pull request: opened here, its checks watched here
 	async renderReview() {
 		const [compare, pr, reviewed, checked, ready] = await Promise.all([
-			getGit(this.options.sessionId, 'compare'),
-			getGit(this.options.sessionId, 'pr'),
-			getGit(this.options.sessionId, 'reviewed'),
-			getVerification(this.options.sessionId),
-			getGit(this.options.sessionId, 'ready'),
+			getGit(this.options.place, 'compare'),
+			getGit(this.options.place, 'pr'),
+			getGit(this.options.place, 'reviewed'),
+			sessionOf(this.options.place) ? getVerification(this.options.place) : { response: null },
+			getGit(this.options.place, 'ready'),
 		]);
 		const uncommitted = ready.response?.ok ? ready.body.uncommitted.length : 0;
 
@@ -468,7 +468,7 @@ export default class GitPanel extends Panel {
 		const mark = button(`Reviewed up to ${short(state.head)}`, async () => {
 			mark.disabled = true;
 
-			const { body } = await runGit(this.options.sessionId, 'reviewed');
+			const { body } = await runGit(this.options.place, 'reviewed');
 
 			if (!body?.ok) return this.say('Could not mark it.', { error: true });
 			this.renderReview();
@@ -574,12 +574,17 @@ export default class GitPanel extends Panel {
 					: 'Everything is committed.',
 				button('Commit', () => this.showTab('changes')),
 			),
-			line(
-				!comments,
-				comments ? `${plural(comments, 'comment')} still open.` : 'No comments open.',
-				this.options.showComments && button('Show them', () => this.options.showComments()),
-			),
-			line(!tests || tests.state === 'current', tests?.said ?? 'No changes or test runs in this session.'),
+			// Comments and test runs are a session's; a project's page has neither to tell
+			...(sessionOf(this.options.place)
+				? [
+						line(
+							!comments,
+							comments ? `${plural(comments, 'comment')} still open.` : 'No comments open.',
+							this.options.showComments && button('Show them', () => this.options.showComments()),
+						),
+						line(!tests || tests.state === 'current', tests?.said ?? 'No changes or test runs in this session.'),
+					]
+				: []),
 		];
 	}
 
@@ -594,7 +599,7 @@ export default class GitPanel extends Panel {
 			write.disabled = true;
 			write.textContent = 'Writing…';
 
-			const { body: written } = await runGit(this.options.sessionId, 'pr-draft');
+			const { body: written } = await runGit(this.options.place, 'pr-draft');
 
 			write.disabled = false;
 			write.textContent = 'Claude, write it';
@@ -607,7 +612,7 @@ export default class GitPanel extends Panel {
 			async () => {
 				open.disabled = true;
 
-				const { body: opened } = await runGit(this.options.sessionId, 'pr', {
+				const { body: opened } = await runGit(this.options.place, 'pr', {
 					title: title.value,
 					body: body.value,
 					draft: drafting.checked,
@@ -631,7 +636,7 @@ export default class GitPanel extends Panel {
 	}
 
 	async renderBranches() {
-		const { body } = await getGit(this.options.sessionId, 'branches');
+		const { body } = await getGit(this.options.place, 'branches');
 
 		if (this.tab !== 'branches' || !body) return;
 
@@ -711,7 +716,7 @@ export default class GitPanel extends Panel {
 	}
 
 	async renderStashes() {
-		const { body } = await getGit(this.options.sessionId, 'stashes');
+		const { body } = await getGit(this.options.place, 'stashes');
 
 		if (this.tab !== 'stashes') return;
 
