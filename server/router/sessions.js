@@ -57,6 +57,7 @@ import {
 } from '../worktrees';
 import { markProjectLink, projectLinks } from '../links';
 import { projectArtifacts } from '../artifacts';
+import { placeFolder, placeMark, placeMatch, placeMissing } from './place';
 
 const isFolder = async path =>
 	Boolean(
@@ -559,17 +560,24 @@ const sessionsRoutes = async (request, server) => {
 		return upgraded ? undefined : new Response('WebSocket upgrade failed', { status: 400 });
 	}
 
-	match = requestMatch('GET', '/api/sessions/:id/shell', request);
+	// A session's own side terminal, or one on the project's page, in its folder or the worktree picked there
+	match = placeMatch('GET', '/shell', request);
 	if (match) {
 		if (!may(identity, 'type', match.id))
 			return new Response('Your invite does not include a terminal', { status: 403 });
 
-		const record = await sessionRecord(match.id);
+		const cwd = await placeFolder(match);
 
-		if (!record) return new Response('Session not found', { status: 404 });
+		if (!cwd) return placeMissing(match);
 
 		const upgraded = server.upgrade(request, {
-			data: { route: 'shell', sessionId: record.id, cwd: record.cwd, credential: credentialOf(request) },
+			data: {
+				route: 'shell',
+				sessionId: match.id,
+				mark: placeMark(match, cwd),
+				cwd,
+				credential: credentialOf(request),
+			},
 		});
 
 		return upgraded ? undefined : new Response('WebSocket upgrade failed', { status: 400 });

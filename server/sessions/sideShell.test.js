@@ -23,7 +23,7 @@ const fakeSocket = credential => {
 	const socket = {
 		output: '',
 		closed: null,
-		data: { route: 'shell', sessionId: 'session-1', cwd: folder, credential },
+		data: { route: 'shell', sessionId: 'session-1', mark: 'session-1', cwd: folder, credential },
 		send: data => {
 			socket.output += decoder.decode(data, { stream: true });
 		},

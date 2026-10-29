@@ -433,6 +433,24 @@ test('changes are for those who may browse files, and saving is for those who ma
 	).toBe(404);
 });
 
+test("a project's page reads and writes its own folder, for the owner alone; a session's turns stay the session's", async () => {
+	const project = '/api/projects/app';
+	const make = { method: 'POST', body: { path: 'from-the-page.txt' } };
+
+	expect((await call(`${project}/files`, { token: tokens.comment })).status).toBe(403);
+	expect((await call(`${project}/files`, { token: tokens.comment, ...make })).status).toBe(403);
+	expect((await call(`${project}/files`, { token: tokens.owner, ...make })).status).toBe(200);
+	expect((await call(`${project}/file?path=from-the-page.txt`, { token: tokens.owner })).status).toBe(200);
+	expect((await call(`${project}/files`, { token: tokens.owner })).status).toBe(200);
+	expect((await call(`${project}/tasks`, { token: tokens.owner })).status).toBe(200);
+	expect((await call(`${project}/timeline`, { token: tokens.owner })).status).toBe(404);
+	expect((await call(`${project}/diffs?source=turn&turn=1`, { token: tokens.owner })).status).toBe(404);
+	// Not a repository, nor a worktree of one
+	expect((await call(`${project}/git/status`, { token: tokens.owner })).status).toBe(404);
+	expect((await call(`${project}/files?checkout=/tmp`, { token: tokens.owner })).status).toBe(404);
+	expect((await call('/api/projects/nowhere/files', { token: tokens.owner })).status).toBe(404);
+});
+
 test('sessions page and search: every word has to match, and the header says how many do in all', async () => {
 	const page = async query => {
 		const response = await call(`/api/sessions?${query}`, { token: tokens.owner });
