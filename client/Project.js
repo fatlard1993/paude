@@ -25,8 +25,17 @@ import { openMenu } from './menu';
 import { composeBox, placePrompt, takeDraft } from './PromptHome';
 import LinksPanel from './Terminal/LinksPanel';
 import ArtifactsPanel from './Terminal/ArtifactsPanel';
+import FilesPanel, { quickOpenMode } from './Terminal/FilesPanel';
+import GitPanel from './Terminal/GitPanel';
+import TasksPanel from './Terminal/TasksPanel';
+import SideShell from './Terminal/SideShell';
+import { PANEL_EDGES, addResizeHandle } from './Terminal/resizeHandle';
+import { Body, NARROW } from './Terminal/TerminalView.styles';
 import { tabs } from './Tabs';
 import { updateTabTitle } from './tabTitle';
+
+// The panels that sit on the right, one at a time
+const RIGHT = ['git', 'tasks'];
 
 // The repo's own create command, as it runs
 const Progress = styled(
@@ -56,13 +65,15 @@ export default class Project extends View {
 			project,
 			addCleanup: (name, stop) => this.addCleanup(name, stop),
 		});
+		this.toolButtons();
 		this.watchButton = ghostButton(this.bar, {
 			icon: 'eye-slash',
 			label: 'Watch',
 			onPress: () => this.toggleWatching(),
 		});
 
-		const scroll = new Scroll({ appendTo: this });
+		const body = new Body({ appendTo: this });
+		const scroll = new Scroll({ appendTo: body, style: { flex: '1', minWidth: '0' } });
 		const compose = composeBox({
 			appendTo: scroll,
 			keep: `paude.prompt.${project}`,
@@ -116,6 +127,7 @@ export default class Project extends View {
 		this.pickLifetime(draft?.lifetime);
 
 		this.holdings(scroll);
+		this.tools(body);
 		this.load();
 		this.loadCheckouts();
 		this.paint();
@@ -183,6 +195,136 @@ export default class Project extends View {
 		}
 		this.countHeld();
 		this.tabs.show();
+	}
+
+	// A session's own tools, on the project's folder, or the worktree picked to start in
+	toolButtons() {
+		const tool = (name, icon, title) => {
+			this.toolButton[name] = ghostButton(this.bar, {
+				icon,
+				title,
+				className: 'tool',
+				onPress: () => this.toggle(name),
+			});
+		};
+
+		this.toolButton = {};
+		tool('files', 'folder-tree', 'Project files');
+		tool('tasks', 'list-check', "Tasks: the project's checks and tests, problems, and what's running");
+		tool('git', 'code-branch', 'Git: changes, history, branches');
+		tool('shell', 'terminal', 'Terminal: a shell in this folder that ends when you close it');
+	}
+
+	tools(body) {
+		this.place = { project: this.options.project };
+
+		const narrow = () => window.matchMedia(NARROW).matches;
+		const toFiles = (from, open) => {
+			if (narrow()) this.toggle(from, false);
+			this.toggle('files', true);
+			open(this.files);
+		};
+
+		this.files = new FilesPanel({
+			appendTo: body,
+			addClass: 'files',
+			place: this.place,
+			close: () => this.toggle('files', false),
+			setFullscreen: on => this.files.elem.classList.toggle('fullscreen', on),
+			attach: text => {
+				this.attach(text);
+				this.toggle('files', false);
+			},
+		});
+		this.git = new GitPanel({
+			appendTo: body,
+			addClass: 'git',
+			place: this.place,
+			close: () => this.toggle('git', false),
+			openDiff: source => toFiles('git', files => files.openDiffSet(source)),
+			changed: () => this.files.changesMayHaveChanged(),
+		});
+		this.tasks = new TasksPanel({
+			appendTo: body,
+			addClass: 'tasks',
+			place: this.place,
+			close: () => this.toggle('tasks', false),
+			openFile: (path, line) => toFiles('tasks', files => files.open(path, line)),
+			attach: text => this.attach(text),
+		});
+		this.shell = new SideShell({
+			appendTo: body,
+			addClass: 'shell',
+			place: this.place,
+			close: () => this.toggle('shell', false),
+			attach: text => this.attach(text),
+			ended: why => {
+				this.toggle('shell', false);
+				if (why) new Notify({ intent: 'warning', content: why });
+			},
+		});
+		addResizeHandle(this.files.elem, PANEL_EDGES.files);
+		addResizeHandle(this.git.elem, PANEL_EDGES.side);
+		addResizeHandle(this.tasks.elem, PANEL_EDGES.side);
+		addResizeHandle(this.shell.elem, PANEL_EDGES.shell);
+
+		const quickOpen = event => {
+			const mode = quickOpenMode(event);
+
+			if (!mode) return;
+			event.preventDefault();
+			this.toggle('files', true);
+			this.files.quickOpen(mode);
+		};
+
+		document.addEventListener('keydown', quickOpen);
+		this.addCleanup('tools', () => {
+			document.removeEventListener('keydown', quickOpen);
+			this.shell.stop();
+		});
+	}
+
+	// As a session has them: Files on the left, Git or Tasks on the right, one at a time, the terminal along the bottom
+	toggle(name, open) {
+		const panel = this[name];
+		const opening = open ?? (name === 'shell' ? !panel.running : !panel.elem.classList.contains('open'));
+
+		if (opening && RIGHT.includes(name))
+			for (const other of RIGHT)
+				if (other !== name && this[other].elem.classList.contains('open')) this.toggle(other, false);
+		panel.elem.classList.toggle('open', opening);
+		this.toolButton[name].classList.toggle('active', opening);
+		if (name === 'shell') {
+			if (opening) panel.start();
+			else panel.stop();
+		} else if (opening) panel.refresh();
+		// An opened panel takes the keyboard, so Esc closes it; closed, the keyboard goes back to the prompt
+		if (opening && !panel.elem.contains(document.activeElement)) panel.elem.focus({ preventScroll: true });
+		else if (!opening && panel.elem.contains(document.activeElement)) this.prompt.focus();
+	}
+
+	// What the panels attach goes into the prompt here, for the session it starts
+	attach(text) {
+		const typed = this.prompt.value.trimEnd();
+
+		this.prompt.value = typed ? `${typed}\n\n${text}` : text;
+		this.prompt.dispatchEvent(new Event('input'));
+		this.prompt.focus();
+		new Notify({ intent: 'success', content: 'Added to the prompt', timeout: 1500 });
+	}
+
+	// The tools follow where a session would start: a worktree there, or else the project folder, which a new
+	// worktree starts from
+	placeTools(checkout) {
+		if (!this.place || this.place.checkout === checkout) return;
+
+		this.place.checkout = checkout;
+		for (const name of ['files', 'git', 'tasks']) if (this[name].elem.classList.contains('open')) this[name].refresh();
+		if (this.files.current) this.files.open(this.files.current);
+		if (this.shell.running) {
+			this.shell.stop();
+			this.shell.start();
+		}
 	}
 
 	async countHeld() {
@@ -264,6 +406,7 @@ export default class Project extends View {
 		this.checkout = value;
 		this.newName.style.display = value === 'new' ? '' : 'none';
 		this.fromInput.style.display = value === 'from' ? '' : 'none';
+		this.placeTools(value?.startsWith('join:') ? value.slice('join:'.length) : undefined);
 		if (!this.checkouts) return;
 
 		const joined = value?.startsWith('join:') && this.checkouts.find(({ path }) => `join:${path}` === value);

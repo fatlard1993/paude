@@ -2985,3 +2985,57 @@ test(
 	},
 	TIMEOUT_MS,
 );
+
+test(
+	"a project's page has a session's files, Git and terminal, on the worktree picked to start in",
+	async () => {
+		const server = await startServer();
+		const side = path.join(server.project, '.paude', 'worktrees', 'side');
+		const { browser, page } = await openBrowser('dom');
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+		const entries = () => page.$$eval('.files .entry', found => found.map(entry => entry.textContent));
+
+		Bun.spawnSync(['git', 'commit', '-qm', 'first'], { cwd: server.project });
+		Bun.spawnSync(['git', 'worktree', 'add', '-q', '-b', 'side', side], { cwd: server.project });
+		await Bun.write(path.join(side, 'only-here.txt'), 'on the side\n');
+		await Bun.write(path.join(server.project, 'server', 'app.js'), 'changed\n');
+
+		try {
+			await page.goto(await server.loginLink('/projects/demo'));
+			await wait(2500);
+
+			await press('[title="Project files"]');
+			await eventually(async () => expect(await entries()).toContain('server•'));
+			await press('[title^="Git"]');
+			await eventually(async () => expect(await page.$eval('.git', panel => panel.textContent)).toContain('app.js'));
+
+			// Picked to start in, the worktree is where they open next, and a terminal opens in it
+			await press('[title="Project files"]');
+			await press('[title^="Git"]');
+			await press('.variant-chip', 'main');
+			await press('[role=menu] li', 'Worktree side');
+			await press('[title="Project files"]');
+			await press('[title^="Git"]');
+			await eventually(async () => expect(await entries()).toContain('only-here.txtU'));
+			await eventually(async () =>
+				expect(await page.$eval('.git', panel => panel.textContent)).not.toContain('app.js'),
+			);
+			await press('[title^="Terminal"]');
+			await page.waitForSelector('.shell.open .xterm-screen');
+			await wait(1500);
+			await page.keyboard.type('pwd\n');
+			await eventually(async () =>
+				expect(await page.$eval('.shell .xterm-rows', rows => rows.textContent)).toContain('worktrees/side'),
+			);
+		} finally {
+			await browser.close();
+			await server.stop();
+		}
+	},
+	TIMEOUT_MS,
+);

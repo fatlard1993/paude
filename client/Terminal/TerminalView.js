@@ -51,7 +51,7 @@ import KeyBar from './KeyBar';
 import { copySelection, isCopyKey } from './copySelection';
 import selectLinesByTap from './lineSelect';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from './xtermOptions';
-import FilesPanel from './FilesPanel';
+import FilesPanel, { quickOpenMode } from './FilesPanel';
 import GitPanel from './GitPanel';
 import SharesPanel from './SharesPanel';
 import ActivityPanel from './ActivityPanel';
@@ -65,7 +65,6 @@ import SideShell from './SideShell';
 import { PANEL_EDGES, addResizeHandle } from './resizeHandle';
 import { Body, NARROW, Presence, SelectHint, SelectionActions, TopBar } from './TerminalView.styles';
 
-const FILE_SHORTCUTS = { p: 'names', 'Shift+f': 'contents', 'Shift+o': 'outline' };
 // Ctrl+Shift+L (Cmd+Shift+L) asks what to open, from the terminal too
 const isAskToOpenKey = event =>
 	(event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === 'l';
@@ -835,8 +834,7 @@ export default class TerminalView extends View {
 		else if (!open && panel.contains(document.activeElement)) this.terminal?.focus();
 	}
 
-	// Ctrl+P (Cmd+P) finds a file, Ctrl+Shift+F searches inside them, Ctrl+Shift+O lists the open file's outline, as
-	// VS Code has them. In a terminal the keys are its own.
+	// The quick-open keys, and Ctrl+Shift+L to ask what to open
 	fileShortcut(event) {
 		if (canBrowse() && isAskToOpenKey(event)) {
 			event.preventDefault();
@@ -844,9 +842,7 @@ export default class TerminalView extends View {
 
 			return;
 		}
-		if (!(event.ctrlKey || event.metaKey) || event.altKey || event.target.closest?.('.xterm')) return;
-
-		const mode = FILE_SHORTCUTS[`${event.shiftKey ? 'Shift+' : ''}${event.key.toLowerCase()}`];
+		const mode = quickOpenMode(event);
 
 		if (!mode) return;
 		event.preventDefault();

@@ -336,6 +336,15 @@ const pruneDrafts = () => {
 	}
 };
 
+const QUICK_OPEN = { p: 'names', 'Shift+f': 'contents', 'Shift+o': 'outline' };
+
+// Ctrl+P (Cmd+P) finds a file, Ctrl+Shift+F searches inside them, Ctrl+Shift+O lists the open file's outline, as
+// VS Code has them: the quick-open mode a key asks for, if any. In a terminal the keys are its own.
+export const quickOpenMode = event =>
+	(event.ctrlKey || event.metaKey) && !event.altKey && !event.target.closest?.('.xterm')
+		? QUICK_OPEN[`${event.shiftKey ? 'Shift+' : ''}${event.key.toLowerCase()}`]
+		: undefined;
+
 export default class FilesPanel extends Panel {
 	build() {
 		document.addEventListener('selectionchange', () => this.offerNameActions());
