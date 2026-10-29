@@ -95,8 +95,8 @@ export default class FileManager {
 		this.clipboard = null;
 	}
 
-	get sessionId() {
-		return this.panel.options.sessionId;
+	get place() {
+		return this.panel.options.place;
 	}
 
 	isFolder(path) {
@@ -316,7 +316,7 @@ export default class FileManager {
 	download(path) {
 		const link = document.createElement('a');
 
-		link.href = rawFileUrl(this.sessionId, path, { download: true });
+		link.href = rawFileUrl(this.place, path, { download: true });
 		link.download = nameOf(path);
 		link.click();
 	}
@@ -334,7 +334,7 @@ export default class FileManager {
 
 		if (!path || path === prefix) return;
 
-		const { body, response } = await createEntry(this.sessionId, path, isFolder);
+		const { body, response } = await createEntry(this.place, path, isFolder);
 
 		if (!response?.ok) return failed(body, 'Could not make it.');
 
@@ -364,7 +364,7 @@ export default class FileManager {
 	}
 
 	async move(moves, { undoing = false } = {}) {
-		const { body, response } = await manageFiles(this.sessionId, 'move', { moves });
+		const { body, response } = await manageFiles(this.place, 'move', { moves });
 
 		if (!response?.ok) return failed(body, 'Could not move it.');
 
@@ -397,7 +397,7 @@ export default class FileManager {
 	}
 
 	async copy(copies) {
-		const { body, response } = await manageFiles(this.sessionId, 'copy', { copies });
+		const { body, response } = await manageFiles(this.place, 'copy', { copies });
 
 		if (!response?.ok) return failed(body, 'Could not copy it.');
 
@@ -453,7 +453,7 @@ export default class FileManager {
 
 		if (current && paths.some(path => inside(current, path)) && !(await this.panel.leaveEditing())) return;
 
-		const { body, response } = await manageFiles(this.sessionId, 'delete', { paths });
+		const { body, response } = await manageFiles(this.place, 'delete', { paths });
 
 		if (!response?.ok) return failed(body, 'Could not delete it.');
 
@@ -469,7 +469,7 @@ export default class FileManager {
 	}
 
 	async restore(trash) {
-		const { body, response } = await manageFiles(this.sessionId, 'restore', { trash });
+		const { body, response } = await manageFiles(this.place, 'restore', { trash });
 
 		if (!response?.ok) return failed(body, 'Could not bring it back.');
 
@@ -514,7 +514,7 @@ export default class FileManager {
 		const refused = [];
 		const conflicts = [];
 		const send = async ({ file, path }, replace) => {
-			const { body, response } = await uploadFile(this.sessionId, joined(folder, path), file, { replace });
+			const { body, response } = await uploadFile(this.place, joined(folder, path), file, { replace });
 
 			if (response?.ok) made.push(body);
 			else if (response?.status === 409 && !replace) conflicts.push({ file, path });

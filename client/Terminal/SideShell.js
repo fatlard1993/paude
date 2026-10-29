@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm';
 
 import { attachOutputText } from '../../shared/attachText';
 import { CLOSED } from '../../shared/protocol';
+import { placeUrl } from '../api';
 import { button, element, icon } from '../dom';
 import { copySelection, isCopyKey } from './copySelection';
 import KeyBar from './KeyBar';
@@ -103,7 +104,7 @@ export default class SideShell extends Panel {
 		this.sizeWatcher.observe(this.screen);
 
 		const socket = new WebSocket(
-			`${window.location.origin.replace(/^http/, 'ws')}/api/sessions/${this.options.sessionId}/shell`,
+			`${window.location.origin.replace(/^http/, 'ws')}${placeUrl(this.options.place, '/shell')}`,
 		);
 		let opened = false;
 

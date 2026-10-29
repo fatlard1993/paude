@@ -364,7 +364,7 @@ export default class TerminalView extends View {
 		this.files = new FilesPanel({
 			appendTo: body,
 			addClass: 'files',
-			sessionId: this.options.id,
+			place: this.options.id,
 			close: () => this.toggleFiles(false),
 			setFullscreen: on => this.files.elem.classList.toggle('fullscreen', on),
 			attach: text => {
@@ -378,7 +378,7 @@ export default class TerminalView extends View {
 			this.git = new GitPanel({
 				appendTo: body,
 				addClass: 'git',
-				sessionId: this.options.id,
+				place: this.options.id,
 				close: () => this.toggleGit(false),
 				// A file's change or a whole commit, in the files panel's diff view
 				openDiff: source => {
@@ -418,7 +418,7 @@ export default class TerminalView extends View {
 			this.tasks = new TasksPanel({
 				appendTo: body,
 				addClass: 'tasks',
-				sessionId: this.options.id,
+				place: this.options.id,
 				close: () => this.toggleTasks(false),
 				openFile: (path, line) => {
 					if (window.matchMedia(NARROW).matches) this.toggleTasks(false);
@@ -473,7 +473,7 @@ export default class TerminalView extends View {
 			this.shell = new SideShell({
 				appendTo: body,
 				addClass: 'shell',
-				sessionId: this.options.id,
+				place: this.options.id,
 				close: () => this.toggleShell(false),
 				attach: text => this.attachToPrompt(text),
 				ended: why => {
