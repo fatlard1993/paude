@@ -38,7 +38,7 @@ import withoutPointerReporting from '../../shared/pointerReporting';
 import { NOTE_TYPES } from '../../shared/protocol';
 import { showNotification } from '../notify';
 import { recall, remember } from '../storage';
-import { button, dragHandle, element } from '../dom';
+import { button, element } from '../dom';
 import { breadcrumbs } from '../Breadcrumbs';
 import { closeMenu, openMenu } from '../menu';
 import { AskingCard, showAsking, showLimit } from '../Asking';
@@ -62,6 +62,7 @@ import DecisionsPanel from './DecisionsPanel';
 import NotesPanel from './NotesPanel';
 import { pullRequestActions } from './pullRequestReview';
 import SideShell from './SideShell';
+import { PANEL_EDGES, addResizeHandle } from './resizeHandle';
 import { Body, NARROW, Presence, SelectHint, SelectionActions, TopBar } from './TerminalView.styles';
 
 const FILE_SHORTCUTS = { p: 'names', 'Shift+f': 'contents', 'Shift+o': 'outline' };
@@ -129,11 +130,6 @@ const hardwareWebgl = () => {
 	return !SOFTWARE_GL.test(String(renderer));
 };
 const NOTES_OPEN_KEY = 'paude.notesOpen';
-const NOTES_WIDTH_KEY = 'paude.notesWidth';
-const FILES_WIDTH_KEY = 'paude.filesWidth';
-const MIN_PANEL_WIDTH = 260;
-const SHELL_HEIGHT_KEY = 'paude.shellHeight';
-const MIN_PANEL_HEIGHT = 140;
 const ROLE_LABELS = { owner: 'owner', drive: 'can type', comment: 'can chat and comment', watch: 'viewing' };
 
 const bufferLines = terminal => {
@@ -401,7 +397,7 @@ export default class TerminalView extends View {
 					this.notes?.showTab('comments');
 				},
 			});
-			this.addResizeHandle(this.git.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
+			addResizeHandle(this.git.elem, PANEL_EDGES.side);
 		}
 		if (canBrowse()) {
 			this.activity = new ActivityPanel({
@@ -420,7 +416,7 @@ export default class TerminalView extends View {
 					this.files.open(path, line);
 				},
 			});
-			this.addResizeHandle(this.activity.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
+			addResizeHandle(this.activity.elem, PANEL_EDGES.side);
 			this.tasks = new TasksPanel({
 				appendTo: body,
 				addClass: 'tasks',
@@ -433,7 +429,7 @@ export default class TerminalView extends View {
 				},
 				attach: text => this.attachToPrompt(text),
 			});
-			this.addResizeHandle(this.tasks.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
+			addResizeHandle(this.tasks.elem, PANEL_EDGES.side);
 			this.links = new LinksPanel({
 				appendTo: body,
 				addClass: 'links',
@@ -441,7 +437,7 @@ export default class TerminalView extends View {
 				mark: (url, change) => markLink(this.options.id, url, change),
 				close: () => this.toggleLinks(false),
 			});
-			this.addResizeHandle(this.links.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
+			addResizeHandle(this.links.elem, PANEL_EDGES.side);
 			this.artifacts = new ArtifactsPanel({
 				appendTo: body,
 				addClass: 'links',
@@ -456,7 +452,7 @@ export default class TerminalView extends View {
 						this.files.open(path, undefined, undefined, options);
 					}),
 			});
-			this.addResizeHandle(this.artifacts.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
+			addResizeHandle(this.artifacts.elem, PANEL_EDGES.side);
 			this.decisions = new DecisionsPanel({
 				appendTo: body,
 				addClass: ['links', 'decisions-panel'],
@@ -466,7 +462,7 @@ export default class TerminalView extends View {
 				answer: (id, answer) => answerDecision(this.options.id, id, answer),
 				close: () => this.toggleDecisions(false),
 			});
-			this.addResizeHandle(this.decisions.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
+			addResizeHandle(this.decisions.elem, PANEL_EDGES.side);
 		}
 		this.shares = new SharesPanel({
 			appendTo: body,
@@ -474,7 +470,7 @@ export default class TerminalView extends View {
 			sessionId: this.options.id,
 			close: () => this.toggleShares(false),
 		});
-		this.addResizeHandle(this.shares.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
+		addResizeHandle(this.shares.elem, PANEL_EDGES.side);
 		if (canType()) {
 			this.shell = new SideShell({
 				appendTo: body,
@@ -513,10 +509,10 @@ export default class TerminalView extends View {
 			},
 		});
 
-		this.addResizeHandle(this.notes.elem, { variable: '--notes-width', key: NOTES_WIDTH_KEY, edge: 'left' });
-		this.addResizeHandle(this.files.elem, { variable: '--files-width', key: FILES_WIDTH_KEY, edge: 'right' });
+		addResizeHandle(this.notes.elem, PANEL_EDGES.side);
+		addResizeHandle(this.files.elem, PANEL_EDGES.files);
 		if (this.shell) {
-			this.addResizeHandle(this.shell.elem, { variable: '--shell-height', key: SHELL_HEIGHT_KEY, edge: 'top' });
+			addResizeHandle(this.shell.elem, PANEL_EDGES.shell);
 		}
 		if (recall(NOTES_OPEN_KEY)) this.toggleNotes(true, { focus: false });
 
@@ -837,46 +833,6 @@ export default class TerminalView extends View {
 	focusPanel(panel, open) {
 		if (open && !panel.contains(document.activeElement)) panel.focus({ preventScroll: true });
 		else if (!open && panel.contains(document.activeElement)) this.terminal?.focus();
-	}
-
-	// A side panel's inner edge drags its width; the side terminal's top edge drags its height
-	addResizeHandle(panel, { variable, key, edge }) {
-		const handle = document.createElement('div');
-		const vertical = edge === 'top';
-		const setWidth = size => {
-			const [min, max] = vertical
-				? [MIN_PANEL_HEIGHT, window.innerHeight * 0.85]
-				: [MIN_PANEL_WIDTH, window.innerWidth * 0.9];
-			const clamped = Math.round(Math.min(Math.max(size, min), max));
-
-			panel.style.setProperty(variable, `${clamped}px`);
-
-			return clamped;
-		};
-
-		handle.className = 'resize';
-		panel.append(handle);
-
-		if (Number(recall(key))) setWidth(Number(recall(key)));
-
-		let bounds;
-		const widthAt = event => {
-			if (vertical) return bounds.bottom - event.clientY;
-
-			return edge === 'left' ? bounds.right - event.clientX : event.clientX - bounds.left;
-		};
-
-		dragHandle(handle, {
-			onStart: () => {
-				bounds = panel.getBoundingClientRect();
-				panel.classList.add('resizing');
-			},
-			onMove: event => setWidth(widthAt(event)),
-			onDone: event => {
-				remember(key, String(setWidth(widthAt(event))));
-				panel.classList.remove('resizing');
-			},
-		});
 	}
 
 	// Ctrl+P (Cmd+P) finds a file, Ctrl+Shift+F searches inside them, Ctrl+Shift+O lists the open file's outline, as
