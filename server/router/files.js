@@ -40,6 +40,7 @@ import { projectOf, projectPath } from '../projects';
 import { readingFeed } from '../sessions/attachSocket';
 import { openSession } from '../sessions/running';
 import { sessionRecord } from '../sessions/record';
+import { placeFolder, placeMatch, placeMissing } from './place';
 
 const REFUSED = {
 	404: 'No such file in this project',
@@ -88,13 +89,13 @@ const raw = async (cwd, path, userAgent, download) => {
 };
 
 // A hand edit is a write to the project, so it takes the same trust as typing into Claude
-const save = async (request, id) => {
-	if (!may(identityOf(credentialOf(request)), 'type', id))
+const save = async (request, match) => {
+	if (!may(identityOf(credentialOf(request)), 'type', match.id))
 		return new Response('Your invite does not include editing', { status: 403 });
 
-	const cwd = await sessionFolder(id);
+	const cwd = await placeFolder(match);
 
-	if (!cwd) return new Response('Session not found', { status: 404 });
+	if (!cwd) return placeMissing(match);
 
 	const { path, text, hash } = await request.json();
 	const saved = await writeProjectFile(cwd, path, text, hash);
@@ -112,24 +113,20 @@ const bodyOf = request => request.json().catch(() => ({}));
 const MANAGING = [
 	[
 		'POST',
-		'/api/sessions/:id/files',
+		'/files',
 		async (cwd, request) => {
 			const { path, folder } = await bodyOf(request);
 
 			return createEntry(cwd, path, { folder: folder === true });
 		},
 	],
-	['POST', '/api/sessions/:id/files/move', async (cwd, request) => moveEntries(cwd, (await bodyOf(request)).moves)],
-	['POST', '/api/sessions/:id/files/copy', async (cwd, request) => copyEntries(cwd, (await bodyOf(request)).copies)],
-	['POST', '/api/sessions/:id/files/delete', async (cwd, request) => trashEntries(cwd, (await bodyOf(request)).paths)],
-	[
-		'POST',
-		'/api/sessions/:id/files/restore',
-		async (cwd, request) => restoreEntries(cwd, (await bodyOf(request)).trash),
-	],
+	['POST', '/files/move', async (cwd, request) => moveEntries(cwd, (await bodyOf(request)).moves)],
+	['POST', '/files/copy', async (cwd, request) => copyEntries(cwd, (await bodyOf(request)).copies)],
+	['POST', '/files/delete', async (cwd, request) => trashEntries(cwd, (await bodyOf(request)).paths)],
+	['POST', '/files/restore', async (cwd, request) => restoreEntries(cwd, (await bodyOf(request)).trash)],
 	[
 		'PUT',
-		'/api/sessions/:id/files/upload',
+		'/files/upload',
 		async (cwd, request, match) =>
 			uploadFile(cwd, match.path, await request.arrayBuffer(), { replace: match.replace === '1' }),
 	],
@@ -137,15 +134,15 @@ const MANAGING = [
 
 const manage = async request => {
 	for (const [method, route, operate] of MANAGING) {
-		const match = requestMatch(method, route, request);
+		const match = placeMatch(method, route, request);
 
 		if (!match) continue;
 		if (!may(identityOf(credentialOf(request)), 'type', match.id))
 			return new Response('Your invite does not include editing', { status: 403 });
 
-		const cwd = await sessionFolder(match.id);
+		const cwd = await placeFolder(match);
 
-		if (!cwd) return new Response('Session not found', { status: 404 });
+		if (!cwd) return placeMissing(match);
 
 		try {
 			return Response.json(await operate(cwd, request, match));
@@ -159,13 +156,13 @@ const manage = async request => {
 };
 
 // Replacing across the project is writing it, so it takes the role that may type into Claude
-const replace = async (request, id) => {
-	if (!may(identityOf(credentialOf(request)), 'type', id))
+const replace = async (request, match) => {
+	if (!may(identityOf(credentialOf(request)), 'type', match.id))
 		return new Response('Your invite does not include editing', { status: 403 });
 
-	const cwd = await sessionFolder(id);
+	const cwd = await placeFolder(match);
 
-	if (!cwd) return new Response('Session not found', { status: 404 });
+	if (!cwd) return placeMissing(match);
 
 	const { q, replacement, ...options } = await request.json();
 
@@ -178,13 +175,13 @@ const replace = async (request, id) => {
 };
 
 // Even masked, a machine's environment says a lot: it takes the same trust as typing into Claude
-const showEnvironment = async (request, id) => {
-	if (!may(identityOf(credentialOf(request)), 'type', id))
+const showEnvironment = async (request, match) => {
+	if (!may(identityOf(credentialOf(request)), 'type', match.id))
 		return new Response('Not part of your invite', { status: 403 });
 
-	const cwd = await sessionFolder(id);
+	const cwd = await placeFolder(match);
 
-	return cwd ? Response.json(await sessionEnvironmentView(cwd)) : new Response('Session not found', { status: 404 });
+	return cwd ? Response.json(await sessionEnvironmentView(cwd)) : placeMissing(match);
 };
 
 // A dropped or pasted file goes to Claude by its path, so it takes the same trust as typing into Claude
@@ -241,13 +238,13 @@ const artifacts = async (request, match) => {
 // Reading a session's project needs at least the comment role; watchers see only the terminal
 // A guided tour of code, for anyone who may read the project: { file: { path, from, to, focus } } for a file, some of
 // its lines, or one function or class in it; { diff: source } for any diff the files panel shows
-const tour = async (request, sessionId) => {
-	if (!may(identityOf(credentialOf(request)), 'files', sessionId))
+const tour = async (request, match) => {
+	if (!may(identityOf(credentialOf(request)), 'files', match.id))
 		return new Response('Not part of your invite', { status: 403 });
 
-	const cwd = await sessionFolder(sessionId);
+	const cwd = await placeFolder(match);
 
-	if (!cwd) return new Response('Session not found', { status: 404 });
+	if (!cwd) return placeMissing(match);
 
 	const { file, diff } = await request.json().catch(() => ({}));
 	let told;
@@ -267,8 +264,9 @@ const tour = async (request, sessionId) => {
 			focus,
 		});
 	} else if (diff && typeof diff === 'object') {
+		if (!match.id && SESSION_DIFFS.has(diff.source)) return new Response('Only in a session', { status: 404 });
 		try {
-			told = await diffTour(await diffSet(sessionId, cwd, diff));
+			told = await diffTour(await diffSet(match.id, cwd, diff));
 		} catch (error) {
 			if (error instanceof DiffError) return new Response(error.message, { status: 404 });
 			throw error;
@@ -297,10 +295,17 @@ const findToOpen = async (request, sessionId) => {
 	return found ? Response.json(found) : new Response("Haiku couldn't look just now", { status: 502 });
 };
 
-const filesRoutes = async request => {
-	const saving = requestMatch('PUT', '/api/sessions/:id/file', request);
+// What reading a session's work takes: its turns, what it said and brought up. The rest reads a folder, so a project's
+// page reads its own.
+const SESSION_READS = ['/turn-changes', '/timeline', '/verification', '/feed', '/links', '/decisions'];
+const PLACE_READS = ['/changes', '/diffs', '/symbols', '/files', '/file', '/search', '/raw'];
+// A turn's changes and the change Claude proposes are a session's
+const SESSION_DIFFS = new Set(['turn', 'proposal']);
 
-	if (saving) return save(request, saving.id);
+const filesRoutes = async request => {
+	const saving = placeMatch('PUT', '/file', request);
+
+	if (saving) return save(request, saving);
 
 	const managed = await manage(request);
 
@@ -310,9 +315,9 @@ const filesRoutes = async request => {
 
 	if (attaching) return attach(request, attaching.id, attaching.name);
 
-	const replacing = requestMatch('POST', '/api/sessions/:id/replace', request);
+	const replacing = placeMatch('POST', '/replace', request);
 
-	if (replacing) return replace(request, replacing.id);
+	if (replacing) return replace(request, replacing);
 
 	const marking = requestMatch('POST', '/api/sessions/:id/links/mark', request);
 
@@ -383,40 +388,29 @@ const filesRoutes = async request => {
 
 	if (made) return artifacts(request, made);
 
-	const touring = requestMatch('POST', '/api/sessions/:id/tour', request);
+	const touring = placeMatch('POST', '/tour', request);
 
-	if (touring) return tour(request, touring.id);
+	if (touring) return tour(request, touring);
 
 	const finding = requestMatch('POST', '/api/sessions/:id/open-asked', request);
 
 	if (finding) return findToOpen(request, finding.id);
 
-	const environment = requestMatch('GET', '/api/sessions/:id/environment', request);
+	const environment = placeMatch('GET', '/environment', request);
 
-	if (environment) return showEnvironment(request, environment.id);
+	if (environment) return showEnvironment(request, environment);
 
 	const match =
-		requestMatch('GET', '/api/sessions/:id/changes', request) ||
-		requestMatch('GET', '/api/sessions/:id/diffs', request) ||
-		requestMatch('GET', '/api/sessions/:id/turn-changes', request) ||
-		requestMatch('GET', '/api/sessions/:id/timeline', request) ||
-		requestMatch('GET', '/api/sessions/:id/verification', request) ||
-		requestMatch('GET', '/api/sessions/:id/feed', request) ||
-		requestMatch('GET', '/api/sessions/:id/symbols', request) ||
-		requestMatch('GET', '/api/sessions/:id/links', request) ||
-		requestMatch('GET', '/api/sessions/:id/decisions', request) ||
-		requestMatch('GET', '/api/sessions/:id/files', request) ||
-		requestMatch('GET', '/api/sessions/:id/file', request) ||
-		requestMatch('GET', '/api/sessions/:id/search', request) ||
-		requestMatch('GET', '/api/sessions/:id/raw', request);
+		SESSION_READS.map(rest => requestMatch('GET', `/api/sessions/:id${rest}`, request)).find(Boolean) ||
+		PLACE_READS.map(rest => placeMatch('GET', rest, request)).find(Boolean);
 
 	if (!match) return null;
 	if (!may(identityOf(credentialOf(request)), 'files', match.id))
 		return new Response('Not part of your invite', { status: 403 });
 
-	const cwd = await sessionFolder(match.id);
+	const cwd = await placeFolder(match);
 
-	if (!cwd) return new Response('Session not found', { status: 404 });
+	if (!cwd) return placeMissing(match);
 
 	const { pathname } = new URL(request.url);
 
@@ -449,6 +443,7 @@ const filesRoutes = async request => {
 		return Response.json(await searchSymbols(cwd, match.q ?? ''));
 	}
 	if (pathname.endsWith('/diffs')) {
+		if (!match.id && SESSION_DIFFS.has(match.source)) return new Response('Only in a session', { status: 404 });
 		try {
 			return Response.json(await diffSet(match.id, cwd, match));
 		} catch (error) {

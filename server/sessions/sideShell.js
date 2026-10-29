@@ -41,12 +41,12 @@ const spawn = (socket, { cols, rows, command }) => {
 	try {
 		socket.data.shell = Bun.spawn(loginShell(command), {
 			cwd: socket.data.cwd,
-			// The session's mark, so what's started here (a dev server) is found as the session's
+			// Its session's mark (or its project's), so what's started here (a dev server) is found as theirs
 			env: {
 				...sessionEnvironment(),
 				TERM: 'xterm-256color',
 				COLORTERM: 'truecolor',
-				PAUDE_SESSION: socket.data.sessionId,
+				PAUDE_SESSION: socket.data.mark,
 			},
 			terminal: { cols: clamp(cols, 20, 500), rows: clamp(rows, 5, 200), data: (terminal, data) => socket.send(data) },
 		});

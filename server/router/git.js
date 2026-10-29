@@ -1,7 +1,5 @@
 import path from 'path';
 
-import { requestMatch } from '@vanilla-bean/components/app';
-
 import { credentialOf, identityOf } from '../auth';
 import {
 	GitError,
@@ -32,7 +30,7 @@ import { may } from '../permissions';
 import { postReview, pullRequestThreads, reviewPlan, threadAnchor } from '../prReviews';
 import { runningSession } from '../sessions/running';
 import { markReviewed, reviewState } from '../reviews';
-import { sessionRecord } from '../sessions/record';
+import { placeFolder, placeMatch, placeMissing } from './place';
 
 // The files panel names a path from the session's folder; git, from the top of the repository
 const fromRoot = (root, cwd, wanted) => wanted && path.relative(root, path.resolve(cwd, wanted));
@@ -72,8 +70,8 @@ const READS = {
 	ready: async (root, { id }, cwd) => {
 		const [status, notes, checked, local] = await Promise.all([
 			gitStatus(root),
-			getNotes(id),
-			verification(id, cwd),
+			id ? getNotes(id) : { comments: [] },
+			id ? verification(id, cwd) : null,
 			pathsFromFolder(cwd),
 		]);
 		const lists = ['staged', 'unstaged', 'untracked', 'conflicted'];
@@ -144,7 +142,7 @@ const draftNotes = async (sessionId, cwd) => {
 		diffSet(sessionId, cwd, { source: 'compare', committed: true })
 			.then(set => (set.files.length ? diffTour(set) : null))
 			.catch(() => null),
-		verification(sessionId, cwd).catch(() => null),
+		sessionId ? verification(sessionId, cwd).catch(() => null) : null,
 	]);
 
 	return { tour, tested: checked?.said ?? null };
@@ -152,12 +150,14 @@ const draftNotes = async (sessionId, cwd) => {
 
 // Reading it is all a reviewer needs to do, so marking how far they've read takes no more than reading
 const READING_ACTIONS = new Set(['reviewed']);
+// What goes through a session's comments, which a project's page has none of
+const SESSION_ONLY = new Set(['anchors', 'pr-review', 'pr-threads']);
 
 // The Git panel's routes. Reading the history is reading the project ('files'); anything that changes the checkout or
 // its remote is as much a write as typing into Claude ('type').
 const gitRoutes = async request => {
-	const reading = requestMatch('GET', '/api/sessions/:id/git/:what', request);
-	const acting = !reading && requestMatch('POST', '/api/sessions/:id/git/:what', request);
+	const reading = placeMatch('GET', '/git/:what', request);
+	const acting = !reading && placeMatch('POST', '/git/:what', request);
 	const match = reading || acting;
 
 	if (!match) return null;
@@ -169,9 +169,11 @@ const gitRoutes = async request => {
 			status: 403,
 		});
 
-	const cwd = (await sessionRecord(match.id))?.cwd;
+	if (!match.id && SESSION_ONLY.has(match.what)) return new Response('Only in a session', { status: 404 });
 
-	if (!cwd) return new Response('Session not found', { status: 404 });
+	const cwd = await placeFolder(match);
+
+	if (!cwd) return placeMissing(match);
 
 	const root = await repoRoot(cwd);
 
