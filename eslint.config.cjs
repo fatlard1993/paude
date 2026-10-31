@@ -10,6 +10,13 @@ module.exports = [
 		},
 	},
 	{
+		// The universe view's sprites are grids of palette letters, not words
+		files: ['client/Universe/art.js'],
+		rules: {
+			'spellcheck/spell-checker': 'off',
+		},
+	},
+	{
 		// Beyond the profile's server/, scripts/, cli/, bin/ and e2e/: the shared modules only the server and the cli import
 		files: [
 			'shared/writeJsonFile.js',

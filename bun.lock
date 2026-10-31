@@ -19,6 +19,7 @@
         "@xterm/headless": "^6.0.0",
         "@xterm/xterm": "^6.0.0",
         "argi-cli": "^1.0.0",
+        "augmented-ui": "^2.0.0",
         "dompurify": "^3.4.16",
         "highlight.js": "^11.12.0",
         "marked": "^18.1.0",
@@ -222,6 +223,8 @@
     "ast-metadata-inferer": ["ast-metadata-inferer@0.8.1", "", { "dependencies": { "@mdn/browser-compat-data": "^5.6.19" } }, "sha512-ht3Dm6Zr7SXv6t1Ra6gFo0+kLDglHGrEbYihTkcycrbHw7WCcuhBzPlJYHEsIpycaUwzsJHje+vUcxXUX4ztTA=="],
 
     "async-function": ["async-function@1.0.0", "", {}, "sha512-hsU18Ae8CDTR6Kgu9DYf0EbCr/a5iGL0rytQDobUcdpYOKokk8LEjVphnXkDkgpi0wYVsqrXuP0bZxJaTqdgoA=="],
+
+    "augmented-ui": ["augmented-ui@2.0.0", "", {}, "sha512-5hp6zqzNwn7mhhdgZq5kOqzK5el642ubKJNR++5Desou9RnMuxQ0MtCzxAu/dkoXn8wmQoqzwagGmVY4La7NjA=="],
 
     "available-typed-arrays": ["available-typed-arrays@1.0.7", "", { "dependencies": { "possible-typed-array-names": "^1.0.0" } }, "sha512-wvUjBtSGN7+7SjNpq/9M2Tg350UZD3q62IFZLbRAR1bSMlCo1ZaeW+BJ+D090e4hIIZLBcTDWe4Mh4jvUDajzQ=="],
 

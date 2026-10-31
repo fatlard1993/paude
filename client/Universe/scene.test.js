@@ -1,0 +1,745 @@
+import { expect, test } from 'bun:test';
+
+import Scene, { appliancesOf, countdown, resting, tanksOf, triage } from './scene';
+import { clonerAt, holdSpotAt, layOut, shortest } from './ship';
+
+const session = changes => ({
+	id: 'a',
+	title: 'A',
+	project: 'paude',
+	status: 'working',
+	tool: 'Edit',
+	unseen: 0,
+	...changes,
+});
+const world = (key, sessions, { projects = [], people = [] } = {}) => ({
+	key,
+	name: key,
+	hue: 0,
+	projects: projects.map(name => (typeof name === 'string' ? { name, hue: 10, watching: false } : name)),
+	sessions,
+	people,
+});
+
+const run = (scene, seconds) => {
+	for (let step = 0; step < seconds * 60; step++) scene.step(1 / 60, false);
+};
+
+const scene = worlds => {
+	const made = new Scene();
+
+	made.resize(800, 600);
+	made.update(worlds);
+	run(made, 1);
+
+	return made;
+};
+
+// Someone aboard, by the name they go by
+const walkerNamed = (made, name) => [...made.walkers.values()].find(walker => walker.name === name);
+
+test('every project is a section of the hull, its sessions in it whichever machine runs them: those at work first, then the watched, then the idle', () => {
+	const made = scene([
+		world('here', [session(), session({ id: 'b', project: 'site' })], {
+			projects: ['paude', 'site', 'idle', { name: 'kept', hue: 20, watching: true }],
+		}),
+		world('vps', [session({ id: 'c' })], { projects: ['paude'] }),
+	]);
+
+	expect(made.bays.map(({ name, sessions }) => [name, sessions])).toEqual([
+		['paude', ['here/a', 'vps/c']],
+		['site', ['here/b']],
+		['kept', []],
+		['idle', []],
+	]);
+	expect(made.bays.find(({ name }) => name === 'paude').servers.map(({ key }) => key)).toEqual(['here', 'vps']);
+});
+
+test('what needs you: those asking first, then those with news, newest reply first', () => {
+	const needed = triage([
+		session({ key: 'old', unseen: 1, reply: { at: 1 } }),
+		session({ key: 'asks', status: 'waiting' }),
+		session({ key: 'quiet' }),
+		session({ key: 'new', unseen: 2, reply: { at: 5 } }),
+	]);
+
+	expect(needed.map(({ session: { key }, need }) => [key, need])).toEqual([
+		['asks', 'asking'],
+		['new', 'unread'],
+		['old', 'unread'],
+	]);
+});
+
+test('read here, its news goes until more comes', () => {
+	const made = scene([world('here', [session({ unseen: 2 })], { projects: ['paude'] })]);
+	const worker = made.workers.get('here/a');
+
+	expect(made.needs(worker.session)).toBe('unread');
+	made.markRead(worker.session);
+	expect(made.needs(worker.session)).toBeNull();
+
+	made.update([world('here', [session({ unseen: 3 })], { projects: ['paude'] })]);
+	expect(made.needs(made.workers.get('here/a').session)).toBe('unread');
+});
+
+test('the owner stands among the greys by one they watch and moves on to the next, the same name on two servers one person', () => {
+	const sam = sessions => ({ name: 'Sam', role: 'owner', sessions });
+	const worlds = watched => [
+		world('here', [session(), session({ id: 'b', project: 'site' })], {
+			projects: ['paude', 'site'],
+			people: [sam(watched)],
+		}),
+		world('vps', [session({ id: 'x' })], { projects: ['paude'], people: [sam(['x'])] }),
+	];
+	const made = scene(worlds(['a']));
+	const walker = walkerNamed(made, 'Sam');
+	const near = key => Math.abs(walker.seat.x - made.workers.get(key).desk.x) < 1.5;
+
+	expect([...made.walkers.values()].map(({ name }) => name)).toEqual(['Sam']);
+	expect(walker.person.sessions).toEqual(['here/a', 'vps/x']);
+	expect(walker.pose).toBe('overseer');
+	expect(near('here/a') || near('vps/x')).toBe(true);
+
+	// Watching another session takes them to it in their turn
+	made.update(worlds(['b']));
+	run(made, 60);
+	made.update(worlds(['b']));
+	expect(near('here/b') || near('vps/x')).toBe(true);
+
+	// With nothing at a port to watch, they wait by the nav table
+	made.update(worlds([]));
+	made.update([world('here', [], { projects: ['paude'], people: [sam([])] })]);
+	expect(walkerNamed(made, 'Sam').room).toBe(made.bridge);
+});
+
+test('a guest comes aboard by the airlock to where their role puts them by their grey, and leaves by it', () => {
+	const worlds = people => [
+		world('here', [session(), session({ id: 'b', project: 'site' })], { projects: ['paude', 'site'], people }),
+	];
+	const made = scene(worlds([]));
+	const { airlock } = made.layout.halls[0];
+
+	// Some while after the view opened, so they come aboard rather than being found there
+	run(made, 10);
+	made.update(
+		worlds([
+			{ name: 'Sam', role: 'comment', sessions: ['b'] },
+			{ name: 'Ada', role: 'drive', sessions: ['a'] },
+		]),
+	);
+
+	const sam = walkerNamed(made, 'Sam');
+	const ada = walkerNamed(made, 'Ada');
+
+	expect([sam.x, sam.y]).toEqual([airlock.x, airlock.y]);
+	run(made, 30);
+
+	const desk = made.workers.get('here/a').desk;
+	const watched = made.workers.get('here/b').desk;
+
+	// Both on the bridge with the greys, in the aisle before their island, never behind a desk: someone who may only
+	// comment looks in from before its terminal; someone who may drive sits by the grey
+	expect(sam.pose).toBe('tourist');
+	expect(sam.room).toBe(made.bridge);
+	expect(Math.abs(sam.y - (watched.y + 0.85))).toBeLessThan(0.01);
+	expect(sam.y).toBeGreaterThan(watched.y + 0.2);
+	expect(ada.pose).toBe('copilot');
+	expect(Math.hypot(ada.x - (desk.x + 0.55), ada.y - (desk.y + 0.85))).toBeLessThan(0.01);
+	expect(made.screens).toEqual([]);
+
+	made.update(worlds([]));
+	expect(walkerNamed(made, 'Sam').leaving).toBe(true);
+	run(made, 30);
+	expect(walkerNamed(made, 'Sam')).toBeUndefined();
+});
+
+test('whoever is aboard when the view opens is found at their place rather than walking in', () => {
+	const worlds = people => [world('here', [session()], { projects: ['paude'], people })];
+	const made = scene(worlds([]));
+
+	made.update(worlds([{ name: 'Ada', role: 'drive', sessions: ['a'] }]));
+
+	const ada = walkerNamed(made, 'Ada');
+	const desk = made.workers.get('here/a').desk;
+
+	expect(ada.path).toEqual([]);
+	expect(Math.hypot(ada.x - (desk.x + 0.55), ada.y - (desk.y + 0.85))).toBeLessThan(0.01);
+});
+
+test('a stopped session waits in the lounge, its seat at its island kept, and goes back to its desk once woken', () => {
+	const worlds = status => [
+		world('here', [session(), session({ id: 'b', project: 'site', status })], { projects: ['paude', 'site'] }),
+	];
+	const made = scene(worlds('stopped'));
+
+	expect(made.bays.map(({ name, sessions }) => [name, sessions])).toEqual([
+		['paude', ['here/a']],
+		['site', ['here/b']],
+	]);
+	expect(made.lounge.sessions).toEqual(['here/b']);
+	expect(made.workers.get('here/b').bay).toBe(made.lounge);
+	expect(made.workers.get('here/b').station).toBeTruthy();
+
+	made.update(worlds('ready'));
+	expect(made.bays.map(({ name, sessions }) => [name, sessions])).toEqual([
+		['paude', ['here/a']],
+		['site', ['here/b']],
+	]);
+	// The lounge stays, its couch waiting, rather than going with its last sitter
+	expect(made.lounge.sessions).toEqual([]);
+	expect(made.workers.get('here/b').bay.name).toBe('site');
+});
+
+test("an ended session leaves, and its project's machine stays aboard, nobody at it", () => {
+	const made = scene([
+		world('here', [session(), session({ id: 'b', project: 'site' })], { projects: ['paude', 'site'] }),
+	]);
+
+	made.update([world('here', [session()], { projects: ['paude', 'site'] })]);
+	run(made, 1);
+	made.update([world('here', [session()], { projects: ['paude', 'site'] })]);
+
+	const site = made.layout.bays.find(({ name }) => name === 'site');
+
+	expect(made.workers.has('here/b')).toBe(false);
+	expect(made.layout.bays.map(({ name }) => name)).toEqual(['paude', 'site']);
+	expect([site.parts.length, site.sessions.length, site.parts[0].machine > 0]).toEqual([1, 0, true]);
+});
+
+test('idle projects are machines like any other, packed after those at work into whichever deck is shorter', () => {
+	const made = scene([world('here', [session()], { projects: ['paude', 'a', 'b', 'c'] })]);
+	const [paude, ...idle] = made.layout.bays;
+
+	expect(paude.name).toBe('paude');
+	expect(idle.map(({ name }) => name)).toEqual(['a', 'b', 'c']);
+	for (const bay of idle)
+		expect([bay.parts.length, bay.parts[0].machine > 0, Boolean(bay.sealed)]).toEqual([1, true, false]);
+	// Each placed after those before it on its deck
+	for (const deck of ['top', 'bottom']) {
+		const xs = made.layout.bays.filter(({ hull }) => hull[deck]).map(({ x }) => x);
+
+		expect(xs).toEqual([...xs].sort((a, b) => a - b));
+	}
+});
+
+test("a machine's appliances: Claude at its core, then what it can reach, at work while its sessions are at it now", () => {
+	const appliances = appliancesOf(
+		['Read', 'Bash', 'mcp__github__search'],
+		[
+			session({ id: 'a', tool: 'Bash' }),
+			session({ id: 'b', tool: 'mcp__github__search' }),
+			session({ id: 'c', tool: 'Read', status: 'ready' }),
+		],
+		{ reactor: { uses: 63, failures: 2 }, library: { uses: 1, failures: 0 } },
+	);
+	const at = Object.fromEntries(appliances.map(({ key, users }) => [key, users.map(({ id }) => id)]));
+	const shell = appliances.find(({ key }) => key === 'reactor');
+
+	expect(appliances[0]).toMatchObject({ key: 'claude', uses: 64, failures: 2 });
+	expect(at).toMatchObject({ claude: ['a', 'b'], reactor: ['a'], 'mcp:github': ['b'], library: [] });
+	expect(shell).toMatchObject({ active: true, uses: 63, failures: 2, load: 1 });
+	expect(appliances.find(({ key }) => key === 'dish')).toMatchObject({ active: false, uses: 0, load: 0 });
+});
+
+test('a new session is made in the materializer and walks to its desk; one stopped walks to the lounge, and back once woken', () => {
+	const worlds = (sessions, people = []) => [world('here', sessions, { projects: ['paude', 'site'], people })];
+	const made = scene(worlds([session()]));
+
+	made.charge();
+	expect(made.charged).toBe(true);
+	made.update(worlds([session(), session({ id: 'b', project: 'site' })]));
+
+	const worker = made.workers.get('here/b');
+	const cloner = clonerAt(made.layout.materializer);
+
+	expect([worker.x, worker.y]).toEqual([cloner.x, cloner.y]);
+	expect(made.charged).toBe(false);
+	run(made, 1);
+	expect([worker.x, worker.y]).toEqual([cloner.x, cloner.y]);
+	run(made, 30);
+	expect(made.walking(worker)).toBe(false);
+	expect(Math.hypot(worker.x - made.placeOf(worker).x, worker.y - made.placeOf(worker).y)).toBeLessThan(0.01);
+
+	made.update(worlds([session(), session({ id: 'b', project: 'site', status: 'stopped' })]));
+	expect(made.walking(worker)).toBe(true);
+	run(made, 30);
+	expect(worker.bay).toBe(made.lounge);
+	expect(Math.hypot(worker.x - made.placeOf(worker).x, worker.y - made.placeOf(worker).y)).toBeLessThan(0.01);
+});
+
+test('a checkout with work in it has cargo in the hold; fewer commits to push than last time pushed them, and a hauler takes them away', () => {
+	const checkout = unpushed => ({ root: '/work/paude', changed: 2, unpushed });
+	const working = checkouts => [
+		{ ...world('here', [session({ checkout: '/work/paude' })], { projects: ['paude'] }), checkouts },
+	];
+	const made = new Scene();
+
+	made.resize(800, 600);
+	made.update(working([checkout(3)]));
+	expect(made.cargo).toMatchObject([{ changed: 2, unpushed: 3, project: 'paude' }]);
+	expect(made.haulers).toHaveLength(0);
+
+	made.update(working([checkout(0)]));
+	expect(made.haulers).toMatchObject([{ crates: 3 }]);
+	run(made, 4);
+	expect(made.haulers).toHaveLength(0);
+});
+
+test('what is staged to ship is in the shipping bay below the belly with the pad: a pod for each checkout, all inside it', () => {
+	// Six checkouts, each with a session working in it
+	const names = Array.from({ length: 6 }, (_, index) => `p${index}`);
+	const checkouts = names.map(name => ({ root: `/work/${name}`, changed: 2, unpushed: 1 }));
+	const sessions = names.map(name => session({ id: name, project: name, checkout: `/work/${name}` }));
+	const made = new Scene();
+
+	made.resize(800, 600);
+	made.update([{ ...world('here', sessions, { projects: names }), checkouts }]);
+
+	const { gondola, hold, hangar, building } = made.layout;
+	const inside = (point, box) =>
+		point.x >= box.x && point.x <= box.x + box.w && point.y >= box.y && point.y <= box.y + box.d;
+
+	// The gondola hangs below the hull and holds both, the staged pods and the pad
+	expect(gondola.y).toBeGreaterThanOrEqual(building.bottom - 1e-9);
+	expect(gondola.x).toBeGreaterThanOrEqual(building.left);
+	expect(gondola.x + gondola.w).toBeLessThanOrEqual(building.right + 1e-9);
+	for (const room of [hold, hangar]) {
+		expect(room.x).toBeGreaterThanOrEqual(gondola.x - 1e-9);
+		expect(room.x + room.w).toBeLessThanOrEqual(gondola.x + gondola.w + 1e-9);
+		expect(room.y).toBe(gondola.y);
+	}
+	expect(made.cargo).toHaveLength(6);
+	made.cargo.forEach((_, index) => expect(inside(holdSpotAt(hold, index), hold)).toBe(true));
+});
+
+test("a reactor out of power counts down to the limit's reset, and says only LIMIT when Claude didn't say", () => {
+	const now = Date.UTC(2026, 9, 31, 12);
+
+	expect(countdown(now + 80 * 60_000, now)).toBe('1H 20M');
+	expect(countdown(now + 59_000, now)).toBe('1M');
+	expect(countdown(now - 1000, now)).toBe('RESETTING');
+	expect(countdown(null, now)).toBe('LIMIT');
+});
+
+test('an engine room is out of power while any of its sessions waits out a usage limit, until the soonest reset', () => {
+	const scene = new Scene();
+	const resetAt = Date.now() + 3_600_000;
+
+	scene.update([
+		{
+			key: 'here',
+			name: 'here',
+			tools: [],
+			projects: [{ name: 'paude' }],
+			sessions: [
+				session({ id: 'a', status: 'ready', limit: { resetAt } }),
+				session({ id: 'b', status: 'ready', limit: { resetAt: resetAt + 60_000 } }),
+				session({ id: 'c' }),
+			],
+		},
+	]);
+
+	expect(scene.machines[0].limit).toEqual({ sessions: 2, resetAt });
+});
+
+test('a context much emptier than last seen was compacted, and a cube of it goes', () => {
+	const worlds = fill => [world('here', [session({ context: { fill } })], { projects: ['paude'] })];
+	const made = scene(worlds(0.7));
+
+	made.update(worlds(0.65));
+	expect(made.workers.get('here/a').compactedAt).toBeUndefined();
+
+	made.update(worlds(0.1));
+	expect(made.workers.get('here/a').compactedAt).toBe(made.time);
+});
+
+test("a machine elsewhere has a link as quick as its last answer, none when it didn't answer, and here none at all", () => {
+	const made = scene([
+		world('here', [session()], { projects: ['paude'] }),
+		{ ...world('vps', [], { projects: ['paude'] }), remote: { url: 'https://vps', name: 'vps' }, latency: 120 },
+		{ ...world('far', [], { projects: ['paude'] }), remote: { url: 'https://far', name: 'far' }, latency: null },
+	]);
+
+	expect(Object.fromEntries(made.machines.map(({ key, link }) => [key, link]))).toEqual({
+		here: undefined,
+		vps: 120,
+		far: null,
+	});
+});
+
+test('engines on one Claude account share its tank: what they burned against the largest measured size', () => {
+	const fuel = more => ({
+		account: 'abc',
+		plan: 'Max',
+		burned: 0,
+		rate: 0,
+		capacity: null,
+		capacityAgo: null,
+		...more,
+	});
+	const [shared, own, unknown] = tanksOf([
+		{ key: 'here', fuel: fuel({ burned: 300, rate: 10, capacity: 1000, capacityAgo: 60_000 }) },
+		{ key: 'vps', fuel: fuel({ burned: 200, capacity: 800 }) },
+		{ key: 'work', fuel: fuel({ account: 'xyz', burned: 50 }), limit: { sessions: 1 } },
+		{ key: 'old' },
+		{ key: 'older' },
+	]);
+
+	expect(shared).toMatchObject({ burned: 500, rate: 10, capacity: 1000, level: 0.5, empty: false });
+	expect(shared.machines.map(({ key }) => key)).toEqual(['here', 'vps']);
+	// Not measured yet, and run dry by a limit
+	expect(own).toMatchObject({ level: null, empty: true });
+	// Those that don't say what they run on share a tank, its level not known
+	expect(unknown).toMatchObject({ unknown: true, level: null, burned: 0 });
+	expect(unknown.machines.map(({ key }) => key)).toEqual(['old', 'older']);
+});
+
+test("what the work makes leaves its grey's desk: a reply for the bridge, a part for the hold", () => {
+	const worlds = ({ turn, changed }) => [
+		{
+			...world('here', [session({ checkout: '/p/paude', reply: { turn, text: 'Done' } })], { projects: ['paude'] }),
+			checkouts: [{ root: '/p/paude', changed, unpushed: 0, branch: 'main', trunk: true }],
+		},
+	];
+	const made = scene(worlds({ turn: 1, changed: 2 }));
+
+	expect(made.parcels).toEqual([]);
+	made.update(worlds({ turn: 2, changed: 4 }));
+	expect(made.parcels.map(({ kind }) => kind).sort()).toEqual(['part', 'part', 'reply']);
+
+	const reply = made.parcels.find(({ kind }) => kind === 'reply');
+	const part = made.parcels.find(({ kind }) => kind === 'part');
+	const [bridge, hold] = [reply.path.at(-1), part.path.at(-1)];
+
+	expect(bridge.x).toBeGreaterThan(made.bridge.x);
+	expect(hold).toEqual(holdSpotAt(made.layout.hold, 0));
+	run(made, 30);
+	expect(made.parcels).toEqual([]);
+});
+
+test("a machine's sign on the hull is the shortest start of its name no other project's begins with", () => {
+	expect(shortest(['home-page', 'humanity', 'hypertether', 'htpc-remote', 'log', 'lldtdd', 'listi'])).toEqual({
+		'home-page': 'ho',
+		humanity: 'hu',
+		hypertether: 'hy',
+		'htpc-remote': 'ht',
+		log: 'lo',
+		lldtdd: 'll',
+		listi: 'li',
+	});
+	expect(shortest(['land', 'land-ledger'])).toEqual({ land: 'land', 'land-ledger': 'land-' });
+});
+
+test("a project's machine is as wide as the project is big, on one deck", () => {
+	const project = (name, files) => ({ name, hue: 10, character: { files } });
+	const made = scene([
+		world(
+			'here',
+			[
+				session(),
+				session({ id: 'b', project: 'site' }),
+				session({ id: 'c', project: 'big' }),
+				session({ id: 'd', project: 'big' }),
+			],
+			{ projects: [project('paude', 40), project('site', 10), project('big', 50000)] },
+		),
+	]);
+	const byName = Object.fromEntries(made.layout.bays.map(bay => [bay.name, bay]));
+
+	expect(made.layout.bays.every(bay => bay.parts.length === 1)).toBe(true);
+	expect(byName.big.parts[0].machine).toBeGreaterThan(byName.paude.parts[0].machine);
+	expect(byName.paude.parts[0].machine).toBeGreaterThan(byName.site.parts[0].machine);
+	expect(byName.big.parts[0].machine).toBeLessThanOrEqual(2.6);
+});
+
+test('the shortest-name rule at its edges: one name alone, one name the start of another, case, and a one-letter name', () => {
+	expect(shortest(['vanilla-bean-components'])).toEqual({ 'vanilla-bean-components': 'va' });
+	expect(shortest(['log', 'logger'])).toEqual({ log: 'log', logger: 'logg' });
+	expect(shortest(['Paude', 'paude-site'])).toEqual({ Paude: 'Paude', 'paude-site': 'paude-' });
+	expect(shortest(['x', 'xy'])).toEqual({ x: 'x', xy: 'xy' });
+	expect(shortest([])).toEqual({});
+});
+
+test('machines start right behind the engine bay, the first above the spine', () => {
+	const layout = names =>
+		scene([
+			world(
+				'here',
+				names.map((project, index) => session({ id: `s${index}`, project })),
+				{ projects: names },
+			),
+		]).layout;
+
+	expect(layout([]).bays).toEqual([]);
+
+	const { bays, engineering, systems } = layout(['one']);
+
+	expect([bays[0].parts.length, bays[0].hull.top]).toEqual([1, true]);
+	expect(bays[0].x).toBeCloseTo(engineering.x + engineering.w);
+	// Reading, editing, commands and the web all in the engine bay, so the data of each runs the same way
+	expect([systems.library, systems.forge, systems.reactor, systems.dish].map(({ within }) => within)).toEqual([
+		engineering,
+		engineering,
+		engineering,
+		engineering,
+	]);
+});
+
+test('machines of every size pack on one deck each without overlapping, and stay inside the hull', () => {
+	const sizes = [50421, 934, 385, 369, 271, 257, 108, 66, 34, 3, undefined];
+	const names = sizes.map((files, index) => `p${index}`);
+	const made = scene([
+		world(
+			'here',
+			names.flatMap((project, index) =>
+				Array.from({ length: (index % 3) + 1 }, (_, n) => session({ id: `${project}-${n}`, project })),
+			),
+			{ projects: names.map((name, index) => ({ name, hue: index * 30, character: { files: sizes[index] } })) },
+		),
+	]);
+	const parts = made.layout.bays.flatMap(bay => bay.parts);
+
+	expect(parts.length).toBe(11);
+	// Each deck holds all of its project's sessions
+	for (const bay of made.layout.bays) expect(bay.parts[0].sessions).toEqual(bay.sessions);
+	for (const [index, a] of parts.entries()) {
+		expect(a.x + a.w).toBeLessThanOrEqual(made.layout.building.right + 1e-9);
+		for (const b of parts.slice(index + 1))
+			if (a.y === b.y) expect(a.x + a.w <= b.x + 1e-9 || b.x + b.w <= a.x + 1e-9).toBe(true);
+	}
+});
+
+test('a hundred projects make a deeper ship rather than an endless one: more levels, the hull kept about three times as long as deep', () => {
+	const names = Array.from({ length: 100 }, (_, index) => `p${index}`);
+	const made = scene([
+		world('here', [session({ project: 'p0' }), session({ id: 'b', project: 'p1' })], {
+			projects: names.map((name, index) => ({ name, hue: index * 7, character: { files: 3 + ((index * 37) % 400) } })),
+		}),
+	]);
+	const { building, bays, halls } = made.layout;
+	const parts = bays.flatMap(bay => bay.parts);
+
+	expect(bays).toHaveLength(100);
+	expect(halls.length).toBeGreaterThan(1);
+	expect((building.right - building.left) / (building.bottom - building.top)).toBeLessThanOrEqual(3.2);
+	for (const [index, a] of parts.entries()) {
+		expect(a.x + a.w).toBeLessThanOrEqual(building.right + 1e-9);
+		expect(a.y + a.d).toBeLessThanOrEqual(building.bottom + 1e-9);
+		for (const b of parts.slice(index + 1))
+			if (a.y === b.y) expect(a.x + a.w <= b.x + 1e-9 || b.x + b.w <= a.x + 1e-9).toBe(true);
+	}
+	// Only the top deck and the bottom one against the hull
+	expect(bays.filter(({ hull }) => hull.top).every(({ y }) => y === building.top)).toBe(true);
+});
+
+test('the ship at its edges: none, one or two projects on one level, a level more only where it shortens the ship, and nothing outside the hull or not a number up to two hundred', () => {
+	const shipOf = count => {
+		const names = Array.from({ length: count }, (_, index) => `p${index}`);
+		const working = names.slice(0, 12);
+
+		return scene([
+			world(
+				'here',
+				working.flatMap((project, index) =>
+					Array.from({ length: (index % 4) + 1 }, (_, n) => session({ id: `${project}-${n}`, project })),
+				),
+				{
+					projects: names.map((name, index) => ({
+						name,
+						hue: index * 7,
+						character: { files: 3 + ((index * 37) % 900) },
+					})),
+				},
+			),
+		]).layout;
+	};
+
+	for (const count of [0, 1, 2]) expect(shipOf(count).halls).toHaveLength(1);
+	// A stopped session's lounge, exactly two of the bridge's rows deep, takes two of them, not all three, so a small
+	// ship with one stays on one level
+	const lounged = scene([
+		world('here', [session(), session({ id: 'b' }), session({ id: 's', status: 'stopped' })], {
+			projects: ['paude', 'site', 'notes', 'ender-launcher', 'ops'],
+		}),
+	]).layout;
+
+	expect(lounged.halls).toHaveLength(1);
+	for (const count of [0, 1, 2, 49, 50, 51, 150, 200]) {
+		const { building, bays, rooms } = shipOf(count);
+		const parts = bays.flatMap(bay => bay.parts);
+		const numbers = [
+			...Object.values(building),
+			...rooms.flatMap(({ x, y, w, d }) => [x, y, w, d]),
+			...parts.flatMap(({ x, y, w, d }) => [x, y, w, d]),
+		];
+
+		expect(numbers.every(Number.isFinite)).toBe(true);
+		for (const [index, a] of parts.entries()) {
+			expect(a.x >= building.left - 1e-9 && a.x + a.w <= building.right + 1e-9).toBe(true);
+			expect(a.y >= building.top - 1e-9 && a.y + a.d <= building.bottom + 1e-9).toBe(true);
+			for (const b of parts.slice(index + 1))
+				if (a.y === b.y) expect(a.x + a.w <= b.x + 1e-9 || b.x + b.w <= a.x + 1e-9).toBe(true);
+		}
+	}
+});
+
+test("a project's sessions all sit at one island, however many there are and however many projects share the bridge", () => {
+	const bays = [
+		{ name: 'big', hue: 10, sessions: Array.from({ length: 14 }, (_, index) => `big${index}`) },
+		...Array.from({ length: 6 }, (_, project) => ({
+			name: `p${project}`,
+			hue: project * 40,
+			sessions: Array.from({ length: 1 + (project % 3) }, (_, index) => `p${project}-${index}`),
+		})),
+	];
+	const { rooms } = layOut({
+		bays: bays.map(bay => ({ ...bay, desks: bay.sessions.length })),
+		lounge: { count: 3, sessions: ['s1', 's2', 's3'] },
+	});
+	const bridge = rooms.find(({ kind }) => kind === 'bridge');
+
+	for (const { name, sessions } of bays) {
+		const islands = bridge.islands.filter(island => island.name === name);
+
+		expect(islands.length).toBe(1);
+		expect(islands[0].seats.map(({ key }) => key)).toEqual(sessions);
+	}
+});
+
+const MINUTE = 60_000;
+const lounger = coldAgo => world('here', [session({ status: 'stopped', tool: null, coldAgo, stoppedAgo: coldAgo })]);
+
+test("a lounger's pile is one can each half hour since its cache went cold, already there when first seen", () => {
+	const made = scene([lounger(95 * MINUTE)]);
+	const worker = made.workers.get('here/a');
+
+	expect(made.cansOf(worker)).toBe(3);
+	expect(worker.tossedAt).toBeUndefined();
+});
+
+test('each half hour a lounger tosses a can onto its pile, landing there at the end of the toss', () => {
+	const made = scene([lounger(29 * MINUTE)]);
+	const worker = made.workers.get('here/a');
+
+	expect(made.cansOf(worker)).toBe(0);
+	made.update([lounger(31 * MINUTE)]);
+	// In the air: not on the pile yet
+	expect(made.cansOf(worker)).toBe(0);
+	expect(worker.tossedAt).toBe(made.time);
+	run(made, 1);
+	expect(made.cansOf(worker)).toBe(1);
+	// Nothing more to toss until the next half hour
+	made.update([lounger(45 * MINUTE)]);
+	expect(made.cansOf(worker)).toBe(1);
+});
+
+test("a lounger's pile goes when it's resumed, so stopping again starts a fresh one; and with it when it's removed", () => {
+	const made = scene([lounger(95 * MINUTE)]);
+	const worker = made.workers.get('here/a');
+
+	made.cansOf(worker);
+	made.update([world('here', [session()])]);
+	expect(worker.lounging).toBe(false);
+	expect(worker.cans).toBeUndefined();
+	expect(made.lounge?.sessions ?? []).not.toContain('here/a');
+	// Stopped again: its cache is warm, so no cans, and none tossed for the old pile
+	made.update([lounger(0)]);
+	expect(made.cansOf(worker)).toBe(0);
+	expect(worker.tossedAt).toBeUndefined();
+
+	// Removed, it beams out from the couch, its pile with it, and is gone once it has
+	made.update([world('here', [])]);
+	expect(worker.leaving).toBe(true);
+	run(made, 3);
+	made.update([world('here', [])]);
+	expect(made.lounge?.sessions ?? []).not.toContain('here/a');
+	expect(made.workers.has('here/a')).toBe(false);
+});
+
+test('a waiting session whose cache has gone cold rests in the lounge, unless it is kept warm or going, or is asking', () => {
+	const cold = { warm: false, cache: { left: 0, life: 300_000, ago: 60_000 } };
+
+	expect(resting({ status: 'stopped' })).toBe(true);
+	expect(resting({ status: 'ready', context: cold })).toBe(true);
+	expect(resting({ status: 'ready', context: { ...cold, warm: true } })).toBe(false);
+	expect(resting({ status: 'ready', context: cold, kept: 'warm' })).toBe(false);
+	expect(resting({ status: 'waiting', context: cold })).toBe(false);
+	expect(resting({ status: 'ready' })).toBe(false);
+
+	const made = scene([
+		world('here', [session({ status: 'ready', tool: null, context: cold })], { projects: ['paude'] }),
+	]);
+	const worker = made.workers.get('here/a');
+
+	expect(made.lounge.sessions).toEqual(['here/a']);
+	// Its seat at its project's island kept for it while it rests, its grey on the couch
+	expect(made.bays.find(({ name }) => name === 'paude').sessions).toEqual(['here/a']);
+	expect(worker.station).toBeTruthy();
+	expect(worker.desk).not.toEqual(worker.station);
+});
+
+test("what's hidden is left out of the looks: a hidden engine's paude altogether, a hidden project on every engine", async () => {
+	const { shownOf } = await import('./shown');
+	const looks = [
+		world('here', [session(), session({ id: 'b', project: 'site' })], { projects: ['paude', 'site'] }),
+		world('vps', [session({ id: 'c' })], { projects: ['paude'] }),
+	];
+	const shown = shownOf(looks, { machines: ['vps'], projects: ['site'] });
+
+	expect(shown.map(({ key }) => key)).toEqual(['here']);
+	expect(shown[0].sessions.map(({ id }) => id)).toEqual(['a']);
+	expect(shown[0].projects.map(({ name }) => name)).toEqual(['paude']);
+	expect(shownOf(looks, { machines: [], projects: [] })).toHaveLength(2);
+});
+
+test("a ship for each subscription: paudes on one account together, one that does not say sharing this machine's unless set otherwise", async () => {
+	const { shipsOf } = await import('./shown');
+	const looks = [
+		{ key: 'vps' },
+		{ key: 'here', fuel: { account: 'a' } },
+		{ key: 'work', fuel: { account: 'b' } },
+		{ key: 'laptop', fuel: { account: 'a' } },
+		{ key: 'old' },
+	];
+	const keys = ships => [...ships].map(([ship, worlds]) => [ship, worlds.map(({ key }) => key)]);
+
+	expect(keys(shipsOf(looks))).toEqual([
+		['account:a', ['here', 'vps', 'laptop', 'old']],
+		['account:b', ['work']],
+	]);
+	// Set by hand: one with a subscription of its own, one sharing another's
+	expect(keys(shipsOf(looks, { old: 'own', vps: 'work' }))).toEqual([
+		['account:a', ['here', 'laptop']],
+		['account:b', ['vps', 'work']],
+		['own:old', ['old']],
+	]);
+	// A loop of them each on its own
+	// Set to share each other's: one ship, the same from either side
+	expect(keys(shipsOf([{ key: 'x' }, { key: 'y' }], { x: 'y', y: 'x' }))).toEqual([['own:x', ['x', 'y']]]);
+	// This machine hidden: those sharing its subscription stay on its ship
+	expect(
+		keys(
+			shipsOf([{ key: 'vps' }, { key: 'old' }], {}, [
+				{ key: 'here', fuel: { account: 'a1' } },
+				{ key: 'vps' },
+				{ key: 'old' },
+			]),
+		),
+	).toEqual([['account:a1', ['vps', 'old']]]);
+});
+
+test("a session's subagent count is its paude's word: no more small greys are made than are ever drawn", () => {
+	const made = scene([world('here', [session({ agents: 1e9 })], { projects: ['paude'] })]);
+
+	run(made, 1);
+	expect(made.workers.get('here/a').smalls.length).toBeLessThanOrEqual(5);
+});
+
+test('the stars stream past faster the harder the engines burn', () => {
+	const idle = scene([{ ...world('here', []), fuel: { account: 'a', rate: 0 } }]);
+	const burning = scene([{ ...world('here', []), fuel: { account: 'a', rate: 60_000 } }]);
+
+	run(idle, 1);
+	run(burning, 1);
+	expect(burning.pace).toBeGreaterThan(idle.pace * 5);
+});

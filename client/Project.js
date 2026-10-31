@@ -61,6 +61,12 @@ export default class Project extends View {
 			label: 'Watch',
 			onPress: () => this.toggleWatching(),
 		});
+		// The universe, looking at this project's machine
+		ghostButton(this.bar, {
+			icon: 'earth-americas',
+			title: 'See it in the universe',
+			onPress: () => (window.location.hash = `#/universe/projects/${encodeURIComponent(project)}`),
+		});
 
 		const scroll = new Scroll({ appendTo: this });
 		const compose = composeBox({

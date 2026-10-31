@@ -9,6 +9,7 @@ import { registerNotificationWorker } from './notify';
 import Project from './Project';
 import { keepDraft } from './PromptHome';
 import TerminalView from './Terminal/TerminalView';
+import Universe from './Universe/Universe';
 import { updateTabTitle } from './tabTitle';
 import { startWatchAlerts } from './watchAlerts';
 
@@ -81,7 +82,15 @@ const content = () => {
 	if (!identity.owner) return new TerminalView({ id: identity.sessionId });
 
 	return new Router({
-		views: { '/': Home, '/projects/:project': Project, '/sessions/:id': TerminalView },
+		views: {
+			'/': Home,
+			'/projects/:project': Project,
+			'/sessions/:id': TerminalView,
+			'/universe': Universe,
+			// Opened looking at one session's grey, or one project's machine
+			'/universe/sessions/:session': Universe,
+			'/universe/projects/:project': Universe,
+		},
 		defaultPath: '/',
 	});
 };

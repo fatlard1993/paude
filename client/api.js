@@ -291,6 +291,21 @@ export const setProjectWatching = async (name, watching) =>
 
 export const getRemotes = async () => await GET('/api/remotes', { invalidateAfter: 0 });
 
+// What runs on this server, what its Claude can do, and who's watching: { name, tools, sessions, people }
+export const getUniverse = async () => await GET('/api/universe', { invalidateAfter: 0 });
+
+// Read in the universe view: its changes are seen, here or on the server it runs on
+export const markSeen = async sessionId => await PUT('/api/sessions/:id/seen', { urlParameters: { id: sessionId } });
+
+export const markRemoteSeen = async (url, sessionId) => await POST('/api/remotes/seen', { body: { url, sessionId } });
+
+// This machine logged into another paude, by its address and owner password: { url, name }
+export const connectRemote = async ({ url, password, name }) =>
+	await POST('/api/remotes', { body: { url, password, name }, responseType: 'text' });
+
+export const getRemoteUniverse = async url =>
+	await GET('/api/remotes/universe', { invalidateAfter: 0, searchParameters: { url } });
+
 export const getRemoteSessions = async (url, { searchParameters: page }) =>
 	await GET('/api/remotes/sessions', { invalidateAfter: 0, searchParameters: { url, ...page } });
 

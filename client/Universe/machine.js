@@ -1,0 +1,410 @@
+import { PALETTE } from './art';
+import { pixelEllipse, rect } from './station';
+
+// A project's machine: a compact unit on its deck, built from modules for its folders, ports down each side for the
+// workers jacked into it. Each module's form is one of a few, generic rather than any one named system. It runs while
+// worked on, idles lit low while its sessions wait, is dark while nobody is at it, and flashes amber along its top
+// while one of its sessions asks you something.
+export const FORMS = ['core', 'coils', 'lattice', 'turbine'];
+
+// What form a part takes from the language its folder is in
+const FORM_OF = {
+	js: 'core',
+	python: 'core',
+	jvm: 'core',
+	go: 'core',
+	rust: 'coils',
+	c: 'coils',
+	dotnet: 'core',
+	swift: 'core',
+	ruby: 'core',
+	php: 'core',
+	web: 'lattice',
+	docs: 'coils',
+	data: 'turbine',
+	shell: 'coils',
+};
+
+// The machine as modules side by side on its deck, one for each of its project's folders: each as wide as its share
+// of the files (the smallest folded into their neighbors when they wouldn't show), as tall as it is big against the
+// biggest, its form from its folder's language, a form already standing beside it passed over for the next, so the
+// machine's skyline is its project's own
+const modulesOf = (folders, w, fallback) => {
+	const total = folders.reduce((sum, { files }) => sum + files, 0);
+
+	if (!total || w < 14) return [{ w, scale: 1, form: fallback }];
+
+	const shown = folders.filter(({ files }) => (files / total) * w >= 7);
+	const kept = shown.length ? shown : folders.slice(0, 1);
+	const biggest = Math.max(...kept.map(({ files }) => files));
+	const counted = kept.reduce((sum, { files }) => sum + files, 0);
+	const used = new Set();
+	let left = w;
+
+	return kept.map((folder, index) => {
+		const last = index === kept.length - 1;
+		const width = last ? left : Math.max(7, Math.round((folder.files / counted) * w));
+		let form = FORM_OF[folder.language] ?? fallback;
+
+		for (let turn = 0; used.has(form) && turn < FORMS.length; turn++)
+			form = FORMS[(FORMS.indexOf(form) + 1) % FORMS.length];
+		used.add(form);
+		left -= width;
+
+		return { w: width, scale: 0.45 + 0.55 * Math.sqrt(folder.files / biggest), form, language: folder.language };
+	});
+};
+
+// Each language's color, on the band across the top of a module in it, so what a project is written in reads at a
+// glance
+const LANGUAGE_COLORS = {
+	js: '#e8c94a',
+	python: '#4a8fe8',
+	rust: '#e0703a',
+	go: '#4ad0e0',
+	jvm: '#d0603a',
+	c: '#8a9ab8',
+	ruby: '#d04a5a',
+	php: '#8a7ad0',
+	dotnet: '#7a5ad0',
+	swift: '#f08040',
+	shell: '#6ac860',
+	web: '#e06ab0',
+	docs: '#d8dce4',
+	data: '#a07ad8',
+};
+
+const drawModules = (ctx, { x, top, floor, w }, { folders = [], fallback, hue, state, time, seed, trim, years }) => {
+	const full = floor - top;
+	let at = x;
+
+	modulesOf(folders, w, fallback).forEach(({ w: width, scale, form, language }, index) => {
+		const h = Math.max(14, Math.round(full * scale));
+		const y = floor - h;
+		const inner = width - (index ? 1 : 0);
+		const left = at + (index ? 1 : 0);
+
+		rect(ctx, left, y, inner, h, PALETTE.k);
+		rect(ctx, left + 1, y + 1, inner - 2, h - 2, PALETTE.m);
+		rect(ctx, left + 1, y + 1, 1, h - 2, PALETTE.l);
+		rect(ctx, left + 1, y + 1, inner - 2, 2, LANGUAGE_COLORS[language] ?? trim);
+		window(ctx, { x: left + 3, y: y + 5, w: inner - 6, h: h - 10 }, { form, hue, state, time, seed: seed + index });
+		// Built in its time: an old project's plate riveted down its edges, a young one's smooth with a sheen along it
+		if (years >= 2)
+			for (let rivet = y + 5; rivet < floor - 3; rivet += 4) {
+				rect(ctx, left + 1, rivet, 1, 1, PALETTE.l);
+				rect(ctx, left + inner - 2, rivet, 1, 1, PALETTE.l);
+			}
+		else if (years < 0.5) {
+			ctx.globalAlpha = 0.5;
+			rect(ctx, left + 2, y + 3, 1, h - 6, PALETTE.W);
+			ctx.globalAlpha = 1;
+		}
+		for (let vent = left + 3; vent < left + inner - 3; vent += 3) rect(ctx, vent, floor - 4, 2, 2, '#0b0e13');
+		at += width;
+	});
+};
+
+const glowOf = (hue, state, time) => {
+	// Nobody at it: its heart still there to see, dim in its color
+	if (state === 'idle') return `hsl(${hue ?? 200} 28% 26%)`;
+	if (state === 'working') return `hsl(${hue ?? 200} 75% ${60 + Math.round(Math.sin(time * 4) * 6)}%)`;
+
+	return `hsl(${hue ?? 200} 40% 38%)`;
+};
+
+const window = (ctx, { x, y, w, h }, { form, hue, state, time, seed }) => {
+	const glow = glowOf(hue, state, time);
+	const lit = state === 'working';
+
+	rect(ctx, x, y, w, h, '#06090f');
+	if (form === 'core') {
+		const column = Math.max(3, Math.round(w / 3));
+		const left = x + Math.round((w - column) / 2);
+
+		rect(ctx, left, y + 1, column, h - 2, glow);
+		if (lit)
+			for (let band = (Math.floor(time * 14) % 5) + y + 1; band < y + h - 1; band += 5)
+				rect(ctx, left, band, column, 1, PALETTE.W);
+		rect(ctx, left, y + 1, 1, h - 2, 'rgba(255, 255, 255, 0.2)');
+	} else if (form === 'coils') {
+		// Rings stacked up a spindle, each lit in turn while it runs
+		const spindle = x + Math.round(w / 2);
+
+		rect(ctx, spindle - 1, y + 1, 2, h - 2, PALETTE.d);
+		for (let ring = y + 2, index = 0; ring < y + h - 2; ring += 4, index++) {
+			const on = lit ? Math.floor(time * 8) % Math.max(1, Math.floor((h - 3) / 4)) === index : false;
+
+			rect(ctx, x + 1, ring, w - 2, 2, '#1d2533');
+			rect(ctx, x + 2, ring, w - 4, 1, on ? PALETTE.W : glow);
+		}
+	} else if (form === 'lattice') {
+		for (let row = y + 1; row < y + h - 2; row += 3)
+			for (let column = x + 1; column < x + w - 2; column += 3) {
+				const on = lit
+					? Math.sin(time * 3 + (row * 13 + column * 7 + seed * 50) * 0.37) > 0.2
+					: (row + column) % 7 === 0;
+
+				rect(ctx, column, row, 2, 2, on ? glow : '#121a26');
+			}
+	} else {
+		const middle = { x: x + w / 2, y: y + h / 2 };
+		const radius = Math.min(w, h) / 2 - 1;
+		const turn = lit ? time * 6 : 0;
+
+		pixelEllipse(ctx, Math.round(middle.x), Math.round(middle.y), radius, radius, '#121a26');
+		for (let blade = 0; blade < 4; blade++) {
+			const angle = turn + (blade * Math.PI) / 2;
+
+			for (let along = 1; along < radius; along++)
+				rect(
+					ctx,
+					Math.round(middle.x + Math.cos(angle) * along),
+					Math.round(middle.y + Math.sin(angle) * along),
+					1,
+					1,
+					glow,
+				);
+		}
+		rect(ctx, Math.round(middle.x) - 1, Math.round(middle.y) - 1, 3, 3, PALETTE.l);
+	}
+};
+
+// A project's machine on its deck: `housing` from housingOf, `top` the art pixel row of the deck's ceiling. A pylon
+// each side with the sockets its greys' cables plug into; between them its folders'
+// modules on a plinth, a duct from their top up into the hull. Answers where each socket is.
+const PYLON = 5;
+
+export const drawHousing = (
+	ctx,
+	art,
+	housing,
+	{
+		top,
+		form,
+		hue,
+		state,
+		asking,
+		time,
+		seed,
+		folders,
+		history,
+		changed = 0,
+		pullRequest,
+		sockets = { left: [], right: [] },
+		verdict,
+		tested,
+		pressure,
+		fed = [],
+	},
+) => {
+	const from = art({ x: housing.x, y: 0 }).x;
+	const to = art({ x: housing.x + housing.w, y: 0 }).x;
+	const floor = art({ x: 0, y: housing.floor }).y;
+	const w = to - from;
+	const ceiling = top;
+	const trim = hue === null || hue === undefined ? PALETTE.l : `hsl(${hue} 45% 52%)`;
+	const glow = glowOf(hue, state, time);
+	const body = { x: from + PYLON, w: w - PYLON * 2 };
+	const rows = Math.max(sockets.left.length, sockets.right.length);
+
+	// A unit standing on the deck well short of the deck above, not a column filling it: its modules about half the
+	// deck's height, its pylons only as tall as the screens they carry need
+	// As tall as it is big: a small project's a low unit, a big one's standing most of the deck's height
+	const size = Math.min(1, Math.log2(1 + (history?.files ?? 30)) / 13);
+
+	top = floor - Math.max(20, Math.round((floor - ceiling) * (0.45 + 0.4 * size)));
+
+	const pylonTop = Math.min(top, floor - 10 - rows * 11);
+	const h = floor - top;
+
+	const years = history?.since ? (Date.now() - history.since) / (365 * DAY_MS) : 1;
+	const duct = Math.round(body.x + body.w / 2);
+
+	// A pylon each side carrying its sockets
+	for (const x of [from, to - PYLON]) {
+		rect(ctx, x, pylonTop, PYLON, floor - pylonTop, PALETTE.k);
+		rect(ctx, x + 1, pylonTop + 1, PYLON - 2, floor - pylonTop - 2, PALETTE.d);
+		rect(
+			ctx,
+			x === from ? x + 1 : x + PYLON - 2,
+			pylonTop + 2,
+			1,
+			floor - pylonTop - 4,
+			state === 'idle' ? '#1a2230' : glow,
+		);
+	}
+	// Its feed: a duct from its top up into the deck above, ringed at both ends, lit while it runs
+	rect(ctx, duct - 4, ceiling, 9, top - ceiling, PALETTE.k);
+	rect(ctx, duct - 3, ceiling, 7, top - ceiling, PALETTE.d);
+	rect(ctx, duct - 3, ceiling, 1, top - ceiling, PALETTE.m);
+	if (state !== 'idle') rect(ctx, duct + 1, ceiling, 1, top - ceiling, glow);
+	for (let y = ceiling + 6; y < top - 3; y += 7) rect(ctx, duct - 5, y, 11, 1, PALETTE.l);
+	rect(ctx, duct - 8, ceiling, 17, 2, PALETTE.k);
+	rect(ctx, duct - 7, ceiling, 15, 1, PALETTE.l);
+	rect(ctx, duct - 6, top - 2, 13, 2, PALETTE.l);
+	// The body: its folders' modules standing on the deck, weathered by its history, on a plinth bolted to the deck
+	drawModules(
+		ctx,
+		{ x: body.x, top, floor, w: body.w },
+		{ folders, fallback: form, hue, state, time, seed, trim, years },
+	);
+	rect(ctx, body.x - 2, floor - 2, body.w + 4, 3, PALETTE.k);
+	rect(ctx, body.x - 1, floor - 2, body.w + 2, 1, PALETTE.l);
+	for (let x = body.x + 2; x < body.x + body.w - 1; x += 7) rect(ctx, x, floor - 1, 1, 1, PALETTE.w);
+	weather(ctx, { x: body.x, y: top, w: body.w, h }, { history, state, time, seed });
+	// Data running through it from the systems its sessions use (`fed`, their colors): its pylons' strips lit in them,
+	// steadily (flashing, they strobed), packets running along its base, and a slow scan climbing its modules
+	if (fed.length) {
+		// Each of them in turn, slowly
+		const color = fed[Math.floor(time / 2) % fed.length];
+
+		for (const x of [from + 1, to - 2]) rect(ctx, x, pylonTop + 2, 1, floor - pylonTop - 4, color);
+		for (let x = body.x + (Math.floor(time * 12) % 8); x < body.x + body.w - 1; x += 8)
+			rect(ctx, x, floor - 2, 1, 1, color);
+		ctx.globalAlpha = 0.4;
+		rect(ctx, body.x, Math.round(floor - 3 - ((time * 8) % Math.max(1, h - 3))), body.w, 1, color);
+		ctx.globalAlpha = 1;
+	}
+	// Asking: amber along its top, flashing
+	if (asking) rect(ctx, body.x, top, body.w, 2, Math.floor(time * 3) % 2 ? PALETTE.y : PALETTE.Y);
+	// Health on its cap: failing throws sparks and smoke, passing a steady green, changes never tested since an amber
+	// blink
+	health(ctx, { x: body.x + body.w - 5, y: top }, { verdict, tested, time, seed });
+	// Pending work on its base: a panel ajar for each changed file (up to three), the pressure of commits not pushed
+	// in a tank down its side, venting once there are many, an open pull request's pod docked on it
+	pending(ctx, { from, to, top, floor, body }, { changed, pressure, pullRequest, time });
+
+	const socketAt = (side, index) => ({ x: side < 0 ? from - 1 : to, y: pylonTop + 13 + index * 11 });
+
+	// Sockets on each pylon's outer edge, lit where a worker is jacked in
+	for (const [side, taken] of [
+		[-1, sockets.left],
+		[1, sockets.right],
+	])
+		taken.forEach((on, index) => {
+			const { x, y } = socketAt(side, index);
+
+			rect(ctx, x - (side < 0 ? 1 : 0), y - 1, 2, 3, PALETTE.k);
+			rect(ctx, x, y, 1, 1, on ? glowOf(hue, state === 'idle' ? 'ready' : state, time) : PALETTE.d);
+		});
+	// Its feet on the deck
+	rect(ctx, from + 2, floor - 1, 4, 1, PALETTE.k);
+	rect(ctx, to - 6, floor - 1, 4, 1, PALETTE.k);
+
+	return { from, to, top, floor, socket: socketAt };
+};
+
+const DAY_MS = 864e5;
+
+// What its history has done to it: rust with age, patches bolted on with commits, warm vents while it's been worked
+// on today, dust over it once nothing has been committed for a month
+const weather = (ctx, { x, y, w, h }, { history = {}, state, time, seed }) => {
+	const years = history.since ? (Date.now() - history.since) / (365 * DAY_MS) : 0;
+	const spot = (index, salt) => Math.abs(Math.sin((seed + 1) * 97.13 + index * 13.7 + salt)) % 1;
+
+	for (let index = 0; index < Math.min(8, Math.round(years * 3)); index++)
+		rect(
+			ctx,
+			x + 1 + Math.floor(spot(index, 1) * (w - 3)),
+			y + 1 + Math.floor(spot(index, 2) * (h - 3)),
+			2,
+			1,
+			'#6e4a2a',
+		);
+	for (let index = 0; index < Math.min(5, Math.round((history.commits ?? 0) / 200)); index++) {
+		const [px, py] = [x + 1 + Math.floor(spot(index, 3) * (w - 5)), y + 2 + Math.floor(spot(index, 4) * (h - 5))];
+
+		rect(ctx, px, py, 4, 3, PALETTE.l);
+		rect(ctx, px, py, 1, 1, PALETTE.d);
+		rect(ctx, px + 3, py + 2, 1, 1, PALETTE.d);
+	}
+	if ((history.day ?? 0) > 0)
+		for (let vent = 0; vent < 3; vent++) {
+			const rise = (time * 0.6 + vent / 3) % 1;
+
+			ctx.globalAlpha = 0.5 * (1 - rise);
+			rect(ctx, x + 3 + vent * Math.floor((w - 6) / 3), y - 2 - Math.round(rise * 5), 2, 1, '#e8a060');
+			ctx.globalAlpha = 1;
+		}
+	if (history.last && Date.now() - history.last > 30 * DAY_MS && state !== 'working') {
+		ctx.globalAlpha = 0.35;
+		for (let index = 0; index < 18; index++)
+			rect(ctx, x + Math.floor(spot(index, 5) * w), y + Math.floor(spot(index, 6) * h), 1, 1, '#8a8a7a');
+		ctx.globalAlpha = 1;
+	}
+};
+
+const health = (ctx, { x, y }, { verdict, tested, time, seed }) => {
+	if (!verdict) return;
+
+	const failing = tested === 'failing';
+	const blink = tested === 'stale' && Math.floor(time * 2) % 2;
+
+	rect(ctx, Math.round(x) - 2, y - 3, 5, 3, PALETTE.k);
+	rect(ctx, Math.round(x) - 1, y - 2, 3, 1, blink ? '#3a3020' : verdict);
+	if (!failing) return;
+	for (let spark = 0; spark < 4; spark++) {
+		const along = (time * 2.2 + spark / 4 + seed) % 1;
+		const angle = Math.PI * (1.15 + ((spark * 37) % 70) / 100);
+
+		rect(
+			ctx,
+			Math.round(x + Math.cos(angle) * along * 9),
+			Math.round(y - 3 + Math.sin(angle) * along * 9),
+			1,
+			1,
+			along < 0.5 ? PALETTE.W : PALETTE.y,
+		);
+	}
+	for (let puff = 0; puff < 3; puff++) {
+		const rise = (time * 0.5 + puff / 3) % 1;
+
+		ctx.globalAlpha = 0.45 * (1 - rise);
+		rect(ctx, Math.round(x) - 2 + puff, y - 6 - Math.round(rise * 10), 3, 2, '#6a6f78');
+		ctx.globalAlpha = 1;
+	}
+};
+
+const pending = (ctx, { to, floor, body }, { changed, pressure, pullRequest, time }) => {
+	// Panels ajar along the body's foot, light spilling from inside
+	for (let panel = 0; panel < Math.min(3, changed); panel++) {
+		const x = body.x + 3 + panel * 6;
+
+		rect(ctx, x, floor - 9, 4, 5, '#ffd27a');
+		rect(ctx, x + 1, floor - 10, 4, 6, PALETTE.k);
+		rect(ctx, x + 2, floor - 9, 3, 4, PALETTE.l);
+	}
+	// The pressure tank down its side, filling with commits not pushed, venting past five
+	if (pressure) {
+		const [x, height] = [to + 2, 14];
+		const fill = Math.round(height * Math.min(1, pressure / 5));
+
+		rect(ctx, x - 1, floor - height - 2, 5, height + 2, PALETTE.k);
+		rect(ctx, x, floor - 1 - fill, 3, fill, PALETTE.o);
+		rect(ctx, x, floor - height - 1, 1, height, 'rgba(255, 255, 255, 0.2)');
+		if (pressure >= 5)
+			for (let puff = 0; puff < 2; puff++) {
+				const rise = (time * 0.9 + puff / 2) % 1;
+
+				ctx.globalAlpha = 0.5 * (1 - rise);
+				rect(ctx, x + Math.round(rise * 4), floor - height - 4 - Math.round(rise * 7), 2, 2, '#c3cad6');
+				ctx.globalAlpha = 1;
+			}
+	}
+	// An open pull request's pod, docked on top of the tank, lit by its checks
+	if (pullRequest?.state === 'OPEN') {
+		const { failing = 0, pending: running = 0 } = pullRequest.checks ?? {};
+		const light =
+			(pullRequest.draft && PALETTE.l) ||
+			(failing && PALETTE.r) ||
+			(running && (Math.floor(time * 2) % 2 ? PALETTE.y : PALETTE.Y)) ||
+			PALETTE.t;
+		const x = to + 1;
+		const y = floor - (pressure ? 26 : 12);
+
+		rect(ctx, x, y, 7, 8, PALETTE.k);
+		rect(ctx, x + 1, y + 1, 5, 6, PALETTE.l);
+		rect(ctx, x + 2, y - 2, 3, 2, light);
+	}
+};

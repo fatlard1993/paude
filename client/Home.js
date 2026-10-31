@@ -100,6 +100,11 @@ export default class Home extends View {
 		const bar = new Bar({ appendTo: this });
 
 		breadcrumbs({ appendTo: bar, addCleanup: (name, stop) => this.addCleanup(name, stop) });
+		ghostButton(bar, {
+			icon: 'earth-americas',
+			title: 'Universe: each paude a planet, each running session an alien at work on it',
+			onPress: () => (window.location.hash = '#/universe'),
+		});
 		ghostButton(bar, { icon: 'right-from-bracket', title: 'Log out', onPress: () => this.logout() });
 
 		const scroll = new Scroll({ appendTo: this });
