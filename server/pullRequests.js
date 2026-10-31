@@ -1,6 +1,7 @@
 import os from 'os';
 
 import { gh } from './gh';
+import { crewJob } from './crew';
 import { GitError, defaultBase, gitAction, gitLog } from './git';
 import { sessionEnvironment } from './sessions/PtySession';
 import { claudeCommand } from './sessions/running';
@@ -136,7 +137,9 @@ export const draftCommand = () => [
 
 // A title and description for this branch's pull request, from its commits and what it changes, written by a Claude
 // of its own (the session's conversation is left alone): { title, body }
-export const draftPullRequest = async (root, { tour, tested } = {}) => {
+export const draftPullRequest = (root, options) => crewJob('drafting a pull request', () => draft(root, options));
+
+const draft = async (root, { tour, tested } = {}) => {
 	const base = await defaultBase(root);
 
 	if (!base) throw new GitError('There is no branch to compare with');

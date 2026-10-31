@@ -1,13 +1,17 @@
 import os from 'os';
 
 import { sessionEnvironment } from './sessions/PtySession';
+import { crewJob } from './crew';
 import { claudeCommand } from './sessions/running';
 
 const TIMEOUT_MS = 120_000;
 
 // One question to Haiku through the Claude Code paude runs, on the owner's login: no tools, no settings, nothing
-// saved. Its answer as text, '' when there's none (not logged in, out of usage, too slow).
-const askHaiku = async prompt => {
+// saved, counted as the service crew doing `job`. Its answer as text, '' when there's none (not logged in, out of
+// usage, too slow).
+const askHaiku = (prompt, job = 'answering a question') => crewJob(job, () => ask(prompt));
+
+const ask = async prompt => {
 	const child = Bun.spawn(
 		[
 			claudeCommand(),

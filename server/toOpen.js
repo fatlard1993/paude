@@ -137,7 +137,12 @@ export const parseOpenings = async (reply, surface, lineOf) => {
 };
 
 // `ask` is Haiku but in tests
-export const whatToOpen = async (id, cwd, { ask, viewing, screen }, askModel = askHaiku) => {
+export const whatToOpen = async (
+	id,
+	cwd,
+	{ ask, viewing, screen },
+	askModel = text => askHaiku(text, 'finding what to open'),
+) => {
 	const surface = await surfaceOf(id, cwd, { ask, viewing, screen });
 	const lineOf = async (path, name) => (await outline(cwd, path)).find(symbol => symbol.name === name)?.line ?? null;
 

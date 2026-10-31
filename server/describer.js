@@ -40,7 +40,7 @@ const describer = ({
 		try {
 			while (queue.size) {
 				const batch = [...queue.values()].sort(sooner).slice(0, batchSize);
-				const written = parse(await askHaiku(await promptFor(batch)));
+				const written = parse(await askHaiku(await promptFor(batch), 'describing what came up'));
 
 				// No answer at all (not logged in, out of usage): the rest wait their hour too, rather than each failing
 				if (!Object.keys(written).length) {

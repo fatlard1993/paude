@@ -70,7 +70,7 @@ export const guestMayRequest = (identity, method, pathname) => {
 		(method === 'POST' && pathname === `${own}/links/mark`) ||
 		(method === 'POST' && pathname === `${own}/decisions/dismiss`) ||
 		(method === 'GET' && pathname === `${own}/environment`) ||
-		(method === 'PUT' && (pathname === `${own}/watch` || pathname === `${own}/file`)) ||
+		(method === 'PUT' && [`${own}/watch`, `${own}/seen`, `${own}/file`].includes(pathname)) ||
 		(method === 'POST' && pathname === '/api/logout') ||
 		(method === 'DELETE' && pathname === '/api/tokens/current')
 	);

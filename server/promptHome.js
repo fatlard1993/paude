@@ -132,7 +132,10 @@ export const findHome = async ({ prompt, project, identity, remotes = false }) =
 		where: placeName({ name: session.project, remote: session.remote }, here),
 	}));
 	const reply = jsonIn(
-		await askHaiku(homePrompt({ prompt, candidates: named, projects: projects?.map(found => placeName(found, here)) })),
+		await askHaiku(
+			homePrompt({ prompt, candidates: named, projects: projects?.map(found => placeName(found, here)) }),
+			'placing a prompt',
+		),
 	);
 
 	if (!reply) return null;

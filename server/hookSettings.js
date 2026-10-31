@@ -58,10 +58,12 @@ export const hookSettings = () => {
 	return JSON.stringify({
 		hooks: {
 			...Object.fromEntries(Object.keys(HOOK_EVENTS).map(event => [event, hook])),
-			// Only the edits, before any permission prompt, so the page can show what Claude proposes
+			// Only the edits, before any permission prompt, so the page can show what Claude proposes; and a subagent
+			// going out, so the universe view can fly it until its tool ends
 			PreToolUse: [
 				{ matcher: PROPOSING_TOOLS.join('|'), hooks: hook[0].hooks },
 				{ matcher: 'Bash', hooks: [beforeCommand] },
+				{ matcher: 'Task|Agent', hooks: hook[0].hooks },
 			],
 		},
 	});

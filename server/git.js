@@ -126,6 +126,45 @@ export const headCommit = async cwd => {
 	return code === 0 ? out.trim() : undefined;
 };
 
+// Every file the repository tracks, up to a few megabytes of names
+export const trackedFiles = async root => {
+	const { code, out } = await run(['ls-files', '-z'], root, { limit: 4_000_000 });
+
+	return code === 0 ? out.split('\0').filter(Boolean) : [];
+};
+
+// When the repository's first commit was made, in ms, and how many commits it has; null before the first
+// When a repository's first commit was made and how many it has had; when its latest was, and how many came in the
+// last day and the last week
+const DAY_MS = 864e5;
+
+export const repoHistory = async root => {
+	const [first, count, week] = await Promise.all([
+		run(['log', '--max-parents=0', '-1', '--format=%at', 'HEAD'], root),
+		run(['rev-list', '--count', 'HEAD'], root),
+		run(['log', '--since=7.days', '--format=%at', 'HEAD'], root),
+	]);
+
+	if (first.code !== 0 || count.code !== 0) return null;
+
+	const times = week.code === 0 ? week.out.split('\n').filter(Boolean).map(at => Number(at) * 1000) : [];
+	const latest = times.length ? Math.max(...times) : (await lastCommitAt(root));
+
+	return {
+		since: Number(first.out.trim()) * 1000,
+		commits: Number(count.out.trim()),
+		last: latest,
+		week: times.length,
+		day: times.filter(at => Date.now() - at < DAY_MS).length,
+	};
+};
+
+const lastCommitAt = async root => {
+	const last = await run(['log', '-1', '--format=%at', 'HEAD'], root);
+
+	return last.code === 0 && last.out.trim() ? Number(last.out.trim()) * 1000 : null;
+};
+
 const STATUS = { M: 'modified', A: 'added', D: 'deleted', R: 'renamed', C: 'copied', T: 'modified', U: 'conflicted' };
 
 // `git status --porcelain=v2 -z --branch` as { branch, detached, upstream, ahead, behind, staged, unstaged,
@@ -953,6 +992,14 @@ export const movedSince = async (root, commit) => {
 };
 
 // What a branch tracks (origin/someone/fix), else its own name; null on a detached HEAD
+// A checkout made by `git worktree add`, beside its repository's first: its own git folder isn't the shared one
+export const linkedWorktree = async root => {
+	const { code, out } = await run(['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir'], root);
+	const [own, shared] = out.trim().split('\n');
+
+	return code === 0 && own !== shared;
+};
+
 export const branchName = async root => {
 	const branch = await run(['symbolic-ref', '--short', '-q', 'HEAD'], root);
 

@@ -348,7 +348,7 @@ const toLookFor = (decisions, fingerprint) =>
 	);
 
 // Each batch against the places since its earliest: `placesSince(since, batch)` gives them
-const lookFor = async (decisions, placesSince, ask = askHaiku) => {
+const lookFor = async (decisions, placesSince, ask = text => askHaiku(text, 'filing decisions')) => {
 	const sorted = decisions.toSorted((a, b) => String(a.at).localeCompare(String(b.at)));
 
 	for (const decision of decisions) looking.add(decision.id);

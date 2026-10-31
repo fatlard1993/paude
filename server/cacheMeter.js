@@ -6,6 +6,9 @@ import { transcriptFile } from './sessions/transcript';
 // uncached input, at the API's published rates.
 export const RATES = { input: 1, read: 0.1, write5m: 1.25, write1h: 2, output: 5 };
 const TTL_MS = { '5m': 5 * 60 * 1000, '1h': 60 * 60 * 1000 };
+// What's burned counts over a usage window's length, and its rate over the last few minutes
+const WINDOW_MS = 5 * 60 * 60 * 1000;
+const RATE_MS = 10 * 60 * 1000;
 
 const fresh = () => ({
 	offset: 0,
@@ -14,6 +17,8 @@ const fresh = () => ({
 	last: null,
 	ttl: '1h',
 	totals: { input: 0, read: 0, write5m: 0, write1h: 0, output: 0, requests: 0 },
+	// Each request in the last usage window, when it was and what it cost
+	recent: [],
 });
 
 // Per session, read so far: the transcript only grows, so each look reads what was added since the last
@@ -30,18 +35,24 @@ export const countRequest = (meter, line) => {
 	const write5m = usage.cache_creation?.ephemeral_5m_input_tokens;
 	const write1h = usage.cache_creation?.ephemeral_1h_input_tokens;
 	const written = usage.cache_creation_input_tokens ?? 0;
+	const request = {
+		input: usage.input_tokens ?? 0,
+		read: usage.cache_read_input_tokens ?? 0,
+		// Without the split, the conversation's own TTL says which it was
+		write1h: write1h ?? (write5m === undefined && meter.ttl === '1h' ? written : 0),
+		write5m: write5m ?? (write1h === undefined && meter.ttl === '5m' ? written : 0),
+		output: usage.output_tokens ?? 0,
+	};
+	const at = Date.parse(line.timestamp);
 
-	meter.totals.input += usage.input_tokens ?? 0;
-	meter.totals.read += usage.cache_read_input_tokens ?? 0;
-	// Without the split, the conversation's own TTL says which it was
-	meter.totals.write1h += write1h ?? (write5m === undefined && meter.ttl === '1h' ? written : 0);
-	meter.totals.write5m += write5m ?? (write1h === undefined && meter.ttl === '5m' ? written : 0);
-	meter.totals.output += usage.output_tokens ?? 0;
+	for (const kind of Object.keys(request)) meter.totals[kind] += request[kind];
 	meter.totals.requests += 1;
+	if (Date.now() - at < WINDOW_MS) meter.recent.push({ at, cost: spentOf(request) });
+	meter.model = line.message.model ?? meter.model;
 	if (write1h) meter.ttl = '1h';
 	else if (write5m) meter.ttl = '5m';
 	meter.last = {
-		at: Date.parse(line.timestamp),
+		at,
 		context: (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + written,
 	};
 };
@@ -83,7 +94,7 @@ export const spentOf = totals =>
 			totals.output * RATES.output,
 	);
 
-// { context, lastAt, ttl, warmUntil, coldCost, hitRate, spent, requests } (null before Claude's first answer)
+// { context, lastAt, ttl, warmUntil, coldCost, hitRate, spent, requests, model } (null before Claude's first answer)
 export const meterOf = async (id, cwd, now = Date.now()) => {
 	const meter = await readNew(id, cwd);
 
@@ -106,5 +117,24 @@ export const meterOf = async (id, cwd, now = Date.now()) => {
 		hitRate: read + input + write5m + write1h ? read / (read + input + write5m + write1h) : 0,
 		spent: spentOf(meter.totals),
 		requests,
+		model: meter.model,
 	};
+};
+
+// What every conversation read here has burned over the last usage window, and how fast lately (per minute), in
+// base-input-token equivalents. Only conversations read since this server started count, which the universe view
+// does for every running session.
+export const burnOf = (now = Date.now()) => {
+	let burned = 0;
+	let lately = 0;
+
+	for (const meter of meters.values()) {
+		meter.recent = meter.recent.filter(({ at }) => now - at < WINDOW_MS);
+		for (const { at, cost } of meter.recent) {
+			burned += cost;
+			if (now - at < RATE_MS) lately += cost;
+		}
+	}
+
+	return { burned, rate: Math.round(lately / (RATE_MS / 60_000)) };
 };

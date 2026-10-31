@@ -3,6 +3,7 @@ import path from 'path';
 import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
 import { statusOf } from './activity';
+import { noteCrew } from './crew';
 
 // Sessions kept warm while nobody's in them: once Claude has been quiet this long, paude types a ping it answers in a
 // word. That reads the conversation from Claude's prompt cache, which keeps it there another hour. Claude Code compacts
@@ -77,6 +78,7 @@ export const claudeActive = (id, { hook_event_name: event, prompt } = {}, now = 
 const ping = (id, session, now) => {
 	if (session.busy || statusOf(id) !== 'ready' || session.promptDraft() !== '') return false;
 
+	noteCrew('keeping a session warm');
 	session.typeIn(`\x1b[200~${PING}\x1b[201~`);
 	setTimeout(() => session.typeIn('\r'), ENTER_AFTER_MS);
 	lastTurnAt.set(id, now);

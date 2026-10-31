@@ -9,6 +9,7 @@ import { warmUntil } from '../keepWarm';
 import { limitOf } from '../usageLimit';
 import { pinnedName } from '../names';
 import parseTitle from './claudeTitle';
+import { glimpse } from './glimpse';
 import readDialog from './dialog';
 import readPromptDraft from './promptBox';
 import { endHeld, heldCommand, releaseHeld } from './holder';
@@ -333,6 +334,11 @@ export default class PtySession {
 		this.process.terminal.resize(cols, rows);
 		this.mirror.resize(cols, rows);
 		this.broadcast({ type: 'size', cols, rows });
+	}
+
+	// The screen as the universe view's monitors show it, and its size, for a terminal opened there to take
+	glimpse() {
+		return { cols: this.cols, rows: this.rows, ...glimpse(this.mirror.buffer.active, this.rows) };
 	}
 
 	broadcastPresence() {

@@ -2,6 +2,7 @@ import os from 'os';
 import path from 'path';
 
 import { markInterruptions, steeringOf } from './catchUp';
+import { crewJob } from './crew';
 import { GitError, gitStack } from './git';
 import { sessionEnvironment } from './sessions/PtySession';
 import { claudeCommand } from './sessions/running';
@@ -123,7 +124,9 @@ export const draftCommitMessage = async (root, { sessionId, cwd, amend = false, 
 };
 
 // What a Claude of its own (claude -p) answers: run outside any project so it isn't listed among its sessions
-export const claudeWrites = async prompt => {
+export const claudeWrites = prompt => crewJob('writing a commit message', () => write(prompt));
+
+const write = async prompt => {
 	const child = Bun.spawn([claudeCommand(), '-p', '--output-format', 'text'], {
 		cwd: os.tmpdir(),
 		env: sessionEnvironment(),

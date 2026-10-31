@@ -11,8 +11,10 @@ import { HOOK_EVENTS, hookSecret } from '../hookSettings';
 import { claudeActive } from '../keepWarm';
 import { lookBack } from '../lookBack';
 import { limitHook } from '../usageLimit';
+import { noteEmpty } from '../fuel';
 import { trackProposals } from '../sessions/proposals';
 import { runningSession } from '../sessions/running';
+import { noteHook, notePrompt, noteTool, noteTurnDone } from '../universe';
 
 // The checks a project runs after each of Claude's turns, when the turn edited something: the problems they find
 // are then about what Claude just did
@@ -72,10 +74,23 @@ const hooksRoutes = async request => {
 		return (await beforePush(id, payload)) ?? new Response(null, { status: 204 });
 	// Before the status, so the presence that goes out with it says whether a usage limit stopped the turn
 	await limitHook(id, payload);
+	if (payload.hook_event_name === 'StopFailure' && payload.error === 'rate_limit') await noteEmpty();
 	if (status) await setStatus(id, status);
 	// A keep-warm ping's turn isn't news, and edits nothing
 	if (claudeActive(id, payload)) return new Response(null, { status: 204 });
-	if (payload.hook_event_name === 'Stop') await recordChange(id);
+	noteHook(runningSession(id), payload);
+	if (['PostToolUse', 'PostToolUseFailure'].includes(payload.hook_event_name))
+		await noteTool(
+			runningSession(id),
+			payload.tool_name,
+			payload.hook_event_name === 'PostToolUseFailure',
+			payload.tool_input,
+		);
+	if (payload.hook_event_name === 'UserPromptSubmit') notePrompt(runningSession(id), payload.prompt);
+	if (payload.hook_event_name === 'Stop') {
+		noteTurnDone(runningSession(id), payload.last_assistant_message);
+		await recordChange(id);
+	}
 
 	const { cwd } = runningSession(id);
 

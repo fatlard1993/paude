@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { afterAll, expect, test } from 'bun:test';
 
-import { meterOf } from './cacheMeter';
+import { burnOf, meterOf } from './cacheMeter';
 
 const configDir = process.env.CLAUDE_CONFIG_DIR;
 
@@ -69,4 +69,20 @@ test('a five-minute cache', async () => {
 		`${request('a', 0, { input_tokens: 0, cache_creation_input_tokens: 1000, cache_creation: { ephemeral_5m_input_tokens: 1000 }, output_tokens: 0 })}\n`,
 	);
 	expect(await meterOf('session', cwd, 0)).toMatchObject({ ttl: '5m', warmUntil: 300_000, coldCost: 1250 });
+});
+
+test("what's been burned over the last usage window, and how fast lately", async () => {
+	const { cwd, file } = await setUp();
+	const now = Date.now();
+	const usage = { input_tokens: 100, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 20 };
+
+	await writeFile(
+		path.join(path.dirname(file), 'fuel.jsonl'),
+		`${[request('old', now - 6 * 3_600_000, usage), request('earlier', now - 3_600_000, usage), request('now', now - 60_000, usage)].join('\n')}\n`,
+	);
+	await meterOf('fuel', cwd, now);
+
+	// 100 input + 20 output at five times the rate, for each of the two in the window; one in the last ten minutes
+	expect(burnOf(now)).toEqual({ burned: 400, rate: 20 });
+	expect(burnOf(now + 5 * 3_600_000)).toEqual({ burned: 0, rate: 0 });
 });

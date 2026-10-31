@@ -6,6 +6,7 @@ import { requestMatch } from '@vanilla-bean/components/app';
 import {
 	activitySummary,
 	forgetProjectWatches,
+	markSeen,
 	setProjectWatching,
 	setWatching,
 	watchedBy,
@@ -57,6 +58,7 @@ import {
 } from '../worktrees';
 import { markProjectLink, projectLinks } from '../links';
 import { projectArtifacts } from '../artifacts';
+import { refreshLounge, universe } from '../universe';
 
 const isFolder = async path =>
 	Boolean(
@@ -272,6 +274,35 @@ const sessionsRoutes = async (request, server) => {
 		}
 	}
 
+	match = requestMatch('GET', '/api/remotes/universe', request);
+	if (match) {
+		try {
+			const there = await remoteApi(match.url, '/api/universe');
+
+			return there === undefined ? new Response('Not one of your servers', { status: 404 }) : Response.json(there);
+		} catch (error) {
+			return new Response(error.message, { status: 502 });
+		}
+	}
+
+	// Read there: its changes are seen, as by its owner
+	if (requestMatch('POST', '/api/remotes/seen', request)) {
+		const { url, sessionId } = await request.json();
+
+		if (typeof sessionId !== 'string' || !/^[\w-]+$/.test(sessionId))
+			return new Response('No such session', { status: 400 });
+
+		try {
+			const seen = await remoteApi(url, `/api/sessions/${sessionId}/seen`, { method: 'PUT' });
+
+			return seen === undefined
+				? new Response('Not one of your servers', { status: 404 })
+				: new Response(null, { status: 204 });
+		} catch (error) {
+			return new Response(error.message, { status: 502 });
+		}
+	}
+
 	match = requestMatch('GET', '/api/remotes/sessions', request);
 	if (match) {
 		try {
@@ -287,6 +318,8 @@ const sessionsRoutes = async (request, server) => {
 
 	match = requestMatch('GET', '/api/sessions', request);
 	if (match) return sessionPage(await listAllSessions(identity), match, 8);
+
+	if (requestMatch('GET', '/api/universe', request)) return Response.json(await universe(identity));
 
 	if (requestMatch('GET', '/api/watching', request)) {
 		const byHand = await Promise.all(
@@ -318,6 +351,17 @@ const sessionsRoutes = async (request, server) => {
 			Boolean((await request.json()).watching),
 			sessions.map(({ id }) => id),
 		);
+
+		return new Response(null, { status: 204 });
+	}
+
+	// Read somewhere other than the session itself (the universe view's reply card): what changed is seen
+	match = requestMatch('PUT', '/api/sessions/:id/seen', request);
+	if (match) {
+		if (!identity.owner && identity.sessionId !== match.id)
+			return new Response('Not part of your invite', { status: 403 });
+
+		await markSeen(identity, match.id);
 
 		return new Response(null, { status: 204 });
 	}
@@ -606,6 +650,7 @@ const sessionsRoutes = async (request, server) => {
 		const removed = await removeSession(match.id);
 
 		if (removed === null) return new Response('Session not found', { status: 404 });
+		refreshLounge();
 
 		return removed.released ? Response.json(removed.released) : new Response(null, { status: 204 });
 	}
@@ -621,6 +666,7 @@ const sessionsRoutes = async (request, server) => {
 			return new Response('Which sessions, and archived or not?', { status: 400 });
 
 		await setArchived(ids, archived);
+		refreshLounge();
 
 		return new Response(null, { status: 204 });
 	}

@@ -20,7 +20,7 @@ const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
 // The same prompt is told once, the latest few kept; a reply with nothing in it, or a failure, is asked again next
 // time. `ask` is Haiku but in tests.
-export const tellOnce = (prompt, parse, ask = askHaiku) => {
+export const tellOnce = (prompt, parse, ask = text => askHaiku(text, 'telling a tour')) => {
 	const kept = told.get(prompt);
 
 	if (kept) {
