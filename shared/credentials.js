@@ -5,13 +5,15 @@ import updateJsonFile from './updateJsonFile';
 import readJsonFile from './readJsonFile';
 
 // { default: url, tokens: { [url]: token }, names: { [url]: name } }, readable only by this user
-const file = path.join(process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.config'), 'paude', 'credentials.json');
+// Found afresh each time, so a test pointing XDG_CONFIG_HOME elsewhere never reaches the real file
+const fileOf = () =>
+	path.join(process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.config'), 'paude', 'credentials.json');
 
 const EMPTY = { default: null, tokens: {} };
 
-const read = () => readJsonFile(file, EMPTY);
+const read = () => readJsonFile(fileOf(), EMPTY);
 
-const update = change => updateJsonFile(file, EMPTY, change);
+const update = change => updateJsonFile(fileOf(), EMPTY, change);
 
 // A bare host means HTTPS, except this machine's own addresses: a paude reachable over plain http should only be on
 // localhost
@@ -23,11 +25,12 @@ export const normalizeUrl = url => {
 	return withScheme.replace(/\/+$/, '');
 };
 
-export const saveToken = (url, token, name) =>
+// The paude command makes the server it logs into its default; a login made from the universe leaves the default be
+export const saveToken = (url, token, name, { makeDefault = true } = {}) =>
 	update(credentials => {
 		credentials.tokens[url] = token;
 		if (name) (credentials.names ??= {})[url] = name;
-		credentials.default = url;
+		if (makeDefault || !credentials.default) credentials.default = url;
 
 		return credentials;
 	});

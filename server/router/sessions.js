@@ -28,7 +28,7 @@ import { findHome, localCandidates } from '../promptHome';
 import { askClaude } from '../claudeInbox';
 import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
-import { listRemotes, remoteApi, remoteLink, remoteSessions } from '../remotes';
+import { connectRemote, listRemotes, remoteApi, remoteLink, remoteSessions } from '../remotes';
 import { mayListRemotes } from '../serverSettings';
 import { sessionTurns } from '../sessions/history';
 import {
@@ -224,6 +224,13 @@ const sessionsRoutes = async (request, server) => {
 		return new Response('Only from this machine: the paude command, or paude web', { status: 403 });
 
 	if (requestMatch('GET', '/api/remotes', request)) return Response.json(await listRemotes());
+
+	// Another paude logged into from here, so it joins as an engine: { url, password, name }
+	if (requestMatch('POST', '/api/remotes', request)) {
+		const connected = await connectRemote(await request.json());
+
+		return connected.error ? new Response(connected.error, { status: connected.status }) : Response.json(connected);
+	}
 
 	if (requestMatch('POST', '/api/remotes/open', request)) {
 		const { url, sessionId, project, home, draft, lifetime } = await request.json();

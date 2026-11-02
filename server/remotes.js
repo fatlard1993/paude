@@ -1,4 +1,7 @@
-import { allTokens, serverNames } from '../shared/credentials';
+import os from 'os';
+
+import { allTokens, normalizeUrl, saveToken, serverNames } from '../shared/credentials';
+import { trustedCertificates } from '../shared/certificates';
 import { serverApi, serverPage, visitServer } from '../shared/serverClient';
 import { getServerId } from './auth';
 
@@ -95,4 +98,59 @@ export const remoteApi = async (url, route, init) => {
 	const server = (await remoteServers()).find(remote => remote.url === url);
 
 	return server ? serverApi(server, route, init) : undefined;
+};
+
+const CONNECT_TIMEOUT_MS = 10_000;
+
+// This machine logged into another paude with its owner password, as `paude login <url>` does, so it joins the
+// universe as an engine; the command's default server is left as it was. { name } once done, or { status, error } with
+// what to tell the person
+export const connectRemote = async ({ url: given, password, name }) => {
+	if (typeof given !== 'string' || !given.trim()) return { status: 400, error: 'Give its address' };
+	if (typeof password !== 'string' || !password) return { status: 400, error: 'Give its password' };
+
+	let url;
+
+	try {
+		url = normalizeUrl(given.trim());
+		new URL(url);
+	} catch {
+		return { status: 400, error: "That isn't an address" };
+	}
+
+	const reach = (route, init = {}) =>
+		fetch(`${url}${route}`, { ...init, tls: trustedCertificates(), signal: AbortSignal.timeout(CONNECT_TIMEOUT_MS) });
+	let response;
+
+	try {
+		const auth = await reach('/api/auth');
+		const { serverId } = await auth.json().catch(() => ({}));
+
+		if (serverId && serverId === getServerId()) return { status: 400, error: "That's this paude" };
+
+		response = await reach('/api/tokens', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ password, name: os.hostname() }),
+		});
+	} catch (error) {
+		return {
+			status: 502,
+			error: /CERT|SELF_SIGNED|ALTNAME/.test(error?.code ?? '')
+				? "It answered with a certificate this machine doesn't trust"
+				: `Nothing answered at ${url}`,
+		};
+	}
+
+	// Not 401: to the browser that means its own login here has ended
+	if (response.status === 401) return { status: 422, error: 'Wrong password' };
+	if (response.status === 429)
+		return { status: 429, error: `Too many tries; wait ${response.headers.get('retry-after') ?? 'a while'}s` };
+	if (!response.ok) return { status: 502, error: `${url} answered ${response.status}; is it a paude?` };
+
+	const { token } = await response.json();
+
+	await saveToken(url, token, name?.trim() || undefined, { makeDefault: false });
+
+	return { url, name: name?.trim() || new URL(url).host };
 };
