@@ -54,9 +54,10 @@ const describer = ({
 
 					if (text) descriptions[keyOf(item)] = keep(text);
 					else failedAt.set(keyOf(item), Date.now());
-					queue.delete(keyOf(item));
 				});
+				// Still being described until what was written is saved, so nothing reads as done before it's kept
 				await writeJsonFile(file, () => descriptions);
+				for (const item of batch) queue.delete(keyOf(item));
 			}
 		} finally {
 			working = false;
