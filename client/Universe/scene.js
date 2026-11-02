@@ -3160,6 +3160,14 @@ export default class Scene {
 				room: hangar,
 				at: { x: padAt(hangar).x - 0.9, y: padAt(hangar).y + 0.5 },
 			},
+			'deciding to keep going': bridge && {
+				room: bridge,
+				at: { x: navAt(bridge).x - 0.6, y: navAt(bridge).y + 0.9 },
+			},
+			'keeping a session going': bridge && {
+				room: bridge,
+				at: { x: navAt(bridge).x + 0.6, y: navAt(bridge).y + 0.9 },
+			},
 			'keeping a session warm': lounge && {
 				room: lounge,
 				at: { x: lounge.x + 0.6, y: lounge.y + lounge.d - 0.5 },

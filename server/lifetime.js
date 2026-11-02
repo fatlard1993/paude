@@ -3,11 +3,13 @@ import path from 'path';
 import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
 import { isBrief, keepSession, markBrief } from './briefSessions';
-import { DEFAULT_HOURS, keepWarm, warmUntil } from './keepWarm';
+import { DEFAULT_HOURS, goingOn, keepWarm, warmUntil } from './keepWarm';
 
-// How long a session lasts: 'ordinary' (until it's deleted), 'warm' (kept warm while you're away), or 'brief'
-// (deleted once its cache lets go with nobody in it). Set when it starts, and changed whenever.
-export const LIFETIMES = ['ordinary', 'warm', 'brief'];
+// How long a session lasts: 'ordinary' (until it's deleted), 'warm' (kept warm while you're away), 'going' (kept warm,
+// and nudged on while its replies leave work undone: keepGoing), or 'brief' (deleted once its cache lets go with
+// nobody in it). Set when it starts, and changed whenever.
+export const LIFETIMES = ['ordinary', 'warm', 'going', 'brief'];
+export const WARM_LIFETIMES = ['warm', 'going'];
 // A switch made by hand stays on show this long, to be put back: the hour Claude's cache holds a conversation, inside
 // which putting it back finds things as they were. { [sessionId]: { was, at } }
 export const UNDO_MS = 60 * 60 * 1000;
@@ -23,7 +25,7 @@ export const initLifetime = async dataDir => {
 };
 
 export const lifetimeOf = id => {
-	if (warmUntil(id)) return 'warm';
+	if (warmUntil(id)) return goingOn(id) ? 'going' : 'warm';
 
 	return isBrief(id) ? 'brief' : 'ordinary';
 };
@@ -36,7 +38,9 @@ export const lastSwitch = (id, now = Date.now()) => {
 };
 
 export const setLifetime = async (id, lifetime) => {
-	await keepWarm(id, lifetime === 'warm' ? DEFAULT_HOURS : 0);
+	await keepWarm(id, WARM_LIFETIMES.includes(lifetime) ? DEFAULT_HOURS : 0, Date.now(), {
+		going: lifetime === 'going',
+	});
 	if (lifetime === 'brief') await markBrief(id);
 	else await keepSession(id);
 

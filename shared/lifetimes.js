@@ -7,6 +7,13 @@ export const LIFETIMES = {
 		mark: '☕',
 		detail: 'pinged while you are away so it comes back cached, 12 hours from your last message',
 	},
+	going: {
+		label: 'Keeps going',
+		icon: 'forward',
+		mark: '⏩',
+		detail:
+			'kept warm, and kept working toward your goal while anything useful is left that needs nothing from you, 12 hours from your last message',
+	},
 	brief: {
 		label: 'Short-lived',
 		icon: 'hourglass-half',
@@ -14,5 +21,8 @@ export const LIFETIMES = {
 		detail: "deleted once Claude's cache lets go of it with nobody here",
 	},
 };
+
+// Those kept warm while you're away
+export const WARM_LIFETIMES = ['warm', 'going'];
 
 export const clockTime = at => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });

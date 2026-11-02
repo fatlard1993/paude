@@ -228,15 +228,15 @@ export default class Project extends View {
 		this.load();
 	}
 
-	// How long the session lasts, as the session's own bar shows it: as the prompt's router suggested, 'warm' or
-	// 'brief', anything else ordinary
+	// How long the session lasts, as the session's own bar shows it: as the prompt's router suggested (or picked here),
+	// 'warm', 'going' or 'brief', anything else ordinary
 	pickLifetime(lifetime) {
-		this.lifetime = ['warm', 'brief'].includes(lifetime) ? lifetime : 'ordinary';
+		this.lifetime = lifetime in LIFETIMES ? lifetime : 'ordinary';
 
 		const { icon, label, detail } = LIFETIMES[this.lifetime];
 
 		this.lifetimeChip.replaceChildren(element('i', `fa-solid fa-${icon}`), ` ${label}`);
-		this.lifetimeChip.classList.remove('ordinary', 'warm', 'brief');
+		this.lifetimeChip.classList.remove(...Object.keys(LIFETIMES));
 		this.lifetimeChip.classList.add('lifetime', this.lifetime);
 		this.lifetimeChip.title = `How long it lasts: ${label}, ${detail}. Click to change`;
 	}

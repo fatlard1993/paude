@@ -9,6 +9,7 @@ import { sessionTimeline, sessionTurns } from '../timeline';
 import { turnEnded as noteTurnCommits, turnStarted } from '../turnCommits';
 import { HOOK_EVENTS, hookSecret } from '../hookSettings';
 import { claudeActive } from '../keepWarm';
+import { keepGoing } from '../keepGoing';
 import { lookBack } from '../lookBack';
 import { limitHook } from '../usageLimit';
 import { noteEmpty } from '../fuel';
@@ -109,6 +110,8 @@ const hooksRoutes = async request => {
 	// Not waited for: Claude waits on its hook, and the answer can take a few seconds to reach the transcript
 	if (payload.hook_event_name === 'Stop')
 		runAfterTurn(id).catch(error => console.error('Running the after-turn tasks failed:', error));
+	if (payload.hook_event_name === 'Stop')
+		keepGoing(id, payload.last_assistant_message).catch(error => console.error('Keeping going failed:', error));
 	if (['Stop', 'StopFailure'].includes(payload.hook_event_name))
 		turnEnded(id).catch(error => console.error('Answering from Claude failed:', error));
 

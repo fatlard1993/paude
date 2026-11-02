@@ -19,7 +19,7 @@ import { folderHue, sessionHue } from '../../shared/hues';
 import { FILTERS, matchesFilter, matchesQuery } from '../../shared/sessionSearch';
 import { warmUntil } from '../keepWarm';
 import { continueSession } from '../usageLimit';
-import { LIFETIMES, lastSwitch, lifetimeOf, setLifetime, switchLifetime } from '../lifetime';
+import { LIFETIMES, WARM_LIFETIMES, lastSwitch, lifetimeOf, setLifetime, switchLifetime } from '../lifetime';
 import removeSession from '../removeSession';
 import { meterOf } from '../cacheMeter';
 import { catchUp } from '../catchUp';
@@ -109,8 +109,8 @@ const worktreeNameFor = text => {
 // { id: null, worktree, files, warning }, and joining that worktree is starting Claude in it anyway.
 const HEARTBEAT_MS = 5000;
 
-// A new session, kept warm or short-lived from the start when asked: mode is 'warm', 'brief' or anything else for
-// neither
+// A new session, kept warm, kept going or short-lived from the start when asked: mode is 'warm', 'going', 'brief' or
+// anything else for none
 const startWith = async (folder, text, mode) => {
 	const { id } = startSession(folder, text?.trim());
 
@@ -470,8 +470,12 @@ const sessionsRoutes = async (request, server) => {
 
 		if (!record) return new Response('Session not found', { status: 404 });
 
-		// With when it's kept warm until, which each real prompt moves on
-		return Response.json({ meter: await meterOf(match.id, record.cwd), warmUntil: warmUntil(match.id) });
+		// With when it's kept warm until, which each real prompt moves on, and whether it keeps going besides
+		return Response.json({
+			meter: await meterOf(match.id, record.cwd),
+			warmUntil: warmUntil(match.id),
+			lifetime: lifetimeOf(match.id),
+		});
 	}
 
 	// How long the session lasts, changed: kept warm (whose pings spend the owner's usage), short-lived, or ordinary
@@ -481,9 +485,9 @@ const sessionsRoutes = async (request, server) => {
 
 		const { lifetime } = await request.json();
 
-		if (!LIFETIMES.includes(lifetime)) return new Response('Ordinary, warm or brief', { status: 400 });
-		if (lifetime === 'warm' && !runningSession(match.id))
-			return new Response('Only a running session stays warm', { status: 409 });
+		if (!LIFETIMES.includes(lifetime)) return new Response('Ordinary, warm, going or brief', { status: 400 });
+		if (WARM_LIFETIMES.includes(lifetime) && !runningSession(match.id))
+			return new Response('Only a running session stays warm or keeps going', { status: 409 });
 
 		return Response.json({
 			lifetime: await switchLifetime(match.id, lifetime),

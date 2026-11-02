@@ -22,6 +22,7 @@ import {
 	waitingToPush,
 	writeDownPrompt,
 } from './decisions';
+import { nudgeWith } from './keepWarm';
 
 let dir;
 let claudeConfig;
@@ -89,6 +90,18 @@ test("a turn going on from a summary isn't read as the person's words, nor answe
 	expect(turns[0].reply).toBeUndefined();
 	expect(turnText(turns[1], 1)).not.toContain('chose X');
 	expect(turnText(turns[1], 1)).toContain("nothing here is the person's words");
+});
+
+test("a keep-going nudge isn't the person agreeing to what the turn before it proposed", () => {
+	const turns = turnsToRead(
+		[
+			{ id: 't1', prompt: 'lock accounts', asked: 'lock accounts', steps: [] },
+			{ id: 't2', prompt: nudgeWith('Do item 6.').slice(0, 200), asked: nudgeWith('Do item 6.'), steps: [] },
+		],
+		{ running: false },
+	);
+
+	expect(turns[0].reply).toBeUndefined();
 });
 
 test('what Haiku found keeps only the four kinds, each with what was chosen or found', () => {

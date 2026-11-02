@@ -67,6 +67,12 @@ const Compose = styled(
 			color: ${colors.lighter(colors.blue)};
 		}
 
+		.chip.lifetime.going {
+			border-color: ${colors.alpha(colors.green, 0.5)};
+			background: ${colors.alpha(colors.green, 0.2)};
+			color: ${colors.lighter(colors.green)};
+		}
+
 		.chip.lifetime.brief {
 			border-color: ${colors.alpha(colors.light(colors.warning), 0.5)};
 			color: ${colors.light(colors.warning)};

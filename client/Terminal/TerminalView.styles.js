@@ -350,6 +350,11 @@ export const TopBar = styled(
 			color: ${colors.light(colors.warning)};
 		}
 
+		/* A session that keeps going says so: it acts on its own while you're away */
+		.tool.lifetime.going {
+			color: ${colors.light(colors.green)};
+		}
+
 		/* The lever names what it switches, and what it was before the last switch while that can be put back */
 		.lifetime .lifetime-text {
 			font-size: 0.8em;

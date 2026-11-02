@@ -11,6 +11,7 @@ import { markInterruptions, steeringOf } from './catchUp';
 import describer from './describer';
 import { headCommit, repoRoot } from './git';
 import askHaiku, { jsonIn } from './haiku';
+import { isNudge } from './keepWarm';
 import { allRunning, runningSession } from './sessions/running';
 import { claudeHome } from './sessions/transcript';
 import { sessionTurns } from './timeline';
@@ -647,12 +648,15 @@ const backfill = async (sessionId, decisions, turns, cwd) => {
 
 // The session's turns worth reading, each with what the person said next (which settles what Claude proposed): not a
 // cut-short marker or a keep-warm ping, and the latest only once the session has stopped, when nothing more will
-// answer it
+// answer it. A keep-going nudge is paude's, not the person's, so it settles nothing.
 export const turnsToRead = (turns, { running }) => {
 	const told = markInterruptions(turns).filter(turn => !turn.interrupted && !KEEP_WARM_PING.test(turn.prompt));
 	const read = told.map((turn, index) => ({
 		...turn,
-		reply: told[index + 1]?.summary ? undefined : told[index + 1]?.asked?.slice(0, REPLY),
+		reply:
+			told[index + 1]?.summary || isNudge(told[index + 1]?.prompt)
+				? undefined
+				: told[index + 1]?.asked?.slice(0, REPLY),
 	}));
 
 	return running ? read.slice(0, -1) : read;

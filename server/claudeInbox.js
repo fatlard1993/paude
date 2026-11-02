@@ -46,6 +46,9 @@ const deliver = id => {
 	if (inbox.queue.length) inbox.timer = setTimeout(() => deliver(id), RETRY_MS);
 };
 
+// Someone's message waits to be typed into Claude
+export const waitingToAsk = id => Boolean(inboxes.get(id)?.queue.length);
+
 export const askClaude = (id, message) => {
 	inboxOf(id).queue.push(message);
 	deliver(id);

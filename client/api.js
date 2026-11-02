@@ -31,7 +31,7 @@ export const getProjectSessions = async (project, options) =>
 export const getCheckouts = async project =>
 	await GET('/api/projects/:project/checkouts', { urlParameters: { project }, invalidateAfter: 0 });
 
-// mode: 'warm' (kept warm), 'brief' (short-lived), or nothing for an ordinary session
+// mode: 'warm' (kept warm), 'going' (kept warm and nudged on), 'brief' (short-lived), or nothing for an ordinary session
 export const createSession = async (project, text, checkout, mode) =>
 	await POST('/api/projects/:project/sessions', {
 		urlParameters: { project },
@@ -278,7 +278,7 @@ export const getArtifacts = async sessionId =>
 export const getProjectArtifacts = async project =>
 	await GET('/api/projects/:project/artifacts', { urlParameters: { project }, invalidateAfter: 0 });
 
-// How long a session lasts: 'ordinary', 'warm' or 'brief'; { lifetime, warmUntil }
+// How long a session lasts: 'ordinary', 'warm', 'going' or 'brief'; { lifetime, warmUntil }
 export const setLifetime = async (sessionId, lifetime) =>
 	await PUT('/api/sessions/:id/lifetime', { urlParameters: { id: sessionId }, body: { lifetime } });
 

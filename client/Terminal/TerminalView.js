@@ -43,7 +43,7 @@ import { breadcrumbs } from '../Breadcrumbs';
 import { closeMenu, openMenu } from '../menu';
 import { AskingCard, showAsking, showLimit } from '../Asking';
 import { ghostButton } from '../Bar';
-import { LIFETIMES, clockTime } from '../../shared/lifetimes';
+import { LIFETIMES, WARM_LIFETIMES, clockTime } from '../../shared/lifetimes';
 import { updateTabTitle } from '../tabTitle';
 import attach from './attach';
 import { startCatchUp, trackLastSeen } from './catchUp';
@@ -1562,9 +1562,9 @@ export default class TerminalView extends View {
 
 		this.meter = body?.meter ?? null;
 		this.showMeter();
-		// Kept warm until a cutoff that each real prompt moves on, and that can pass
-		if (body && 'warmUntil' in body && (body.warmUntil || this.lifetime === 'warm'))
-			this.showLifetime(body.warmUntil ? 'warm' : 'ordinary', body.warmUntil, this.switched);
+		// Kept warm (or going) until a cutoff that each real prompt moves on, and that can pass
+		if (body?.lifetime && (body.warmUntil || WARM_LIFETIMES.includes(this.lifetime)))
+			this.showLifetime(body.lifetime, body.warmUntil, this.switched);
 		if (!this.meterTick) {
 			this.meterTick = setInterval(() => this.loadMeter(), 60_000);
 			this.addCleanup('meterTick', () => clearInterval(this.meterTick));
@@ -1677,7 +1677,7 @@ export default class TerminalView extends View {
 				: []),
 			{
 				label: `Lifetime: ${LIFETIMES[this.lifetime].label}`,
-				detail: 'ordinary, kept warm, or short-lived',
+				detail: 'ordinary, kept warm, keeps going, or short-lived',
 				onPress: () => this.openLifetime(),
 			},
 		]);
@@ -1697,7 +1697,8 @@ export default class TerminalView extends View {
 		this.lifetimeButton.firstChild.className = `fa-solid fa-${icon}`;
 		this.lifetimeText.textContent = ` ${label}`;
 		this.lifetimeWas.textContent = was ? ` ${was.label}` : '';
-		this.lifetimeButton.classList.toggle('active', lifetime === 'warm');
+		this.lifetimeButton.classList.toggle('active', WARM_LIFETIMES.includes(lifetime));
+		this.lifetimeButton.classList.toggle('going', lifetime === 'going');
 		this.lifetimeButton.classList.toggle('brief', lifetime === 'brief');
 		this.lifetimeButton.dataset.menuLabel = `Lifetime: ${label}`;
 		if (until) this.lifetimeButton.dataset.menuDetail = `until ${until}`;
@@ -1734,7 +1735,10 @@ export default class TerminalView extends View {
 		const { body, response } = await setLifetime(this.options.id, lifetime);
 
 		if (!response?.ok)
-			return new Notify({ intent: 'danger', content: "Couldn't change it (only a running session stays warm)" });
+			return new Notify({
+				intent: 'danger',
+				content: "Couldn't change it (only a running session stays warm or keeps going)",
+			});
 		this.showLifetime(body.lifetime, body.warmUntil, body.switched);
 	}
 

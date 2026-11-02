@@ -1,5 +1,6 @@
 import { meterOf } from './cacheMeter';
 import askHaiku, { jsonIn } from './haiku';
+import { isNudge } from './keepWarm';
 import { LIFETIMES } from './lifetime';
 import { listProjects } from './projects';
 import { ownedRemotes, remoteApi } from './remotes';
@@ -17,7 +18,7 @@ const MOST_MATCHES = 3;
 const LATEST_PROMPTS = 5;
 const CHANGED_FILES = 10;
 const PROMPT_CHARACTERS = 160;
-// The keep-warm pings say nothing of what a session is about
+// The keep-warm pings and keep-going nudges say nothing of what a session is about
 const KEEP_WARM_PING = /^keep-?warm ping/i;
 
 const clip = text =>
@@ -42,7 +43,7 @@ const lately = async id => {
 	return {
 		latest: turns
 			.map(turn => turn.prompt)
-			.filter(prompt => prompt && !KEEP_WARM_PING.test(prompt))
+			.filter(prompt => prompt && !KEEP_WARM_PING.test(prompt) && !isNudge(prompt))
 			.slice(0, LATEST_PROMPTS)
 			.map(clip),
 		changed: [...new Set(files)].slice(0, CHANGED_FILES),
@@ -162,7 +163,11 @@ export const findHome = async ({ prompt, project, identity, remotes = false }) =
 		fresh: {
 			project: fresh?.name ?? null,
 			remote: fresh?.remote,
-			lifetime: LIFETIMES.includes(reply.fresh?.lifetime) ? reply.fresh.lifetime : 'ordinary',
+			// Keeping going acts unattended on the owner's usage: only ever chosen by hand
+			lifetime:
+				LIFETIMES.includes(reply.fresh?.lifetime) && reply.fresh.lifetime !== 'going'
+					? reply.fresh.lifetime
+					: 'ordinary',
 			why: String(reply.fresh?.why ?? ''),
 		},
 	};
