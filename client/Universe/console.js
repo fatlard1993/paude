@@ -30,7 +30,7 @@ export default class TerminalPanel {
 		if (this.terminal) return this.fit();
 
 		const { session } = this;
-		const { cols = 100, rows = 30 } = session.glimpse ?? {};
+		const { cols = 100, rows = 30 } = session.screen ?? {};
 		// See-through, as the session page's shell is, so the ship shows behind it through the glass
 		const terminal = new Terminal({
 			...xtermOptions,

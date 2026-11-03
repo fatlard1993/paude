@@ -9,7 +9,7 @@ import { warmUntil } from '../keepWarm';
 import { limitOf } from '../usageLimit';
 import { pinnedName } from '../names';
 import parseTitle from './claudeTitle';
-import { glimpse } from './glimpse';
+import untilCompact from './untilCompact';
 import readDialog from './dialog';
 import readPromptDraft from './promptBox';
 import { endHeld, heldCommand, releaseHeld } from './holder';
@@ -336,9 +336,9 @@ export default class PtySession {
 		this.broadcast({ type: 'size', cols, rows });
 	}
 
-	// The screen as the universe view's monitors show it, and its size, for a terminal opened there to take
-	glimpse() {
-		return { cols: this.cols, rows: this.rows, ...glimpse(this.mirror.buffer.active, this.rows) };
+	// How much context is left before Claude compacts it, in percent, as its screen says (null when it doesn't)
+	untilCompact() {
+		return untilCompact(this.mirror.buffer.active);
 	}
 
 	broadcastPresence() {

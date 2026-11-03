@@ -794,7 +794,7 @@ const todoWords = todos => {
 };
 
 // A session whose terminal can be opened here: running, on this server
-const live = session => !session.server.remote && session.status !== 'stopped' && Boolean(session.glimpse);
+const live = session => !session.server.remote && session.status !== 'stopped' && Boolean(session.screen);
 
 // A pull request's checks in a few words
 const checkStatus = ({ draft, checks: { passing = 0, failing = 0, pending = 0 } = {} }) =>

@@ -424,40 +424,13 @@ const drawFrost = (ctx, { x, y, w, h }) => {
 	for (let icicle = x + 5; icicle < x + w - 3; icicle += 3) rect(ctx, icicle, y, 1, 1 + (icicle % 2), FROST[1]);
 };
 
-// A screen as it really is, `glimpse` an image of its dots: the dots shrunk into the monitor and blended as they
-// would be from across a room, an amber frame blinking while it asks and the battery over it at a usage limit
-const drawGlimpse = (ctx, area, { kind, glimpse, blink }) => {
-	const { x, y, w, h } = area;
-
-	rect(ctx, x, y, w, h, kind === 'limit' ? '#2a0f0f' : '#090c12');
-	ctx.save();
-	ctx.imageSmoothingEnabled = true;
-	ctx.imageSmoothingQuality = 'high';
-	ctx.globalAlpha = kind === 'limit' ? 0.4 : 1;
-	ctx.drawImage(glimpse, x, y, w, h);
-	ctx.restore();
-	if (kind === 'ask' && blink) {
-		rect(ctx, x, y, w, 1, PALETTE.y);
-		rect(ctx, x, y + h - 1, w, 1, PALETTE.y);
-		rect(ctx, x, y, 1, h, PALETTE.y);
-		rect(ctx, x + w - 1, y, 1, h, PALETTE.y);
-	}
-};
-
-// What a monitor shows: the session's own screen when it's known, and otherwise lines of work scrolling in the color
-// of what's being done, a terminal for the shell, dots while thinking; an amber question while asking, an empty
+// What a monitor shows: lines of work scrolling in the color of what's being done, a terminal for the shell, dots while thinking; an amber question while asking, an empty
 // battery at a usage limit, a blinking cursor at rest, and nothing once stopped
-export const drawScreen = (ctx, area, { kind, hue, time, seed, glimpse }) => {
+const drawScreen = (ctx, area, { kind, hue, time, seed }) => {
 	const { x, y, w, h } = area;
 	const scroll = Math.floor(time * 4 + seed * 10);
 	const blink = Math.floor(time * 2) % 2 === 0;
 
-	if (glimpse && kind !== 'off') {
-		drawGlimpse(ctx, area, { kind, glimpse, blink });
-		if (kind === 'limit') drawBattery(ctx, area, blink);
-
-		return;
-	}
 	const background = {
 		work: `hsl(${hue} 40% 12%)`,
 		terminal: PALETTE.e,

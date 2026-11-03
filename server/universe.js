@@ -96,17 +96,25 @@ const detailOf = (input, cwd) => {
 	return typeof text === 'string' && text ? text.split('\n')[0].slice(0, DETAIL_LENGTH) : null;
 };
 
-// What `look` answers for `key`, worked out again only once it's older than `ms`; a look that fails answers null
+// What `look` answers for `key`, worked out again only once it's older than `ms`; a look that fails answers null.
+// Asked again while it's being worked out, the answer on its way is shared rather than worked out twice.
 const kept = async (key, ms, look) => {
 	const known = looks.get(key);
 
 	if (known && Date.now() - known.at < ms) return known.value;
+	if (known?.coming) return known.coming;
 
-	const value = await look().catch(() => null);
+	const coming = look()
+		.catch(() => null)
+		.then(value => {
+			looks.set(key, { at: Date.now(), value });
 
-	looks.set(key, { at: Date.now(), value });
+			return value;
+		});
 
-	return value;
+	looks.set(key, { ...known, coming });
+
+	return coming;
 };
 
 export const initUniverse = async dataDir => {
@@ -461,7 +469,7 @@ const assetsOf = session =>
 
 // When a stopped session's prompt cache went cold, by its last answer and the cache's lifetime; null before any answer.
 // Kept for each time it stopped (`since`), so one resumed and stopped again isn't given its earlier stop's
-const coldAt = (id, cwd, since) =>
+export const coldAt = (id, cwd, since) =>
 	kept(`cold:${id}:${since}`, COLD_MS, async () => (await meterOf(id, cwd))?.warmUntil ?? null);
 
 // A stopped session, as the lounge shows it, with how long since it was last at work and since its cache went cold
@@ -534,6 +542,13 @@ export const universe = async identity => {
 	const live = await Promise.all(
 		running.map(async session => {
 			const project = projectOf(session.cwd);
+			const [context, assets, tested, busy, talk] = await Promise.all([
+				contextOf(session),
+				assetsOf(session),
+				testedOf(session),
+				busyOf(session),
+				talkOf(session),
+			]);
 
 			return {
 				id: session.id,
@@ -545,18 +560,20 @@ export const universe = async identity => {
 				reply: replyOf(session.id),
 				asking: session.asking() ?? undefined,
 				checkout: roots.get(session) ?? undefined,
-				context: (await contextOf(session)) ?? undefined,
-				assets: (await assetsOf(session)) ?? 0,
-				tested: (await testedOf(session)) ?? undefined,
-				...(await busyOf(session)),
-				talk: await talkOf(session),
+				context: context ?? undefined,
+				untilCompact: session.untilCompact?.() ?? undefined,
+				assets: assets ?? 0,
+				tested: tested ?? undefined,
+				...busy,
+				talk,
 				age: Date.now() - session.startedAt,
 				limit: limitOf(session.id) ?? undefined,
 				// Kept warm, or kept going, and the last ping or nudge it was sent
 				kept: keptOf(session.id) ?? undefined,
 				boost: boostOf(session.id) ?? undefined,
 				...instrumentsOf(session),
-				glimpse: session.glimpse?.(),
+				// Its size, for a terminal opened from the universe to take
+				screen: { cols: session.cols, rows: session.rows },
 			};
 		}),
 	);

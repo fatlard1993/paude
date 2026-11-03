@@ -125,3 +125,12 @@ test("each facility's log says what its latest uses were used on, newest first",
 	expect(log.reactor[0]).toMatchObject({ tool: 'Bash', detail: 'bun test', failed: true });
 	expect(logOf(Date.now() + 11 * 60_000)).toEqual({});
 });
+
+
+test('a look kept from before is still an answer on its way, as one worked out now is', async () => {
+	const { coldAt } = await import('./universe');
+	const stopped = Date.now() - 60_000;
+
+	await coldAt('kept-twice', '/nowhere', stopped);
+	expect(coldAt('kept-twice', '/nowhere', stopped)).toBeInstanceOf(Promise);
+});
