@@ -38,7 +38,7 @@ const PER_REACTOR = 2.4;
 // abreast widened the ship past the zoom it fitted at
 const SYSTEM = { w: 2.6, d: FACE + 2.3 };
 // The engine bay holds the reactors and, beside them, the systems they run
-const ENGINE_BAY_W = ENGINEERING_W + SYSTEM.w;
+const ENGINE_BAY_W = ENGINEERING_W + 2 * SYSTEM.w;
 const HANGAR_W = 2.6;
 // The shipping bay, a gondola hung under the belly, what's staged to ship and the pad it leaves from
 const GONDOLA_D = FACE + 2.3;
@@ -171,9 +171,8 @@ const RIM = 0.5;
 const NOSE = 2.6;
 const NACELLE = 1.8;
 
+// Each machine's own systems, beside its reactor in the engine bay, two over two
 const SYSTEMS = [
-	// Reading, editing and commands in the engine bay, beside the reactors that run them; the web on the bridge, where
-	// whoever watches looks out
 	{ key: 'library', name: 'reading' },
 	{ key: 'forge', name: 'editing' },
 	{ key: 'reactor', name: 'commands' },
@@ -280,7 +279,8 @@ export const layOut = ({ bays = [], machines = [], lounge, checkouts = 0, agents
 	// engine bay's reactors and the systems stacked beside them, any more it needs shared out among its levels rather
 	// than added to each
 	const depth = { top: DECK_TOP, bottom: DECK_BOTTOM };
-	const need = Math.max(FACE + 0.6 + Math.max(1, machines.length) * PER_REACTOR, SYSTEMS.length * SYSTEM.d + 0.4);
+	const engines = Math.max(1, machines.length);
+	const need = Math.max(FACE + 0.6 + engines * PER_REACTOR, Math.max(SYSTEMS.length, engines * 2) * SYSTEM.d + 0.4);
 	const base = depth.top + hall + depth.bottom;
 	const padOf = levels => Math.max(0, need - levels * base) / levels;
 	const working = bays.filter(bay => bay.desks);
@@ -497,29 +497,35 @@ export const layOut = ({ bays = [], machines = [], lounge, checkouts = 0, agents
 
 		rooms.push({ ...placed, props: furnish(placed) });
 	}
-	// Reading, editing, commands and the web down the engine bay beside the reactors, each with a main of its own from
-	// them, so the data of each runs the same way from the engines through the projects to the bridge
-	const step = Math.max(SYSTEM.d, (total - 0.4) / SYSTEMS.length);
+	// Each machine's reading, editing, commands and web in its share of the engine bay beside its reactor, two over two,
+	// each with a main of its own from that reactor, so a session's data runs from its own machine's systems through
+	// its project to the bridge. Named for their machine where there's more than one, as rooms are found by name.
+	const slot = (total - 0.4) / engines;
+	const row = Math.max(SYSTEM.d, slot / 2);
 
-	SYSTEMS.forEach((which, index) => {
-		const x = left + ENGINEERING_W;
-		const y = Math.min(top + index * step, top + total - SYSTEM.d);
+	machines.forEach((machine, nth) => {
+		SYSTEMS.forEach((which, index) => {
+			const x = left + ENGINEERING_W + (index % 2) * SYSTEM.w;
+			const y = Math.min(top + nth * slot + Math.floor(index / 2) * row, top + total - SYSTEM.d);
 
-		rooms.push({
-			...system(which),
-			x,
-			y,
-			w: SYSTEM.w,
-			d: SYSTEM.d,
-			face: FACE,
-			door: { x: x + SYSTEM.w / 2, y: y + SYSTEM.d, side: 'bottom', lane },
-			hull: { top: index === 0 },
-			joined: { left: true, right: true },
-			within: engineering,
-			// Part of the engine bay rather than a room of its own, so no sign of its own over it
-			unsigned: true,
-			feed: left + ENGINEERING_W * 0.42,
-			props: [],
+			rooms.push({
+				...system(which),
+				name: machines.length > 1 ? `${which.name} · ${machine.name}` : which.name,
+				machine: machine.key,
+				x,
+				y,
+				w: SYSTEM.w,
+				d: SYSTEM.d,
+				face: FACE,
+				door: { x: x + SYSTEM.w / 2, y: y + SYSTEM.d, side: 'bottom', lane },
+				hull: { top: nth === 0 && index < 2 },
+				joined: { left: true, right: true },
+				within: engineering,
+				// Part of the engine bay rather than a room of its own, so no sign of its own over it
+				unsigned: true,
+				feed: left + ENGINEERING_W * 0.42,
+				props: [],
+			});
 		});
 	});
 	rooms.push({
@@ -546,7 +552,10 @@ export const layOut = ({ bays = [], machines = [], lounge, checkouts = 0, agents
 			reactor: reactorAt(engineering, index, machines.length),
 			door: engineering.door,
 		})),
-		systems: Object.fromEntries(rooms.filter(room => room.kind === 'system').map(room => [room.key, room])),
+		// By machine and system: `${machine key}/${system key}`
+		systems: Object.fromEntries(
+			rooms.filter(room => room.kind === 'system').map(room => [`${room.machine}/${room.key}`, room]),
+		),
 		engineering,
 		bridge,
 		lounge: kind('lounge'),
@@ -1151,8 +1160,10 @@ export const drawHull = (
 		tank.at = { x, y: below ? at.y + 9 : at.y - 10 };
 	});
 
-	if (comms && layout.systems.dish) {
-		const room = layout.systems.dish;
+	// The ship's dish on its back, over the first machine's web
+	const room = Object.values(layout.systems).find(({ key }) => key === 'dish');
+
+	if (comms && room) {
 		const base = shape.top;
 		const dishX = Math.round((room.x + 0.8) * UNIT.x);
 		const facing = comms.active ? [-1, 0, 1, 0][Math.floor(time * 1.2) % 4] : 0;

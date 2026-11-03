@@ -477,7 +477,7 @@ test('machines start right behind the engine bay, the first above the spine', ()
 	expect([bays[0].parts.length, bays[0].hull.top]).toEqual([1, true]);
 	expect(bays[0].x).toBeCloseTo(engineering.x + engineering.w);
 	// Reading, editing, commands and the web all in the engine bay, so the data of each runs the same way
-	expect([systems.library, systems.forge, systems.reactor, systems.dish].map(({ within }) => within)).toEqual([
+	expect(['library', 'forge', 'reactor', 'dish'].map(key => systems[`here/${key}`].within)).toEqual([
 		engineering,
 		engineering,
 		engineering,
@@ -742,4 +742,31 @@ test('the stars stream past faster the harder the engines burn', () => {
 	run(idle, 1);
 	run(burning, 1);
 	expect(burning.pace).toBeGreaterThan(idle.pace * 5);
+});
+
+test('each engine has its own reading, editing, commands and web beside it, none over another', () => {
+	const made = scene([
+		{ ...world('here', [session({ id: 'a', project: 'paude' })], { projects: ['paude'] }), fuel: { account: 'x' } },
+		{
+			...world('https://vps', [session({ id: 'b', project: 'paude' })], { projects: ['paude'] }),
+			fuel: { account: 'x' },
+		},
+	]);
+	const { systems, engineering } = made.layout;
+	const rooms = Object.values(systems);
+
+	expect(Object.keys(systems).sort()).toEqual(
+		['here', 'https://vps'].flatMap(machine => ['dish', 'forge', 'library', 'reactor'].map(key => `${machine}/${key}`)),
+	);
+	expect(new Set(rooms.map(({ name }) => name)).size).toBe(8);
+	for (const room of rooms) {
+		expect(room.within).toBe(engineering);
+		for (const other of rooms.filter(other => other !== room))
+			expect(
+				room.x < other.x + other.w - 1e-9 &&
+					other.x < room.x + room.w - 1e-9 &&
+					room.y < other.y + other.d - 1e-9 &&
+					other.y < room.y + room.d - 1e-9,
+			).toBe(false);
+	}
 });

@@ -112,6 +112,8 @@ const HEAD_SIZES = ['bursting', 'huge', 'big', 'small'];
 const BURSTING = 5;
 const STEAM_SECONDS = 5 * 60;
 const HOT_SECONDS = 15 * 60;
+// Where each kind of stream runs from, in the order their packets are spaced along a shared conduit
+const STREAM_LANES = ['library', 'forge', 'reactor', 'dish', 'tower', 'outpost'];
 // A lightning bolt, three pixels across, for the side of an energy drink
 const ZAP = [
 	[2, 0],
@@ -381,14 +383,15 @@ const exitOf = (room, from, lane) => {
 	return [{ x: door.x, y: from.y }, door, { x: door.x, y: lane }];
 };
 
-// The ship's shared systems, from every machine's appliances: one of each, its users from every machine, its uses
-// and failures added up, its log every machine's newest first, each MCP server one mast
-const systemsOf = machines => {
+// The ship's systems from its machines' appliances: by default one of each for the whole ship, its users from every
+// machine, its uses and failures added up, its log every machine's newest first, each MCP server one mast; or one for
+// each machine and appliance, as `keyOf` keys them
+const systemsOf = (machines, keyOf = (machine, appliance) => appliance.key) => {
 	const systems = new Map();
 
 	for (const machine of machines)
 		for (const appliance of machine.appliances ?? []) {
-			const known = systems.get(appliance.key) ?? {
+			const known = systems.get(keyOf(machine, appliance)) ?? {
 				...appliance,
 				users: [],
 				uses: 0,
@@ -402,7 +405,7 @@ const systemsOf = machines => {
 			known.uses += appliance.uses;
 			known.failures += appliance.failures;
 			known.machines.push({ name: machine.name, hue: machine.hue, uses: appliance.uses });
-			systems.set(appliance.key, known);
+			systems.set(keyOf(machine, appliance), known);
 		}
 
 	return new Map(
@@ -466,6 +469,7 @@ export default class Scene {
 	haulers = [];
 	// The shared systems, each from every machine's appliances, and the hold's cargo
 	systems = new Map();
+	machineSystems = new Map();
 	cargo = [];
 	tanks = [];
 	// Each checkout's commits not pushed, as last seen: fewer now means a push went; and its files changed, more meaning
@@ -718,6 +722,10 @@ export default class Scene {
 		const machines = worlds.map(world => this.machineOf(world, sessions));
 
 		this.systems = systemsOf(machines.filter(({ quiet }) => !quiet));
+		this.machineSystems = systemsOf(
+			machines.filter(({ quiet }) => !quiet),
+			(machine, appliance) => `${machine.key}/${appliance.key}`,
+		);
 		this.loadCargo(worlds);
 		this.layout = layOut({
 			bays: this.bays.map(bay => ({ ...bay, desks: bay.sessions.length })),
@@ -2117,8 +2125,9 @@ export default class Scene {
 		];
 	}
 
+	// A system's room's own machine's system
 	systemOf(room) {
-		return this.systems.get(room.key);
+		return this.machineSystems.get(`${room.machine}/${room.key}`);
 	}
 
 	// Each shared system in use lights a pathway from its room to each desk using it, packets running along it in the
@@ -2130,15 +2139,10 @@ export default class Scene {
 	// from the nav table, other tools from the hold, by the aisles and the spine; subagents need none, being small greys
 	// at the desk.
 	drawPathways(ctx) {
-		const sources = {
-			library: this.layout.systems.library,
-			forge: this.layout.systems.forge,
-			reactor: this.layout.systems.reactor,
-			dish: this.layout.systems.dish,
-			tower: this.bridge,
-			outpost: this.layout.hold,
-		};
-		const lanes = Object.keys(sources);
+		// Its own machine's systems for reading, editing, commands and the web
+		const sourceOf = (key, machine) =>
+			({ tower: this.bridge, outpost: this.layout.hold })[key] ?? this.layout.systems[`${machine}/${key}`];
+		const lanes = STREAM_LANES;
 
 		if (this.layout.halls[0]?.lane === undefined) return;
 
@@ -2152,7 +2156,7 @@ export default class Scene {
 
 			const { facility, fade } = stream;
 			const key = facility.startsWith('mcp:') ? 'dish' : facility;
-			const room = sources[key];
+			const room = sourceOf(key, worker.session.server.key);
 
 			if (!room) continue;
 
@@ -2270,7 +2274,7 @@ export default class Scene {
 
 			const facility = stream.facility.startsWith('mcp:') ? 'dish' : stream.facility;
 
-			if (!this.layout.systems[facility]?.within) continue;
+			if (!this.layout.systems[`${worker.session.server.key}/${facility}`]?.within) continue;
 
 			const name = this.bayOf(worker)?.name;
 			const color = `hsl(${accentOf(facility)} 85% 68%)`;
