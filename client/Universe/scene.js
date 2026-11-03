@@ -5,8 +5,8 @@ import { drawLighting, lightOf } from './lighting';
 import { FORMS, drawHousing } from './machine';
 import { pixelText, textWidth } from './retro';
 import {
+	TANK_COLORS,
 	clipToShip,
-	clonerAt,
 	drawBridge,
 	drawEngineering,
 	drawHangar,
@@ -14,19 +14,10 @@ import {
 	drawHull,
 	drawLounge,
 	drawMaterializer,
-	drawTransporter,
 	drawSystem,
-	holdSpotAt,
-	layOut,
-	navAt,
-	seatOf,
-	aisleOf,
-	padAt,
-	panelAt,
-	recyclerAt,
-	stockAt,
-	TANK_COLORS,
-} from './ship';
+	drawTransporter,
+} from './hull';
+import { aisleOf, clonerAt, holdSpotAt, layOut, navAt, padAt, panelAt, recyclerAt, seatOf, stockAt } from './plan';
 import {
 	DESK_PITCH,
 	DESK_ROW,
@@ -64,14 +55,15 @@ export const BEAM_SECONDS = 0.9;
 // How long a stream stays after its tool, fading, and how far apart its packets run
 const STREAM_LINGER = 4;
 const PACKET_GAP = 14;
-// How many of a lounger's empties lie crushed about its feet before the rest stand behind the couch
+// How many of a lounger's empties lie crushed about its feet before the rest pile on the backrest
 const CANS_DROPPED = 6;
 // How long the pilot stands by one grey they watch before moving on to the next
 const MILL_SECONDS = 25;
-// A worker crosses the ship quicker than a visitor strolls it; it takes this long to be made in the materializer
+// A worker crosses the ship quicker than a visitor strolls it
 const WORKER_SPEED = 2.6;
 // How fast the service crew trundles about the ship
 const BOT_SPEED = 2.2;
+// How long a worker takes to be made in the materializer
 const MAKE_SECONDS = 1.6;
 // How long the materializer stays charged for a prompt sent, waiting for its session to show
 const CHARGE_SECONDS = 30;
@@ -129,7 +121,7 @@ const COMPACTED = 0.2;
 // Whether what changed was tested since, worst first, and how inspection shows each
 const VERDICTS = ['failing', 'stale', 'untested', 'current'];
 const VERDICT_COLORS = { failing: '#d4524a', stale: '#f0b43c', untested: '#77829a', current: '#2fb39a' };
-// The most of a system's latest uses its log keeps, as each server's does
+// The most of a system's latest uses its log keeps, as each engine's does
 const LOG_LENGTH = 12;
 
 // The pip on a worker's chest, by the model its session runs: gold, silver, bronze, and violet for Fable
@@ -142,15 +134,17 @@ const RANKS = [
 
 const rankOf = model => RANKS.find(([name]) => model?.includes(name))?.[1] ?? PALETTE.a;
 
-// A worker's head grows with how full its session's context is
-// Resting in the lounge: stopped, or ready with its prompt cache gone cold and nobody keeping it warm, its next turn
-// starting over; one asking you something stays at its desk, as one kept warm or going does
+// 'warm', 'going' or none; paudes before `keeping` send it as `kept`
+const keepingOf = session => session.keeping ?? session.kept;
+
+// Resting in the lounge: stopped, or ready with its prompt cache gone cold and nobody keeping it warm; one asking you
+// something stays at its seat
 export const resting = session =>
-	session.status === 'stopped' || (session.status === 'ready' && session.context?.warm === false && !session.kept);
+	session.status === 'stopped' ||
+	(session.status === 'ready' && session.context?.warm === false && !keepingOf(session));
 
 const headFor = fill => (fill >= 0.75 && 'huge') || (fill >= 0.5 && 'big') || 'small';
 
-// What a session's monitor shows, at its port
 const screenOf = session => {
 	const facility = facilityOf(session.tool);
 	const working = session.status === 'working';
@@ -165,7 +159,7 @@ const screenOf = session => {
 	return { kind, hue: accentOf(facility) };
 };
 
-// A branch's hue, the same for it on every machine
+// A branch's hue, the same for it on every engine
 const branchHue = branch => Math.round(seeded(`branch:${branch}`) * 360);
 
 // When a usage limit resets, from now, as the reactor shows it
@@ -179,11 +173,9 @@ export const countdown = (resetAt, now) => {
 	return `${minutes >= 60 ? `${Math.floor(minutes / 60)}H ` : ''}${minutes % 60}M`;
 };
 
-// What a worker is doing, in the theme's hues, as its monitor shows it
-// Each system's own color, far enough apart that their packets in one conduit tell apart (the web's cyan read as reading's blue)
+// Each system's own color, far enough apart that their packets in one conduit tell apart
 const ACCENTS = { library: 209, forge: 29, reactor: 164, dish: 320, hatchery: 254, tower: 45, outpost: 215 };
 
-// Each appliance's word under it
 const APPLIANCE_WORDS = {
 	library: 'files',
 	forge: 'edits',
@@ -199,10 +191,9 @@ const accentOf = key => (key?.startsWith('mcp:') ? Math.round(seeded(key) * 360)
 // How hard a facility has worked lately, 0 to 1: a use a minute for ten minutes is about half, a few a minute full
 const loadOf = uses => Math.min(1, Math.log2(1 + uses) / 6);
 
-// A machine's appliances: Claude itself (its reactor), then one for each thing it can reach, its MCP servers among
-// them. Each is at work while a session on the machine is at it, and says which; and says how much it's been used in
-// the last ten minutes and how much of that failed (`usage`, as the server counts it), and its latest uses, each with
-// the session that made it where that's still known (`log`).
+// An engine's appliances: Claude itself (its reactor), then one for each thing it can reach, its MCP servers among
+// them; each with the sessions at it, its uses and failures in the last ten minutes (`usage`, as the server counts
+// them), and its latest uses, each with its session where that's still known (`log`)
 export const appliancesOf = (tools, sessions, usage = {}, log = {}) => {
 	const working = sessions.filter(({ status }) => status === 'working');
 	const at = key => working.filter(({ tool }) => tool && facilityOf(tool) === key);
@@ -238,51 +229,49 @@ const mix = (a, b, amount) => a + (b - a) * amount;
 // quiet turn, full for several sessions at it
 const flowOf = rate => Math.min(1, Math.log10(1 + rate) / 5);
 
-// A fuel tank for each Claude account the engines run on, a machine that doesn't say its own: what all its engines
-// burned this window, how fast, and its size as measured when a limit last stopped one of them (each machine measures
-// only its own burn, so the largest is the closest), then how full that leaves it; empty while any is limited
+// A fuel tank for each Claude account the engines run on, or for each engine that doesn't say its account: what they
+// burned this window, how fast, and its size as measured when a limit last stopped one of them (each engine measures
+// only its own burn, so the largest is the closest); empty while any is limited
 const EMPTY_TANK = { burned: 0, rate: 0, capacity: null, capacityAgo: null };
 
-export const tanksOf = machines => {
+export const tanksOf = engines => {
 	const tanks = new Map();
 
-	for (const machine of machines) {
-		// Those that don't say what they run on (paudes too old to) share one tank, what's in it not known: counted in
-		// with another's, a machine on a subscription of its own showed none, and a tank each showed more subscriptions
-		// than there are when two of them share one
-		if (!machine.fuel) {
-			const unknown = tanks.get('unknown') ?? { ...EMPTY_TANK, machines: [], unknown: true };
+	for (const engine of engines) {
+		// Those that don't say what they run on (paudes too old to) share one tank, what's in it not known
+		if (!engine.fuel) {
+			const unknown = tanks.get('unknown') ?? { ...EMPTY_TANK, engines: [], unknown: true };
 
-			unknown.machines.push(machine);
+			unknown.engines.push(engine);
 			tanks.set('unknown', unknown);
 			continue;
 		}
 
-		const key = machine.fuel.account ?? machine.key;
+		const key = engine.fuel.account ?? engine.key;
 		const tank = tanks.get(key) ?? {
-			account: machine.fuel.account,
-			plan: machine.fuel.plan,
-			machines: [],
+			account: engine.fuel.account,
+			plan: engine.fuel.plan,
+			engines: [],
 			...EMPTY_TANK,
 		};
 
-		tank.machines.push(machine);
-		tank.burned += machine.fuel.burned ?? 0;
-		tank.rate += machine.fuel.rate ?? 0;
-		if ((machine.fuel.capacity ?? 0) > (tank.capacity ?? 0))
-			Object.assign(tank, { capacity: machine.fuel.capacity, capacityAgo: machine.fuel.capacityAgo });
+		tank.engines.push(engine);
+		tank.burned += engine.fuel.burned ?? 0;
+		tank.rate += engine.fuel.rate ?? 0;
+		if ((engine.fuel.capacity ?? 0) > (tank.capacity ?? 0))
+			Object.assign(tank, { capacity: engine.fuel.capacity, capacityAgo: engine.fuel.capacityAgo });
 		tanks.set(key, tank);
 	}
 
 	return [...tanks.values()].map(tank => ({
 		...tank,
-		empty: tank.machines.some(({ limit }) => limit),
+		empty: tank.engines.some(({ limit }) => limit),
 		level: tank.capacity ? Math.max(0, Math.min(1, 1 - tank.burned / tank.capacity)) : null,
 		flow: flowOf(tank.rate),
 	}));
 };
 
-// Hazard tape round a desk from `from` to `to` (art pixels), painted once for its size and where its stripes fall
+// Hazard tape from `from` to `to` (art pixels), painted once for its size and where its stripes fall
 const tapes = new Map();
 const tapeOf = (from, to) => {
 	const [w, h] = [to.x - from.x, to.y - from.y];
@@ -333,8 +322,7 @@ const trackOf = points => {
 	return { runs, legs };
 };
 
-// From inside a room out to the spine at `lane`: across to its door and through it. From a desk that's round the
-// desks: back past the desk's side, down the gap beside it to the aisle before the row, along that to the door.
+// From inside a room out to the spine at `lane`: across to its door and through it
 const exitOf = (room, from, lane) => {
 	// A project's section is left by the deck the point is on
 	if (room.parts) return exitOf(room.parts.find(part => from.y <= part.y + part.d) ?? room.parts.at(-1), from, lane);
@@ -359,7 +347,7 @@ const exitOf = (room, from, lane) => {
 		const inside = door.x + (door.side === 'left' ? 0.6 : -0.6);
 		const outside = door.x + (door.side === 'left' ? -0.4 : 0.4);
 
-		// Off the bridge by the aisle before its row, then along its aft wall, never behind a desk
+		// Off the bridge by the aisle before its row, then along its aft wall, never behind an island
 		if (room.kind === 'bridge') {
 			const aisle = aisleOf(room, from.y);
 
@@ -383,29 +371,29 @@ const exitOf = (room, from, lane) => {
 	return [{ x: door.x, y: from.y }, door, { x: door.x, y: lane }];
 };
 
-// The ship's systems from its machines' appliances: by default one of each for the whole ship, its users from every
-// machine, its uses and failures added up, its log every machine's newest first, each MCP server one mast; or one for
-// each machine and appliance, as `keyOf` keys them
-const systemsOf = (machines, keyOf = (machine, appliance) => appliance.key) => {
+// The ship's systems from its engines' appliances: by default one of each for the whole ship, its users, uses,
+// failures and log from every engine, each MCP server one mast; or one for each engine and appliance, as `keyOf` keys
+// them
+const systemsOf = (engines, keyOf = (engine, appliance) => appliance.key) => {
 	const systems = new Map();
 
-	for (const machine of machines)
-		for (const appliance of machine.appliances ?? []) {
-			const known = systems.get(keyOf(machine, appliance)) ?? {
+	for (const engine of engines)
+		for (const appliance of engine.appliances ?? []) {
+			const known = systems.get(keyOf(engine, appliance)) ?? {
 				...appliance,
 				users: [],
 				uses: 0,
 				failures: 0,
 				log: [],
-				machines: [],
+				engines: [],
 			};
 
 			known.users.push(...appliance.users);
 			known.log = [...known.log, ...(appliance.log ?? [])].sort((a, b) => a.ago - b.ago).slice(0, LOG_LENGTH);
 			known.uses += appliance.uses;
 			known.failures += appliance.failures;
-			known.machines.push({ name: machine.name, hue: machine.hue, uses: appliance.uses });
-			systems.set(keyOf(machine, appliance), known);
+			known.engines.push({ name: engine.name, hue: engine.hue, uses: appliance.uses });
+			systems.set(keyOf(engine, appliance), known);
 		}
 
 	return new Map(
@@ -438,7 +426,7 @@ const walk = (mover, budget, seconds) => {
 	if (mover.path.length) mover.step += seconds * 9;
 };
 
-const sessionKey = (server, id) => `${server}/${id}`;
+export const sessionKey = (engineKey, id) => `${engineKey}/${id}`;
 
 // What needs this person, most pressing first: those asking something, then those with something new for them
 export const triage = (sessions, read = new Map()) => {
@@ -453,36 +441,34 @@ export const triage = (sessions, read = new Map()) => {
 	];
 };
 
-// Your work as one ship: a bay for each project with something going on, whichever machine it runs on, and in it a
-// desk for each session, its worker at it doing what the session is doing. Whoever is watching a session stands
-// beside it. What needs you is marked at any zoom. `update` takes what the servers say, `step` moves it on, `draw`
-// paints it, `hit` names what's under a point.
-export default class Scene {
+// Your work as one ship. `update` takes what the engines answered, `step` moves it on, `draw` paints it, `hit` names
+// what's under a point.
+export default class Ship {
 	bays = [];
-	machines = [];
+	engines = [];
 	unseen = [];
 	labels = [];
-	// The servers that have answered at least once
-	heard = new Set();
+	// The engines that have answered at least once
+	answered = new Set();
 	workers = new Map();
 	walkers = new Map();
 	haulers = [];
-	// The shared systems, each from every machine's appliances, and the hold's cargo
+	// The shared systems, each from every engine's appliances, and the hold's cargo
 	systems = new Map();
-	machineSystems = new Map();
+	engineSystems = new Map();
 	cargo = [];
 	tanks = [];
 	// Each checkout's commits not pushed, as last seen: fewer now means a push went; and its files changed, more meaning
 	// more parts made
 	pushed = new Map();
 	changed = new Map();
-	// What the work made, waiting to set off from its desk, and on its way: replies to the bridge, parts to the hold
+	// What the work made, waiting to set off from its seat, and on its way: replies to the bridge, parts to the hold
 	outgoing = [];
 	parcels = [];
 	// Each session's changes as of when they were read here, until the server says it's seen them too
 	read = new Map();
 	stars = [];
-	// Screen pixels at the right kept for the panel about a room looked at
+	// Screen pixels at the right reserved for the panel about a room looked at
 	aside = 0;
 	selected = null;
 	bots = new Map();
@@ -499,7 +485,7 @@ export default class Scene {
 	// Each label's words and size for its place, as last worked out
 	fitted = new Map();
 	layout = layOut();
-	// 'all', a bay's name or a machine's key, or 'free' once dragged or zoomed by hand
+	// 'all', a bay's name or an engine's key, or 'free' once dragged or zoomed by hand
 	looking = 'all';
 
 	resize(width, height) {
@@ -528,7 +514,6 @@ export default class Scene {
 
 	// The other ships of its fleet, as its transporter hears from them: [{ key, name, needs, news, working }]
 	fleet = [];
-	// When its transporter last beamed someone off it or onto it
 	beamAt = -Infinity;
 
 	get offset() {
@@ -546,7 +531,6 @@ export default class Scene {
 		return { x: at.x * this.camera.zoom + x, y: at.y * this.camera.zoom + y };
 	}
 
-	// Art pixels shown on the screen
 	toScreen({ x, y }) {
 		const offset = this.offset;
 
@@ -570,8 +554,8 @@ export default class Scene {
 			return Math.max(ZOOMS.least, Math.min(room ? ZOOMS.room : ZOOMS.most, Math.floor(fit)));
 		};
 
-		// Only where it would drop the ship below the zoom it reads at: a wide window that fits it a step larger alone keeps
-		// the panel
+		// Only where it would drop the ship below the zoom it reads at: a wide window that fits it a step larger alone
+		// keeps the panel
 		this.tight = !room && zoomWith(this.aside) < Math.min(zoomWith(0), READABLE_ZOOM);
 
 		const aside = this.tight ? 0 : this.aside;
@@ -601,18 +585,18 @@ export default class Scene {
 		this.looking = known ? at : 'all';
 	}
 
-	// A room by what it's looked at by: a bay by its project, an engine room by its machine, or the bridge or lounge
+	// A room by what it's looked at by: a bay by its project, engineering by an engine's key, or the bridge or lounge
 	roomOf(at) {
 		if (at === BRIDGE) return this.bridge;
 		if (at === LOUNGE) return this.lounge;
-		if (this.machines.some(({ key }) => key === at)) return this.layout.engineering;
+		if (this.engines.some(({ key }) => key === at)) return this.layout.engineering;
 
 		return (
 			this.bays.find(({ name }) => name === at) ?? this.layout.rooms?.find(({ kind, name }) => kind && name === at)
 		);
 	}
 
-	// Somewhere particular, closely: a worker's desk
+	// Somewhere particular, closely: a worker's seat
 	lookAt(point) {
 		const at = this.art(point);
 
@@ -638,13 +622,13 @@ export default class Scene {
 		this.camera.zoom = zoom;
 	}
 
-	// worlds: [{ key, name, hue, remote, error, projects, sessions, people }], each server as it last answered
-	update(worlds) {
-		const sessions = worlds.flatMap(world =>
-			(world.sessions ?? []).map(session => ({
+	// answers: [{ key, name, hue, remote, error, projects, sessions, people }], what each engine last answered
+	update(answers) {
+		const sessions = answers.flatMap(answer =>
+			(answer.sessions ?? []).map(session => ({
 				...session,
-				key: sessionKey(world.key, session.id),
-				server: { key: world.key, name: world.name, hue: world.hue, remote: world.remote },
+				key: sessionKey(answer.key, session.id),
+				engine: { key: answer.key, name: answer.name, hue: answer.hue, remote: answer.remote },
 			})),
 		);
 		const keys = new Set(sessions.map(({ key }) => key));
@@ -653,23 +637,19 @@ export default class Scene {
 		for (const session of sessions) {
 			const worker = this.workers.get(session.key);
 
-			// A turn finished since the last look: a moment worth a sparkle
 			if (worker && (session.reply?.turn ?? 0) > (worker.session.reply?.turn ?? 0)) {
 				worker.finishedAt = this.time;
 				this.outgoing.push({ kind: 'reply', key: session.key });
 			}
-			// Stopped, it walks to the lounge; woken, back to its desk
-			// Stopped, or waiting with its cache gone cold (unless it's kept warm or going), it goes to the lounge
 			const lounging = resting(session);
 
 			// Its empties go with it from the lounge, so a pile is only ever since its cache last went cold
 			if (worker && !lounging) worker.cans = undefined;
-			if (worker?.desk && worker.lounging !== lounging)
+			if (worker?.seat && worker.lounging !== lounging)
 				worker.trip = {
 					from: { x: worker.x ?? this.placeOf(worker).x, y: worker.y ?? this.placeOf(worker).y },
 					room: worker.room ?? worker.bay,
 				};
-			// Its context much emptier than last time: compacted, and the cube of it goes
 			if (worker && (worker.session.context?.fill ?? 0) - (session.context?.fill ?? 1) >= COMPACTED) {
 				worker.compactedAt = this.time;
 				worker.compactedFrom = this.headOf(worker.session);
@@ -684,23 +664,21 @@ export default class Scene {
 					opacity: 0,
 					leaving: false,
 					path: [],
-					// New since its server was first heard from, it's made in the materializer and walks to its place
-					arriving: this.heard.has(session.server.key) && !lounging,
+					// New since its engine first answered, it's made in the materializer and walks to its place
+					arriving: this.answered.has(session.engine.key) && !lounging,
 				});
-			// When its last tool failed and its turn began, on this scene's clock
 			Object.assign(this.workers.get(session.key), {
 				faultAt: session.faultAgo === undefined ? null : this.time - session.faultAgo / 1000,
 				turnAt: session.turnAge === undefined ? null : this.time - session.turnAge / 1000,
 			});
-			// The server has it seen too
 			if (session.unseen === 0) this.read.delete(session.key);
 		}
 
-		// Where each project's machine was last drawn, kept for its new bay until it's drawn again: the conduits and streams
-		// are routed from it before the machines draw, and a fresh bay without it dropped them all for a frame each look
+		// Where each project's machine was last drawn, kept for its new bay until it's drawn again: the conduits and
+		// streams are routed from it before the machines draw
 		const built = new Map((this.bays ?? []).map(({ name, built: where }) => [name, where]));
 
-		this.bays = this.baysFor(worlds);
+		this.bays = this.baysFor(answers);
 		// Each grey in its project's color, the one its machine, island and conduit have
 		for (const bay of this.bays)
 			for (const key of bay.sessions) {
@@ -708,8 +686,8 @@ export default class Scene {
 
 				if (worker && bay.hue !== null) worker.session = { ...worker.session, hue: bay.hue };
 			}
-		this.people = this.peopleOf(worlds);
-		this.projectHues = new Map(worlds.flatMap(world => (world.projects ?? []).map(({ name, hue }) => [name, hue])));
+		this.people = this.peopleOf(answers);
+		this.projectHues = new Map(answers.flatMap(answer => (answer.projects ?? []).map(({ name, hue }) => [name, hue])));
 
 		const lounging = [...this.workers]
 			.filter(([, worker]) => worker.lounging && (!worker.leaving || worker.opacity > 0))
@@ -719,31 +697,29 @@ export default class Scene {
 		const pilots = [...this.people.values()].filter(person => !this.guestOf(person));
 
 		this.screens = [...new Set(pilots.flatMap(({ sessions: keys }) => keys))].filter(key => this.workers.has(key));
-		const machines = worlds.map(world => this.machineOf(world, sessions));
+		const engines = answers.map(answer => this.engineOf(answer, sessions));
 
-		this.systems = systemsOf(machines.filter(({ quiet }) => !quiet));
-		this.machineSystems = systemsOf(
-			machines.filter(({ quiet }) => !quiet),
-			(machine, appliance) => `${machine.key}/${appliance.key}`,
+		this.systems = systemsOf(engines.filter(({ quiet }) => !quiet));
+		this.engineSystems = systemsOf(
+			engines.filter(({ quiet }) => !quiet),
+			(engine, appliance) => `${engine.key}/${appliance.key}`,
 		);
-		this.loadCargo(worlds);
+		this.loadCargo(answers);
 		this.layout = layOut({
-			bays: this.bays.map(bay => ({ ...bay, desks: bay.sessions.length })),
-			machines: machines.filter(({ quiet }) => !quiet),
+			bays: this.bays.map(bay => ({ ...bay, seated: bay.sessions.length })),
+			engines: engines.filter(({ quiet }) => !quiet),
 			lounge: { count: lounging.length, sessions: lounging },
-			// Each session's subagents, each with a small terminal of its own beside its grey's seat
 			agents: Object.fromEntries([...this.workers].map(([key, worker]) => [key, worker.session.agents ?? 0])),
 			checkouts: this.cargo.length,
 			fleet: this.fleet.length,
 		});
 		// What can't be seen into takes no room aboard; it's named off to the side
-		this.unseen = machines.filter(({ quiet }) => quiet);
+		this.unseen = engines.filter(({ quiet }) => quiet);
 		this.bays = this.layout.bays;
 		for (const bay of this.bays) bay.built ??= built.get(bay.name);
-		this.machines = this.layout.machines;
-		this.tanks = tanksOf(this.machines);
-		// paude's own helpers, every machine's
-		this.crew = worlds.reduce(
+		this.engines = this.layout.engines;
+		this.tanks = tanksOf(this.engines);
+		this.crew = answers.reduce(
 			(all, { crew }) => {
 				all.busy.push(...(crew?.busy ?? []));
 				for (const [job, count] of Object.entries(crew?.lately ?? {})) all.lately[job] = (all.lately[job] ?? 0) + count;
@@ -752,8 +728,7 @@ export default class Scene {
 			},
 			{ busy: [], lately: {} },
 		);
-		// How far the ship has come, every machine's deliveries together
-		this.journey = worlds.reduce(
+		this.journey = answers.reduce(
 			(sum, { journey }) => {
 				for (const kind of Object.keys(sum)) sum[kind] += journey?.[kind] ?? 0;
 
@@ -769,20 +744,18 @@ export default class Scene {
 
 		this.moved = plan !== this.plan;
 		this.plan = plan;
-		// Every running session's grey at its seat on its project's island on the bridge, belonging to its project's
-		// machine all the same
-		for (const worker of this.workers.values()) worker.station = undefined;
+		for (const worker of this.workers.values()) worker.homeSeat = undefined;
 		this.bays.forEach(bay =>
 			bay.sessions.forEach(key => {
 				const worker = this.workers.get(key);
 				const seat = seatOf(this.bridge, key);
 
-				if (worker && seat) Object.assign(worker, { desk: seat, station: seat, bay, room: this.bridge });
+				if (worker && seat) Object.assign(worker, { seat, homeSeat: seat, bay, room: this.bridge });
 			}),
 		);
 		this.lounge?.sessions.forEach((key, index) =>
 			Object.assign(this.workers.get(key), {
-				desk: loungeSeatAt(this.lounge, index),
+				seat: loungeSeatAt(this.lounge, index),
 				bay: this.lounge,
 				room: this.lounge,
 			}),
@@ -790,17 +763,15 @@ export default class Scene {
 		this.send();
 		this.board();
 		this.launch();
-		for (const world of worlds) if (world.sessions) this.heard.add(world.key);
+		for (const answer of answers) if (answer.sessions) this.answered.add(answer.key);
 	}
 
-	// Where a worker sits: behind its desk, or on its couch
 	placeOf(worker) {
-		const { desk } = worker;
+		const { seat } = worker;
 
-		return worker.lounging ? { x: desk.x, y: desk.y } : { x: desk.x + 0.3, y: desk.y + 0.2 };
+		return worker.lounging ? { x: seat.x, y: seat.y } : { x: seat.x + 0.3, y: seat.y + 0.2 };
 	}
 
-	// From a point in one room to one in another: across to the door, out to the hall, along it, and in
 	// From a point in one room to one in another: to its door, out to the spine (along `lane`, the spine's middle unless
 	// given), along it, and in; from nowhere (`room` null) it starts on the spine
 	route(from, room, to, toRoom, lane = this.layout.halls[0]?.lane) {
@@ -815,8 +786,7 @@ export default class Scene {
 		return [...out, ...exitOf(toRoom, to, lane).reverse(), to];
 	}
 
-	// From one place on the bridge to another by the aisles and its aft wall: down to the aisle before the row it's in,
-	// along to the wall, along the wall to the aisle before the row it's going to, and along that to it
+	// From one place on the bridge to another by the aisles and its aft wall
 	acrossBridge(from, to) {
 		const wall = this.bridge.x + 0.6;
 		const [leave, reach] = [aisleOf(this.bridge, from.y), aisleOf(this.bridge, to.y)];
@@ -831,7 +801,7 @@ export default class Scene {
 	// their place.
 	send() {
 		for (const worker of this.workers.values()) {
-			if (!worker.desk || worker.leaving) continue;
+			if (!worker.seat || worker.leaving) continue;
 
 			const place = this.placeOf(worker);
 
@@ -863,10 +833,10 @@ export default class Scene {
 	}
 
 	tripAfterMoving({ room }) {
-		const kept = room?.kind === 'lounge' ? this.lounge : this.roomOf(room?.name);
+		const origin = room?.kind === 'lounge' ? this.lounge : this.roomOf(room?.name);
 		const lane = this.layout.halls[0]?.lane;
 
-		if (kept) return { from: { ...kept.door }, room: kept };
+		if (origin) return { from: { ...origin.door }, room: origin };
 		if (lane === undefined || !room?.door) return null;
 
 		return { from: { x: room.door.x, y: lane }, room: null };
@@ -887,15 +857,15 @@ export default class Scene {
 
 	// The hold's cargo: for each checkout a session works in, the files changed and the commits not pushed, with the
 	// project it's for. A checkout with fewer commits to push than last time pushed them, and a hauler takes them away.
-	loadCargo(worlds) {
+	loadCargo(answers) {
 		this.checkouts = new Map();
 		this.cargo = [];
-		for (const world of worlds)
-			for (const checkout of world.checkouts ?? []) {
-				const key = `${world.key}:${checkout.root}`;
+		for (const answer of answers)
+			for (const checkout of answer.checkouts ?? []) {
+				const key = `${answer.key}:${checkout.root}`;
 
 				this.checkouts.set(key, checkout);
-				const users = (world.sessions ?? []).filter(session => session.checkout === checkout.root);
+				const users = (answer.sessions ?? []).filter(session => session.checkout === checkout.root);
 				const project = users.find(({ project: name }) => this.bays.some(bay => bay.name === name))?.project;
 				const before = this.pushed.get(key);
 				const changed = this.changed.get(key);
@@ -908,14 +878,14 @@ export default class Scene {
 					if (maker)
 						this.outgoing.push({
 							kind: 'part',
-							key: sessionKey(world.key, maker.id),
+							key: sessionKey(answer.key, maker.id),
 							checkout: key,
 							count: Math.min(3, checkout.changed - changed),
 						});
 				}
 				if (!project) continue;
 
-				this.cargo.push({ ...checkout, key, server: world.name, project });
+				this.cargo.push({ ...checkout, key, engineName: answer.name, project });
 				// Pushed: its pod drops out through the doors under the dock
 				if (before > checkout.unpushed)
 					this.haulers.push({ crates: before - checkout.unpushed, time: 0, pod: this.cargo.length - 1, project });
@@ -923,51 +893,51 @@ export default class Scene {
 	}
 
 	checkoutOf(session) {
-		return session.checkout ? this.checkouts?.get(`${session.server.key}:${session.checkout}`) : undefined;
+		return session.checkout ? this.checkouts?.get(`${session.engine.key}:${session.checkout}`) : undefined;
 	}
 
-	// A machine as its engine room shows it: Claude at its reactor, its appliances, and whether it's busy at all
-	machineOf(world, sessions) {
-		const own = sessions.filter(({ server }) => server.key === world.key);
+	// An engine as engineering shows it: Claude at its reactor, its appliances, and whether it's busy at all
+	engineOf(answer, sessions) {
+		const own = sessions.filter(({ engine }) => engine.key === answer.key);
 		const running = own.filter(({ status }) => status !== 'stopped').length;
-		const quiet = Boolean(world.error) || !world.projects;
+		const quiet = Boolean(answer.error) || !answer.projects;
 		const limited = own.filter(({ limit }) => limit);
 		const resets = limited.map(({ limit }) => limit.resetAt).filter(Boolean);
 
 		return {
-			key: world.key,
-			name: world.name,
-			hue: world.hue,
+			key: answer.key,
+			name: answer.name,
+			hue: answer.hue,
 			quiet,
 			busy: own.some(({ status }) => status === 'working'),
-			older: Boolean(world.older),
+			older: Boolean(answer.older),
 			detail:
-				(quiet && (world.error ? 'out of reach' : "can't see in")) ||
-				`${running || 'nothing'} running${world.older ? ', on an older paude' : ''}`,
+				(quiet && (answer.error ? 'out of reach' : "can't see in")) ||
+				`${running || 'nothing'} running${answer.older ? ', on an older paude' : ''}`,
 			...(([claude, ...appliances]) => ({ claude, appliances }))(
-				quiet ? [] : appliancesOf(world.tools ?? [], own, world.usage, world.log),
+				quiet ? [] : appliancesOf(answer.tools ?? [], own, answer.usage, answer.log),
 			),
 			limit: limited.length ? { sessions: limited.length, resetAt: resets.length ? Math.min(...resets) : null } : null,
-			link: world.remote ? (world.latency ?? null) : undefined,
-			fuel: world.fuel,
+			link: answer.remote ? (answer.latency ?? null) : undefined,
+			fuel: answer.fuel,
 		};
 	}
 
-	// A bay for each project with a session running here, or watched; a project of the same name on two machines is one
-	// bay. Stopped sessions wait in the lounge instead.
-	baysFor(worlds) {
+	// A bay for each project with a session running here, or watched; a project of the same name on two engines is one
+	// bay
+	baysFor(answers) {
 		const bays = new Map();
 		const bayOf = (name, hue) => {
-			const bay = bays.get(name) ?? { name, hue: hue ?? null, servers: [], sessions: [], watching: false };
+			const bay = bays.get(name) ?? { name, hue: hue ?? null, engines: [], sessions: [], watching: false };
 
 			bays.set(name, bay);
 
 			return bay;
 		};
 
-		for (const world of worlds)
-			for (const project of world.projects ?? []) {
-				const has = (world.sessions ?? []).some(
+		for (const answer of answers)
+			for (const project of answer.projects ?? []) {
+				const has = (answer.sessions ?? []).some(
 					session => session.project === project.name && session.status !== 'stopped',
 				);
 
@@ -977,14 +947,13 @@ export default class Scene {
 
 				bay.watching ||= project.watching;
 				bay.character ??= project.character;
-				bay.servers.push({ key: world.key, name: world.name, remote: world.remote });
+				bay.engines.push({ key: answer.key, name: answer.name, remote: answer.remote });
 			}
 
 		// Gone to rest in the lounge, it keeps its seat at its project's island all the same: its terminal frosted over
 		// gone cold, switched off stopped
 		for (const [key, worker] of this.workers)
 			if (!worker.leaving || worker.opacity > 0) bayOf(worker.session.project ?? 'elsewhere').sessions.push(key);
-		// Those in the same checkout sit together
 		for (const bay of bays.values())
 			bay.sessions.sort((a, b) =>
 				(this.workers.get(a).session.checkout ?? '').localeCompare(this.workers.get(b).session.checkout ?? ''),
@@ -1021,12 +990,11 @@ export default class Scene {
 		return ranked;
 	}
 
-	// Everyone watching anywhere, once each, the same name on two servers being one person
-	peopleOf(worlds) {
+	peopleOf(answers) {
 		const people = new Map();
 
-		for (const world of worlds)
-			for (const person of world.people ?? []) {
+		for (const answer of answers)
+			for (const person of answer.people ?? []) {
 				// Told apart by the mark their paude gives them: the owner's is the same on every paude, so they're one person
 				// across them, and two guests going by one name are two
 				const key = person.key ?? person.name;
@@ -1036,34 +1004,34 @@ export default class Scene {
 					hue: Math.round(seeded(person.name) * 360),
 				};
 
-				known.sessions.push(...person.sessions.map(id => sessionKey(world.key, id)));
+				known.sessions.push(...person.sessions.map(id => sessionKey(answer.key, id)));
 				people.set(key, known);
 			}
 
 		return people;
 	}
 
-	// Where each person aboard belongs, by what their invite lets them do, all of them on the bridge with the greys: the
-	// owner, the pilot, on foot in the aisle before one of the sessions they watch, moving on to the next every little
+	// Where each person aboard stands, by what their invite lets them do, all of them in the bridge's aisles where
+	// nothing hides them: the owner, the pilot, before one of the sessions they watch, moving on to the next every little
 	// while; someone who may drive a session on a stool before its grey, as its co-pilot; someone who may only watch or
-	// comment before its terminal, looking in. All of them in the aisles, never behind a desk where it would hide them. Invites are for one session, so a
-	// guest is only ever there. One with no terminal aboard to watch waits by the nav table.
-	stations() {
+	// comment before its terminal, looking in. Invites are for one session, so a guest is only ever there. One with no
+	// terminal aboard to watch waits by the nav table.
+	spotsOfPeople() {
 		const names = [...this.people.keys()].sort();
-		const deskOf = person => this.guestOf(person)?.desk && this.guestOf(person);
-		const pilots = names.filter(name => !deskOf(this.people.get(name)));
+		const seatedHostOf = person => this.guestOf(person)?.seat && this.guestOf(person);
+		const pilots = names.filter(name => !seatedHostOf(this.people.get(name)));
 		const crowd = new Map();
 
 		return new Map(
 			names.map(name => {
 				const person = this.people.get(name);
-				const worker = deskOf(person);
+				const worker = seatedHostOf(person);
 
 				if (!worker) {
 					const index = pilots.indexOf(name);
 					const watched = person.sessions
 						.map(key => this.workers.get(key))
-						.filter(other => other?.desk && !other.lounging && !other.leaving);
+						.filter(other => other?.seat && !other.lounging && !other.leaving);
 
 					if (!watched.length) {
 						const nav = navAt(this.bridge);
@@ -1074,8 +1042,8 @@ export default class Scene {
 						];
 					}
 
-					// One of them a while, then the next, each pilot on their own turn through them
-					// In the aisle before its grey's island, to its left, a co-pilot's stool to its right
+					// One of them a while, then the next, each pilot on their own turn through them; in the aisle before its
+					// island, to its left
 					const by = watched[(Math.floor(this.time / MILL_SECONDS) + index) % watched.length];
 
 					return [
@@ -1083,7 +1051,7 @@ export default class Scene {
 						{
 							pose: 'overseer',
 							room: by.room,
-							spot: { x: by.desk.x - 0.6 - index * 0.4, y: aisleOf(this.bridge, by.desk.y) },
+							spot: { x: by.seat.x - 0.6 - index * 0.4, y: aisleOf(this.bridge, by.seat.y) },
 							facing: 1,
 						},
 					];
@@ -1102,15 +1070,15 @@ export default class Scene {
 						room: worker.room,
 						spot:
 							pose === 'copilot'
-								? { x: worker.desk.x + 0.55 + index * 0.4, y: aisleOf(this.bridge, worker.desk.y) }
-								: { x: worker.desk.x - 0.05 + index * 0.45, y: aisleOf(this.bridge, worker.desk.y) },
+								? { x: worker.seat.x + 0.55 + index * 0.4, y: aisleOf(this.bridge, worker.seat.y) }
+								: { x: worker.seat.x - 0.05 + index * 0.45, y: aisleOf(this.bridge, worker.seat.y) },
 					},
 				];
 			}),
 		);
 	}
 
-	// The grey a guest belongs beside: the first of their sessions at a desk aboard; none for the owner
+	// The grey a guest belongs beside: the first of their sessions seated aboard; none for the owner
 	guestOf(person) {
 		if (person.role === 'owner') return null;
 
@@ -1134,31 +1102,30 @@ export default class Scene {
 	// is put straight in place.
 	board() {
 		const airlock = this.layout.halls[0]?.airlock;
-		const stations = this.stations();
+		const spots = this.spotsOfPeople();
 
 		for (const [name, walker] of this.walkers) {
-			if (stations.has(name) || walker.leaving) continue;
+			if (spots.has(name) || walker.leaving) continue;
 			if (!airlock || walker.x === undefined) this.walkers.delete(name);
 			else Object.assign(walker, { leaving: true, path: this.viaSpine(walker, walker.room, airlock, null) });
 		}
 
-		for (const [name, { pose, spot, room, facing }] of stations) {
+		for (const [name, { pose, spot, room, facing }] of spots) {
 			const walker = this.walkers.get(name) ?? { name: this.people.get(name).name, path: [], step: 0, facing: 1 };
-			const moved = walker.seat && (walker.seat.x !== spot.x || walker.seat.y !== spot.y);
+			const moved = walker.spot && (walker.spot.x !== spot.x || walker.spot.y !== spot.y);
 
 			walker.person = this.people.get(name);
 			walker.leaving = false;
 			this.walkers.set(name, walker);
 
-			// Whoever is aboard when the view opens is simply there, rather than walking the ship from the airlock
-			const placed = walker.x === undefined && (!airlock || !this.heard.size || this.time < ABOARD_SECONDS);
+			const placed = walker.x === undefined && (!airlock || !this.answered.size || this.time < ABOARD_SECONDS);
 
-			if (placed || (this.moved && walker.seat)) Object.assign(walker, spot, { path: [] });
+			if (placed || (this.moved && walker.spot)) Object.assign(walker, spot, { path: [] });
 			else if (walker.x === undefined)
 				Object.assign(walker, airlock, { path: this.viaSpine(airlock, null, spot, room) });
 			// Along the console to a new seat as others come and go; across the ship to a new place
 			else if (moved) walker.path = room === walker.room ? [spot] : this.viaSpine(walker, walker.room, spot, room);
-			Object.assign(walker, { seat: spot, pose, room, stand: facing ?? 1 });
+			Object.assign(walker, { spot, pose, room, stand: facing ?? 1 });
 		}
 	}
 
@@ -1208,20 +1175,19 @@ export default class Scene {
 		this.read.set(session.key, session.unseen);
 	}
 
-	// What the work made sets off from its grey's desk: a reply forward to the bridge, for the pilot; each part (a file
-	// newly changed) to its checkout's stack in the hold. Nothing sets off from a grey not at its desk, or before the
-	// ship was first seen.
+	// What the work made sets off from its grey's seat: a reply forward to the pilot; each part (a file newly changed) to
+	// its checkout's stack in the hold. Nothing sets off from a grey away from its seat, or before the first answer.
 	launch() {
 		const hold = this.layout.hold;
 		// A reply goes to the pilot wherever they're standing, or to the nav table while nobody is aboard to take it
 		const pilot = [...this.walkers.values()].find(({ pose, leaving }) => pose === 'overseer' && !leaving);
-		const console = pilot?.seat ?? navAt(this.bridge);
-		const consoleRoom = (pilot?.seat && pilot.room) || this.bridge;
+		const console = pilot?.spot ?? navAt(this.bridge);
+		const consoleRoom = (pilot?.spot && pilot.room) || this.bridge;
 
 		for (const { kind, key, checkout, count = 1 } of this.outgoing) {
 			const worker = this.workers.get(key);
 
-			if (!worker?.desk || worker.lounging || !this.heard.size) continue;
+			if (!worker?.seat || worker.lounging || !this.answered.size) continue;
 
 			const from = this.placeOf(worker);
 			const spot = this.cargo.findIndex(({ key: other }) => other === checkout);
@@ -1234,7 +1200,6 @@ export default class Scene {
 					hue: worker.session.hue,
 					...from,
 					path: this.route(from, worker.room, to, kind === 'reply' ? consoleRoom : hold),
-					// One after another, a moment apart
 					step: -index * 4,
 				});
 		}
@@ -1272,8 +1237,8 @@ export default class Scene {
 			}
 		}
 
-		// Only stars until the first word from a paude: a ship drawn with nothing aboard yet read as everything gone
-		if (!this.heard.size) return;
+		// Only stars until the first answer
+		if (!this.answered.size) return;
 
 		const { x, y } = this.offset;
 
@@ -1297,14 +1262,14 @@ export default class Scene {
 		drawHull(ctx, this.layout, {
 			time: this.time,
 			tanks: this.tanks,
-			engines: this.machines.map(machine => ({
-				y: this.art(machine.reactor).y - 12,
-				hue: machine.hue ?? 215,
+			engines: this.engines.map(engine => ({
+				y: this.art(engine.reactor).y - 12,
+				hue: engine.hue ?? 215,
 				thrust: Math.min(
 					1,
-					sessions.filter(({ server, status }) => server.key === machine.key && status === 'working').length / 3,
+					sessions.filter(session => session.engine.key === engine.key && session.status === 'working').length / 3,
 				),
-				limited: Boolean(machine.limit),
+				limited: Boolean(engine.limit),
 			})),
 			comms: {
 				active: Boolean(this.systems.get('dish')?.active),
@@ -1322,7 +1287,6 @@ export default class Scene {
 			if (tank.at) this.hits.push({ ...this.toScreen(tank.at), r: 9 * this.camera.zoom, kind: 'fuel', tank });
 
 		clipToShip(ctx, this.layout);
-		// A door slides open for whoever comes near it
 		const movers = [...this.walkers.values(), ...[...this.workers.values()].filter(worker => this.walking(worker))];
 		const near = door => movers.some(mover => Math.hypot(mover.x - door.x, mover.y - door.y) < 0.9);
 
@@ -1339,13 +1303,14 @@ export default class Scene {
 		standing.push(
 			...drawEngineering(ctx, art, label, this.layout.engineering, {
 				time: this.time,
-				machines: this.machines.map(machine => {
-					const tank = this.tanks.findIndex(({ machines }) => machines.includes(machine));
+				engines: this.engines.map(engine => {
+					const tank = this.tanks.findIndex(({ engines }) => engines.includes(engine));
 
 					return {
-						...machine,
-						working: sessions.filter(({ server, status }) => server.key === machine.key && status === 'working').length,
-						outage: machine.limit ? countdown(machine.limit.resetAt, Date.now()) : undefined,
+						...engine,
+						working: sessions.filter(session => session.engine.key === engine.key && session.status === 'working')
+							.length,
+						outage: engine.limit ? countdown(engine.limit.resetAt, Date.now()) : undefined,
 						feed:
 							tank < 0
 								? undefined
@@ -1354,7 +1319,7 @@ export default class Scene {
 										below: tank % 2 === 1,
 										x: this.tanks[tank].at?.x,
 										color: TANK_COLORS[tank % TANK_COLORS.length],
-										flow: flowOf(machine.fuel?.rate ?? 0),
+										flow: flowOf(engine.fuel?.rate ?? 0),
 									},
 					};
 				}),
@@ -1364,14 +1329,14 @@ export default class Scene {
 				zoom: this.camera.zoom,
 			}),
 		);
-		for (const machine of this.machines) {
-			const at = this.art(machine.reactor);
+		for (const engine of this.engines) {
+			const at = this.art(engine.reactor);
 
 			this.hits.push({
 				...this.toScreen({ x: at.x, y: at.y - 16 }),
 				r: 12 * this.camera.zoom,
-				kind: 'machine',
-				machine,
+				kind: 'engine',
+				engine,
 			});
 		}
 		for (const room of Object.values(this.layout.systems)) {
@@ -1459,25 +1424,23 @@ export default class Scene {
 		standing.push(...this.inspectionParts(ctx));
 		this.drawMats(ctx);
 		standing.push(...this.cargoParts(ctx));
-		for (const worker of this.workers.values()) if (worker.desk) standing.push(...this.workerParts(ctx, worker));
+		for (const worker of this.workers.values()) if (worker.seat) standing.push(...this.workerParts(ctx, worker));
 		for (const parcel of this.parcels) standing.push({ y: parcel.y, draw: () => this.drawParcel(ctx, parcel) });
 
 		for (const thing of standing.sort((a, b) => a.y - b.y)) thing.draw();
 		this.light(ctx, working, running);
 		// Lit, so laid over the light
 		this.drawPathways(ctx);
-		// Whoever's aboard over everything, as a game draws its people over the scenery: the bridge's aisles are too
-		// narrow to clear the consoles and screens about them, and drawn in among them they walked behind them all
+		// Whoever's aboard over everything, as a game draws its people over the scenery: the bridge's aisles are too narrow
+		// to clear the consoles and screens about them
 		for (const walker of this.walkers.values()) if (walker.x !== undefined) this.drawWalker(ctx, walker);
 		this.drawSelection(ctx);
 		ctx.restore();
 		for (const hauler of this.haulers) this.drawHauler(ctx, hauler);
-		for (const worker of this.workers.values()) if (worker.desk) this.drawMarker(ctx, worker);
+		for (const worker of this.workers.values()) if (worker.seat) this.drawMarker(ctx, worker);
 		this.drawLabels(ctx, ratio);
 	}
 
-	// The ship's light: each room's lamps up where work goes on there and down to a dim blue where nothing does, and
-	// what shines throwing its color round it
 	light(ctx, working, running) {
 		const { building, halls } = this.layout;
 
@@ -1561,14 +1524,12 @@ export default class Scene {
 			lights.push({ ...this.art(clonerAt(this.layout.transporter)), r: 26, color: [190, 160, 255], strength: 0.7 });
 		}
 
-		// What shines: a monitor at work, a reactor, the lounge's TV, the materializer's beam
 		for (const worker of this.workers.values()) {
-			if (!worker.desk || worker.lounging || this.walking(worker)) continue;
+			if (!worker.seat || worker.lounging || this.walking(worker)) continue;
 
-			const at = this.art({ x: worker.desk.x, y: worker.desk.y + 0.2 });
+			const at = this.art({ x: worker.seat.x, y: worker.seat.y + 0.2 });
 			const { status } = worker.session;
 			const asking = this.needs(worker.session) === 'asking';
-			// A worker lights its monitor
 			const glow = { x: at.x - 8, y: at.y - 16 };
 
 			if (status === 'stopped' || !glow) continue;
@@ -1580,17 +1541,17 @@ export default class Scene {
 				strength: status === 'working' || asking ? 0.8 : 0.35,
 			});
 		}
-		for (const machine of this.machines) {
-			const at = this.art(machine.reactor);
-			const flicker = machine.limit && Math.floor(this.time * 7) % 3 === 0;
+		for (const engine of this.engines) {
+			const at = this.art(engine.reactor);
+			const flicker = engine.limit && Math.floor(this.time * 7) % 3 === 0;
 
 			lights.push({
 				x: at.x,
 				y: at.y - 16,
 				r: 42,
-				color: machine.limit ? [220, 70, 60] : lightOf(machine.hue ?? 215, 70, 66),
-				strength: (machine.limit && (flicker ? 0.15 : 0.55)) || (running ? 0.95 : 0.6),
-				moving: Boolean(machine.limit),
+				color: engine.limit ? [220, 70, 60] : lightOf(engine.hue ?? 215, 70, 66),
+				strength: (engine.limit && (flicker ? 0.15 : 0.55)) || (running ? 0.95 : 0.6),
+				moving: Boolean(engine.limit),
 			});
 		}
 		if (this.lounge) {
@@ -1623,7 +1584,7 @@ export default class Scene {
 		drawLighting(ctx, { left: from.x, top: from.y, right: to.x, bottom: to.y }, { rooms, pools, lights });
 	}
 
-	// Corner brackets round what's selected (a worker at its desk, a deck, engineering for a machine, the bridge or the
+	// Corner brackets round what's selected (a worker at its seat, a deck, engineering for an engine, the bridge or the
 	// materializer), pulsing a little
 	drawSelection(ctx) {
 		const { selected } = this;
@@ -1637,13 +1598,13 @@ export default class Scene {
 		let box;
 
 		if (kind === 'bay') box = around(this.bays.find(bay => bay.name === name));
-		else if (kind === 'machine') box = around(this.layout.engineering);
+		else if (kind === 'engine') box = around(this.layout.engineering);
 		else if (kind === 'room') box = around(name === 'bridge' ? this.bridge : this.layout.materializer);
 		else if (kind === 'worker') {
 			const worker = this.workers.get(name);
 
-			if (worker?.desk && !worker.lounging) {
-				const at = this.art(this.walking(worker) ? worker : { x: worker.desk.x, y: worker.desk.y + 0.2 });
+			if (worker?.seat && !worker.lounging) {
+				const at = this.art(this.walking(worker) ? worker : { x: worker.seat.x, y: worker.seat.y + 0.2 });
 
 				box = { from: { x: at.x - 19, y: at.y - 40 }, to: { x: at.x + 19, y: at.y + 3 }, inset: 0 };
 			} else if (worker?.lounging) {
@@ -1676,7 +1637,6 @@ export default class Scene {
 			const bay = this.bays.find(({ name }) => name === room.name);
 			const sessions = (bay?.sessions ?? []).map(key => this.workers.get(key)?.session).filter(Boolean);
 
-			// Where its machine's housings stand along it, for what of them shows outside the hull
 			const housings = room.parts.map(part => ({ ...housingOf(part), top: part.hull.top, bottom: part.hull.bottom }));
 
 			return {
@@ -1685,7 +1645,6 @@ export default class Scene {
 				housings,
 				from: room.x,
 				to: room.x + room.w,
-				// Along the hull's back for a machine above the spine, its belly for one below
 				side: (room.hull.top && 'top') || (room.hull.bottom && 'bottom') || 'inner',
 				hue: bay?.hue ?? null,
 				idle: !sessions.length,
@@ -1723,7 +1682,7 @@ export default class Scene {
 			(sessions.some(({ status }) => status === 'working') && 'working') || (sessions.length ? 'ready' : 'idle');
 		const asking = sessions.some(session => this.needs(session) === 'asking');
 		const form = FORMS[cksum(`form|${bay.name}`) % FORMS.length];
-		const tested = Scene.worstVerdict(sessions);
+		const tested = Ship.worstVerdict(sessions);
 		const verdict = VERDICT_COLORS[tested];
 		const checkouts = this.cargo.filter(({ project }) => project === bay.name);
 		const pressure = checkouts.reduce((sum, { unpushed = 0 }) => sum + unpushed, 0);
@@ -1790,14 +1749,13 @@ export default class Scene {
 
 	// A grey at its terminal on the bridge, so wired into its project's machine
 	wired(worker) {
-		return Boolean(worker?.desk && worker.room === this.bridge && !worker.lounging && !this.walking(worker));
+		return Boolean(worker?.seat && worker.room === this.bridge && !worker.lounging && !this.walking(worker));
 	}
 
-	// Where each project's conduit runs, by project, in art pixels: one for each project being worked on, in its color,
-	// from under its island's name plates on the bridge, out through the bridge's aft wall along its own lane under the
-	// spine to the side of its machine facing the bridge, thicker the more of its sessions are wired in; each its own
-	// lane along its level's spine, far enough apart that the heaviest don't touch, and its own riser up the inside of
-	// the bridge's aft wall, so no two run over each other
+	// Where each project's conduit runs, in art pixels: from its islands on the bridge out through the bridge's aft wall,
+	// along its own lane under the spine to its machine, thicker the more of its sessions are wired in; lanes far enough
+	// apart that the heaviest don't touch, each with its own riser up the bridge's aft wall, so no two run over each
+	// other
 	conduitsOf() {
 		const conduits = new Map();
 
@@ -1826,12 +1784,12 @@ export default class Scene {
 
 		for (const hall of new Set(wired.map(({ bay }) => bay.lane))) {
 			const spine = this.art({ x: 0, y: hall }).y;
-			const here = wired.filter(({ bay }) => bay.lane === hall).sort((a, b) => b.machine.to - a.machine.to);
-			const over = here.filter(({ machine }) => machine.floor <= spine);
-			const under = here.filter(({ machine }) => machine.floor > spine);
+			const inHall = wired.filter(({ bay }) => bay.lane === hall).sort((a, b) => b.machine.to - a.machine.to);
+			const over = inHall.filter(({ machine }) => machine.floor <= spine);
+			const under = inHall.filter(({ machine }) => machine.floor > spine);
 
 			over.forEach(({ bay }, index) => lanes.set(bay.name, index));
-			under.forEach(({ bay }, index) => lanes.set(bay.name, here.length - 1 - index));
+			under.forEach(({ bay }, index) => lanes.set(bay.name, inHall.length - 1 - index));
 		}
 
 		const routes = wired.map(({ bay, machine, workers }) => {
@@ -1857,7 +1815,6 @@ export default class Scene {
 					.map(island => ({ island, at: this.art({ x: island.x + 0.45, y: island.y + 0.2 }) })),
 			};
 		});
-		// Their risers up the bridge's aft wall in whichever order crosses fewest of their runs
 		const order = this.riserOrder(routes, wall);
 
 		for (const route of routes) conduits.set(route.bay.name, { ...route, riser: wall + 4 + order.indexOf(route) * 6 });
@@ -1926,10 +1883,9 @@ export default class Scene {
 		return best;
 	}
 
-	// The projects' conduits, so which desks work on which project, and which projects are being worked on, read from
-	// either end, a pulse riding each while any of its sessions works. Drawn under everything else, as they run along
-	// the floor and behind the hull's frames; and again (`trays`) their runs over the bridge's wall and the spine's
-	// catwalk on that level, laid over what's there.
+	// The projects' conduits, a pulse riding each while any of its sessions works: drawn under everything, as they run
+	// along the floor and behind the hull's frames; and again (`trays`) their runs over the bridge's wall and the spine's
+	// catwalk, laid over what's there
 	drawTerminalCables(ctx, { trays } = {}) {
 		for (const { bay, color, weight, working, seed, tray, riser, exit, out, plates } of this.cables.values()) {
 			const style = { color, weight, working, seed };
@@ -1946,9 +1902,7 @@ export default class Scene {
 					);
 				continue;
 			}
-			// From under each of its islands' name plates to its riser, and down or up that to its lane
 			for (const { at } of plates) this.drawWire(ctx, [at, { x: riser, y: at.y }, { x: riser, y: tray }], style);
-			// Along its lane out through the wall to its machine
 			this.drawWire(ctx, [{ x: riser, y: tray }, { x: out.x, y: tray }, out, exit], style);
 		}
 	}
@@ -1982,7 +1936,6 @@ export default class Scene {
 			length += Math.abs(points[at].x - points[at - 1].x) + Math.abs(points[at].y - points[at - 1].y);
 		if (!working) return;
 
-		// The pulse, as far along as time has carried it
 		let left = (((this.time * 60 + seed * 40) % length) + length) % length;
 
 		for (let at = 1; at < points.length; at++) {
@@ -2012,9 +1965,9 @@ export default class Scene {
 		this.hits.push({ ...middle, area: this.area(bay), kind: 'bay', bay });
 	}
 
-	// The worker behind its desk: the desk's front hides its legs, and the monitor shows what it's doing
+	// The worker at its seat, the console's front hiding its legs
 	workerParts(ctx, worker) {
-		const { session, desk } = worker;
+		const { session, seat } = worker;
 		const facility = facilityOf(session.tool);
 		const working = session.status === 'working';
 		const screen = screenOf(session);
@@ -2022,9 +1975,9 @@ export default class Scene {
 		const walker = this.walking(worker) ? [{ y: worker.y, draw: () => this.drawWorker(ctx, worker) }] : [];
 
 		if (worker.lounging)
-			return [...(walker.length ? walker : this.loungerParts(ctx, worker)), ...this.stationParts(ctx, worker)];
-		const machine = `hsl(${session.server.hue ?? 215} 45% 50%)`;
-		const at = this.art({ x: desk.x, y: desk.y + 0.2 });
+			return [...(walker.length ? walker : this.loungerParts(ctx, worker)), ...this.homeSeatParts(ctx, worker)];
+		const engineColor = `hsl(${session.engine.hue ?? 215} 45% 50%)`;
+		const at = this.art({ x: seat.x, y: seat.y + 0.2 });
 		const checkout = this.checkoutOf(session);
 		const branch = checkout && !checkout.trunk ? checkout.branch && branchHue(checkout.branch) : undefined;
 		// Its terminal says what it's at, or what needs you, in place of a badge over its head: news while there's
@@ -2039,15 +1992,15 @@ export default class Scene {
 		});
 
 		return [
-			...(walker.length ? walker : [{ y: desk.y - 0.12, draw: () => this.drawWorker(ctx, worker) }]),
+			...(walker.length ? walker : [{ y: seat.y - 0.12, draw: () => this.drawWorker(ctx, worker) }]),
 			...this.smallGreyParts(ctx, worker),
-			{ y: desk.y - 0.35, draw: () => this.drawProcesses(ctx, worker) },
-			// What keeps it going standing on the console beside it, over the console's top
-			...(session.kept && !walker.length ? [{ y: desk.y + 0.2, draw: () => this.drawPick(ctx, worker, at) }] : []),
+			{ y: seat.y - 0.35, draw: () => this.drawProcesses(ctx, worker) },
+			...(keepingOf(session) && !walker.length
+				? [{ y: seat.y + 0.2, draw: () => this.drawPick(ctx, worker, at) }]
+				: []),
 			{
-				y: desk.y + 0.16,
+				y: seat.y + 0.16,
 				draw: () => {
-					// A pin on the monitor for each comment still open on its work
 					const pins = Math.min(4, session.talk?.open ?? 0);
 
 					for (let pin = 0; pin < pins; pin++) {
@@ -2064,11 +2017,11 @@ export default class Scene {
 				},
 			},
 			{
-				y: desk.y + 0.14,
+				y: seat.y + 0.14,
 				draw: () => {
 					drawSeat(ctx, at, {
 						screen: status,
-						machine,
+						engineColor,
 						time: this.time,
 						seed: worker.seed,
 						branch,
@@ -2125,23 +2078,17 @@ export default class Scene {
 		];
 	}
 
-	// A system's room's own machine's system
+	// The system in a system's room, as its own engine has it
 	systemOf(room) {
-		return this.machineSystems.get(`${room.machine}/${room.key}`);
+		return this.engineSystems.get(`${room.engine}/${room.key}`);
 	}
 
-	// Each shared system in use lights a pathway from its room to each desk using it, packets running along it in the
-	// system's color, laid over everything so it can be followed end to end. One the engine bay runs (reading, editing,
-	// commands), already lit along the main from the reactors into it, goes out of its door, up or down the engine bay's
-	// wall to the spine, along it into the side of the project's machine nearer the engines, through the machine and out
-	// of its other side into the project's conduit, along that to the grey's island and along the island to the grey:
-	// the work's data from the engines through the project to the terminal. The web runs from the bridge's dish, plans
-	// from the nav table, other tools from the hold, by the aisles and the spine; subagents need none, being small greys
-	// at the desk.
+	// Each shared system in use lights a pathway from its room to each grey using it, packets running in the system's
+	// color, laid over everything so it can be followed end to end: from the engine bay through the project's machine and
+	// conduit to the grey's island; the web from the bridge's dish, plans from the nav table, other tools from the hold.
 	drawPathways(ctx) {
-		// Its own machine's systems for reading, editing, commands and the web
-		const sourceOf = (key, machine) =>
-			({ tower: this.bridge, outpost: this.layout.hold })[key] ?? this.layout.systems[`${machine}/${key}`];
+		const sourceOf = (key, engine) =>
+			({ tower: this.bridge, outpost: this.layout.hold })[key] ?? this.layout.systems[`${engine}/${key}`];
 		const lanes = STREAM_LANES;
 
 		if (this.layout.halls[0]?.lane === undefined) return;
@@ -2149,14 +2096,14 @@ export default class Scene {
 		const paths = [];
 
 		for (const worker of this.workers.values()) {
-			const { desk } = worker;
+			const { seat } = worker;
 			const stream = this.streamOf(worker);
 
-			if (!desk || !stream) continue;
+			if (!seat || !stream) continue;
 
 			const { facility, fade } = stream;
 			const key = facility.startsWith('mcp:') ? 'dish' : facility;
-			const room = sourceOf(key, worker.session.server.key);
+			const room = sourceOf(key, worker.session.engine.key);
 
 			if (!room) continue;
 
@@ -2168,10 +2115,10 @@ export default class Scene {
 
 			const conduit = room.within?.kind === 'engineering' && this.cables?.get(this.bayOf(worker)?.name);
 			// Routed again only when where it runs from or to moves
-			const inputs = [this.layout, desk, worker.room, key, conduit];
-			const kept = this.streamPaths.get(worker);
-			const routed = kept?.inputs.every((input, index) => input === inputs[index])
-				? kept.routed
+			const inputs = [this.layout, seat, worker.room, key, conduit];
+			const last = this.streamPaths.get(worker);
+			const routed = last?.inputs.every((input, index) => input === inputs[index])
+				? last.routed
 				: this.streamRoute(worker, room, lanes, key, conduit);
 
 			this.streamPaths.set(worker, { inputs, routed });
@@ -2207,16 +2154,15 @@ export default class Scene {
 
 		const lane = this.layout.halls[0].lane;
 		const start = key === 'tower' ? navAt(room) : { x: room.door.x, y: room.door.y };
-		const end = { x: worker.desk.x - 0.4, y: worker.desk.y - 0.1 };
+		const end = { x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 };
 		const offset = (sources.indexOf(key) - (sources.length - 1) / 2) * 0.09;
 		const points = [start, ...this.route(start, room, end, worker.room, lane + offset)].map(point => this.art(point));
 
 		return [{ track: trackOf(points), ports: [] }];
 	}
 
-	// The system a worker's stream runs from, and how strongly: while it uses one, and for a few seconds after, fading,
-	// so the moments between one tool and the next, or a look that has it ready a moment between turns, don't blink
-	// its stream off and on
+	// The system a worker's stream runs from, and how strongly: while it uses one and for a few seconds after, fading, so
+	// the gaps between one tool and the next don't blink it off and on
 	streamOf(worker) {
 		const { session } = worker;
 
@@ -2232,7 +2178,6 @@ export default class Scene {
 		return since < STREAM_LINGER ? { facility: worker.stream.facility, fade: 1 - since / STREAM_LINGER } : null;
 	}
 
-	// The project a worker works on
 	bayOf(worker) {
 		return this.bays.find(bay => bay.sessions.includes(worker.session.key));
 	}
@@ -2244,7 +2189,7 @@ export default class Scene {
 		const wall = this.art({ x: room.within.x + room.within.w, y: 0 }).x - 3 - nth * 3;
 		const { tray, entry, exit, out, riser, plates } = conduit;
 		const into = { x: entry.x - 4, y: entry.y };
-		const seat = this.art({ x: worker.desk.x - 0.4, y: worker.desk.y - 0.1 });
+		const seat = this.art({ x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 });
 		// The island it's at: the one of its project's whose plate is nearest
 		const plate = plates
 			.map(({ at }) => at)
@@ -2274,7 +2219,7 @@ export default class Scene {
 
 			const facility = stream.facility.startsWith('mcp:') ? 'dish' : stream.facility;
 
-			if (!this.layout.systems[`${worker.session.server.key}/${facility}`]?.within) continue;
+			if (!this.layout.systems[`${worker.session.engine.key}/${facility}`]?.within) continue;
 
 			const name = this.bayOf(worker)?.name;
 			const color = `hsl(${accentOf(facility)} 85% 68%)`;
@@ -2314,22 +2259,20 @@ export default class Scene {
 		// No more than are ever drawn (and the one past them that's counted): a count from another paude is its word
 		const out = worker.lounging ? 0 : Math.min(MOST.smallGreys + 1, Math.max(0, Number(worker.session.agents) || 0));
 		const smalls = (worker.smalls ??= []);
-		const here = smalls.filter(({ goneAt }) => goneAt === undefined);
+		const present = smalls.filter(({ goneAt }) => goneAt === undefined);
 
-		for (let more = here.length; more < out; more++) smalls.push({ bornAt: calm ? -Infinity : this.time });
-		here.slice(out).forEach(small => (small.goneAt = calm ? -Infinity : this.time));
+		for (let more = present.length; more < out; more++) smalls.push({ bornAt: calm ? -Infinity : this.time });
+		present.slice(out).forEach(small => (small.goneAt = calm ? -Infinity : this.time));
 		worker.smalls = smalls.filter(({ goneAt }) => goneAt === undefined || this.time - goneAt < SMALL_GREY_SECONDS);
 	}
 
-	// Where a grey's i-th small grey stands: in a row before its desk, clear of the todo lamps along its front
+	// Where a grey's i-th small grey sits: at its own small terminal along the island beside its grey's seat
 	smallGreyAt(worker, index) {
-		// At its own small terminal along the island beside its grey's seat
-		return { x: worker.desk.x + 1.3 + index * 0.8, y: worker.desk.y };
+		return { x: worker.seat.x + 1.3 + index * 0.8, y: worker.seat.y };
 	}
 
-	// The small greys at their own small terminals beside their grey's seat, each with what it was sent to do where its
-	// session says, its screen lit while it works; budding up
-	// from the floor in a spark, going in a puff. The rest past what fits are counted.
+	// The small greys at their terminals beside their grey's seat, budding in a spark and going in a puff; those past
+	// what fits are counted
 	smallGreyParts(ctx, worker) {
 		const { session } = worker;
 		const colors = { c: `hsl(${session.hue ?? 200} 55% 55%)` };
@@ -2338,10 +2281,9 @@ export default class Scene {
 			const spot = this.smallGreyAt(worker, index);
 
 			const terminal = {
-				y: worker.desk.y + 0.15,
+				y: worker.seat.y + 0.15,
 				draw: () => {
-					// Its small terminal on the island before it, lit while it works
-					const at = this.art({ x: spot.x, y: worker.desk.y + 0.2 });
+					const at = this.art({ x: spot.x, y: worker.seat.y + 0.2 });
 					const lit = Math.floor(this.time * 4 + index) % 2;
 
 					rect(ctx, at.x - 14, at.y - 22, 10, 8, PALETTE.k);
@@ -2422,16 +2364,15 @@ export default class Scene {
 		return VERDICTS.find(state => sessions.some(({ tested }) => tested?.state === state)) ?? null;
 	}
 
-	// Each deck's QA bench at its front corner: an inspection gantry, its bar lit by the deck's worst verdict (red
-	// failing, amber changed since the last passing run, gray changes never tested, green tested since), its beam
-	// sweeping down while anything there is still to test; pressable for each session's verdict
+	// Each deck's QA bench: a gantry lit by the deck's worst verdict, its beam sweeping while anything there is still to
+	// test; pressable for each session's verdict
 	inspectionParts(ctx) {
 		// A project's machine shows its own verdict on a gauge; only a project still in a room has the bench
 		return this.bays
 			.filter(bay => !this.layout.bays?.find(({ name }) => name === bay.name)?.parts)
 			.map(bay => {
 				const sessions = bay.sessions.map(key => this.workers.get(key)?.session).filter(Boolean);
-				const verdict = Scene.worstVerdict(sessions);
+				const verdict = Ship.worstVerdict(sessions);
 				const spot = { x: bay.x + 0.6, y: bay.y + bay.d - 0.3 };
 
 				return {
@@ -2465,9 +2406,8 @@ export default class Scene {
 			});
 	}
 
-	// How many empties a lounger has on its pile: one each half hour since its session's prompt cache went cold (since
-	// it stopped, where that isn't known). One more than last seen is a can just finished, tossed onto the pile, where
-	// it lands at the end of the toss; a pile already there when first seen is simply there.
+	// How many empties a lounger has on its pile: one each half hour since its session's prompt cache went cold (since it
+	// stopped, where that isn't known)
 	cansOf(worker) {
 		const { session } = worker;
 		const now = Math.min(
@@ -2483,12 +2423,12 @@ export default class Scene {
 
 	// The seat it left at its island while it rests: its chair empty, its terminal frosted over gone cold or switched off
 	// stopped, pressed as ever to open it
-	stationParts(ctx, worker) {
-		const { session, station } = worker;
+	homeSeatParts(ctx, worker) {
+		const { session, homeSeat } = worker;
 
-		if (!station) return [];
+		if (!homeSeat) return [];
 
-		const at = this.art({ x: station.x, y: station.y + 0.2 });
+		const at = this.art({ x: homeSeat.x, y: homeSeat.y + 0.2 });
 
 		this.hits.push({
 			...this.toScreen({ x: at.x - 7, y: at.y - 21 }),
@@ -2499,11 +2439,11 @@ export default class Scene {
 
 		return [
 			{
-				y: station.y + 0.14,
+				y: homeSeat.y + 0.14,
 				draw: () =>
 					drawSeat(ctx, at, {
 						screen: { ...screenOf(session), kind: session.status === 'stopped' ? 'off' : 'idle' },
-						machine: `hsl(${session.server.hue ?? 215} 45% 50%)`,
+						engineColor: `hsl(${session.engine.hue ?? 215} 45% 50%)`,
 						time: this.time,
 						seed: worker.seed,
 						frost: session.status !== 'stopped',
@@ -2514,7 +2454,7 @@ export default class Scene {
 
 	// A stopped session lounging on a couch, eyes shut, its name under it once close enough to read
 	loungerParts(ctx, worker) {
-		const { session, desk: seat } = worker;
+		const { session, seat } = worker;
 		const below = this.art({ x: seat.x, y: seat.y + 0.15 });
 		const hue = this.projectHues?.get(session.project);
 		const cans = this.cansOf(worker);
@@ -2525,11 +2465,9 @@ export default class Scene {
 			{
 				y: seat.y + 0.2,
 				draw: () => {
-					// Its legs over the couch's front edge, its feet dangling
 					const at = this.art(this.placeOf(worker));
 					const swing = Math.floor(this.time * 1.5 + worker.seed) % 2;
 
-					// Bent at the knee over the cushion's front, its shins down the couch's face and its feet just under it
 					for (const side of [-2, 1]) {
 						rect(ctx, at.x + side - 1, at.y - 6, 3, 6, PALETTE.k);
 						rect(ctx, at.x + side, at.y - 6, 1, 5, PALETTE.a);
@@ -2556,17 +2494,14 @@ export default class Scene {
 		];
 	}
 
-	// Empty cans on the floor round a lounger, one more for each half hour it's sat
-	// Its empties: crushed on the floor where they were dropped, and the ones past that stacked on the backrest
+	// A lounger's empties: crushed on the floor where they were dropped, and the rest heaped on the backrest
 	drawCans(ctx, worker, count, from) {
-		// In its session's own color, so whose empties they are reads at a glance
 		const color = `hsl(${worker.session.hue ?? 0} 65% 55%)`;
 
 		for (let can = from; can < count; can++) {
 			const { x, y } = this.canAt(worker, can);
 
 			if (can < CANS_DROPPED) {
-				// Squashed flat, crumpled one way or another
 				const flip = seeded(`${worker.session.key}|crush${can}`) < 0.5 ? 1 : -1;
 
 				rect(ctx, x - 2, y - 1, 4, 2, PALETTE.k);
@@ -2574,7 +2509,6 @@ export default class Scene {
 				rect(ctx, x - 1, y - 1, 2, 1, color);
 				rect(ctx, x + (flip > 0 ? 1 : -2), y - 1, 1, 1, PALETTE.g);
 			} else {
-				// Heaped behind the couch any which way: standing, lying on its side, or crushed
 				const lie = seeded(`${worker.session.key}|lie${can}`);
 
 				if (lie < 0.45) {
@@ -2594,11 +2528,11 @@ export default class Scene {
 		}
 	}
 
-	// Where a lounger's nth empty goes, in art pixels: the first few thrown crushed onto the heap beside the couch at
-	// its nearer end, where everyone's mix and their colors tell whose; the rest heaped messily on the backrest
+	// Where a lounger's nth empty goes, in art pixels: the first few crushed by the couch's nearer end, the rest heaped
+	// on the backrest
 	canAt(worker, can) {
-		const seat = this.art({ x: worker.desk.x, y: worker.desk.y + 0.15 });
-		const back = this.art(worker.desk).y - 18;
+		const seat = this.art({ x: worker.seat.x, y: worker.seat.y + 0.15 });
+		const back = this.art(worker.seat).y - 18;
 		const key = worker.session.key;
 
 		if (can < CANS_DROPPED) {
@@ -2613,8 +2547,6 @@ export default class Scene {
 			};
 		}
 
-		// Heaped on the backrest by its head (clear of whatever's marked over it), a messy pile, not a stack: each can
-		// somewhere along it, those after the first few on top of others, every one jittered its own way
 		const index = can - CANS_DROPPED;
 		const along = seeded(`${key}|heap${index}`);
 		const up = index < 3 ? 0 : Math.round(seeded(`${key}|heapUp${index}`) * 2 + (index - 2) * 1.5);
@@ -2622,12 +2554,12 @@ export default class Scene {
 		return { x: Math.round(seat.x - 17 + along * 13), y: back - up + Math.round(seeded(`${key}|heapSag${index}`) * 2) };
 	}
 
-	// What the worker's tool is doing, made visible at its desk (the system it's using shows on its pathway): reading
-	// turns pages over the monitor, the shell throws sparks, the web sends out waves, a plan ticks itself off
-	drawActivity(ctx, worker, facility, desk) {
+	// What the worker's tool is doing, at its seat: reading turns pages over the monitor, the shell throws sparks, the
+	// web sends out waves, a plan ticks itself off
+	drawActivity(ctx, worker, facility, seat) {
 		const time = this.time + worker.seed;
 		const color = `hsl(${accentOf(facility)} 70% 66%)`;
-		const monitor = { x: desk.x - 8, y: desk.y - 27 };
+		const monitor = { x: seat.x - 8, y: seat.y - 27 };
 
 		if (facility === 'library') {
 			const along = (time / 0.8) % 1;
@@ -2674,14 +2606,13 @@ export default class Scene {
 		}
 	}
 
-	// What the session's hooks say, as the ship's instruments about its desk: sparks and then smoke from a tool that
-	// failed, its permission mode (a beacon turning when nothing is asked first, a blueprint over the desk while it
-	// plans, a green lamp while edits go ahead), steam from a turn running long, and a cube of its context going out
-	// once compacted
-	drawInstruments(ctx, worker, desk) {
+	// What the session's hooks say, as instruments about its seat: sparks and then smoke from a tool that failed, its
+	// permission mode (a beacon turning when nothing is asked first, a blueprint while it plans, a green lamp while edits
+	// go ahead), steam from a turn running long, and a cube of its context going out once compacted
+	drawInstruments(ctx, worker, seat) {
 		const { session } = worker;
 		const time = this.time + worker.seed;
-		const monitor = { x: desk.x - 8, y: desk.y - 27 };
+		const monitor = { x: seat.x - 8, y: seat.y - 27 };
 
 		const sinceFault = worker.faultAt === null || worker.faultAt === undefined ? Infinity : this.time - worker.faultAt;
 
@@ -2729,8 +2660,8 @@ export default class Scene {
 			rect(ctx, monitor.x, monitor.y - 2, 1, 1, PALETTE.t);
 		}
 		if (session.mode === 'plan') {
-			// Up and out to the monitor's side, in the gap between desks, clear of the row behind
-			const sheet = { x: desk.x - 28, y: desk.y - 36, w: 12, h: 6 };
+			// Up and out to the monitor's side, between seats, clear of the row behind
+			const sheet = { x: seat.x - 28, y: seat.y - 36, w: 12, h: 6 };
 
 			ctx.fillStyle = 'rgba(80, 160, 255, 0.12)';
 			ctx.beginPath();
@@ -2761,18 +2692,18 @@ export default class Scene {
 
 				ctx.fillStyle = `rgba(220, 225, 235, ${(0.4 * (1 - rise)).toFixed(2)})`;
 				ctx.fillRect(
-					Math.round(desk.x + 6 + wisp * 3 + Math.sin(time * 2 + wisp) * 2),
-					Math.round(desk.y - 14 - rise * 14),
+					Math.round(seat.x + 6 + wisp * 3 + Math.sin(time * 2 + wisp) * 2),
+					Math.round(seat.y - 14 - rise * 14),
 					1,
 					2,
 				);
 			}
 		if (session.status === 'working' && turn > HOT_SECONDS && Math.floor(time * 2) % 2)
-			rect(ctx, desk.x - 13, desk.y - 5, 26, 1, PALETTE.r);
+			rect(ctx, seat.x - 13, seat.y - 5, 26, 1, PALETTE.r);
 
 		const compacted = this.time - (worker.compactedAt ?? -Infinity);
 
-		if (compacted < COMPACT_SECONDS) this.drawCube(ctx, worker, desk, compacted / COMPACT_SECONDS);
+		if (compacted < COMPACT_SECONDS) this.drawCube(ctx, worker, seat, compacted / COMPACT_SECONDS);
 	}
 
 	// The head a session's grey wears: as big as its context is full, throbbing past the biggest when it's about to
@@ -2803,10 +2734,10 @@ export default class Scene {
 
 	// Compacted context: squeezed out of its grey's skull, a cube pops onto the floor and is carted to the recycler in
 	// engineering, along the spine
-	drawCube(ctx, worker, desk, along) {
+	drawCube(ctx, worker, seat, along) {
 		if (along < SQUEEZED) return;
 
-		const floor = { x: worker.desk.x - 0.5, y: worker.desk.y + 0.15 };
+		const floor = { x: worker.seat.x - 0.5, y: worker.seat.y + 0.15 };
 		const points = [
 			floor,
 			...this.route(floor, worker.room, recyclerAt(this.layout.engineering), this.layout.engineering),
@@ -2815,16 +2746,14 @@ export default class Scene {
 			.slice(1)
 			.map((point, index) => Math.hypot(point.x - points[index].x, point.y - points[index].y));
 		const total = lengths.reduce((sum, length) => sum + length, 0);
-		const crown = worker.crown ?? { x: desk.x - 10, y: desk.y - 16 };
+		const crown = worker.crown ?? { x: seat.x - 10, y: seat.y - 16 };
 		const popped = Math.min(1, (along - SQUEEZED) / (POPPED - SQUEEZED));
-		// Popping up out of its skull and arcing down to the floor beside it
 		let at = {
 			x: crown.x + (points[0].x - crown.x) * popped,
 			y: crown.y + (points[0].y - crown.y) * popped - Math.sin(popped * Math.PI) * 12,
 		};
 
 		if (popped < 1) {
-			// A puff where it burst out
 			ctx.globalAlpha = 1 - popped;
 			for (const [dx, dy] of [
 				[-3, -1],
@@ -2850,26 +2779,26 @@ export default class Scene {
 		rect(ctx, at.x - 2, at.y - 3, 4, 1, PALETTE.w);
 	}
 
-	// Power from each machine's engine room down the hall to the bays where its sessions are at work: a conduit for each
-	// machine along the hall floor, pulses running from its door to theirs
+	// Power from each engine's reactor along the hall to the bays where its sessions are at work, pulses running from its
+	// door to theirs
 	drawConduits(ctx, hall) {
-		const lines = this.machines
-			.map(machine => ({
-				machine,
+		const lines = this.engines
+			.map(engine => ({
+				engine,
 				bays: this.bays.filter(bay =>
 					bay.sessions.some(key => {
 						const session = this.workers.get(key)?.session;
 
-						return session?.server.key === machine.key && session.status === 'working';
+						return session?.engine.key === engine.key && session.status === 'working';
 					}),
 				),
 			}))
 			.filter(({ bays }) => bays.length);
 
-		lines.forEach(({ machine, bays }, index) => {
+		lines.forEach(({ engine, bays }, index) => {
 			const lane = this.art({ x: 0, y: hall.lane }).y + 3 + index * 2;
-			const from = this.art(machine.door);
-			const hue = machine.hue ?? 215;
+			const from = this.art(engine.door);
+			const hue = engine.hue ?? 215;
 
 			for (const bay of bays) {
 				const to = this.art(bay.door);
@@ -2887,8 +2816,8 @@ export default class Scene {
 		});
 	}
 
-	// At each look: when its cache's countdown was read, to run it down smoothly between looks, and when the latest ping
-	// or nudge was typed into it, for the drink it takes
+	// At each answer: when its cache's countdown was read, to run it down smoothly between answers, and when the latest
+	// ping or nudge was typed into it, for the drink it takes
 	noteKeeping(worker, session) {
 		if (session.context?.cache) worker.cacheAt = this.time;
 
@@ -2901,7 +2830,7 @@ export default class Scene {
 		if (worker.boostAt === undefined || Math.abs(at - worker.boostAt) > 2) worker.boostAt = at;
 	}
 
-	// How far a grey waiting at its desk has nodded off, 0 to 1: how much of its cache's life has run out. Asking, at
+	// How far a grey waiting at its seat has nodded off, 0 to 1: how much of its cache's life has run out. Asking, at
 	// work, or not known, it's wide awake.
 	drowseOf(worker) {
 		const { session } = worker;
@@ -2919,24 +2848,23 @@ export default class Scene {
 		return this.time - (worker.boostAt ?? -Infinity) < DRINK_SECONDS;
 	}
 
-	// Its coffee or energy drink tipped up at its mouth
 	drawSip(ctx, worker, at, neck) {
-		const body = worker.session.kept === 'warm' ? '#e8e2d6' : '#3ad07a';
+		const body = keepingOf(worker.session) === 'warm' ? '#e8e2d6' : '#3ad07a';
 		const spot = { x: at.x + 2, y: neck - 1 };
 
 		for (let step = 0; step < 3; step++) rect(ctx, spot.x + step, spot.y - step, 3, 3, step === 1 ? body : PALETTE.k);
-		rect(ctx, spot.x + 1, spot.y - 1, 1, 1, worker.session.kept === 'warm' ? body : '#ffe14a');
+		rect(ctx, spot.x + 1, spot.y - 1, 1, 1, keepingOf(worker.session) === 'warm' ? body : '#ffe14a');
 		rect(ctx, spot.x + 3, spot.y + 2, 1, 3, PALETTE.a);
 	}
 
-	// What keeps it going on the console beside it, `at` its desk's front (art pixels): a mug of coffee kept warm, steam
-	// curling off it; a tall energy drink kept going. Off the console while it's drinking.
+	// What keeps it going on the console beside it, `at` the console's front (art pixels): a mug of coffee kept warm, a
+	// tall energy drink kept going. Off the console while it's drinking.
 	drawPick(ctx, worker, at) {
 		if (this.drinking(worker)) return;
 
 		const spot = { x: at.x + 12, y: at.y - 7 };
 
-		if (worker.session.kept === 'warm') {
+		if (keepingOf(worker.session) === 'warm') {
 			rect(ctx, spot.x - 3, spot.y - 6, 7, 7, PALETTE.k);
 			rect(ctx, spot.x - 2, spot.y - 5, 5, 5, '#e8e2d6');
 			rect(ctx, spot.x - 2, spot.y - 5, 5, 1, '#5a3a22');
@@ -2952,29 +2880,25 @@ export default class Scene {
 			rect(ctx, spot.x - 3, spot.y - 11, 7, 12, PALETTE.k);
 			rect(ctx, spot.x - 2, spot.y - 10, 5, 10, '#3ad07a');
 			rect(ctx, spot.x - 2, spot.y - 10, 5, 1, PALETTE.g);
-			// The zap on its side
 			for (const [dx, dy] of ZAP) rect(ctx, spot.x - 1 + dx, spot.y - 8 + dy, 1, 1, '#ffe14a');
 		}
 	}
 
 	// The worker: its body, and over it a head sized by its context. Its state shows in how it carries on: typing at
-	// work, a thought bubble between tools, waving when asking, blinking now and then when idle, dozing when stopped or
-	// waiting out a usage limit. Walking somewhere, it's on its feet.
-	// It's made in the materializer when its session starts, beams out when it ends, and sparkles when a turn finishes.
+	// work, a thought bubble between tools, waving when asking, blinking when idle, dozing when stopped or waiting out a
+	// usage limit; on its feet walking somewhere.
 	drawWorker(ctx, worker) {
 		const { session } = worker;
 		const walking = this.walking(worker);
-		// On its feet; or sitting, its shoulders just over the desk, or sunk into a couch
 		const at = this.art(walking ? worker : this.placeOf(worker));
 
-		if (!walking && !worker.desk?.housing) at.y -= worker.lounging ? 4 : 10;
+		if (!walking && !worker.seat?.housing) at.y -= worker.lounging ? 4 : 10;
 		worker.headX = at.x;
 
 		const making = (this.time - (worker.madeAt ?? -Infinity)) / MAKE_SECONDS;
 
 		if (worker.leaving) this.drawBeam(ctx, at, 1 - worker.opacity);
 		if (worker.leaving && worker.opacity < 0.5) return;
-		// Built up from its feet in the materializer's beam
 		if (making < 1) {
 			this.drawBeam(ctx, at, 1 - making / 2);
 			ctx.save();
@@ -2987,16 +2911,15 @@ export default class Scene {
 		const thinking = session.status === 'working' && !session.tool;
 		const bob = typing && Math.floor(this.time * 5 + worker.seed) % 2 ? 1 : 0;
 		const waving = session.status === 'waiting' && Math.floor(this.time * 3) % 2;
-		// Waiting at its desk as its cache runs down it nods off: blinking longer, its head nodding, then slumped, and
-		// once its cache is gone, asleep; a drink from its coffee or its energy drink, when it's pinged or nudged, wakes
-		// it again
+		// Waiting at its seat as its cache runs down it nods off, and once its cache is gone, sleeps; a drink when it's
+		// pinged or nudged wakes it again
 		const drowse = !walking && !worker.lounging ? this.drowseOf(worker) : 0;
 		const asleep = drowse >= 1;
 		const blinking =
 			session.status === 'ready' &&
 			(drowse >= 0.85 || (this.time + worker.seed) % 4 < 0.15 + Math.max(0, drowse - 0.5) * 3);
 		const fill = session.context?.fill ?? 0;
-		// On the lounge's couch it faces the viewer as at its desk, watching the TV on the near wall, a beer in hand
+		// On the lounge's couch it faces the viewer as at its seat, watching the TV on the near wall, a beer in hand
 		const watching = worker.lounging && !walking;
 		const dozing =
 			!watching && (asleep || session.status === 'stopped' || (session.limit && session.status !== 'working'));
@@ -3005,7 +2928,6 @@ export default class Scene {
 		const squeezing = size !== this.headOf(session);
 		const head = `head-${size}${shut ? '-shut' : ''}`;
 		const colors = { c: `hsl(${session.hue ?? 200} 55% 55%)`, s: rankOf(session.context?.model) };
-		// Its head sinking as it nods off: a nod now and then, then slumped
 		const sag =
 			(drowse >= 0.85 && 2) || (drowse >= 0.6 && Math.floor((this.time + worker.seed) * 0.8) % 3 === 0 ? 1 : 0);
 		const neck = at.y - bob - 5 + sag;
@@ -3014,9 +2936,8 @@ export default class Scene {
 
 		drawSprite(ctx, (waving && 'bodyWave') || (stride && 'bodyStride') || 'body', at.x, at.y - bob, {
 			colors,
-			flip: (walking && worker.facing < 0) || (!walking && worker.desk?.side < 0),
+			flip: (walking && worker.facing < 0) || (!walking && worker.seat?.side < 0),
 		});
-		// About to compact itself, a red glow swelling and fading round its head with each throb
 		const throb = this.throbOf(session);
 
 		if (throb) {
@@ -3029,7 +2950,6 @@ export default class Scene {
 			ctx.fillStyle = glow;
 			ctx.fillRect(at.x - 20, neck - tall / 2 - 20, 40, 40);
 		}
-		// Nearly full, the veins pulse; being squeezed down, it shudders
 		if (fill >= 0.9 && Math.floor(this.time * 4) % 2) ctx.globalAlpha = 0.85;
 		drawSprite(ctx, head, at.x + (squeezing ? (Math.floor(this.time * 20) % 2) * 2 - 1 : 0), neck, {
 			colors: size === 'bursting' ? { ...colors, r: '#ff4a3a' } : colors,
@@ -3050,7 +2970,6 @@ export default class Scene {
 
 			if (toss < TOSS_SECONDS) {
 				const t = toss / TOSS_SECONDS;
-				// Arcing to where it lands on its pile
 				const pile = this.canAt(worker, worker.cans - 1);
 				const flying = {
 					x: Math.round(at.x + 6 + (pile.x - at.x - 6) * t),
@@ -3060,7 +2979,6 @@ export default class Scene {
 				rect(ctx, flying.x - 1, flying.y - 1, Math.floor(t * 6) % 2 ? 5 : 3, Math.floor(t * 6) % 2 ? 3 : 5, PALETTE.k);
 				rect(ctx, flying.x, flying.y, 1, 1, beer);
 			} else if (sipping) {
-				// Tipped up at its mouth: its open end at the mouth, its bottom raised up and out, the arm under it
 				for (let step = 0; step < 3; step++) rect(ctx, can.x + step, can.y - step, 2, 2, step === 1 ? beer : '#d4dae4');
 				rect(ctx, can.x + 3, can.y - 2, 1, 1, PALETTE.W);
 				rect(ctx, can.x + 3, can.y + 1, 1, 3, PALETTE.a);
@@ -3070,7 +2988,7 @@ export default class Scene {
 				rect(ctx, can.x, can.y, 1, 1, PALETTE.g);
 			}
 		}
-		if (!watching && !walking && worker.desk && session.kept && this.drinking(worker))
+		if (!watching && !walking && worker.seat && keepingOf(session) && this.drinking(worker))
 			this.drawSip(ctx, worker, at, neck);
 		if (thinking) this.drawThought(ctx, at.x + w / 2 + 1, top + 2);
 		if (dozing) {
@@ -3123,20 +3041,18 @@ export default class Scene {
 		}
 	}
 
-	// What the session has made, in canisters stacked beside its desk
-	// What a session runs beside Claude, as units humming behind its desk, one for each process, their lights as busy as
-	// its CPU has been; a shared port puts an antenna on them with its beacon lit, open to visitors
+	// What a session runs beside Claude, as units humming behind its seat, one for each process, their lights as busy as
+	// its CPU has been; a shared port puts an antenna on them, its beacon lit
 	drawProcesses(ctx, worker) {
 		const { processes = [], services = [] } = worker.session;
 
 		if (worker.lounging || (!processes.length && !services.length)) return;
 
-		// Behind its desk
 		const outward = -1;
 		const at = this.art(
-			worker.desk.housing
-				? { x: worker.desk.x + outward * 0.5, y: worker.desk.y - 0.05 }
-				: { x: worker.desk.x - 0.95, y: worker.desk.y - 0.35 },
+			worker.seat.housing
+				? { x: worker.seat.x + outward * 0.5, y: worker.seat.y - 0.05 }
+				: { x: worker.seat.x - 0.95, y: worker.seat.y - 0.35 },
 		);
 		const count = Math.max(1, Math.min(3, processes.length));
 
@@ -3162,8 +3078,8 @@ export default class Scene {
 		});
 	}
 
-	// Each open pull request waits in the hangar as a delivery pod for sign-off, its number over it, lit by its checks: green all passing,
-	// red one failing, amber still running, gray a draft
+	// Each open pull request waits in the hangar as a delivery pod for sign-off, its number over it, lit by its checks:
+	// green all passing, red one failing, amber still running, gray a draft
 	deliveryParts(ctx) {
 		const hangar = this.layout.hangar;
 
@@ -3316,7 +3232,6 @@ export default class Scene {
 		}
 	}
 
-	// The room a point is in, if any
 	roomAt({ x, y }) {
 		return this.layout.rooms?.find(room => x >= room.x && x <= room.x + room.w && y >= room.y && y <= room.y + room.d);
 	}
@@ -3357,23 +3272,23 @@ export default class Scene {
 		}));
 	}
 
-	// A rug in its branch's hue under each desk working in a worktree of its own, those in the same one joined into
-	// one rug; and hazard tape round a desk whose session asks nothing before it acts
+	// A rug in its branch's hue under each seat working in a worktree of its own, those in the same one joined into one
+	// rug; and hazard tape round a seat whose session asks nothing before it acts
 	drawMats(ctx) {
-		for (const { desk, session, lounging } of this.workers.values()) {
-			if (!desk || lounging || desk.housing || session.mode !== 'bypassPermissions') continue;
+		for (const { seat, session, lounging } of this.workers.values()) {
+			if (!seat || lounging || seat.housing || session.mode !== 'bypassPermissions') continue;
 
-			const from = this.art({ x: desk.x - DESK_PITCH / 2 + 0.1, y: desk.y - DESK_ROW + 0.6 });
-			const to = this.art({ x: desk.x + DESK_PITCH / 2 - 0.1, y: desk.y + 0.45 });
+			const from = this.art({ x: seat.x - DESK_PITCH / 2 + 0.1, y: seat.y - DESK_ROW + 0.6 });
+			const to = this.art({ x: seat.x + DESK_PITCH / 2 - 0.1, y: seat.y + 0.45 });
 
 			ctx.drawImage(tapeOf(from, to), from.x, from.y);
 		}
 
 		const mats = [...this.workers.values()]
-			.filter(({ desk, session }) => desk && !desk.housing && this.checkoutOf(session)?.worktree)
-			.map(({ desk, session }) => ({
-				x: desk.x - DESK_PITCH / 2,
-				y: desk.y - DESK_ROW + 0.5,
+			.filter(({ seat, session }) => seat && !seat.housing && this.checkoutOf(session)?.worktree)
+			.map(({ seat, session }) => ({
+				x: seat.x - DESK_PITCH / 2,
+				y: seat.y - DESK_ROW + 0.5,
 				checkout: session.checkout,
 				hue: branchHue(this.checkoutOf(session).branch ?? session.checkout),
 			}));
@@ -3424,7 +3339,6 @@ export default class Scene {
 				draw: () => {
 					const at = this.art(spot);
 
-					// Its pod, docked: its changes as sheets in the window, its commits to push as crates, each pressable
 					this.drawPod(ctx, at, { hue: bay?.hue, crates: checkout.unpushed, sheets: checkout.changed });
 					for (let crate = 0; crate < Math.min(MOST.crates, checkout.unpushed); crate++) {
 						const commit = checkout.commits?.[crate];
@@ -3438,11 +3352,10 @@ export default class Scene {
 								checkout,
 							});
 					}
-					// Stamped by inspection: the worst verdict of the sessions working in this checkout
 					const stamp =
 						VERDICT_COLORS[
-							Scene.worstVerdict(
-								this.sessions.filter(({ checkout: root, server }) => `${server.key}:${root}` === checkout.key),
+							Ship.worstVerdict(
+								this.sessions.filter(({ checkout: root, engine }) => `${engine.key}:${root}` === checkout.key),
 							)
 						];
 
@@ -3493,8 +3406,8 @@ export default class Scene {
 		this.drawPod(ctx, at, { hue, crates, sheets: 0 });
 	}
 
-	// A checkout's pod, `at` its foot: a capsule in its project's color with a window down its side, its crates of commits
-	// to push and sheets of changes inside
+	// A checkout's pod, `at` its foot: a capsule in its project's color with a window down its side, its crates of
+	// commits to push and sheets of changes inside
 	drawPod(ctx, at, { hue, crates, sheets }) {
 		const color = hue === null || hue === undefined ? PALETTE.l : `hsl(${hue} 50% 50%)`;
 
@@ -3549,20 +3462,17 @@ export default class Scene {
 		const at = this.art(walker);
 		const stride = walker.path.length && Math.floor(walker.step) % 2;
 		const colors = { c: `hsl(${walker.person.hue} 45% 45%)`, s: `hsl(${walker.person.hue} 45% 45%)` };
-		const there = !walker.path.length && !walker.leaving && walker.seat;
+		const there = !walker.path.length && !walker.leaving && walker.spot;
 
-		// A co-pilot on a stool beside its grey, facing out as the grey does
 		if (there && walker.pose === 'copilot') {
 			rect(ctx, at.x - 3, at.y - 4, 7, 2, PALETTE.m);
 			rect(ctx, at.x - 1, at.y - 2, 3, 3, PALETTE.k);
 			drawSprite(ctx, 'suit', at.x, at.y - 4, { colors });
 		} else if (there && walker.pose === 'overseer') {
-			// The pilot on foot by a grey, facing it, glancing at a tablet now and then
 			drawSprite(ctx, 'suit', at.x, at.y, { colors, flip: walker.stand < 0 });
 			if ((this.time + seeded(walker.name) * 5) % 5 < 1.2)
 				rect(ctx, at.x + walker.stand * 3, at.y - 8, 2, 2, PALETTE.t);
 		} else if (there && walker.pose === 'tourist') {
-			// A tourist at the front of the deck, looking in, now and then taking a picture
 			drawSprite(ctx, 'suitBack', at.x, at.y, { colors });
 			if ((this.time + seeded(walker.name) * 7) % 7 < 0.12) {
 				rect(ctx, at.x - 6, at.y - 18, 3, 3, PALETTE.W);
@@ -3605,7 +3515,6 @@ export default class Scene {
 		ctx.scale(grow, grow);
 		if (need === 'asking') drawSprite(ctx, 'asking', 0, 0);
 		else {
-			// A letter, as on a terminal
 			rect(ctx, -4, -h + 2, 9, 6, PALETTE.k);
 			rect(ctx, -3, -h + 3, 7, 4, PALETTE.b);
 			for (let step = 0; step < 3; step++) {

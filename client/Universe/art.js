@@ -25,10 +25,9 @@ export const PALETTE = {
 	B: '#24508a',
 };
 
-// A gray at a desk, its head and body apart so the head can grow with its session's context: a domed head tapering
-// to a narrow chin, wide slanted eyes with a glint in each, the collar in its session's color and a pip on its chest
-// ('s') for the model it runs. Its skull bulges as its context fills, the face under it the same; past three quarters
-// full, veins stand out on the bulge.
+// A grey's head, apart from its body so the head can grow with its session's context: the face stays the same size
+// while the skull bulges, veins standing out past three quarters full; its collar and chest pip ('s') in its session's
+// color and its model's
 const HEADS = {
 	small: [
 		'...kkkkk...',
@@ -42,8 +41,6 @@ const HEADS = {
 		'..kaaaaAk..',
 		'...kaaAk...',
 	],
-	// The same face as the small one, eyes and chin no bigger, under a skull bulging up and out past it: a fuller
-	// context swells its brain rather than scaling the whole head up
 	big: [
 		'....kkkkk....',
 		'..kkaaaaakk..',
@@ -123,10 +120,7 @@ const BODIES = {
 	],
 };
 
-// Someone watching, in a pressure suit: a round helmet, its visor tinted in their color with a glint, a slim suit
-// with its arms at its sides and their color in the light on its chest, short legs and boots. Two strides for
-// walking. (A helmet as wide as the suit over a stub of a body looked off; a dark one-eyed visor on a blocky suit,
-// worse.)
+// Someone watching, in a pressure suit: visor and chest light in their color; two strides for walking
 const SUIT = {
 	stand: [
 		'..kkkkk..',
@@ -186,7 +180,7 @@ const CAMERA = ['kkkkkkk..', 'kslllllkk', 'kllllllke', 'kmmmmmmkk', '.kkkkkk..',
 // A lamp on its post: the light at the top in its color
 const LAMP = ['..kkk..', '.kccck.', '.kccck.', '..kkk..', '.kmmmk.', 'kmlllmk', 'kmmmmmk', 'kdddddk', 'kkkkkkk'];
 
-// A machine's reactor, its band lit in the machine's color while it works
+// An engine's reactor, its band lit in the engine's color while it works
 const CORE = [
 	'..kkkkkkkk..',
 	'.kllwwwwllk.',
@@ -232,10 +226,7 @@ const NEWS = [
 	'....k....',
 ];
 
-// Work as cargo: a sheet of changed files, a crate of commits not pushed, a canister of something a session made, and
-// the hauler that carries a push away
-// A small grey, a subagent its grey sent out: the same domed head and slanted eyes, its collar in its grey's color;
-// at work its arms are up at the slate it holds
+// A small grey, a subagent its grey sent out; at work its arms are up at the slate it holds
 const SMALL_GREY = [
 	'.kkkkk.',
 	'kaaaaak',

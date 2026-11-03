@@ -1,5 +1,5 @@
-// A paude too old to have a universe still lists its sessions and projects for this one, so they come aboard from that:
-// those running, and those watched with news; who and what, without the screens, tools or fuel a universe would add
+// A paude too old to have a universe still lists its sessions and projects: those running, and those watched with
+// news, without the screens, tools or fuel a universe adds
 const olderPaude = ({ sessions = [], watching = [], projects = [] }) => {
 	const listed = new Map([...watching, ...sessions].map(session => [session.id, session]));
 	const aboard = [...listed.values()].filter(

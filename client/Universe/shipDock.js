@@ -21,7 +21,7 @@ import { matchesFilter } from '../../shared/sessionSearch';
 import ArtifactsPanel from '../Terminal/ArtifactsPanel';
 import LinksPanel from '../Terminal/LinksPanel';
 import { heading } from './replyCard';
-import { hiddenNow, shipsAssigned } from './shown';
+import { LOCAL, hiddenNow, shipsAssigned } from './shown';
 
 // A dock of panes for something bigger than a session (a project, the whole ship): the same frame as a session's,
 // tabs along its top, each pane built the first time it's wanted. `entries` are { key, label, make(body) },
@@ -72,21 +72,21 @@ export const listDock = ({ title, about, entries, open, onClose }) => {
 	return card;
 };
 
-// Sessions, newest first, to search and manage as on home: this machine's and `remotes`', or one project's here. Pressing one hands
-// it to `onPick` rather than leaving for its page, so an old session is read and woken from the universe.
+// Sessions, newest first, to search and manage as on home: this paude's and `remotes`', or one project's here. A
+// session pressed goes to `onPick`, so it's read and woken from the universe.
 export const sessionsPane = ({ project, remotes = [], local = true, onPick, changed }) => ({
 	key: 'sessions',
 	label: 'Sessions',
 	make: appendTo => {
 		const elem = element('div', 'pane scrolling');
-		const here = async searchParameters => {
+		const fetchLocal = async searchParameters => {
 			const { body, response } = project
 				? await getProjectSessions(project, { searchParameters })
 				: await getRecentSessions({ searchParameters });
 
 			return { sessions: body ?? [], total: Number(response?.headers.get('x-total-count') ?? 0) };
 		};
-		const there = remote => async searchParameters => {
+		const fetchRemote = remote => async searchParameters => {
 			const { body, response } = await getRemoteSessions(remote.url, { searchParameters });
 
 			if (!response?.ok) return { sessions: [], total: 0 };
@@ -106,10 +106,10 @@ export const sessionsPane = ({ project, remotes = [], local = true, onPick, chan
 				: 'Find a session in any project: its name, first prompt, project or branch',
 			empty: project ? 'No sessions in this project yet.' : 'No sessions yet.',
 			fetchPage: project
-				? here
+				? fetchLocal
 				: mergedPages([
-						...(local ? [here] : []),
-						...remotes.filter(({ error }) => !error).map(remote => there(remote)),
+						...(local ? [fetchLocal] : []),
+						...remotes.filter(({ error }) => !error).map(remote => fetchRemote(remote)),
 					]),
 			renderCard: (session, cards, { showProject = !project, when } = {}) =>
 				sessionCard(session, {
@@ -129,8 +129,7 @@ export const sessionsPane = ({ project, remotes = [], local = true, onPick, chan
 	},
 });
 
-// Every project to start a session in, those never worked in too, newest work first: this machine's to start here, and
-// those on the other paudes to open there
+// Every project to start a session in, newest work first: this paude's to start here, the other paudes' to open there
 export const projectsPane = ({ remotes = [], onStart, onOpenThere }) => ({
 	key: 'projects',
 	label: 'Projects',
@@ -152,19 +151,19 @@ export const projectsPane = ({ remotes = [], onStart, onOpenThere }) => ({
 		};
 		const refresh = async () => {
 			const { body } = await getProjects();
-			const here = [...(body ?? [])].sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0));
-			const there = remotes
+			const localProjects = [...(body ?? [])].sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0));
+			const remoteProjects = remotes
 				.filter(({ error }) => !error)
 				.flatMap(remote => (remote.projects ?? []).map(project => ({ ...project, server: remote.name, remote })));
 
 			elem.replaceChildren(
-				...here.map(project =>
+				...localProjects.map(project =>
 					row(
 						project,
 						button('Start a session', () => onStart(project.name), { className: 'variant-flat' }),
 					),
 				),
-				...there.map(project =>
+				...remoteProjects.map(project =>
 					row(
 						project,
 						button(`Open on ${project.server}`, () => onOpenThere(project.remote, project.name), {
@@ -181,9 +180,9 @@ export const projectsPane = ({ remotes = [], onStart, onOpenThere }) => ({
 	},
 });
 
-// The other paudes this one is logged into, how each is doing, and a form to log into another: its address, its owner
-// password, and a name to show it by. `onConnected` once one joins.
-export const devicesPane = ({ remotes = [], here, onConnected }) => ({
+// The other paudes this one is logged into, how each is doing, and a form to log into another. `onConnected` once one
+// joins.
+export const enginesPane = ({ remotes = [], localName, onConnected }) => ({
 	key: 'devices',
 	label: 'Devices',
 	make: appendTo => {
@@ -204,12 +203,12 @@ export const devicesPane = ({ remotes = [], here, onConnected }) => ({
 		Object.assign(name, { placeholder: 'A name to show it by (optional)', autocomplete: 'off' });
 		list.append(
 			...[
-				{ name: here, detail: 'this machine' },
+				{ name: localName, detail: 'this machine' },
 				...remotes.map(remote => ({ name: remote.name, detail: state(remote) })),
-			].map(device => {
+			].map(engine => {
 				const line = element('div', 'project-row');
 
-				line.append(element('strong', '', device.name), element('span', 'about', device.detail));
+				line.append(element('strong', '', engine.name), element('span', 'about', engine.detail));
 
 				return line;
 			}),
@@ -331,9 +330,9 @@ export const projectPanes = project => [
 	},
 ];
 
-// Every engine and project, those hidden too, each with its toggle: `worlds` the last look at each paude, unfiltered,
-// `toggle(kind, key)` flipping one
-export const shownPane = ({ worlds, toggle, assign }) => ({
+// Every engine and project, those hidden too, each with its toggle: `answers` returns each engine's last answer,
+// unfiltered
+export const shownPane = ({ answers, toggle, assign }) => ({
 	key: 'shown',
 	label: 'Shown',
 	make: appendTo => {
@@ -355,23 +354,23 @@ export const shownPane = ({ worlds, toggle, assign }) => ({
 
 				return line;
 			};
-			const names = [...new Set(worlds().flatMap(({ projects = [] }) => projects.map(({ name }) => name)))].sort();
+			const names = [...new Set(answers().flatMap(({ projects = [] }) => projects.map(({ name }) => name)))].sort();
 
 			const engines = element('div', 'projects-list');
 			const projects = element('div', 'projects-list');
 
-			// An engine that doesn't say which Claude account it's on is taken to share this machine's subscription, its
-			// ship: pressed, it steps through sharing another's and having its own
-			const ship = world => {
-				const sharing = shipsAssigned()[world.key] ?? 'here';
-				const others = worlds().filter(({ key }) => key !== world.key);
+			// An engine that doesn't say which Claude account it's on: pressed, it steps through sharing another's
+			// subscription and having its own
+			const ship = answer => {
+				const sharing = shipsAssigned()[answer.key] ?? LOCAL;
+				const others = answers().filter(({ key }) => key !== answer.key);
 				const choices = [...others.map(({ key }) => key), 'own'];
 				const next = choices[(choices.indexOf(sharing) + 1) % choices.length];
 				const shared = others.find(({ key }) => key === sharing);
 
 				return button(
 					shared ? `Same subscription as ${shared.name}` : 'A subscription of its own',
-					() => (assign(world.key, next), paint()),
+					() => (assign(answer.key, next), paint()),
 					{
 						className: 'variant-flat',
 						title: 'Which subscription it runs on, as it does not say: the ships are one to a subscription',
@@ -380,10 +379,10 @@ export const shownPane = ({ worlds, toggle, assign }) => ({
 			};
 
 			engines.append(
-				...worlds().map(world => {
-					const line = row('machines', world.key, world.name, world.remote ? 'another paude' : 'this machine');
+				...answers().map(answer => {
+					const line = row('engines', answer.key, answer.name, answer.remote ? 'another paude' : 'this machine');
 
-					if (!world.fuel?.account) line.append(ship(world));
+					if (!answer.fuel?.account) line.append(ship(answer));
 
 					return line;
 				}),

@@ -1,5 +1,5 @@
-// What a server said when it refused, when it's a short line of plain words worth showing beside our own: not a page
-// of HTML, a stack trace or a paragraph, which read as noise in a toast
+// A server's reason worth showing beside our own: one short line of plain words, not HTML, a stack trace or a
+// paragraph
 const MOST = 120;
 
 export const reasonOf = body => {

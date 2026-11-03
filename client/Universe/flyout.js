@@ -1,0 +1,399 @@
+import { relativeTime } from '@vanilla-bean/components/utils/date';
+
+import { facilitiesFor, facilityOf } from '../../shared/facilities';
+import { BRIDGE, LOUNGE } from './scene';
+
+export const STATUS = { working: 'working', waiting: 'needs you', ready: 'ready for a prompt', stopped: 'stopped' };
+
+export const titled = name => name.charAt(0).toUpperCase() + name.slice(1);
+
+// What's going on aboard another ship, in a few words
+export const shipWords = ({ needs, news, working }) =>
+	[needs && `${needs} need${needs === 1 ? 's' : ''} you`, news && `${news} new`, working && `${working} working`]
+		.filter(Boolean)
+		.join(' · ') || 'quiet';
+
+export const doing = ({ status, tool }) => {
+	if (status !== 'working') return STATUS[status];
+	if (!tool) return 'thinking';
+
+	const facility = facilitiesFor([tool]).find(({ key }) => key === facilityOf(tool));
+
+	return `${facility?.about ?? 'working'} (${tool})`;
+};
+
+const LANGUAGE_NAMES = {
+	js: 'JavaScript',
+	python: 'Python',
+	rust: 'Rust',
+	go: 'Go',
+	jvm: 'Java/Kotlin',
+	c: 'C/C++',
+	ruby: 'Ruby',
+	php: 'PHP',
+	dotnet: '.NET',
+	swift: 'Swift',
+	shell: 'shell',
+	web: 'HTML/CSS',
+	docs: 'prose',
+	data: 'data',
+};
+
+export const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+
+const clock = time => new Date(time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+export const limitWords = resetAt => (resetAt ? `resets at ${clock(resetAt)}` : "Claude didn't say when it resets");
+
+const lasted = age => {
+	const minutes = Math.round(age / 60_000);
+
+	return minutes < 60 ? plural(minutes, 'minute') : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+};
+
+export const whereWorking = checkout =>
+	`${checkout.branch ?? 'no branch'}${checkout.trunk ? ' (the trunk)' : ''}${checkout.worktree ? `, a worktree at ${checkout.root}` : ''}`;
+
+// What the ship's other rooms are for, as their flyouts say
+export const ROOMS = {
+	engineering: ship =>
+		`a reactor for each machine: ${ship.engines.map(({ name, detail }) => `${name}, ${detail}`).join('; ')}`,
+	materializer: ship =>
+		ship.charged ? 'a new session is on its way' : 'where new sessions start; press it to write a prompt',
+	hold: ship => `each checkout's changes and commits not pushed: ${plural(ship.cargo.length, 'checkout')}`,
+	hangar: () => 'pushes leaving, and pull requests waiting for review',
+};
+
+const MODES = {
+	plan: 'planning, changing nothing',
+	acceptEdits: 'edits go ahead unasked',
+	bypassPermissions: 'asks nothing before it acts',
+	dontAsk: 'asks nothing before it acts',
+};
+
+const todoWords = todos => {
+	const done = todos.filter(({ status }) => status === 'completed').length;
+	const now = todos.find(({ status }) => status === 'in_progress');
+
+	return `${done} of ${todos.length} done${now ? ` · now ${now.text}` : ''}`;
+};
+
+// A session whose terminal can be opened here: running, on this paude
+export const live = session => !session.engine.remote && session.status !== 'stopped' && Boolean(session.screen);
+
+export const cargoWords = ({ changed, unpushed }) =>
+	[changed && `${plural(changed, 'file')} changed`, unpushed && `${plural(unpushed, 'commit')} to push`]
+		.filter(Boolean)
+		.join(' · ') || 'all shipped';
+
+const lookHint = (ship, at) => (ship.looking === at ? 'Press to see everything' : 'Press to look closer');
+
+const ROOM_FLYOUT = (target, ship) => ({
+	title: titled(target.room.name),
+	rows: [['for', ROOMS[target.kind](ship)]],
+	hint: lookHint(ship, target.room.name),
+});
+
+// By the kind of thing under the pointer: { title, rows: [[label, words] or false], hint }; any other kind is a bay's
+const FLYOUTS = {
+	transporter: (target, ship) => ({
+		title: 'Transporter',
+		rows: ship.fleet.map(other => [other.name, shipWords(other)]),
+		hint: 'Hears from the other ships; press to beam over to one',
+	}),
+
+	worker: (target, ship) => {
+		const { session } = target.worker;
+		const { context } = session;
+		const checkout = ship.checkoutOf(session);
+		const watchers = [...ship.walkers.values()]
+			.filter(({ person }) => person.sessions.includes(session.key))
+			.map(({ name }) => name);
+
+		return {
+			title: session.title || session.project || 'A new session',
+			rows: [
+				['doing', doing(session)],
+				['where', [session.project, session.engine.name].filter(Boolean).join(' on ')],
+				context && [
+					'context',
+					`${Math.round(context.fill * 100)}% of ${Math.round(context.window / 1000)}k${context.fill >= 0.75 ? ', getting full' : ''}`,
+				],
+				session.limit && ['usage limit', limitWords(session.limit.resetAt)],
+				session.todos?.length && ['todos', todoWords(session.todos)],
+				session.agents && ['subagents', `${session.agents} out`],
+				session.faults && ['failed', `${plural(session.faults, 'tool')} this turn`],
+				MODES[session.mode] && ['mode', MODES[session.mode]],
+				context?.model && ['model', context.model],
+				context?.warm === false && session.status !== 'stopped' && ['cache', 'gone cold: its next turn costs more'],
+				session.status === 'working' && session.turnAge && ['this turn', lasted(session.turnAge)],
+				session.age && ['running', lasted(session.age)],
+				checkout && ['branch', whereWorking(checkout)],
+				checkout && ['changes', cargoWords(checkout)],
+				session.assets && ['made', plural(session.assets, 'file')],
+				watchers.length && ['watched by', watchers.join(', ')],
+			],
+			hint: 'Press to select and read it · its keys along the bottom · right-click or hold for orders',
+		};
+	},
+	monitor: target => {
+		const { session } = target.worker;
+
+		return {
+			title: session.title || session.project || 'A new session',
+			rows: [['screen', live(session) ? 'its terminal, as it is now' : 'not running here']],
+			hint: live(session) ? 'Press to open its terminal here' : 'Press to read its last reply',
+		};
+	},
+	use: ({ use, room }) => {
+		return {
+			title: use.detail ?? use.tool,
+			rows: [
+				['by', use.session ? use.session.title || use.session.project : 'a session no longer aboard'],
+				['tool', `${use.tool}${use.failed ? ', which failed' : ''}`],
+				['when', relativeTime(Date.now() - use.ago)],
+			],
+			hint: use.session ? `Press to read its session · from ${room.name}` : `From ${room.name}`,
+		};
+	},
+	log: ({ system, room }) => {
+		return {
+			title: `${titled(room.name)} log`,
+			rows: [['lately', plural(system.uses ?? 0, 'use')], system.failures && ['failed', `${system.failures} of them`]],
+			hint: 'Press to see what it was used on',
+		};
+	},
+	link: ({ engine }) => {
+		return {
+			title: `Connection to ${engine.name}`,
+			rows: [['answers in', engine.link === null ? 'no answer' : `${engine.link} ms`]],
+		};
+	},
+	processes: target => {
+		const { processes = [], services = [], title, project } = target.worker.session;
+		const megabytes = bytes => `${Math.round((bytes ?? 0) / 1e6)} MB`;
+
+		return {
+			title: `What ${title || project} runs`,
+			rows: [
+				...processes.map(({ command, cpuSeconds, memoryBytes }) => [
+					command,
+					`${Math.round(cpuSeconds ?? 0)}s of CPU, ${megabytes(memoryBytes)}`,
+				]),
+				...services.map(({ name, port }) => ['shared', `port ${port} as ${name}`]),
+			],
+			hint: 'Press for its ports and processes',
+		};
+	},
+	delivery: target => {
+		const { pullRequest, branch } = target.checkout;
+		const { passing, failing, pending } = pullRequest.checks;
+
+		return {
+			title: `#${pullRequest.number} ${pullRequest.title}`,
+			rows: [
+				['branch', branch],
+				['state', pullRequest.draft ? 'a draft' : 'waiting for sign-off'],
+				['checks', `${passing} passing, ${failing} failing, ${pending} running`],
+			],
+			hint: 'Press to review it',
+		};
+	},
+	crew: target => {
+		const { busy, lately } = target.crew;
+		const done = Object.entries(lately);
+
+		return {
+			title: "paude's own jobs",
+			rows: [
+				['now', busy.length ? busy.join(', ') : 'nothing'],
+				['last hour', done.length ? done.map(([job, count]) => `${job} ${count}`).join(', ') : 'nothing'],
+			],
+			hint: "paude's own helpers, on your Claude login: they draw on the same fuel",
+		};
+	},
+	talk: ({ session }) => {
+		return {
+			title: `Said in ${session.title || session.project}`,
+			rows: (session.talk?.lately ?? []).map(({ author, text, fromClaude, toClaude }) => [
+				fromClaude ? 'Claude' : author,
+				`${text}${toClaude ? ' (to Claude)' : ''}`,
+			]),
+			hint: 'Press for the chat',
+		};
+	},
+	journey: ({ journey }) => {
+		return {
+			title: `Delivered: ${journey.distance}`,
+			rows: [
+				[
+					'delivered',
+					`${journey.replies} ${journey.replies === 1 ? 'reply' : 'replies'}, ${plural(journey.commits, 'commit')} pushed, ${plural(journey.artifacts, 'artifact')}`,
+				],
+				['last hour', `${journey.lately} further`],
+			],
+			hint: 'A reply counts one, an artifact two, a pushed commit five',
+		};
+	},
+	inspection: ({ bay, sessions }) => {
+		return {
+			title: `${bay.name}: tested?`,
+			rows: sessions.length
+				? sessions.map(session => [
+						session.title || session.project,
+						session.tested?.said ?? 'nothing changed or tested yet',
+					])
+				: [['now', 'nobody at work here']],
+			hint: "From each session's test runs, against when each file it changed last changed",
+		};
+	},
+	fuel: ({ tank }) => {
+		if (tank.unknown)
+			return {
+				title: 'Fuel: not known',
+				rows: [
+					['feeds', tank.engines.map(({ name }) => name).join(', ')],
+					['account', 'not said: older paudes; update them there to see which account each runs on'],
+				],
+				hint: "One tank for every machine that doesn't say which account it runs on",
+			};
+
+		const tokens = count => (count >= 1e6 ? `${(count / 1e6).toFixed(1)}M` : `${Math.round(count / 1000)}k`);
+
+		return {
+			title: tank.plan ? `Fuel: ${tank.plan}` : 'Fuel',
+			rows: [
+				['feeds', tank.engines.map(({ name }) => name).join(', ')],
+				['burned', `${tokens(tank.burned)} in the last five hours`],
+				['burning', `${tokens(tank.rate)} a minute`],
+				[
+					'left',
+					(tank.empty && 'none: a usage limit is in force') ||
+						(tank.level === null
+							? 'not known until a limit is first hit, which measures the tank'
+							: `about ${Math.round(tank.level * 100)}%, against the tank measured ${lasted(tank.capacityAgo)} ago`),
+				],
+			],
+			hint: 'Tokens as input-token equivalents; the level is an estimate',
+		};
+	},
+	subagent: ({ session, task }) => {
+		return {
+			title: task || 'A subagent',
+			rows: [['sent by', session.title || session.project]],
+			hint: 'Press for its tasks',
+		};
+	},
+	commit: ({ commit, checkout }) => {
+		return {
+			title: commit.subject,
+			rows: [
+				['commit', commit.short],
+				['branch', whereWorking(checkout)],
+			],
+			hint: 'Not pushed yet · press for its changes',
+		};
+	},
+	cargo: ({ checkout }) => {
+		return {
+			title: `${checkout.project}: changes`,
+			rows: [
+				['changed', plural(checkout.changed, 'file')],
+				['to push', plural(checkout.unpushed, 'commit')],
+				['branch', whereWorking(checkout)],
+				['checkout', `${checkout.root} on ${checkout.engineName}`],
+			],
+			hint: 'Press for its changes, to commit and push',
+		};
+	},
+	person: target => {
+		const { name, role, sessions } = target.person;
+
+		return {
+			title: name,
+			rows: [
+				['role', role],
+				['watching', plural(sessions.length, 'session')],
+			],
+		};
+	},
+	cloner: (target, ship) => ({
+		title: 'New sessions',
+		rows: [
+			['for', 'a new prompt: paude finds the session it carries on, or the project to start one in'],
+			ship.charged && ['now', 'waiting for the new session'],
+		],
+		hint: 'Press to write one',
+	}),
+	bridge: (target, ship) => {
+		const people = [...ship.walkers.values()].map(({ name }) => name);
+
+		return {
+			title: 'Bridge',
+			rows: [
+				['aboard', people.join(', ') || 'nobody'],
+				['watched', plural(ship.screens.length, 'session')],
+			],
+			hint: lookHint(ship, BRIDGE),
+		};
+	},
+	lounge: (target, ship) => ({
+		title: 'Resting',
+		rows: [['resting', plural(target.room.sessions.length, 'session')]],
+		hint: `${lookHint(ship, LOUNGE)} · each wakes, or goes, from its orders`,
+	}),
+	system: ({ system, room }, ship) => {
+		const hint = room && lookHint(ship, room.name);
+
+		if (!system) return { title: titled(room.name), rows: [['now', 'not used on any machine yet']], hint };
+
+		return {
+			title: system.key.startsWith('mcp:') ? `${system.word} (MCP)` : titled(room?.name ?? system.label),
+			rows: [
+				['for', system.about],
+				['now', system.active ? system.users.map(({ title, project }) => title || project).join(', ') : 'not in use'],
+				['lately', `${plural(system.uses, 'use')} in the last ten minutes`],
+				system.engines.length > 1 && [
+					'by machine',
+					system.engines.map(({ name, uses }) => `${name} ${uses}`).join(', '),
+				],
+				system.failures && ['failed', `${system.failures} of them`],
+			],
+			hint,
+		};
+	},
+	engine: ({ engine }, ship) => {
+		return {
+			title: engine.name,
+			rows: [
+				['running', engine.detail],
+				engine.limit && [
+					'usage limit',
+					`${plural(engine.limit.sessions, 'session')} waiting, ${limitWords(engine.limit.resetAt)}`,
+				],
+			],
+			hint: lookHint(ship, engine.key),
+		};
+	},
+
+	bay: ({ bay }, ship) => {
+		const cargo = (bay.cargo ?? []).map(cargoWords).join('; ');
+		const { language, files, since, commits } = bay.character ?? {};
+
+		return {
+			title: bay.name,
+			rows: [
+				['sessions', plural(bay.sessions.length, 'session')],
+				['on', bay.engines.map(({ name }) => name).join(', ')],
+				cargo && ['changes', cargo],
+				language && ['written in', LANGUAGE_NAMES[language] ?? language],
+				files && ['size', plural(files, 'file')],
+				since && ['since', `${new Date(since).toLocaleDateString()}, ${plural(commits, 'commit')}`],
+			],
+			hint: `${lookHint(ship, bay.name)} · right-click or hold for orders`,
+		};
+	},
+	...Object.fromEntries(Object.keys(ROOMS).map(kind => [kind, ROOM_FLYOUT])),
+};
+
+export const flyoutOf = (target, ship) => (FLYOUTS[target.kind] ?? FLYOUTS.bay)(target, ship);

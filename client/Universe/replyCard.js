@@ -21,7 +21,6 @@ const rendered = text => {
 	return body;
 };
 
-// A card's head: its title and what it's about, any `buttons`, and a close button
 export const heading = (title, about, onClose, { close = 'Close (Esc)', buttons = [] } = {}) => {
 	const head = element('div', 'head');
 	const titles = element('div', 'titles');
@@ -36,7 +35,6 @@ export const heading = (title, about, onClose, { close = 'Close (Esc)', buttons 
 	return head;
 };
 
-// A box to type to Claude in, Enter sending it, and the buttons under it
 const composer = ({ placeholder, send, actions }) => {
 	const form = element('form', 'answer');
 	const text = element('textarea');
@@ -80,17 +78,16 @@ const composer = ({ placeholder, send, actions }) => {
 	return form;
 };
 
-// One session's reply, beside its worker: the prompt it answered, what Claude said, what it's asking if it's waiting,
-// a box to answer in, and the ways into its live terminal (`onLive`, when it has one here) and the whole session.
-// `session` is as the last look found it.
+// One session's reply, beside its worker. `session` is as the last answer had it; `onLive` only when its terminal
+// can be opened here.
 export const replyCard = ({ session, onOpen, onLive, onClose, note }) => {
-	const { reply, server } = session;
+	const { reply, engine } = session;
 	const card = element('div', 'reply-card');
 
 	card.append(
 		heading(
 			session.title || session.project || 'A new session',
-			[session.project, server.name, reply?.at && relativeTime(reply.at)].filter(Boolean).join(' · '),
+			[session.project, engine.name, reply?.at && relativeTime(reply.at)].filter(Boolean).join(' · '),
 			onClose,
 		),
 	);
@@ -110,7 +107,7 @@ export const replyCard = ({ session, onOpen, onLive, onClose, note }) => {
 	if (session.status === 'waiting' && session.asking) {
 		const asking = new AskingCard({ addClass: 'asking' });
 
-		showAsking(asking, session.id, session.asking, { canAnswer: !server.remote, onAnswered: onClose });
+		showAsking(asking, session.id, session.asking, { canAnswer: !engine.remote, onAnswered: onClose });
 		card.append(asking.elem);
 	}
 
@@ -118,14 +115,14 @@ export const replyCard = ({ session, onOpen, onLive, onClose, note }) => {
 		composer({
 			placeholder: session.status === 'waiting' ? 'Or type to Claude' : 'Reply to Claude',
 			send: async text => {
-				const { body, response } = server.remote
-					? await sendRemotePrompt(server.remote.url, session.id, text)
+				const { body, response } = engine.remote
+					? await sendRemotePrompt(engine.remote.url, session.id, text)
 					: await sendPrompt(session.id, text);
 
 				if (!response?.ok)
 					return new Notify({
 						intent: 'danger',
-						content: refusal(`Could not send that to ${server.name}`, body),
+						content: refusal(`Could not send that to ${engine.name}`, body),
 					});
 
 				new Notify({ intent: 'success', content: 'Sent', timeout: 2000 });
@@ -141,8 +138,8 @@ export const replyCard = ({ session, onOpen, onLive, onClose, note }) => {
 	return card;
 };
 
-// A prompt to place: paude finds where it goes as it does from home, the sessions it carries on and a new session in
-// the project that fits, in `project`'s when given, and goes straight there; `onSent` once it's gone
+// A prompt placed as from home: paude finds the session it carries on or the project to start one in (`project`'s
+// when given), and goes straight there
 export const promptCard = ({ project, onSent, onClose }) => {
 	const card = element('div', 'reply-card');
 
@@ -170,8 +167,7 @@ export const promptCard = ({ project, onSent, onClose }) => {
 	return card;
 };
 
-// A system's log: its latest uses, newest first, each saying when, by which session and on what, and whether it
-// failed; one whose session is aboard opens that session (`onPick`)
+// A system's latest uses, newest first; one whose session is aboard opens it (`onPick`)
 export const logCard = ({ title, about, log, onPick, onClose }) => {
 	const card = element('div', 'reply-card log-card');
 	const list = element('div', 'log');
@@ -203,8 +199,7 @@ const FILE_MARKS = {
 	conflicted: 'in conflict',
 };
 
-// A checkout's manifest: the commits waiting to be pushed and the files changed since the last commit, as many of
-// each as its cargo names, and how many more there are
+// A checkout's commits waiting to be pushed and files changed, as many as its cargo names, and how many more there are
 export const manifestCard = ({ title, about, checkout, onClose }) => {
 	const card = element('div', 'reply-card log-card');
 	const list = element('div', 'log');

@@ -11,11 +11,9 @@ const FONT = { most: 14, least: 8, tiny: 6 };
 // The dock's own width, the least it narrows to for a small terminal
 const DOCK_LEAST = 620;
 
-// A session's own terminal, a panel of its dock: attached as a page is, at the size the session already is so opening
-// it here resizes nothing for anyone, its font as large as lets the session's width fit the panel (smaller than the
-// least, it scrolls across instead). Sized by its font rather than shrunk with a transform, which left the panel split
-// between a shrunken screen and the box it no longer filled, blurred the text and put clicks and selections where they
-// weren't. Typing into it types to Claude. `start()` attaches it the first time it's shown; `stop()` lets it go.
+// A session's terminal in its dock, at the session's own size so opening it here resizes nothing for anyone, its font
+// as large as lets that size fit (smaller than the least, it scrolls across). Sized by its font, never a CSS transform:
+// a transform blurs the text and puts clicks where they aren't.
 export default class TerminalPanel {
 	constructor({ appendTo, session, addClass = [] }) {
 		this.session = session;
@@ -31,7 +29,7 @@ export default class TerminalPanel {
 
 		const { session } = this;
 		const { cols = 100, rows = 30 } = session.screen ?? {};
-		// See-through, as the session page's shell is, so the ship shows behind it through the glass
+		// See-through, so the ship shows behind it
 		const terminal = new Terminal({
 			...xtermOptions,
 			fontSize: FONT.most,
@@ -77,9 +75,8 @@ export default class TerminalPanel {
 		if (canType()) terminal.focus();
 	}
 
-	// The font as large as lets the session's columns fit the most room the dock can take and its rows the dock's height,
-	// measured from what a cell takes now; then the dock as wide as the terminal drawn at it, so there's no empty strip beside a narrow session
-	// (at the widest, one a third of the screen across sat beside two thirds of black, read as cut off)
+	// The font as large as lets the session's columns fit the widest the dock can take and its rows the dock's height;
+	// then the dock as wide as the terminal drawn at it
 	fit() {
 		const { terminal, screen } = this;
 		const drawn = terminal?.element?.querySelector('.xterm-screen');
@@ -92,8 +89,6 @@ export default class TerminalPanel {
 		const sized = dock.dataset.sized === 'true';
 		const room = sized ? screen.clientWidth : dock.parentElement.clientWidth - 32 - chrome;
 		const size = terminal.options.fontSize;
-		// As large as lets its columns across and its rows down both fit: fitted across only, a tall session ran off the
-		// bottom of the dock
 		const across = Math.floor((size * (room - 24)) / drawn.offsetWidth);
 		const down = Math.floor((size * (screen.clientHeight - 8)) / drawn.offsetHeight);
 		// Sized narrow by hand, smaller still, so it fits the width chosen for it

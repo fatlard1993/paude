@@ -43,10 +43,8 @@ export const VERBS = [
 	{ key: 'shell', label: 'Shell', hotkey: 's', allowed: canType },
 ];
 
-// A session's panels docked at the side of the universe, one showing at a time, tabs along the top to switch: built
-// as each is first wanted, wired to one another as on the session page (a change or a commit opens in the files
-// panel's diff view, a comment in its file), and the chat on a connection of its own to the session.
-// `show(key)` switches; `dispose()` lets everything go.
+// A session's panels docked beside the universe, one showing at a time, each built when first wanted and wired to the
+// others as on the session page; the chat on a connection of its own
 export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose }) => {
 	const card = element('div', 'dock');
 	const tabs = element('div', 'tabs');
@@ -58,7 +56,7 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose 
 
 	const head = heading(
 		session.title || session.project || 'A new session',
-		[session.project, session.server.name].filter(Boolean).join(' · '),
+		[session.project, session.engine.name].filter(Boolean).join(' · '),
 		onClose,
 		{
 			close: 'Close',
@@ -179,7 +177,6 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose 
 			}),
 	};
 
-	// Built the first time it's wanted, and kept while the dock is open
 	const panel = key => {
 		if (!panels.has(key)) {
 			panels.set(key, make[key]());
@@ -210,8 +207,6 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose 
 
 	card.opened = () => card.show(verbs.some(({ key }) => key === open) ? open : verbs[0].key);
 
-	// Everything the dock's panels had going let go: the shell and terminal, a run being followed, a list waiting to
-	// refresh, an open editor
 	card.dispose = () => {
 		for (const shown of panels.values()) {
 			shown.stop?.();

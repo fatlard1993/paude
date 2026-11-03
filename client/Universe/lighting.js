@@ -1,7 +1,6 @@
-// Light aboard: the inside of the ship is dark but for what lights it. Each room has its lamps, up and warm where work
-// goes on, down to a dim blue where nothing does; whatever shines (a monitor at work, a reactor, a TV, a beam) throws
-// its own color round it. It's painted at the art's own resolution in hard bands, so it stays pixel art when scaled,
-// then multiplied over the world, and what shines is added again faintly on top as glow.
+// Light aboard: dark but for lamps, bright where work goes on and dim blue where nothing does, and whatever shines
+// throwing its own color round it. Painted at the art's resolution in hard bands so it stays pixel art when scaled,
+// multiplied over the scene, and what shines added again faintly as glow.
 
 // How dark an unlit place is, as what it multiplies the art by
 const AMBIENT = [58, 66, 92];
@@ -62,8 +61,7 @@ const pool = (paint, { x, y, r, color, strength = 1, deep = 1 }) => {
 	paint.restore();
 };
 
-// Each room lit low to its level, its far wall brighter under the lamps along its top, and under each of its lamps a
-// pool on its floor; each pool, and each light, which glows too
+// Each room lit low to its level, its far wall brighter under its lamps, a pool on its floor under each lamp
 const paintLights = (paint, shine, local, { rooms, pools, lights }) => {
 	for (const { from, to, color, level, face = 0 } of rooms) {
 		const [a, b] = [local(from), local(to)];

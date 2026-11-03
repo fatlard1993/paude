@@ -1,10 +1,10 @@
 import { cksum } from '../../shared/hues';
 import { PALETTE, drawSprite } from './art';
 
-// What every room aboard is made of, and the stations and details in them: floors, walls and doors, desks, monitors.
-// The ship's plan and its major systems are in ship.js. In world units, x across, y toward the viewer.
-// A workstation with room beside it for what its session made and whoever is watching, rows of them a little closer
-// than that
+// What every room aboard is made of: floors, walls, seats and their screens. In world units, x across, y toward the
+// viewer.
+
+// A seat's pitch along an island, and between rows
 export const DESK_PITCH = 2.3;
 export const DESK_ROW = 1.9;
 const BAY_MIN = 3;
@@ -91,7 +91,7 @@ const within = (point, box) => point.x > box.x && point.x < box.x + box.w && poi
 export const furnish = room => {
 	const mix = LOUNGE_PROPS;
 	const wall = room.y + (room.hull.top ? HULL_FACE : FACE);
-	const kept = { x: room.x + 0.3, y: room.y, w: room.w - 0.6, d: room.d - 0.4 };
+	const reserved = { x: room.x + 0.3, y: room.y, w: room.w - 0.6, d: room.d - 0.4 };
 	const props = [];
 
 	for (let y = room.y + 0.6; y < room.y + room.d - 0.15; y += PROP_SPACING.y)
@@ -101,7 +101,7 @@ export const furnish = room => {
 				y - 1 > wall &&
 				y < room.y + room.d - (room.hull.bottom ? 0.1 : 0.3) &&
 				Math.hypot(x - room.door.x, y - room.door.y) > 1.3 &&
-				!within(spot, kept);
+				!within(spot, reserved);
 			const againstWall = y - 1 < wall + 0.8 || x - room.x < 0.9 || room.x + room.w - x < 0.9;
 
 			if (!clear || !againstWall) continue;
@@ -140,7 +140,6 @@ const grate = (x, y) => y % 2 === 1;
 
 const floors = new Map();
 
-// Painted once for each size, colors and the parity of its rows (all its pattern turns on), and kept
 // A bare room's deck: open grating over the dark of the ship's insides
 const BARE_FLOOR = { base: '#0a0d14', alt: '#141a25' };
 
@@ -168,7 +167,7 @@ export const floor = (ctx, art, room, colors = BARE_FLOOR) => {
 };
 
 // A far wall's face and its shadow, painted once for each width, height, catwalks through it and where it starts on
-// the world's grid, and kept
+// the world's grid
 const faces = new Map();
 const faceImage = (left, w, height, gaps) => {
 	const phase = ((left % UNIT.x) + UNIT.x) % UNIT.x;
@@ -213,10 +212,8 @@ const face = (ctx, art, room, { deep, doors = [], gaps = [] }) => {
 		rect(ctx, at.x - 1, from.y + 2, across + 2, height - 2, PALETTE.l);
 		rect(ctx, at.x, from.y + 3, across, height - 3, door.open ? '#0e1219' : PALETTE.d);
 		if (!door.open) rect(ctx, at.x + Math.floor(across / 2), from.y + 3, 1, height - 3, PALETTE.k);
-		// The lamp over it, in the color of what's going on inside
 		rect(ctx, at.x + Math.floor(across / 2) - 2, from.y, 5, 3, PALETTE.k);
 		rect(ctx, at.x + Math.floor(across / 2) - 1, from.y + 1, 3, 1, door.lamp ?? PALETTE.d);
-		// Hazard paint on the floor at its foot
 		for (let x = 0; x < across; x++)
 			rect(ctx, at.x + x, from.y + height, 1, 1, Math.floor((x + 1) / 2) % 2 ? PALETTE.y : PALETTE.k);
 	}
@@ -235,10 +232,9 @@ const wallTop = (ctx, from, to) => {
 	rect(ctx, from.x, from.y, 1, to.y - from.y, PALETTE.l);
 };
 
-// A hall: its grated floor, the far wall's face with the doors of the bays above it, and down its middle a line of
-// lights that runs while anything aboard is working
-// Where it runs through a project's machine (`gaps`, spans of art pixels across), the hall is a catwalk: no wall behind
-// it or before it, a grated walkway with a rail, the machine standing behind
+// A hall: its grated floor, the far wall's face with the doors above it, and down its middle lights that run while
+// anything aboard is working. Through a project's machine (`gaps`, spans of art pixels across) it's a catwalk with a
+// rail, no wall behind it or before it.
 export const drawHall = (ctx, art, hall, { doors, time, running, gaps = [] }) => {
 	floor(ctx, art, hall, HALL_FLOOR);
 
@@ -257,14 +253,11 @@ export const drawHall = (ctx, art, hall, { doors, time, running, gaps = [] }) =>
 		{
 			y: hall.y + hall.d,
 			draw: () => {
-				// Its side walls
 				wallTop(ctx, { x: from.x, y: from.y }, { x: from.x, y: to.y });
 				wallTop(ctx, { x: to.x, y: from.y }, to);
-				// Its front wall, broken where it's a catwalk
 				for (let x = from.x; x < to.x; x++) {
 					if (open(x)) continue;
 
-					// Each run between catwalks one wall, as wide as a wall a pixel across at each of its pixels
 					const start = x;
 
 					while (x + 1 < to.x && !open(x + 1)) x++;
@@ -344,7 +337,6 @@ export const propParts = (ctx, art, room, { color, time }) =>
 		},
 	}));
 
-// A filled box with a dark outline
 export const box = (ctx, x, y, w, h, color) => {
 	rect(ctx, x, y, w, h, PALETTE.k);
 	rect(ctx, x + 1, y + 1, w - 2, h - 2, color);
@@ -360,22 +352,19 @@ export const drawIsland = (ctx, { from, to, y }, { color }) => {
 	rect(ctx, from, y - 12, to - from, 4, PALETTE.l);
 	rect(ctx, from, y - 8, to - from, 5, PALETTE.m);
 	rect(ctx, from, y - 4, to - from, 1, color);
-	// The name plate
 	rect(ctx, from + 1, y - 12, 16, 8, color);
 	rect(ctx, from + 2, y - 11, 14, 6, PALETTE.k);
 };
 
 // A grey's seat at its island, `at` its foot: its screen on a stand before it, large enough to read, showing what it's
 // at or what needs you; its todos in lamps along the console's front under it, a keyboard, its branch's pennant
-export const drawSeat = (ctx, at, { screen, machine, time, seed, branch, todos = [], frost }) => {
+export const drawSeat = (ctx, at, { screen, engineColor, time, seed, branch, todos = [], frost }) => {
 	const { x, y } = at;
 
 	drawTodos(ctx, { x: x - 13, y: y - 7, w: 26 }, todos, time);
-	rect(ctx, x - 13, y - 5, 26, 1, machine);
-	// A keyboard before its worker
+	rect(ctx, x - 13, y - 5, 26, 1, engineColor);
 	rect(ctx, x + 1, y - 11, 9, 2, PALETTE.d);
 	rect(ctx, x + 2, y - 11, 7, 1, PALETTE.m);
-	// The screen on its stand
 	rect(ctx, x - 9, y - 16, 3, 4, PALETTE.d);
 	rect(ctx, x - 17, y - 31, 19, 15, PALETTE.k);
 	rect(ctx, x - 16, y - 30, 17, 13, PALETTE.d);
@@ -392,7 +381,7 @@ export const drawPennant = (ctx, { x, y, pole }, hue) => {
 	[5, 4, 2].forEach((length, row) => rect(ctx, x + 1, y + row, length, 1, flag));
 };
 
-// A row of lamps, one for each todo, as wide as fits in `w`: done green, under way blinking amber, waiting dark
+// A todo's lamp: done green, under way blinking amber, waiting dark
 const todoLamp = (status, time) => {
 	if (status === 'in_progress') return Math.floor(time * 3) % 2 ? PALETTE.y : PALETTE.Y;
 
@@ -424,8 +413,9 @@ const drawFrost = (ctx, { x, y, w, h }) => {
 	for (let icicle = x + 5; icicle < x + w - 3; icicle += 3) rect(ctx, icicle, y, 1, 1 + (icicle % 2), FROST[1]);
 };
 
-// What a monitor shows: lines of work scrolling in the color of what's being done, a terminal for the shell, dots while thinking; an amber question while asking, an empty
-// battery at a usage limit, a blinking cursor at rest, and nothing once stopped
+// What a monitor shows: lines of work scrolling in the color of what's being done, a terminal for the shell, dots while
+// thinking; an amber question while asking, an empty battery at a usage limit, a blinking cursor at rest, and nothing
+// once stopped
 const drawScreen = (ctx, area, { kind, hue, time, seed }) => {
 	const { x, y, w, h } = area;
 	const scroll = Math.floor(time * 4 + seed * 10);

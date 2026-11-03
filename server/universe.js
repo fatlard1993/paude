@@ -34,8 +34,7 @@ const REPLY_LIMIT = 6000;
 const PROMPT_PREVIEW = 200;
 // A stopped session's name and folder change rarely; looked up again after this long
 const RECORD_MS = 60_000;
-// How long a checkout's cargo, a session's context, what it has made and whether it's tested are kept before looked
-// at again
+// How long a checkout's cargo, a session's context, what it has made and whether it's tested are cached
 const CARGO_MS = 8000;
 const CONTEXT_MS = 5000;
 const ASSETS_MS = 30_000;
@@ -60,16 +59,16 @@ const LOUNGE_MS = 24 * 60 * 60_000;
 const LOUNGE_MOST = 8;
 const LOUNGE_LOOK_MS = 30_000;
 
-// Every tool Claude has used on this machine, kept: what it can reach here, its MCP servers among them. Each running
-// session's last tool, null once a prompt starts a turn with none used yet; and each session's last finished turn's
-// reply, with the prompt it answered, kept by id so it outlives the session's process.
+// Every tool Claude has used on this machine, persisted: what it can reach here, its MCP servers among them. Each
+// running session's last tool, null once a prompt starts a turn with none used yet; and each session's last finished
+// turn's reply, with the prompt it answered, persisted by id so it outlives the session's process.
 let toolsFile;
 let tools = new Set();
 const lastTools = new WeakMap();
 const prompts = new Map();
 const replies = new Map();
 const records = new Map();
-const looks = new Map();
+const memo = new Map();
 // What each running session's hooks have said lately, for the ship's instruments: how many tools failed this turn and
 // when the last did, its todo list as last written, the subagents it has out now, its permission mode, and when its
 // turn began
@@ -98,23 +97,23 @@ const detailOf = (input, cwd) => {
 	return typeof text === 'string' && text ? text.split('\n')[0].slice(0, DETAIL_LENGTH) : null;
 };
 
-// What `look` answers for `key`, worked out again only once it's older than `ms`; a look that fails answers null.
-// Asked again while it's being worked out, the answer on its way is shared rather than worked out twice.
-const kept = async (key, ms, look) => {
-	const known = looks.get(key);
+// What `work` answers for `key`, worked out again only once it's older than `ms`; failing, it answers null. Asked
+// again while it's being worked out, the answer on its way is shared.
+const cached = async (key, ms, work) => {
+	const known = memo.get(key);
 
 	if (known && Date.now() - known.at < ms) return known.value;
 	if (known?.coming) return known.coming;
 
-	const coming = look()
+	const coming = work()
 		.catch(() => null)
 		.then(value => {
-			looks.set(key, { at: Date.now(), value });
+			memo.set(key, { at: Date.now(), value });
 
 			return value;
 		});
 
-	looks.set(key, { ...known, coming });
+	memo.set(key, { ...known, coming });
 
 	return coming;
 };
@@ -126,7 +125,6 @@ export const initUniverse = async dataDir => {
 
 export const noteTool = async (session, name, failed = false, input = undefined) => {
 	lastTools.set(session, name ?? null);
-	// Kept to the last while however long it's gone between looks at the universe
 	if (uses.length > USES_KEPT) uses = uses.filter(({ at }) => Date.now() - at < USAGE_MS);
 	if (name)
 		uses.push({
@@ -279,7 +277,7 @@ const pushedBefore = new Map();
 // with (the trunk), and whether it's a worktree beside the repository's first checkout. The files and commits it names
 // are only as many as the hold shows.
 const cargoOf = root =>
-	kept(`cargo:${root}`, CARGO_MS, async () => {
+	cached(`cargo:${root}`, CARGO_MS, async () => {
 		const status = await gitStatus(root);
 		const entries = [...status.conflicted, ...status.staged, ...status.unstaged, ...status.untracked];
 		const changed = new Set(entries.map(entry => entry.path));
@@ -318,9 +316,9 @@ const cargoOf = root =>
 	});
 
 // Whether what a session changed has been tested since: { state, said }, state 'current', 'stale', 'failing' or
-// 'untested'; null with neither changes nor runs. Reading its turns is slow, so it's looked at again only now and then.
+// 'untested'; null with neither changes nor runs. Reading its turns is slow.
 const testedOf = session =>
-	kept(`tested:${session.id}`, TESTED_MS, async () => {
+	cached(`tested:${session.id}`, TESTED_MS, async () => {
 		const verdict = await verification(session.id, session.cwd);
 
 		return verdict && { state: verdict.state, said: verdict.said };
@@ -329,7 +327,7 @@ const testedOf = session =>
 // What a session runs beside Claude (its dev servers, test runs, watchers), each with its CPU and memory, and what it
 // shares out: each port another can reach at its name
 const busyOf = async session =>
-	(await kept(`busy:${session.id}`, PROCESSES_MS, async () => ({
+	(await cached(`busy:${session.id}`, PROCESSES_MS, async () => ({
 		processes: (await processesOf(session.id))
 			.slice(0, MOST_PROCESSES)
 			.map(({ command, cpuSeconds, memoryBytes }) => ({ command, cpuSeconds, memoryBytes })),
@@ -359,12 +357,12 @@ const talkOf = async session => {
 	};
 };
 
-// The pull request for a checkout's branch off the trunk, as GitHub's gh says: its number, title, state, and its
-// checks counted by how they stand. Asking gh is slow, so it's looked at again only every couple of minutes.
+// The pull request for a checkout's branch off the trunk, as GitHub's gh says: its number, title, state, and its checks
+// counted by how they stand. Asking gh is slow.
 const pullRequestOf = (root, trunk) =>
 	trunk
 		? null
-		: kept(`pr:${root}`, PULL_REQUEST_MS, async () => {
+		: cached(`pr:${root}`, PULL_REQUEST_MS, async () => {
 				const found = await pullRequest(root);
 
 				if (!found || found.unavailable) return null;
@@ -383,7 +381,7 @@ const pullRequestOf = (root, trunk) =>
 // How full a session's context is, against the window it fits; whether Claude's prompt cache still holds it; and the
 // model that last answered
 const contextOf = session =>
-	kept(`context:${session.id}`, CONTEXT_MS, async () => {
+	cached(`context:${session.id}`, CONTEXT_MS, async () => {
 		const meter = await meterOf(session.id, session.cwd);
 
 		if (!meter) return null;
@@ -410,7 +408,7 @@ const contextOf = session =>
 // folders it's built from, when its first commit was made and how many it has had, and how busy it's been lately;
 // null outside git
 const characterOf = name =>
-	kept(`character:${name}`, CHARACTER_MS, async () => {
+	cached(`character:${name}`, CHARACTER_MS, async () => {
 		const folder = projectPath(name);
 		const root = await repoRoot(folder);
 
@@ -468,7 +466,7 @@ const reposIn = async folder => {
 // where it starts)
 const madeBefore = new Map();
 const assetsOf = session =>
-	kept(`assets:${session.id}`, ASSETS_MS, async () => {
+	cached(`assets:${session.id}`, ASSETS_MS, async () => {
 		const made = (await sessionArtifacts(session.id, session.cwd)).length;
 
 		if (madeBefore.has(session.id)) noteDelivered('artifacts', made - madeBefore.get(session.id));
@@ -478,9 +476,9 @@ const assetsOf = session =>
 	});
 
 // When a stopped session's prompt cache went cold, by its last answer and the cache's lifetime; null before any answer.
-// Kept for each time it stopped (`since`), so one resumed and stopped again isn't given its earlier stop's
+// Cached per stop (`since`), so one resumed and stopped again isn't given its earlier stop's.
 export const coldAt = (id, cwd, since) =>
-	kept(`cold:${id}:${since}`, COLD_MS, async () => (await meterOf(id, cwd))?.warmUntil ?? null);
+	cached(`cold:${id}:${since}`, COLD_MS, async () => (await meterOf(id, cwd))?.warmUntil ?? null);
 
 // A stopped session, as the lounge shows it, with how long since it was last at work and since its cache went cold
 const stoppedOf = async (identity, id) => {
@@ -512,7 +510,7 @@ const stoppedFor = async (identity, running) => {
 	const withNews = watchedBy(identity).filter(
 		id => !running.has(id) && activitySummary(identity, id, { running: false }).unseen > 0,
 	);
-	const lately = await kept(`lately:${identityKey(identity)}`, LOUNGE_LOOK_MS, async () =>
+	const lately = await cached(`lately:${identityKey(identity)}`, LOUNGE_LOOK_MS, async () =>
 		(await listAllSessions(identity))
 			.filter(({ live, archived, lastModified }) => !live && !archived && Date.now() - (lastModified ?? 0) < LOUNGE_MS)
 			.slice(0, LOUNGE_MOST)
@@ -525,20 +523,19 @@ const stoppedFor = async (identity, running) => {
 
 // Archived or deleted, a session leaves the lounge on the next look
 export const refreshLounge = () => {
-	for (const key of looks.keys()) if (key.startsWith('lately:')) looks.delete(key);
+	for (const key of memo.keys()) if (key.startsWith('lately:')) memo.delete(key);
+};
+
+// Cached answers and records nothing asks for any more, let go (the longest cached is a stop's going cold, an hour)
+const forgetStale = (now = Date.now()) => {
+	for (const [key, { at, coming }] of memo) if (!coming && now - at > COLD_MS) memo.delete(key);
+	for (const [id, { at }] of records) if (now - at > COLD_MS) records.delete(id);
 };
 
 // This machine as the universe view draws it, for this person: what its Claude can reach, its projects, the sessions
 // running on it (each with how full its context is, how long it's run, how much it has made, any usage limit it's
 // waiting out, what its hooks said lately, and its screen) and the stopped ones with news for them or stopped lately,
 // the cargo of each checkout they work in, and who's here to see
-// Looks and records no look would take any more (the longest kept is a stop's going cold, an hour), let go: those of
-// sessions long gone among them
-const forgetStale = (now = Date.now()) => {
-	for (const [key, { at, coming }] of looks) if (!coming && now - at > COLD_MS) looks.delete(key);
-	for (const [id, { at }] of records) if (now - at > COLD_MS) records.delete(id);
-};
-
 export const universe = async identity => {
 	forgetStale();
 	const running = [...allRunning()].filter(session => !session.ended);
@@ -546,7 +543,7 @@ export const universe = async identity => {
 		await Promise.all(
 			running.map(async session => [
 				session,
-				await kept(`root:${session.cwd}`, RECORD_MS, () => repoRoot(session.cwd)),
+				await cached(`root:${session.cwd}`, RECORD_MS, () => repoRoot(session.cwd)),
 			]),
 		),
 	);
@@ -586,8 +583,8 @@ export const universe = async identity => {
 				talk,
 				age: Date.now() - session.startedAt,
 				limit: limitOf(session.id) ?? undefined,
-				// Kept warm, or kept going, and the last ping or nudge it was sent
-				kept: keptOf(session.id) ?? undefined,
+				// 'warm', 'going' or none
+				keeping: keptOf(session.id) ?? undefined,
 				boost: boostOf(session.id) ?? undefined,
 				...instrumentsOf(session),
 				// Its size, for a terminal opened from the universe to take
