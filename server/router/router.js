@@ -9,11 +9,15 @@ import tasksRoutes from './tasks';
 import hooksRoutes from './hooks';
 import sessionsRoutes from './sessions';
 
-// The page, revalidated on every load, and the built files. Forms post only here, nothing frames the page, and no
-// <base> can repoint its links
+// The page, revalidated on every load, and the built files. Forms post only here, nothing frames the page, no <base>
+// can repoint its links, and images come only from here: one in a reply's markdown can't call out to anywhere else
+// as it's opened
 const page = request =>
 	serveApp(request, {
-		headers: { 'Content-Security-Policy': "form-action 'self'; frame-ancestors 'none'; base-uri 'self'" },
+		headers: {
+			'Content-Security-Policy':
+				"form-action 'self'; frame-ancestors 'none'; base-uri 'self'; img-src 'self' data: blob:",
+		},
 	});
 
 const router = async (request, server) => {
