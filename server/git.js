@@ -147,8 +147,14 @@ export const repoHistory = async root => {
 
 	if (first.code !== 0 || count.code !== 0) return null;
 
-	const times = week.code === 0 ? week.out.split('\n').filter(Boolean).map(at => Number(at) * 1000) : [];
-	const latest = times.length ? Math.max(...times) : (await lastCommitAt(root));
+	const times =
+		week.code === 0
+			? week.out
+					.split('\n')
+					.filter(Boolean)
+					.map(at => Number(at) * 1000)
+			: [];
+	const latest = times.length ? Math.max(...times) : await lastCommitAt(root);
 
 	return {
 		since: Number(first.out.trim()) * 1000,
@@ -928,6 +934,38 @@ export const linesNow = async (cwd, { path: file, from, to, commit, blob }, targ
 	if (diff.code !== 0) return target ? null : { from, to };
 
 	return remapLines(diff.out, { from, to });
+};
+
+// Files in a checkout (paths from its top) kept as blobs as they are now: { [path]: blob }. One gone, or past the size a
+// blob is kept at, is left out.
+export const keepFiles = async (root, files) => {
+	const sizes = await Promise.all(
+		files.map(file =>
+			stat(join(root, file)).then(
+				found => found.isFile() && found.size,
+				() => false,
+			),
+		),
+	);
+	const kept = files.filter((file, index) => sizes[index] !== false && sizes[index] <= MAX_BLOB_BYTES);
+
+	if (!kept.length) return {};
+
+	const { code, out } = await run(['hash-object', '-w', '--stdin-paths'], root, { input: `${kept.join('\n')}\n` });
+	const hashes = out.trim().split('\n');
+
+	return code === 0 && hashes.length === kept.length
+		? Object.fromEntries(kept.map((file, index) => [file, hashes[index]]))
+		: {};
+};
+
+// A blob's text; undefined when it isn't here
+export const blobText = async (cwd, hash) => {
+	if (!COMMIT.test(hash ?? '')) return undefined;
+
+	const { code, out } = await run(['cat-file', 'blob', hash], cwd);
+
+	return code === 0 ? out : undefined;
 };
 
 export const hasObject = async (cwd, hash) =>

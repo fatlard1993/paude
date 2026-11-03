@@ -1,6 +1,6 @@
 import { jsonIn } from './haiku';
 import { transcriptFile } from './sessions/transcript';
-import { TAIL_BYTES, lastLines, timelineFrom } from './timeline';
+import { TAIL_BYTES, editedFiles, lastLines, timelineFrom, withCommandEdits } from './timeline';
 import { tellOnce } from './tours';
 import { verification } from './verification';
 
@@ -15,7 +15,7 @@ const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
 // What a turn did, in a line: the files it changed, the commands it ran, what else it used
 export const didOf = steps => {
-	const edited = [...new Set(steps.filter(step => step.edits).map(step => step.file))];
+	const edited = [...new Set(steps.flatMap(editedFiles))];
 	const commands = steps.filter(step => step.tool === 'Bash');
 	const reads = steps.filter(step => step.tool === 'Read').length;
 	const declined = steps.filter(step => step.declined);
@@ -151,7 +151,7 @@ export const waitingOf = decisions =>
 // the turns that settled them, and the questions about them still waiting
 export const catchUp = async (id, cwd, { since, decisions = [] } = {}) => {
 	const file = await transcriptFile(id, cwd);
-	const all = file ? markInterruptions(timelineFrom(await lastLines(file), cwd)) : [];
+	const all = file ? markInterruptions(withCommandEdits(timelineFrom(await lastLines(file), cwd), id)) : [];
 	const read = since ? all.filter(turn => Date.parse(turn.at) > since) : all;
 	const told = read.filter(worthTelling);
 	const picked = (since ? told : told.slice(-RECENT_TURNS)).slice(-MOST_TURNS);

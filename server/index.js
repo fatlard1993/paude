@@ -32,6 +32,7 @@ import { initUniverse } from './universe';
 import { initFuel } from './fuel';
 import { initJourney } from './journey';
 import { initKeepWarm } from './keepWarm';
+import { initCommandEdits } from './commandEdits';
 import { initLifetime } from './lifetime';
 import { initUsageLimits, onLimitChange } from './usageLimit';
 import { initBriefSessions } from './briefSessions';
@@ -116,6 +117,7 @@ setHolderFolder(path.join(options.data, 'held'));
 await adoptHeldSessions();
 lastRun.stops.push(await initKeepWarm(options.data, runningSession));
 await initLifetime(options.data);
+await initCommandEdits(options.data);
 lastRun.stops.push(await initUsageLimits(options.data, runningSession));
 onLimitChange(sessionId => runningSession(sessionId)?.broadcastPresence());
 lastRun.stops.push(

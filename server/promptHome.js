@@ -7,7 +7,7 @@ import { ownedRemotes, remoteApi } from './remotes';
 import { serverName } from './serverSettings';
 import { sessionRecord } from './sessions/record';
 import { listAllSessions } from './sessions/stored';
-import { sessionTimeline } from './timeline';
+import { editedFiles, sessionTimeline } from './timeline';
 
 // Where a prompt should go before it's sent: one of the conversations already going, when it carries one on, or a new
 // session (in which project, when that's open too). Haiku judges the fit from each session's title and latest prompts;
@@ -38,7 +38,7 @@ export const candidatesFrom = (sessions, now = Date.now()) =>
 const lately = async id => {
 	const record = await sessionRecord(id);
 	const { turns } = record ? await sessionTimeline(id, record.cwd) : { turns: [] };
-	const files = turns.flatMap(turn => turn.steps.filter(step => step.edits && step.file).map(step => step.file));
+	const files = turns.flatMap(turn => turn.steps.flatMap(editedFiles));
 
 	return {
 		latest: turns

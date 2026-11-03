@@ -1,5 +1,6 @@
 import { isAbsolute, relative } from 'path';
 
+import { commandEditsOf } from './commandEdits';
 import { promptText } from './sessions/history';
 import { transcriptFile } from './sessions/transcript';
 
@@ -184,6 +185,30 @@ export const timelineFrom = (lines, cwd) => {
 	return turns;
 };
 
+// The files a step changed: an edit tool's one, or those a command changed (commandEdits)
+export const editedFiles = step => (step.edits ? (step.files ?? [step.file]).filter(Boolean) : []);
+
+// The turns with each command that changed files marked as an edit, as an edit tool's step is; the transcript says
+// what a command ran, not what it changed
+export const withCommandEdits = (turns, sessionId) => {
+	const edits = commandEditsOf(sessionId);
+
+	if (!edits) return turns;
+
+	return turns.map(turn =>
+		turn.steps.some(step => edits[step.id])
+			? {
+					...turn,
+					steps: turn.steps.map(step => {
+						const files = edits[step.id]?.files;
+
+						return files ? { ...step, edits: true, files, file: files[0] } : step;
+					}),
+				}
+			: turn,
+	);
+};
+
 // Every turn in the part of the transcript read, oldest first, read again only when it has grown; `whole` for every
 // turn it holds, for looking back over a session once
 export const sessionTurns = async (id, cwd, { whole = false } = {}) => {
@@ -197,7 +222,7 @@ export const sessionTurns = async (id, cwd, { whole = false } = {}) => {
 	if (cache.get(cached)?.key !== key)
 		cache.set(cached, { key, turns: timelineFrom(await lastLines(file, whole ? file.size : TAIL_BYTES), cwd) });
 
-	return cache.get(cached).turns;
+	return withCommandEdits(cache.get(cached).turns, id);
 };
 
 // The latest turns, newest first, and how full the context is now

@@ -1,3 +1,5 @@
+import path from 'path';
+
 import { requestMatch } from '@vanilla-bean/components/app';
 
 import { recordChange, setStatus } from '../activity';
@@ -9,11 +11,12 @@ import { sessionTimeline, sessionTurns } from '../timeline';
 import { turnEnded as noteTurnCommits, turnStarted } from '../turnCommits';
 import { HOOK_EVENTS, hookSecret } from '../hookSettings';
 import { claudeActive } from '../keepWarm';
+import { commandEnded, commandStarting, commandsSettled, noteChanged } from '../commandEdits';
 import { keepGoing } from '../keepGoing';
 import { lookBack } from '../lookBack';
 import { limitHook } from '../usageLimit';
 import { noteEmpty } from '../fuel';
-import { trackProposals } from '../sessions/proposals';
+import { PROPOSING_TOOLS, trackProposals } from '../sessions/proposals';
 import { runningSession } from '../sessions/running';
 import { noteHook, notePrompt, noteTool, noteTurnDone } from '../universe';
 
@@ -71,8 +74,25 @@ const hooksRoutes = async request => {
 	if (['PostToolUse', 'PostToolUseFailure', 'PermissionDenied'].includes(payload.hook_event_name))
 		pushEnded(id, payload.tool_use_id);
 	if (['Stop', 'StopFailure'].includes(payload.hook_event_name)) pushEnded(id);
-	if (payload.hook_event_name === 'PreToolUse' && payload.tool_name === 'Bash')
+	// Before the push check, which may wait minutes: the checkout as the command finds it
+	if (payload.hook_event_name === 'PreToolUse' && payload.tool_name === 'Bash') {
+		await commandStarting(id, payload.tool_use_id, runningSession(id).cwd).catch(() => {});
+
 		return (await beforePush(id, payload)) ?? new Response(null, { status: 204 });
+	}
+	// What the command changed, before anything reads the turn: a command editing files is an edit
+	const edited =
+		['PostToolUse', 'PostToolUseFailure'].includes(payload.hook_event_name) && payload.tool_name === 'Bash'
+			? await commandEnded(id, payload.tool_use_id).catch(() => [])
+			: [];
+
+	if (['Stop', 'StopFailure'].includes(payload.hook_event_name)) commandsSettled(id);
+	// So a command another session runs meanwhile in the same checkout doesn't take this edit for its own
+	if (payload.hook_event_name === 'PostToolUse' && [...PROPOSING_TOOLS, 'NotebookEdit'].includes(payload.tool_name)) {
+		const file = payload.tool_input?.file_path ?? payload.tool_input?.notebook_path;
+
+		if (typeof file === 'string') noteChanged(id, [path.resolve(runningSession(id).cwd, file)]);
+	}
 	// Before the status, so the presence that goes out with it says whether a usage limit stopped the turn
 	await limitHook(id, payload);
 	if (payload.hook_event_name === 'StopFailure' && payload.error === 'rate_limit') await noteEmpty();
@@ -80,13 +100,16 @@ const hooksRoutes = async request => {
 	// A keep-warm ping's turn isn't news, and edits nothing
 	if (claudeActive(id, payload)) return new Response(null, { status: 204 });
 	noteHook(runningSession(id), payload);
-	if (['PostToolUse', 'PostToolUseFailure'].includes(payload.hook_event_name))
+	if (['PostToolUse', 'PostToolUseFailure'].includes(payload.hook_event_name)) {
 		await noteTool(
 			runningSession(id),
 			payload.tool_name,
 			payload.hook_event_name === 'PostToolUseFailure',
 			payload.tool_input,
 		);
+		// The ship's fabricator is where edits are made, whichever tool made them
+		if (edited.length) await noteTool(runningSession(id), 'Edit', false, { file_path: edited[0] });
+	}
 	if (payload.hook_event_name === 'UserPromptSubmit') notePrompt(runningSession(id), payload.prompt);
 	if (payload.hook_event_name === 'Stop') {
 		noteTurnDone(runningSession(id), payload.last_assistant_message);

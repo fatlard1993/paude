@@ -3,7 +3,7 @@ import { listFiles } from './files';
 import { gitLog, repoRoot } from './git';
 import askHaiku, { jsonIn } from './haiku';
 import { outline } from './symbols';
-import { sessionTurns } from './timeline';
+import { editedFiles, sessionTurns } from './timeline';
 
 // What to open for a few words asked aside ("the test for this", "what Claude changed in the login"): Haiku picks
 // files, changes, commits and turns from what the session is working on, and only those that are there are opened.
@@ -43,7 +43,7 @@ export const surfaceOf = async (id, cwd, { ask, viewing, screen }) => {
 	const touched = turns.map(turn => ({
 		id: turn.id,
 		prompt: turn.prompt.slice(0, PROMPT_CHARACTERS),
-		edited: unique(turn.steps.filter(step => step.edits).map(step => step.file)),
+		edited: unique(turn.steps.flatMap(editedFiles)),
 		read: unique(turn.steps.filter(step => step.tool === 'Read').map(step => step.file)),
 	}));
 	const known = unique([viewing, ...changes.map(change => change.path), ...touched.flatMap(turn => turn.edited)]);

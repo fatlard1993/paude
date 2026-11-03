@@ -4,12 +4,23 @@ import { basename, isAbsolute, join, relative, sep } from 'path';
 
 import { importsIn, resolveImport } from '../shared/reviewOrder';
 import { diffOf, listChanges } from './changes';
-import { GitError, gitCommit, gitCompare, gitSince, keepText, pathsFromFolder, pathsFromTop, repoRoot } from './git';
+import {
+	GitError,
+	blobText,
+	gitCommit,
+	gitCompare,
+	gitSince,
+	keepText,
+	pathsFromFolder,
+	pathsFromTop,
+	repoRoot,
+} from './git';
 import { isSecret, readProjectFile } from './files';
 import { promptText } from './sessions/history';
 import { languageKnown, symbolsIn } from './symbols';
 import { claudeHome, transcriptLines } from './sessions/transcript';
 import { proposalsOf } from './sessions/proposals';
+import { commandEditsOf } from './commandEdits';
 import gitEnvironment from './utils/gitEnvironment';
 
 const MAX_TEXT_BYTES = 1024 * 1024;
@@ -100,9 +111,11 @@ const backupsByPath = snapshot =>
 		]),
 	);
 
-// Each prompt's turn and what its edits started from: [{ id, prompt, at, edited: Map(path → original text or null) }].
-// Claude Code records every edit's file as it was before the edit, so the first of a turn is the turn's start.
-const turnsOf = lines => {
+// Each prompt's turn and what its edits started from: [{ id, prompt, at, edited: Map(path → original text or null, or
+// { blob } for a command's), left: Map(path → blob) }]. Claude Code records every edit's file as it was before the edit,
+// so the first of a turn is the turn's start. A command that changed files (commandEdits) has the blobs it started
+// from and left instead; what it left is the turn's end for a file nothing edited after it.
+export const turnsOf = (lines, { commands = {}, cwd = '' } = {}) => {
 	const turns = [];
 	const snapshots = new Map();
 
@@ -113,7 +126,13 @@ const turnsOf = lines => {
 		const prompt = promptText(line);
 
 		if (prompt !== null && !/^\[Request interrupted/.test(prompt)) {
-			turns.push({ id: line.uuid, prompt: prompt.slice(0, PROMPT_PREVIEW), at: line.timestamp, edited: new Map() });
+			turns.push({
+				id: line.uuid,
+				prompt: prompt.slice(0, PROMPT_PREVIEW),
+				at: line.timestamp,
+				edited: new Map(),
+				left: new Map(),
+			});
 			continue;
 		}
 
@@ -122,6 +141,19 @@ const turnsOf = lines => {
 
 		if (turn && result && typeof result === 'object' && typeof result.filePath === 'string') {
 			if (!turn.edited.has(result.filePath)) turn.edited.set(result.filePath, result.originalFile ?? null);
+			turn.left.delete(result.filePath);
+		}
+		if (!turn || line.type !== 'assistant') continue;
+		for (const block of line.message?.content ?? []) {
+			const command = block.type === 'tool_use' && commands[block.id];
+
+			for (const file of command?.files ?? []) {
+				const full = join(cwd, file);
+
+				if (!turn.edited.has(full) && file in command.before) turn.edited.set(full, { blob: command.before[file] });
+				if (file in command.after) turn.left.set(full, command.after[file]);
+				else turn.left.delete(full);
+			}
 		}
 	}
 
@@ -130,7 +162,7 @@ const turnsOf = lines => {
 
 // The turns that edited files in the project, newest first
 export const turnsWithChanges = async (id, cwd) =>
-	turnsOf(await transcriptLines(id, cwd))
+	turnsOf(await transcriptLines(id, cwd), { commands: commandEditsOf(id) ?? {}, cwd })
 		.map(({ id: turn, prompt, at, edited }) => ({
 			id: turn,
 			prompt,
@@ -143,7 +175,7 @@ export const turnsWithChanges = async (id, cwd) =>
 // What a turn changed: each edited file from before its first edit to the end of the turn (the next prompt's
 // snapshot, or the file as it is now for the latest turn)
 const turnDiff = async (id, cwd, turnId, seen) => {
-	const turns = turnsOf(await transcriptLines(id, cwd));
+	const turns = turnsOf(await transcriptLines(id, cwd), { commands: commandEditsOf(id) ?? {}, cwd });
 	const turn = turns.find(found => found.id === turnId);
 
 	if (!turn) throw new DiffError('That turn is not in this session');
@@ -158,10 +190,16 @@ const turnDiff = async (id, cwd, turnId, seen) => {
 		const backup = turn.after?.[path];
 		let after = backup ? await readBackup(id, backup.backupFileName) : undefined;
 
+		if (after === undefined && turn.left.has(path))
+			after = turn.left.get(path) === null ? null : await blobText(cwd, turn.left.get(path));
 		if (after === undefined) after = await readDisk(path);
 
 		try {
-			const diff = await fileDiff(cwd, shown, usable(original), usable(after), seen);
+			const before = original?.blob === undefined ? original : original.blob && (await blobText(cwd, original.blob));
+
+			if (before === undefined) throw new DiffError('What it was before is no longer kept');
+
+			const diff = await fileDiff(cwd, shown, usable(before ?? null), usable(after), seen);
 
 			if (diff) files.push(diff);
 		} catch (error) {

@@ -1,6 +1,7 @@
 import { deleteSession, listSessions } from '@anthropic-ai/claude-agent-sdk';
 
 import { forgetActivity } from './activity';
+import { forgetCommandEdits } from './commandEdits';
 import { setArchived } from './archive';
 import { revokeInvitesFor } from './auth';
 import { pinName } from './names';
@@ -33,6 +34,7 @@ const removeSession = async id => {
 	await pinName(id, '');
 	await forgetActivity(id);
 	await forgetSessionShares(id);
+	await forgetCommandEdits(id);
 	await setArchived([id], false);
 
 	const projectDir = projectPath(projectOf(cwd));

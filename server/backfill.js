@@ -3,6 +3,7 @@ import path from 'path';
 import { claudeWrites } from './commitMessage';
 import { commitAfter, commitOf, concernFiles, explainedHash, explainsLine, fileReasoning, gitStack } from './git';
 import { jsonIn } from './haiku';
+import { editedFiles } from './timeline';
 
 // What a session settled that nothing wrote down, filed into the history of the commit it shaped: the history keeps
 // the why for as long as the code is there, past the transcript and past this server's memory of it. A decision goes
@@ -18,8 +19,8 @@ export const changedFiles = (turns, turnId, { cwd, root }) => {
 	const at = turns.findIndex(turn => turn.id === turnId);
 	const changed = turns
 		.slice(at, at === -1 ? 0 : at + 2)
-		.flatMap(turn => turn.steps.filter(step => step.edits && step.file))
-		.map(step => path.relative(root, path.resolve(cwd, step.file)));
+		.flatMap(turn => turn.steps.flatMap(editedFiles))
+		.map(file => path.relative(root, path.resolve(cwd, file)));
 
 	return [...new Set(changed.filter(file => !file.startsWith('..')))];
 };

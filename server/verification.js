@@ -4,7 +4,7 @@ import { isAbsolute, join } from 'path';
 import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { listChanges } from './changes';
 import { runsOf, testCounts } from './tasks';
-import { sessionTurns } from './timeline';
+import { editedFiles, sessionTurns } from './timeline';
 
 // Whether what changed has been tested since: the session's test runs (the ones Claude ran, and the Tasks panel's)
 // against when its files last changed on disk, so an edit counts however it was made (Claude's tools, a command, an
@@ -117,8 +117,9 @@ export const verification = async (sessionId, cwd) => {
 		.map(change => change.path);
 	const editedHere = turns.flatMap(turn =>
 		turn.steps
-			.filter(step => step.edits && step.ok !== false && step.file && !isAbsolute(step.file))
-			.map(step => step.file),
+			.filter(step => step.ok !== false || step.files)
+			.flatMap(editedFiles)
+			.filter(file => !isAbsolute(file)),
 	);
 	const paths = [...new Set([...changed, ...editedHere])];
 	const edited = (await Promise.all(paths.map(async path => ({ path, at: await changedAt(cwd, path) })))).filter(

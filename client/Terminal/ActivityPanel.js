@@ -100,7 +100,7 @@ export default class ActivityPanel extends Panel {
 
 		node.dataset.turn = turn.id;
 		const head = element('button', 'turn-head variant-flat');
-		const edited = new Set(turn.steps.filter(step => step.edits).map(step => step.file));
+		const edited = new Set(turn.steps.filter(step => step.edits).flatMap(step => step.files ?? [step.file]));
 		const failed = turn.steps.filter(step => step.ok === false && !step.declined).length;
 		const meta = [
 			relativeTime(Date.parse(turn.at)),
@@ -149,7 +149,8 @@ export default class ActivityPanel extends Panel {
 		line.title = step.command ?? step.summary ?? step.tool;
 		output.hidden = true;
 		line.addEventListener('click', () => {
-			if (step.edits && step.file) return this.options.openDiff({ source: 'turn', turn: turn.id });
+			// A command that changed files still opens what it printed; its turn's diff has the changes
+			if (step.edits && step.file && !step.command) return this.options.openDiff({ source: 'turn', turn: turn.id });
 			if (step.file && !step.file.startsWith('/')) return this.options.openFile(step.file, step.line);
 
 			output.hidden = !output.hidden;

@@ -14,7 +14,7 @@ import askHaiku, { jsonIn } from './haiku';
 import { isNudge } from './keepWarm';
 import { allRunning, runningSession } from './sessions/running';
 import { claudeHome } from './sessions/transcript';
-import { sessionTurns } from './timeline';
+import { editedFiles, sessionTurns } from './timeline';
 import { linkedCommits, turnNote } from './turnCommits';
 import gitEnvironment from './utils/gitEnvironment';
 
@@ -62,8 +62,7 @@ export const turnText = (turn, index) =>
 		...turn.steps
 			.filter(step => step.tool === 'AskUserQuestion' && step.output)
 			.map(step => `  Answered: ${step.output.replace(/\s+/g, ' ').slice(0, ANSWERS)}`),
-		turn.steps.some(step => step.edits) &&
-			`  Changed: ${[...new Set(turn.steps.filter(step => step.edits).map(step => step.file))].join(', ')}`,
+		turn.steps.some(step => step.edits) && `  Changed: ${[...new Set(turn.steps.flatMap(editedFiles))].join(', ')}`,
 		turn.said && `  Claude ended with: ${turn.said}`,
 		turn.reply && `  Then the person said: ${turn.reply}`,
 	]

@@ -6,7 +6,7 @@ import { crewJob } from './crew';
 import { GitError, gitStack } from './git';
 import { sessionEnvironment } from './sessions/PtySession';
 import { claudeCommand } from './sessions/running';
-import { sessionTurns } from './timeline';
+import { editedFiles, sessionTurns } from './timeline';
 import gitEnvironment from './utils/gitEnvironment';
 
 const MAX_DIFF_CHARACTERS = 60_000;
@@ -68,7 +68,7 @@ export const turnsBehind = (turns, { cwd, root, files, since }) => {
 	const staged = new Set(files.map(file => path.join(root, file)));
 	const named = files.flatMap(file => [file, path.relative(cwd, path.join(root, file))]);
 	const changes = step =>
-		(step.edits && step.file && staged.has(path.resolve(cwd, step.file))) ||
+		editedFiles(step).some(file => staged.has(path.resolve(cwd, file))) ||
 		(step.command && named.some(file => step.command.includes(file)));
 
 	return markInterruptions(turns)
