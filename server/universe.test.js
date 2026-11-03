@@ -31,15 +31,18 @@ test('a person on several devices and sessions is one person, with every session
 	]);
 
 	expect(people).toEqual([
-		{ name: 'chase', role: undefined, sessions: ['one', 'two'] },
-		{ name: 'Sam', role: 'comment', sessions: ['two'] },
+		{ key: expect.any(String), name: 'chase', role: undefined, sessions: ['one', 'two'] },
+		{ key: expect.any(String), name: 'Sam', role: 'comment', sessions: ['two'] },
 	]);
 });
 
 test('two guests going by the same name are still two people', () => {
 	const other = { inviteId: 'xyz', role: 'watch', name: 'Sam' };
 
-	expect(peopleOf([fakeSession('one', [[GUEST, 'Sam']], [[other, 'Sam']])])).toHaveLength(2);
+	const people = peopleOf([fakeSession('one', [[GUEST, 'Sam']], [[other, 'Sam']])]);
+
+	expect(people).toHaveLength(2);
+	expect(people[0].key).not.toBe(people[1].key);
 });
 
 test("a finished turn keeps Claude's reply and the prompt it answered, by the session's id", () => {

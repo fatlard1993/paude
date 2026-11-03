@@ -240,7 +240,13 @@ export const peopleOf = sessions => {
 	for (const session of sessions)
 		for (const client of [...session.clients, ...session.readers.values()]) {
 			const key = `${identityKey(client.identity ?? client.socket?.data.identity)}\n${client.name}`;
-			const person = people.get(key) ?? { name: client.name, role: client.role, sessions: [] };
+			// Told apart by an opaque mark of who they are, not their invite itself
+			const person = people.get(key) ?? {
+				key: Bun.hash(key).toString(36),
+				name: client.name,
+				role: client.role,
+				sessions: [],
+			};
 
 			if (!person.sessions.includes(session.id)) person.sessions.push(session.id);
 			people.set(key, person);
