@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 
+import { isNudge, keepWarm } from './keepWarm';
 import { checkLimits, continueSession, limitHook, limitOf, resetTimeOf } from './usageLimit';
 
 // 2026-10-09 12:00 UTC
@@ -87,4 +88,52 @@ test("a reset Claude didn't say is tried every half hour", async () => {
 	expect(checkLimits(sessionOf, NOON + 30 * MINUTE)).toEqual(['unknown']);
 	expect(checkLimits(sessionOf, NOON + 40 * MINUTE)).toEqual([]);
 	expect(checkLimits(sessionOf, NOON + 60 * MINUTE)).toEqual(['unknown']);
+});
+
+const limitAt = (id, now) =>
+	limitHook(
+		id,
+		{ hook_event_name: 'StopFailure', error: 'rate_limit', last_assistant_message: 'resets 3pm (UTC)' },
+		now,
+	);
+
+test("a session that keeps going carries on by itself at the reset, with a nudge rather than the person's word", async () => {
+	const session = fakeSession();
+
+	await keepWarm('going-limited', 12, NOON, { going: true });
+	await limitAt('going-limited', NOON);
+	expect(limitOf('going-limited')).toMatchObject({ armed: true, going: true });
+
+	expect(checkLimits(id => (id === 'going-limited' ? session : undefined), Date.UTC(2026, 9, 9, 15, 5))).toEqual([
+		'going-limited',
+	]);
+	expect(isNudge(session.typed[0].replace('\x1b[200~', ''))).toBe(true);
+	await keepWarm('going-limited', 0);
+});
+
+test('switched off before the reset, it waits; armed by hand, it carries on as the person chose', async () => {
+	const session = fakeSession();
+	const sessionOf = id => (['switched-off', 'by-hand'].includes(id) ? session : undefined);
+	const reset = Date.UTC(2026, 9, 9, 15, 5);
+
+	await keepWarm('switched-off', 12, NOON, { going: true });
+	await limitAt('switched-off', NOON);
+	await keepWarm('switched-off', 0);
+	expect(checkLimits(sessionOf, reset)).toEqual([]);
+
+	await keepWarm('by-hand', 12, NOON, { going: true });
+	await limitAt('by-hand', NOON);
+	await continueSession('by-hand', session, 'reset');
+	await keepWarm('by-hand', 0);
+	expect(checkLimits(sessionOf, reset)).toEqual(['by-hand']);
+	expect(session.typed.at(-1)).toContain('continue');
+	expect(isNudge(session.typed.at(-1).replace('\x1b[200~', ''))).toBe(false);
+});
+
+test('a session only kept warm waits to be told', async () => {
+	await keepWarm('warm-limited', 12, NOON);
+	await limitAt('warm-limited', NOON);
+	expect(limitOf('warm-limited')).toMatchObject({ armed: false });
+	expect(limitOf('warm-limited').going).toBeUndefined();
+	await keepWarm('warm-limited', 0);
 });

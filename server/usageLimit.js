@@ -3,17 +3,21 @@ import path from 'path';
 import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
 import { statusOf } from './activity';
+import { goingOn, nudgeWith } from './keepWarm';
 
 // Sessions stopped by a usage limit: when it resets, as Claude said, and whether paude is to carry on then. Claude Code
 // carries on by itself at the reset unless that's turned off ("Continue automatically at usage limit"), or the reset
 // passed while the machine slept, when it waits for Enter; whatever it does, the next sign of Claude working clears
-// the session here. { [sessionId]: { at, resetAt, armed, stale } }
+// the session here. A session that keeps going is armed to carry on by itself, with a nudge rather than "continue", so
+// it counts as paude's and not the person's; switched off before the reset, it isn't carried on.
+// { [sessionId]: { at, resetAt, armed, going, stale } }
 const CHECK_MS = 60 * 1000;
 // Past the reset, a moment for Claude Code to carry on by itself first
 const AFTER_RESET_MS = 2 * 60 * 1000;
 // A reset Claude didn't say: tried again this often, a try that's still limited costing nothing
 const RETRY_UNKNOWN_MS = 30 * 60 * 1000;
 const CONTINUE = 'continue';
+const RESUME = nudgeWith('The usage limit has reset: carry on where you stopped.');
 // Claude Code takes a paste and its Enter as one keystroke if they arrive together
 const ENTER_AFTER_MS = 300;
 // Each month's short name, in order, as Claude writes it
@@ -107,10 +111,13 @@ export const limitHook = async (id, payload, now = Date.now()) => {
 	const type = payload?.notification_type;
 
 	if (event === 'StopFailure' && payload.error === 'rate_limit') {
+		const going = !limited[id] && goingOn(id, now);
+
 		limited[id] = {
 			at: now,
 			resetAt: resetTimeOf(`${payload.last_assistant_message ?? ''} ${payload.error_details ?? ''}`, now),
-			armed: limited[id]?.armed ?? false,
+			armed: limited[id]?.armed ?? going,
+			...((limited[id]?.going || going) && { going: true }),
 			stale: false,
 		};
 	} else if (event === 'Notification' && type === 'quota_auto_resume_stale' && limited[id]) {
@@ -142,7 +149,7 @@ const carryOn = (id, session) => {
 	}
 	if (session.promptDraft() !== '') return false;
 
-	session.typeIn(`\x1b[200~${CONTINUE}\x1b[201~`);
+	session.typeIn(`\x1b[200~${limit?.going ? RESUME : CONTINUE}\x1b[201~`);
 	setTimeout(() => session.typeIn('\r'), ENTER_AFTER_MS);
 
 	return true;
@@ -153,7 +160,10 @@ export const continueSession = async (id, session, when) => {
 	if (when === 'now') return carryOn(id, session);
 	if (!limited[id]) return false;
 
-	limited[id] = { ...limited[id], armed: when === 'reset', triedAt: null };
+	// Armed or let go by hand: carried on as the person chose, not as keeping going would
+	const { going, ...limit } = limited[id];
+
+	limited[id] = { ...limit, armed: when === 'reset', triedAt: null };
 	await save();
 	changed(id);
 
@@ -170,7 +180,7 @@ export const checkLimits = (sessionOf, now = Date.now()) => {
 			? now >= limit.resetAt + AFTER_RESET_MS
 			: now - (limit.triedAt ?? limit.at) >= RETRY_UNKNOWN_MS;
 
-		if (!limit.armed || !due) continue;
+		if (!limit.armed || !due || (limit.going && !goingOn(id, now))) continue;
 		tried = true;
 		if (limit.resetAt) limit.armed = false;
 		else limit.triedAt = now;
