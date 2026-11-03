@@ -17,11 +17,16 @@ import { blobOf, gitStatus, headCommit, keepFiles, repoRoot } from './git';
 // session's command saw go from the same state to the same state is the change both saw, and goes to the one that ran
 // the shorter while: the edit, not the test run it fell inside. A command that ended first is weighed again when an
 // overlapping one ends. A change paude can't see the source of (an editor, a person) is counted as the command's.
+//
+// What's under way and what ended lately are kept on disk too: the server restarts while commands run (a session
+// editing paude's own server restarts it with each edit), and forgetting a command's start loses its edits to any
+// longer command of another session that ran across it.
 
 // Commands kept per session, newest last
 const KEPT = 2000;
 
 let file;
+let runsFile;
 // { [sessionId]: { [toolUseId]: { files: [path from the session's folder], before, after } }: before and after map
 // each file to its blob, or null where it didn't exist; a file with neither (too big to keep) is left out
 let edits = {};
@@ -38,6 +43,8 @@ let ended = [];
 export const noteChanged = (sessionId, files, now = Date.now()) => {
 	known = known.filter(entry => now - entry.at < RECENT_MS);
 	for (const file of files) known.push({ sessionId, file, at: now });
+
+	return saveRuns();
 };
 
 const othersChanged = (sessionId, since, now) =>
@@ -49,9 +56,32 @@ const othersChanged = (sessionId, since, now) =>
 
 const save = () => file && writeJsonFile(file, () => edits);
 
-export const initCommandEdits = async dataDir => {
+const saveRuns = () =>
+	runsFile &&
+	writeJsonFile(runsFile, () => ({
+		starting: [...starting].map(([id, run]) => [
+			id,
+			{ ...run, before: { ...run.before, files: [...run.before.files] } },
+		]),
+		ended: ended.map(command => ({ ...command, states: [...command.states] })),
+		known,
+	})).catch(error => console.error('Saving the commands under way failed:', error));
+
+export const initCommandEdits = async (dataDir, now = Date.now()) => {
 	file = path.join(dataDir, 'command-edits.json');
+	runsFile = path.join(dataDir, 'commands-under-way.json');
+
+	const runs = await readJsonFile(runsFile, {});
+
 	edits = await readJsonFile(file, {});
+	starting.clear();
+	for (const [id, run] of runs.starting ?? [])
+		if (now - run.at < RECENT_MS)
+			starting.set(id, { ...run, before: { ...run.before, files: new Map(run.before.files) } });
+	ended = (runs.ended ?? [])
+		.filter(command => now - command.endedAt < RECENT_MS)
+		.map(command => ({ ...command, states: new Map(command.states) }));
+	known = (runs.known ?? []).filter(entry => now - entry.at < RECENT_MS);
 };
 
 const BLOB = /^[0-9a-f]{40}$/;
@@ -101,7 +131,9 @@ export const commandStarting = async (sessionId, toolUseId, cwd, now = Date.now(
 
 	const before = await snapshot(cwd);
 
-	if (before) starting.set(toolUseId, { sessionId, cwd, before, at: now });
+	if (!before) return;
+	starting.set(toolUseId, { sessionId, cwd, before, at: now });
+	await saveRuns();
 };
 
 const overlap = (one, other) =>
@@ -192,13 +224,18 @@ export const commandEnded = async (sessionId, toolUseId, now = Date.now()) => {
 	// Those that ended first and ran alongside it, weighed again now it can be weighed against
 	for (const other of ended) if (other !== command && overlap(command, other) && other.states.size) keep(other);
 	if (fromTop.length || ended.some(other => other !== command && overlap(command, other))) await save();
+	await saveRuns();
 
 	return changed;
 };
 
 // A turn's end: a command of its that the hooks never said ended (turned back, or Claude was stopped) won't now
 export const commandsSettled = sessionId => {
+	const before = starting.size;
+
 	for (const [id, begun] of starting) if (begun.sessionId === sessionId) starting.delete(id);
+
+	return starting.size === before ? undefined : saveRuns();
 };
 
 export const commandEditsOf = sessionId => edits[sessionId] ?? null;

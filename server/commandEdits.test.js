@@ -9,6 +9,7 @@ import {
 	commandEnded,
 	commandStarting,
 	forgetCommandEdits,
+	initCommandEdits,
 	noteChanged,
 } from './commandEdits';
 import { turnsOf } from './diffs';
@@ -220,4 +221,28 @@ test("one session's commands running side by side aren't weighed against each ot
 	await write('two\n');
 	await commandEnded('s1', 'short', 20);
 	expect(await commandEnded('s1', 'long', 100)).toEqual(['kept.js']);
+});
+
+// Last: from here on this file's commands are kept on disk
+test("a restart forgets neither a command under way nor one that ended, so a quick edit inside another session's long command stays the edit's", async () => {
+	const data = await mkdtemp(path.join(os.tmpdir(), 'paude-command-data-'));
+	const restart = () => initCommandEdits(data, 1000);
+
+	await restart();
+	await commandStarting('s1', 'tests', dir, 0);
+	await commandStarting('s2', 'sed', dir, 40);
+	await write('two\n');
+	await restart();
+	expect(await commandEnded('s1', 'tests', 50)).toEqual(['kept.js']);
+	await restart();
+	expect(await commandEnded('s2', 'sed', 45)).toEqual(['kept.js']);
+	expect(credit('s1', 'tests')).toEqual([]);
+
+	// An edit tool's change is remembered too
+	await commandStarting('s1', 'tests-2', dir, 100);
+	await write('three\n');
+	await noteChanged('s2', [path.join(dir, 'kept.js')], 110);
+	await restart();
+	expect(await commandEnded('s1', 'tests-2', 120)).toEqual([]);
+	await rm(data, { recursive: true, force: true });
 });
