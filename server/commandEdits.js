@@ -9,9 +9,14 @@ import { blobOf, gitStatus, headCommit, keepFiles, repoRoot } from './git';
 // script), and only the tools say which file they touched. So the checkout is looked at just before and just after
 // each command (its PreToolUse and PostToolUse hooks): a file whose state changed between the two was changed by it.
 // State is each file git sees as changed or new, kept as a blob (so a turn's diff has what the command started from
-// and left), or by size and modification time past the size a blob is kept at; files git ignores aren't the work. Only the session's own checkout is looked at. Sessions share checkouts, so a file another session
-// is known to have changed meanwhile (by an edit tool, or a command of its own) isn't this command's; a change paude
-// can't see the source of (an editor, a person) is counted as the command's.
+// and left), or by size and modification time past the size a blob is kept at; files git ignores aren't the work.
+// Only the session's own checkout is looked at.
+//
+// Sessions share checkouts, and their commands overlap: a test run in one spans another's quick edit, and both see the
+// file change. A file another session's edit tool changed during the command isn't the command's. One another
+// session's command saw go from the same state to the same state is the change both saw, and goes to the one that ran
+// the shorter while: the edit, not the test run it fell inside. A command that ended first is weighed again when an
+// overlapping one ends. A change paude can't see the source of (an editor, a person) is counted as the command's.
 
 // Commands kept per session, newest last
 const KEPT = 2000;
@@ -22,13 +27,16 @@ let file;
 let edits = {};
 // Per command under way: { sessionId, cwd, before, at }
 const starting = new Map();
-// The files each session is known to have changed lately, as full paths: [{ sessionId, file, at }]
+// The files each session's edit tools changed lately, as full paths: [{ sessionId, file, at }]
 let known = [];
-const KNOWN_MS = 60 * 60 * 1000;
+const RECENT_MS = 60 * 60 * 1000;
+// Commands ended lately, to weigh overlapping ones against: [{ sessionId, toolUseId, cwd, root, at, endedAt,
+// states: Map(full path → 'before→after'), sides: { [path from the session's folder]: { before, after } } }]
+let ended = [];
 
-// A file a session changed by its own edit tool, or by a command
+// A file a session changed by its own edit tool
 export const noteChanged = (sessionId, files, now = Date.now()) => {
-	known = known.filter(entry => now - entry.at < KNOWN_MS);
+	known = known.filter(entry => now - entry.at < RECENT_MS);
 	for (const file of files) known.push({ sessionId, file, at: now });
 };
 
@@ -96,6 +104,41 @@ export const commandStarting = async (sessionId, toolUseId, cwd, now = Date.now(
 	if (before) starting.set(toolUseId, { sessionId, cwd, before, at: now });
 };
 
+const overlap = (one, other) =>
+	one.sessionId !== other.sessionId && one.root === other.root && other.at < one.endedAt && other.endedAt > one.at;
+
+// The files a command is credited with, as full paths: those it saw change, less those an overlapping command of
+// another session ran the shorter while and saw change the same way, or another session's edit tool changed meanwhile
+const credited = command => {
+	const theirs = othersChanged(command.sessionId, command.at, command.endedAt);
+	const took = command.endedAt - command.at;
+	const tighter = ended.filter(other => overlap(command, other) && other.endedAt - other.at < took);
+
+	return [...command.states.keys()].filter(
+		file => !theirs.has(file) && !tighter.some(other => other.states.get(file) === command.states.get(file)),
+	);
+};
+
+// What the session's timeline keeps for a command; false when it's credited with nothing now
+const keep = command => {
+	const files = credited(command).map(file => path.relative(command.cwd, file));
+	const side = which =>
+		Object.fromEntries(
+			files.filter(file => which in (command.sides[file] ?? {})).map(file => [file, command.sides[file][which]]),
+		);
+	const kept = { ...edits[command.sessionId] };
+
+	if (files.length) kept[command.toolUseId] = { files, before: side('before'), after: side('after') };
+	else delete kept[command.toolUseId];
+	edits[command.sessionId] = Object.fromEntries(
+		Object.keys(kept)
+			.slice(-KEPT)
+			.map(id => [id, kept[id]]),
+	);
+
+	return files;
+};
+
 // The files it changed, from the session's folder, kept for the session's timeline; [] for none
 export const commandEnded = async (sessionId, toolUseId, now = Date.now()) => {
 	const begun = starting.get(toolUseId);
@@ -104,45 +147,51 @@ export const commandEnded = async (sessionId, toolUseId, now = Date.now()) => {
 	starting.delete(toolUseId);
 
 	const after = await snapshot(begun.cwd);
-	const theirs = othersChanged(sessionId, begun.at, now);
-	const full = after
-		? changedBetween(begun.before, after)
-				.map(file => path.join(after.root, file))
-				.filter(file => !theirs.has(file))
-		: [];
-
-	if (!full.length) return [];
-	noteChanged(sessionId, full, now);
-
-	const changed = full.map(file => path.relative(begun.cwd, file));
-	const fromTop = full.map(file => path.relative(after.root, file));
-	// Clean before the command: as HEAD had it then, or nothing for a file it made
-	const was = async file =>
+	const fromTop = after ? changedBetween(begun.before, after) : [];
+	const beforeState = file => begun.before.files.get(file) ?? `clean at ${begun.before.head}`;
+	const afterState = file => after.files.get(file) ?? `clean at ${after.head}`;
+	// Clean before the command: as HEAD had it then, or nothing for a file it made. Put back: as HEAD has it.
+	const blobBefore = async file =>
 		begun.before.files.has(file)
 			? begun.before.files.get(file)
 			: ((await blobOf(after.root, file, begun.before.head)) ?? GONE);
-	const sides = async states =>
-		Object.fromEntries(
-			(await states)
-				.map((state, index) => [changed[index], state === GONE ? null : state])
-				.filter(([, state]) => state === null || BLOB.test(state)),
-		);
-	const record = {
-		files: changed,
-		before: await sides(Promise.all(fromTop.map(was))),
-		// Put back to as HEAD has it
-		after: await sides(
-			Promise.all(
-				fromTop.map(async file => after.files.get(file) ?? (await blobOf(after.root, file, after.head)) ?? GONE),
-			),
+	const blobAfter = async file => after.files.get(file) ?? (await blobOf(after.root, file, after.head)) ?? GONE;
+	// A side the diff can show: { value } for a blob or nothing, null past the size a blob is kept at
+	const shown = state => {
+		if (state === GONE) return { value: null };
+
+		return BLOB.test(state) ? { value: state } : null;
+	};
+	const sides = Object.fromEntries(
+		await Promise.all(
+			fromTop.map(async file => {
+				const [was, left] = [shown(await blobBefore(file)), shown(await blobAfter(file))];
+
+				return [
+					path.relative(begun.cwd, path.join(after.root, file)),
+					{ ...(was && { before: was.value }), ...(left && { after: left.value }) },
+				];
+			}),
 		),
+	);
+	const command = {
+		sessionId,
+		toolUseId,
+		cwd: begun.cwd,
+		root: after?.root,
+		at: begun.at,
+		endedAt: now,
+		states: new Map(fromTop.map(file => [path.join(after.root, file), `${beforeState(file)}→${afterState(file)}`])),
+		sides,
 	};
 
-	const kept = { ...edits[sessionId], [toolUseId]: record };
-	const ids = Object.keys(kept);
+	ended = [...ended.filter(other => now - other.endedAt < RECENT_MS), command];
 
-	edits[sessionId] = Object.fromEntries(ids.slice(-KEPT).map(id => [id, kept[id]]));
-	await save();
+	const changed = fromTop.length ? keep(command) : [];
+
+	// Those that ended first and ran alongside it, weighed again now it can be weighed against
+	for (const other of ended) if (other !== command && overlap(command, other) && other.states.size) keep(other);
+	if (fromTop.length || ended.some(other => other !== command && overlap(command, other))) await save();
 
 	return changed;
 };

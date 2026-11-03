@@ -170,3 +170,54 @@ test("a turn's diff starts a command's file from what it started from and ends i
 	expect(await blobText(dir, turn.edited.get(full).blob)).toBe('one\n');
 	expect(await blobText(dir, turn.left.get(full))).toBe('two\n');
 });
+
+const write = text => writeFile(path.join(dir, 'kept.js'), text);
+const credit = (id, toolUseId) => commandEditsOf(id)?.[toolUseId]?.files ?? [];
+
+test("a quick edit inside another session's long command is the edit's, whichever ends first", async () => {
+	// The edit ends first
+	await commandStarting('s1', 'tests', dir, 0);
+	await commandStarting('s2', 'sed', dir, 10);
+	await write('two\n');
+	expect(await commandEnded('s2', 'sed', 20)).toEqual(['kept.js']);
+	expect(await commandEnded('s1', 'tests', 100)).toEqual([]);
+
+	// The long one ends first: the edit's, once both have
+	await commandStarting('s1', 'tests-2', dir, 200);
+	await commandStarting('s2', 'sed-2', dir, 210);
+	await write('three\n');
+	await commandEnded('s2', 'sed-2', 290);
+	expect(await commandEnded('s1', 'tests-2', 300)).toEqual([]);
+	expect(credit('s2', 'sed-2')).toEqual(['kept.js']);
+});
+
+test('a command credited first is weighed again when a tighter one that overlapped it ends', async () => {
+	await commandStarting('s1', 'long', dir, 0);
+	await commandStarting('s2', 'short', dir, 5);
+	await write('two\n');
+	expect(await commandEnded('s1', 'long', 10)).toEqual(['kept.js']);
+	expect(await commandEnded('s2', 'short', 12)).toEqual(['kept.js']);
+	expect(credit('s1', 'long')).toEqual([]);
+});
+
+test('each keeps the files only it changed, and a file both changed in their own ways', async () => {
+	await commandStarting('s1', 'long', dir, 0);
+	await commandStarting('s2', 'short', dir, 10);
+	await writeFile(path.join(dir, 'theirs.js'), 'theirs\n');
+	await write('two\n');
+	await commandEnded('s2', 'short', 20);
+	// The long one changes the file again after the edit, and makes one of its own
+	await write('three\n');
+	await writeFile(path.join(dir, 'mine.js'), 'mine\n');
+
+	expect(await commandEnded('s1', 'long', 100)).toEqual(['kept.js', 'mine.js']);
+	expect(credit('s2', 'short')).toEqual(['kept.js', 'theirs.js']);
+});
+
+test("one session's commands running side by side aren't weighed against each other", async () => {
+	await commandStarting('s1', 'long', dir, 0);
+	await commandStarting('s1', 'short', dir, 10);
+	await write('two\n');
+	await commandEnded('s1', 'short', 20);
+	expect(await commandEnded('s1', 'long', 100)).toEqual(['kept.js']);
+});
