@@ -46,6 +46,8 @@ let warm = {};
 const lastTurnAt = new Map();
 // Sessions whose turn now is a ping, so it isn't news to anyone watching
 const pinged = new Set();
+// The last ping or nudge typed into each: { [sessionId]: { kind: 'warm' | 'going', at } }
+const boosts = new Map();
 
 const save = () => writeJsonFile(file, () => warm);
 
@@ -100,18 +102,30 @@ export const claudeActive = (id, { hook_event_name: event, prompt } = {}, now = 
 
 // Typed in only when Claude is idle with an empty prompt box: paude's own prompt must neither answer a question Claude
 // asked nor run into what someone is halfway through typing. Whether it was.
-export const typeWhenIdle = (id, session, text) => {
+export const typeWhenIdle = (id, session, text, now = Date.now()) => {
 	if (session.busy || statusOf(id) !== 'ready' || session.promptDraft() !== '') return false;
 
 	session.typeIn(`\x1b[200~${text}\x1b[201~`);
 	setTimeout(() => session.typeIn('\r'), ENTER_AFTER_MS);
+	if (text === PING) boosts.set(id, { kind: 'warm', at: now });
+	else if (isNudge(text)) boosts.set(id, { kind: 'going', at: now });
 
 	return true;
 };
 
+// The last keep-warm ping or keep-going nudge typed into a session, for the universe to show it taken: { kind, ago }
+export const boostOf = (id, now = Date.now()) => {
+	const boost = boosts.get(id);
+
+	return boost ? { kind: boost.kind, ago: now - boost.at } : null;
+};
+
+// How it's kept: 'going' (warm, and nudged on), 'warm', or null
+export const keptOf = (id, now = Date.now()) => (goingOn(id, now) && 'going') || (warmUntil(id, now) && 'warm') || null;
+
 // Not typed now: tried again next check
 const ping = (id, session, now) => {
-	if (!typeWhenIdle(id, session, PING)) return false;
+	if (!typeWhenIdle(id, session, PING, now)) return false;
 
 	noteCrew('keeping a session warm');
 	lastTurnAt.set(id, now);

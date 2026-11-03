@@ -11,6 +11,7 @@ import writeJsonFile from '../shared/writeJsonFile';
 import { activitySummary, identityKey, watchedBy, watchesProject } from './activity';
 import { sessionArtifacts } from './artifacts';
 import { meterOf } from './cacheMeter';
+import { boostOf, keptOf } from './keepWarm';
 import { crewOf } from './crew';
 import { fuelOf } from './fuel';
 import { getNotes } from './notes';
@@ -371,7 +372,20 @@ const contextOf = session =>
 
 		const window = WINDOWS.find(size => meter.context <= size) ?? WINDOWS.at(-1);
 
-		return { tokens: meter.context, window, fill: meter.context / window, warm: meter.warm, model: meter.model };
+		return {
+			tokens: meter.context,
+			window,
+			fill: meter.context / window,
+			warm: meter.warm,
+			// How long its cache has left of the life it was written with, so a waiting grey can doze off as it goes
+			// and, gone, how long ago, for its empties in the lounge it goes to
+			cache: {
+				left: Math.max(0, meter.warmUntil - Date.now()),
+				life: meter.life,
+				ago: Math.max(0, Date.now() - meter.warmUntil),
+			},
+			model: meter.model,
+		};
 	});
 
 // A project's character, for its machine: the language most of its files are in, how many it tracks, the top-level
@@ -538,6 +552,9 @@ export const universe = async identity => {
 				talk: await talkOf(session),
 				age: Date.now() - session.startedAt,
 				limit: limitOf(session.id) ?? undefined,
+				// Kept warm, or kept going, and the last ping or nudge it was sent
+				kept: keptOf(session.id) ?? undefined,
+				boost: boostOf(session.id) ?? undefined,
 				...instrumentsOf(session),
 				glimpse: session.glimpse?.(),
 			};

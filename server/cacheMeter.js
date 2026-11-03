@@ -110,6 +110,8 @@ export const meterOf = async (id, cwd, now = Date.now()) => {
 		ttl: meter.ttl,
 		warmUntil,
 		warm: now < warmUntil,
+		// How long a write to the cache lasts, the life its countdown is out of
+		life: TTL_MS[meter.ttl],
 		// Coming back once it's cold: the whole context written to the cache again
 		coldCost: Math.round(context * (meter.ttl === '1h' ? RATES.write1h : RATES.write5m)),
 		// A turn while it's warm: the context read from the cache

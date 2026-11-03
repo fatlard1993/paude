@@ -1,6 +1,18 @@
 import { expect, test } from 'bun:test';
 
-import { MAX_HOURS, PING, PING_AFTER_MS, checkWarm, claudeActive, keepWarm, warmUntil } from './keepWarm';
+import {
+	MAX_HOURS,
+	PING,
+	PING_AFTER_MS,
+	boostOf,
+	checkWarm,
+	claudeActive,
+	keepWarm,
+	keptOf,
+	nudgeWith,
+	typeWhenIdle,
+	warmUntil,
+} from './keepWarm';
 
 const HOUR = 60 * 60 * 1000;
 
@@ -87,4 +99,22 @@ test('a real prompt starts the hours over; a ping does not', async () => {
 
 	claudeActive('sliding', { hook_event_name: 'UserPromptSubmit', prompt: 'fix the build' }, 10 * HOUR);
 	expect(warmUntil('sliding', 0)).toBe(22 * HOUR);
+});
+
+test('how a session is kept, and the last ping or nudge typed into it and how long ago', async () => {
+	const session = fakeSession();
+
+	await keepWarm('kept', 12, 0);
+	expect(keptOf('kept', 0)).toBe('warm');
+	expect(boostOf('kept', 0)).toBeNull();
+	await checkWarm(only('kept', session), PING_AFTER_MS);
+	expect(boostOf('kept', PING_AFTER_MS + 500)).toEqual({ kind: 'warm', ago: 500 });
+
+	await keepWarm('kept', 12, 0, { going: true });
+	expect(keptOf('kept', 0)).toBe('going');
+	expect(typeWhenIdle('kept', session, nudgeWith('next'), 9000)).toBe(true);
+	expect(boostOf('kept', 9100)).toEqual({ kind: 'going', ago: 100 });
+
+	await keepWarm('kept', 0, 0);
+	expect(keptOf('kept', 0)).toBeNull();
 });
