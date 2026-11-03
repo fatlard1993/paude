@@ -195,3 +195,23 @@ test('Haiku is shown what the session settled: work put off and questions for th
 	expect(prompt).toContain('<settled>\nPut off: Resizing the side panel, for later.\n</settled>');
 	expect(prompt).not.toContain('The terminal scales to fit.');
 });
+
+test('a turn end a Stop hook turned back is answered only by the turn end after it', async () => {
+	const session = fakeSession();
+	let answer;
+	const first = new Promise(resolve => {
+		answer = resolve;
+	});
+
+	await keepWarm('going', 12, Date.now(), { going: true });
+
+	const blocked = keepGoing('going', 'Done.', { ...going(session), ask: () => first });
+
+	expect(
+		await keepGoing('going', 'Filed it.', { ...going(session), ask: says('{"go": true, "next": "Check it."}') }),
+	).toBe(true);
+	answer('{"go": true, "next": "File the README."}');
+	expect(await blocked).toBe(false);
+	expect(session.typed).toHaveLength(1);
+	expect(session.typed[0]).toContain('Check it.');
+});

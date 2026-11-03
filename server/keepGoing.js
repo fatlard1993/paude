@@ -128,10 +128,24 @@ export const promptFor = (reply, asked, earlier = [], settled = []) =>
 		'Reply with only a JSON object: {"go": true or false, "next": "what Claude should do next, one or two sentences spoken to Claude, specific to this work", "why": "one plain sentence"}.',
 	].join('\n');
 
+// The latest turn end each session's keep-going is answering
+const turnEnds = new Map();
+
+// Why a nudge Haiku asked for didn't go in, or null when nothing stops it now
+const keptOut = (id, session, ended, sessionOf) => {
+	if (turnEnds.get(id) !== ended) return 'a later turn end answers instead';
+	if (!goingOn(id)) return 'switched off meanwhile';
+	if (sessionOf(id) !== session) return 'the session ended meanwhile';
+	if (waitingToAsk(id)) return 'a message is waiting to go in';
+
+	return null;
+};
+
 // After a turn ends in a session that keeps going: told what to do next unless Haiku finds nothing useful left that
 // doesn't need the person. Without an answer from Haiku it's still told to carry on toward the goal. Typed in only
 // while Claude sits idle with an empty prompt box and nobody's message waiting to go in (whoever came back and started
-// typing has the session). Whether it was.
+// typing has the session). A turn end another Stop hook turned back isn't the end: Claude answers the hook and ends
+// again, and only the later one is answered. Whether it was typed.
 export const keepGoing = async (
 	id,
 	reply,
@@ -143,7 +157,9 @@ export const keepGoing = async (
 	} = {},
 ) => {
 	const session = sessionOf(id);
+	const ended = (turnEnds.get(id) ?? 0) + 1;
 
+	turnEnds.set(id, ended);
 	if (!goingOn(id) || !session || !reply?.trim()) return false;
 
 	const turns = await turnsOf(id, session.cwd);
@@ -157,20 +173,22 @@ export const keepGoing = async (
 
 	const { decisions } = await decisionsOf(id, session.cwd).catch(() => ({ decisions: [] }));
 	const verdict = jsonIn(await ask(promptFor(reply, lastAsked(turns), runSoFar(turns), settledSoFar(decisions))));
-	const go = verdict?.go !== false;
+	const why = verdict ? (verdict.why ?? 'no reason given') : 'no answer from Haiku';
 
-	console.log(
-		`Keep going ${id}: ${go ? `on, ${verdict?.next ?? 'toward the goal'}` : 'waiting'} (${verdict ? (verdict.why ?? 'no reason given') : 'no answer from Haiku'})`,
-	);
-	// Asking takes seconds: switched off, ended, or taken up by someone meanwhile
-	if (
-		!go ||
-		!goingOn(id) ||
-		sessionOf(id) !== session ||
-		waitingToAsk(id) ||
-		!typeWhenIdle(id, session, nudgeWith(typeof verdict?.next === 'string' ? verdict.next : ''))
-	)
+	if (verdict?.go === false) {
+		console.log(`Keep going ${id}: waiting (${why})`);
+
 		return false;
+	}
+
+	const next = typeof verdict?.next === 'string' ? verdict.next : '';
+	// Asking takes seconds: answered by a later turn end, switched off, ended, or taken up by someone meanwhile
+	const out =
+		keptOut(id, session, ended, sessionOf) ??
+		(typeWhenIdle(id, session, nudgeWith(next)) ? null : 'Claude is busy, asking, or someone is typing');
+
+	console.log(`Keep going ${id}: ${out ? `not sent, ${out}:` : 'on,'} ${next || 'toward the goal'} (${why})`);
+	if (out) return false;
 	noteCrew('keeping a session going');
 
 	return true;
