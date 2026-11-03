@@ -76,6 +76,25 @@ const HEADS = {
 		'....kaaaaAk....',
 		'.....kaaAk.....',
 	],
+	// About to compact itself: past the biggest, veins all over it; it throbs between this and the huge one
+	bursting: [
+		'......kkkkk......',
+		'....kkaaaaakk....',
+		'...kaaraaaraak...',
+		'..kaarraaarraak..',
+		'.kaaaaaraaraaaAk.',
+		'kaaraaaaaaaaaraAk',
+		'kaarraaaaaaarraAk',
+		'kaaaaraaaaaraaaAk',
+		'.kaaaaaaaaaaaaAk.',
+		'..kaaaaaaaaaaAk..',
+		'...keWeaaaeWek...',
+		'...keeeeaeeeek...',
+		'....kaeeaeeAk....',
+		'....kaaaaaaAk....',
+		'.....kaaaaAk.....',
+		'......kaaAk......',
+	],
 };
 
 // Seen from behind: no face, the back of its skull shaded down one side

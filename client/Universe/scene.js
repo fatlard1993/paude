@@ -101,17 +101,17 @@ const SMALL_GREY_SECONDS = 0.7;
 // go; a turn running this long steams, and this long glows hot
 const SPARK_SECONDS = 2.5;
 const SMOKE_SECONDS = 20;
-const COMPACT_SECONDS = 2.5;
+const COMPACT_SECONDS = 3.5;
+// Of compacting: its head squeezed down to size over the first part, then the cube of what was squeezed out popping
+// from its skull onto the floor, then carted off
+const SQUEEZED = 0.25;
+const POPPED = 0.4;
+// Heads from the biggest down, for squeezing one down through the sizes between
+const HEAD_SIZES = ['bursting', 'huge', 'big', 'small'];
+// This close to compacting itself (percent of its context left, as Claude counts it), a grey's skull throbs
+const BURSTING = 5;
 const STEAM_SECONDS = 5 * 60;
 const HOT_SECONDS = 15 * 60;
-// A context this much emptier than last seen was compacted (or cleared)
-const COMPACTED = 0.2;
-// Whether what changed was tested since, worst first, and how inspection shows each
-const VERDICTS = ['failing', 'stale', 'untested', 'current'];
-const VERDICT_COLORS = { failing: '#d4524a', stale: '#f0b43c', untested: '#77829a', current: '#2fb39a' };
-// The most of a system's latest uses its log keeps, as each server's does
-const LOG_LENGTH = 12;
-
 // A lightning bolt, three pixels across, for the side of an energy drink
 const ZAP = [
 	[2, 0],
@@ -122,6 +122,14 @@ const ZAP = [
 	[1, 3],
 	[0, 4],
 ];
+// A context this much emptier than last seen was compacted (or cleared)
+const COMPACTED = 0.2;
+// Whether what changed was tested since, worst first, and how inspection shows each
+const VERDICTS = ['failing', 'stale', 'untested', 'current'];
+const VERDICT_COLORS = { failing: '#d4524a', stale: '#f0b43c', untested: '#77829a', current: '#2fb39a' };
+// The most of a system's latest uses its log keeps, as each server's does
+const LOG_LENGTH = 12;
+
 // The pip on a worker's chest, by the model its session runs: gold, silver, bronze, and violet for Fable
 const RANKS = [
 	['opus', PALETTE.y],
@@ -658,8 +666,10 @@ export default class Scene {
 					room: worker.room ?? worker.bay,
 				};
 			// Its context much emptier than last time: compacted, and the cube of it goes
-			if (worker && (worker.session.context?.fill ?? 0) - (session.context?.fill ?? 1) >= COMPACTED)
+			if (worker && (worker.session.context?.fill ?? 0) - (session.context?.fill ?? 1) >= COMPACTED) {
 				worker.compactedAt = this.time;
+				worker.compactedFrom = this.headOf(worker.session);
+			}
 			if (worker) Object.assign(worker, { session, lounging, leaving: false });
 			if (worker) this.noteKeeping(worker, session);
 			else
@@ -2761,8 +2771,37 @@ export default class Scene {
 		if (compacted < COMPACT_SECONDS) this.drawCube(ctx, worker, desk, compacted / COMPACT_SECONDS);
 	}
 
-	// Compacted context: a cube drops off the desk and is carted to the recycler in engineering, along the spine
+	// The head a session's grey wears: as big as its context is full, throbbing past the biggest when it's about to
+	// compact itself; given its grey, while it's compacting, squeezed down from the size it was through those between
+	headOf(session, worker) {
+		const left = session.untilCompact ?? Infinity;
+		const now =
+			left <= BURSTING && Math.floor(this.time * 2 * this.throbOf(session)) % 2 === 0
+				? 'bursting'
+				: headFor(session.context?.fill ?? 0);
+		const along = (this.time - (worker?.compactedAt ?? -Infinity)) / COMPACT_SECONDS;
+
+		if (!worker?.compactedFrom || along >= SQUEEZED) return now;
+
+		const from = HEAD_SIZES.indexOf(worker.compactedFrom);
+		const to = HEAD_SIZES.indexOf(now);
+
+		return HEAD_SIZES[Math.min(to, from + Math.floor((to - from + 1) * (along / SQUEEZED) ** 2))];
+	}
+
+	// How fast a grey about to compact itself throbs, a beat a second at the start and faster the closer it gets (0 for
+	// one that isn't)
+	throbOf(session) {
+		const left = session.untilCompact ?? Infinity;
+
+		return left <= BURSTING ? 1 + (BURSTING - left) * 0.5 : 0;
+	}
+
+	// Compacted context: squeezed out of its grey's skull, a cube pops onto the floor and is carted to the recycler in
+	// engineering, along the spine
 	drawCube(ctx, worker, desk, along) {
+		if (along < SQUEEZED) return;
+
 		const floor = { x: worker.desk.x - 0.5, y: worker.desk.y + 0.15 };
 		const points = [
 			floor,
@@ -2772,10 +2811,27 @@ export default class Scene {
 			.slice(1)
 			.map((point, index) => Math.hypot(point.x - points[index].x, point.y - points[index].y));
 		const total = lengths.reduce((sum, length) => sum + length, 0);
-		let at = { x: desk.x - 10, y: desk.y - 16 + 18 * Math.min(1, along / 0.15) ** 2 };
+		const crown = worker.crown ?? { x: desk.x - 10, y: desk.y - 16 };
+		const popped = Math.min(1, (along - SQUEEZED) / (POPPED - SQUEEZED));
+		// Popping up out of its skull and arcing down to the floor beside it
+		let at = {
+			x: crown.x + (points[0].x - crown.x) * popped,
+			y: crown.y + (points[0].y - crown.y) * popped - Math.sin(popped * Math.PI) * 12,
+		};
 
-		if (along >= 0.15) {
-			let left = ((along - 0.15) / 0.85) * total;
+		if (popped < 1) {
+			// A puff where it burst out
+			ctx.globalAlpha = 1 - popped;
+			for (const [dx, dy] of [
+				[-3, -1],
+				[3, -2],
+				[0, -4],
+			])
+				rect(ctx, crown.x + dx, crown.y + dy - popped * 4, 2, 1, PALETTE.W);
+			ctx.globalAlpha = 1;
+		}
+		if (along >= POPPED) {
+			let left = ((along - POPPED) / (1 - POPPED)) * total;
 			let index = 0;
 
 			while (index < lengths.length - 1 && left > lengths[index]) left -= lengths[index++];
@@ -2941,7 +2997,9 @@ export default class Scene {
 		const dozing =
 			!watching && (asleep || session.status === 'stopped' || (session.limit && session.status !== 'working'));
 		const shut = dozing || blinking;
-		const head = `head-${headFor(fill)}${shut ? '-shut' : ''}`;
+		const size = this.headOf(session, worker);
+		const squeezing = size !== this.headOf(session);
+		const head = `head-${size}${shut ? '-shut' : ''}`;
 		const colors = { c: `hsl(${session.hue ?? 200} 55% 55%)`, s: rankOf(session.context?.model) };
 		// Its head sinking as it nods off: a nod now and then, then slumped
 		const sag =
@@ -2954,9 +3012,24 @@ export default class Scene {
 			colors,
 			flip: (walking && worker.facing < 0) || (!walking && worker.desk?.side < 0),
 		});
-		// Nearly full, the veins pulse
+		// About to compact itself, a red glow swelling and fading round its head with each throb
+		const throb = this.throbOf(session);
+
+		if (throb) {
+			const { h: tall } = spriteSize(head);
+			const beat = 0.5 + 0.5 * Math.sin(this.time * throb * 2 * Math.PI);
+			const glow = ctx.createRadialGradient(at.x, neck - tall / 2, 2, at.x, neck - tall / 2, 14 + beat * 8);
+
+			glow.addColorStop(0, `rgba(255, 70, 50, ${0.35 + beat * 0.45})`);
+			glow.addColorStop(1, 'rgba(255, 70, 50, 0)');
+			ctx.fillStyle = glow;
+			ctx.fillRect(at.x - 20, neck - tall / 2 - 20, 40, 40);
+		}
+		// Nearly full, the veins pulse; being squeezed down, it shudders
 		if (fill >= 0.9 && Math.floor(this.time * 4) % 2) ctx.globalAlpha = 0.85;
-		drawSprite(ctx, head, at.x, neck, { colors });
+		drawSprite(ctx, head, at.x + (squeezing ? (Math.floor(this.time * 20) % 2) * 2 - 1 : 0), neck, {
+			colors: size === 'bursting' ? { ...colors, r: '#ff4a3a' } : colors,
+		});
 		ctx.globalAlpha = 1;
 		if (making < 1) ctx.restore();
 
@@ -3007,6 +3080,7 @@ export default class Scene {
 			this.drawSparkle(ctx, at.x, top + h / 2, (this.time - worker.finishedAt) / SPARKLE_SECONDS);
 
 		worker.top = top;
+		worker.crown = { x: at.x, y: top };
 		worker.screen = this.toScreen({ x: at.x, y: neck - h / 2 });
 		this.hits.push({
 			...this.toScreen({ x: at.x, y: neck - 2 }),
