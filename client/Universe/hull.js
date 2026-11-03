@@ -1,5 +1,5 @@
 import { PALETTE, drawSprite } from './art';
-import { NACELLE, NOSE, RIM, clonerAt, padAt, panelAt, recyclerAt, stockAt } from './plan';
+import { NACELLE, NOSE, RIM, clonerAt, padAt, panelAt, recyclerAt, stockAt, systemFootOf } from './plan';
 import { pixelText, textWidth } from './retro';
 import {
 	COUCH_SEAT,
@@ -1044,7 +1044,7 @@ export const drawSystem = (ctx, art, label, room, { time, system }) => {
 
 	const hue = system.hue;
 	const accent = `hsl(${hue} 75% 64%)`;
-	const foot = { x: room.x + (room.w - 0.9) / 2, y: room.y + FACE + 2.1 };
+	const foot = systemFootOf(room);
 
 	return [
 		...walls(ctx, art, label, room, { name: room.name, color: `hsl(${hue} 55% 74%)` }),

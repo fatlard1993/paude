@@ -17,7 +17,19 @@ import {
 	drawSystem,
 	drawTransporter,
 } from './hull';
-import { aisleOf, clonerAt, holdSpotAt, layOut, navAt, padAt, panelAt, recyclerAt, seatOf, stockAt } from './plan';
+import {
+	aisleOf,
+	clonerAt,
+	holdSpotAt,
+	layOut,
+	navAt,
+	padAt,
+	panelAt,
+	recyclerAt,
+	seatOf,
+	stockAt,
+	systemFootOf,
+} from './plan';
 import {
 	DESK_PITCH,
 	DESK_ROW,
@@ -2142,12 +2154,16 @@ export default class Ship {
 
 	// A worker's stream from its system, in art pixels: by way of its project's machine when `conduit`, its two halves
 	streamRoute(worker, room, sources, key, conduit) {
+		const tech = room.kind === 'system' ? this.throughSystem(room) : null;
+		const fed = tech ? [{ track: trackOf(tech.feed), ports: [tech.feed.at(-1)] }] : [];
+
 		if (conduit) {
-			const [into, out] = this.throughProject(worker, room, conduit, sources.indexOf(key));
+			const [into, out] = this.throughProject(worker, room, conduit, sources.indexOf(key), tech?.outlet);
 
 			// Into the machine at its intake, and out of its outlet: through it, it lights up rather than being drawn over
 			return [
-				{ track: trackOf(into), ports: [into.at(-1)] },
+				...fed,
+				{ track: trackOf(into), ports: [...(tech ? [tech.outlet] : []), into.at(-1)] },
 				{ track: trackOf(out), ports: [out[0]] },
 			];
 		}
@@ -2157,6 +2173,12 @@ export default class Ship {
 		const end = { x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 };
 		const offset = (sources.indexOf(key) - (sources.length - 1) / 2) * 0.09;
 		const points = [start, ...this.route(start, room, end, worker.room, lane + offset)].map(point => this.art(point));
+
+		if (tech)
+			return [
+				...fed,
+				{ track: trackOf([tech.outlet, { x: points[0].x, y: tech.outlet.y }, ...points]), ports: [tech.outlet] },
+			];
 
 		return [{ track: trackOf(points), ports: [] }];
 	}
@@ -2184,7 +2206,27 @@ export default class Ship {
 
 	// From an engine-bay system to a worker, in art pixels, by way of its project's machine and conduit (`conduit`), the
 	// system's own riser up the engine bay's wall (the `nth` system): into the machine, and out of it
-	throughProject(worker, room, conduit, nth) {
+	// A stream's way through its engine's tech, in art pixels: from the reactor's core up to the system's main, along it
+	// and down its drop into the unit (`feed`), and out at the unit's foot (`outlet`), which lights up between
+	throughSystem(room) {
+		const engine = this.engines.find(({ key }) => key === room.engine);
+		const at = this.art(systemFootOf(room));
+		const main = this.art({ x: 0, y: room.y }).y + 7;
+		const across = this.art({ x: room.feed ?? room.x, y: 0 }).x;
+		const core = engine ? this.art(engine.reactor).y - 16 : main;
+
+		return {
+			feed: [
+				{ x: across, y: core },
+				{ x: across, y: main },
+				{ x: at.x, y: main },
+				{ x: at.x, y: at.y - 33 },
+			],
+			outlet: { x: at.x, y: at.y + 2 },
+		};
+	}
+
+	throughProject(worker, room, conduit, nth, outlet) {
 		const door = this.art({ x: room.door.x, y: room.door.side === 'bottom' ? room.y + room.d : room.y + FACE });
 		const wall = this.art({ x: room.within.x + room.within.w, y: 0 }).x - 3 - nth * 3;
 		const { tray, entry, exit, out, riser, plates } = conduit;
@@ -2196,7 +2238,15 @@ export default class Ship {
 			.sort((a, b) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(b.x - seat.x, b.y - seat.y))[0];
 
 		return [
-			[door, { x: wall, y: door.y }, { x: wall, y: tray }, { x: into.x, y: tray }, into, entry],
+			[
+				...(outlet ? [outlet, { x: door.x, y: outlet.y }] : []),
+				door,
+				{ x: wall, y: door.y },
+				{ x: wall, y: tray },
+				{ x: into.x, y: tray },
+				into,
+				entry,
+			],
 			[
 				exit,
 				out,

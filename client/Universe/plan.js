@@ -549,6 +549,9 @@ export const stockAt = (room, uses = 0) => {
 };
 
 // The usage console by a system's door, by its foot
+// Where a system's unit stands in its room, by its foot
+export const systemFootOf = room => ({ x: room.x + (room.w - 0.9) / 2, y: room.y + FACE + 2.1 });
+
 export const panelAt = room => ({
 	x: room.door.x - 0.95,
 	y: room.door.side === 'bottom' ? room.y + room.d - 0.35 : room.y + FACE + 0.75,
