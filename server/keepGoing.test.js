@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from 'bun:test';
 
-import { MOST_IDLE, MOST_NUDGES, holdBefore, keepGoing, promptFor } from './keepGoing';
+import { MOST_IDLE, MOST_NUDGES, holdBefore, keepGoing, promptFor, settledSoFar } from './keepGoing';
 import { claudeActive, isNudge, keepWarm, nudgeWith, warmUntil } from './keepWarm';
 
 const NUDGE = nudgeWith('');
@@ -24,9 +24,10 @@ const turn = (prompt, acted = true, said = '') => ({
 	said,
 	steps: acted ? [{ summary: 'Read a file' }, { summary: 'Ran the tests' }, { summary: 'Edited a file' }] : [],
 });
-const going = (session, turns = [turn('fix the build')]) => ({
+const going = (session, turns = [turn('fix the build')], decisions = []) => ({
 	sessionOf: () => session,
 	turnsOf: async () => turns,
+	decisionsOf: async () => ({ decisions }),
 });
 const says = answer => async () => answer;
 
@@ -158,4 +159,39 @@ test("Haiku is shown how the run's earlier turns ended, and a turn that did next
 	const slight = { prompt: NUDGE, asked: NUDGE, steps: [{ summary: 'Read a file' }] };
 
 	expect(holdBefore([turn('fix it'), slight, slight])).toContain('next to nothing');
+});
+
+test('Haiku is shown what the session settled: work put off and questions for the person first, set-aside ones not at all', async () => {
+	const decisions = [
+		{ kind: 'decision', chose: 'The bridge toggles any engine.', rejected: 'Only projects.' },
+		{ kind: 'finding', chose: 'The terminal scales to fit.', dismissed: true },
+		{ kind: 'deferred', chose: 'Resizing the side panel, for later.' },
+		{ kind: 'decision', chose: 'Credit waits for running commands.', question: 'Hold credit until they end?' },
+	];
+
+	expect(settledSoFar(decisions)).toEqual([
+		'Decided: The bridge toggles any engine. Rejected: Only projects.',
+		'Put off: Resizing the side panel, for later.',
+		'Waiting on the person: Hold credit until they end? (about: Credit waits for running commands.)',
+	]);
+
+	const many = Array.from({ length: 20 }, (_, index) => ({ kind: 'decision', chose: `Decision ${index}.` }));
+
+	expect(settledSoFar([...many, decisions[2]])).toContain('Put off: Resizing the side panel, for later.');
+	expect(settledSoFar([...many, decisions[2]])).toHaveLength(12);
+
+	const session = fakeSession();
+	let prompt = '';
+
+	await keepWarm('going', 12, Date.now(), { going: true });
+	await keepGoing('going', 'The bridge is done.', {
+		...going(session, [turn('build the bridge')], decisions),
+		ask: async text => {
+			prompt = text;
+
+			return '{"go": false}';
+		},
+	});
+	expect(prompt).toContain('<settled>\nPut off: Resizing the side panel, for later.\n</settled>');
+	expect(prompt).not.toContain('The terminal scales to fit.');
 });

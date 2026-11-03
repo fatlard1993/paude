@@ -662,13 +662,14 @@ export const turnsToRead = (turns, { running }) => {
 };
 
 // What the session settled, newest first: [{ id, turnId, at, asked, kind, chose, rejected, because, place, looking,
-// dismissed }], whether Haiku is still reading turns or looking for places, and whether filing waits on another session
-export const sessionDecisions = async (id, cwd, { withDismissed = false, whole = false } = {}) => {
+// dismissed }], whether Haiku is still reading turns or looking for places, and whether filing waits on another session.
+// Only read starts nothing: no turn read, no place looked for, nothing filed.
+export const sessionDecisions = async (id, cwd, { withDismissed = false, whole = false, onlyRead = false } = {}) => {
 	const turns = turnsToRead(await sessionTurns(id, cwd, { whole }), {
 		running: Boolean(runningSession(id)) || statusOf(id) === 'working',
 	});
 
-	if (placesFile) found.describe(turns);
+	if (placesFile && !onlyRead) found.describe(turns);
 
 	const decisions = turns.flatMap(turn =>
 		(found.descriptionOf(keyOf(turn)) ?? []).map((decision, index) => ({
@@ -683,7 +684,7 @@ export const sessionDecisions = async (id, cwd, { withDismissed = false, whole =
 	const open = decisions.filter(decision => !set.has(decision.id));
 	let held = false;
 
-	if (open.length && placesFile) {
+	if (open.length && placesFile && !onlyRead) {
 		// Without a since, no commits: only the fingerprint is wanted here
 		const { fingerprint } = await placesFor(cwd);
 		const unplaced = toLookFor(open, fingerprint);

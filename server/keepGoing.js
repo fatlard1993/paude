@@ -1,6 +1,7 @@
 import askHaiku, { jsonIn } from './haiku';
 import { waitingToAsk } from './claudeInbox';
 import { noteCrew } from './crew';
+import { sessionDecisions } from './decisions';
 import { goingOn, isNudge, nudgeWith, typeWhenIdle } from './keepWarm';
 import { runningSession } from './sessions/running';
 import { sessionTurns } from './timeline';
@@ -21,6 +22,9 @@ const RUN_SHOWN = 6;
 const RUN_CHARACTERS = 500;
 const REPLY_CHARACTERS = 4000;
 const ASKED_CHARACTERS = 1500;
+// What the session settled, as Haiku is shown it, newest first
+const SETTLED_SHOWN = 12;
+const SETTLED_CHARACTERS = 300;
 
 const KEEP_WARM_PING = /^keep-?warm ping/i;
 
@@ -62,21 +66,53 @@ const runSoFar = turns =>
 		.slice(-RUN_SHOWN)
 		.map(turn => turn.said.slice(-RUN_CHARACTERS));
 
-export const promptFor = (reply, asked, earlier = []) =>
+const SAID_AS = { decision: 'Decided', direction: 'Direction', deferred: 'Put off', finding: 'Found' };
+
+// What the session settled that still stands (not set aside by the person), newest first: work put off is work left,
+// and each decision and direction is something the work can be checked against. One waiting on the person's answer is
+// shown as theirs, so the way forward goes around it rather than through it.
+export const settledSoFar = decisions => {
+	const open = decisions.filter(decision => !decision.dismissed);
+	const first = decision => decision.question || decision.kind === 'deferred';
+	const shown = new Set([...open.filter(first), ...open.filter(decision => !first(decision))].slice(0, SETTLED_SHOWN));
+
+	return open
+		.filter(decision => shown.has(decision))
+		.map(decision =>
+			(decision.question
+				? `Waiting on the person: ${decision.question} (about: ${decision.chose})`
+				: [
+						`${SAID_AS[decision.kind] ?? 'Decided'}: ${decision.chose}`,
+						decision.rejected && `Rejected: ${decision.rejected}`,
+					]
+						.filter(Boolean)
+						.join(' ')
+			).slice(0, SETTLED_CHARACTERS),
+		);
+};
+
+export const promptFor = (reply, asked, earlier = [], settled = []) =>
 	[
 		'A person is away from a Claude Code session and wants it to keep working toward their goal the whole time they are gone, never sitting idle while anything useful is left to do. Claude just ended a turn. Say what Claude should do next.',
 		'',
 		'Pick, in this order:',
 		"0. Anything the person's last message asked for that neither the latest reply nor the earlier ones show done: a message asking for several things is often answered for only some of them.",
-		'1. The next step toward the goal: what the reply names as left or offers to do next ("I\'d take those next", "a good next step if you want it" count as accepted), rough edges it noticed in its own work, or the plain next step of the plan.',
+		'1. The next step toward the goal: what the reply names as left or offers to do next ("I\'d take those next", "a good next step if you want it" count as accepted), rough edges it noticed in its own work, work the session put off that nothing since shows done (unless it was put off until the person says), or the plain next step of the plan.',
 		'2. If that step waits on the person (a question to them, a choice between real alternatives, a credential, a restart only they can do), or on background work Claude started, then work that is useful toward the goal and does not depend on it: another part of the goal, or the parts of the open choice that are the same either way.',
-		'3. If the goal looks done, something that makes it better done: check it end to end the way the person will use it, cover edge cases and failure paths, review the change as a stranger would, look for the same fault elsewhere, tighten what it touched.',
+		'3. If the goal looks done, something that makes it better done: check it end to end the way the person will use it, check it holds to what the session decided (each decision and direction kept, nothing it rejected crept back in), cover edge cases and failure paths, review the change as a stranger would, look for the same fault elsewhere, tighten what it touched.',
 		'',
 		"Say go false only when nothing useful is left that needs nothing from the person: every way forward needs their answer, their credentials, or an action that reaches past this machine or can't be undone (a push, a deploy, a release, posting, deleting data, running anything against other machines, services or people); or Claude is stuck, failing the same way again after trying; or it cannot work at all (a broken environment, out of usage). Never send Claude to push, deploy, release, post, delete, run anything that reaches other machines, services or people (a dry run or a local test is fine), or decide a question of taste or priorities on the person's behalf.",
 		'',
 		'What the person last asked for, oldest first:',
 		...asked.map(text => `<asked>\n${text.slice(0, ASKED_CHARACTERS)}\n</asked>`),
 		'',
+		...(settled.length
+			? [
+					'What the session settled earlier, newest first. A question waiting on the person is theirs: never answer it or decide it for them.',
+					...settled.map(text => `<settled>\n${text}\n</settled>`),
+					'',
+				]
+			: []),
 		...(earlier.length
 			? [
 					"How Claude ended its earlier turns since the person's last message, oldest first. Don't send Claude back to do or check what these already did; if every way forward left is something they already did or declined, say go false.",
@@ -99,7 +135,12 @@ export const promptFor = (reply, asked, earlier = []) =>
 export const keepGoing = async (
 	id,
 	reply,
-	{ ask = text => askHaiku(text, 'deciding to keep going'), sessionOf = runningSession, turnsOf = sessionTurns } = {},
+	{
+		ask = text => askHaiku(text, 'deciding to keep going'),
+		sessionOf = runningSession,
+		turnsOf = sessionTurns,
+		decisionsOf = (sessionId, cwd) => sessionDecisions(sessionId, cwd, { onlyRead: true, whole: true }),
+	} = {},
 ) => {
 	const session = sessionOf(id);
 
@@ -114,7 +155,8 @@ export const keepGoing = async (
 		return false;
 	}
 
-	const verdict = jsonIn(await ask(promptFor(reply, lastAsked(turns), runSoFar(turns))));
+	const { decisions } = await decisionsOf(id, session.cwd).catch(() => ({ decisions: [] }));
+	const verdict = jsonIn(await ask(promptFor(reply, lastAsked(turns), runSoFar(turns), settledSoFar(decisions))));
 	const go = verdict?.go !== false;
 
 	console.log(
