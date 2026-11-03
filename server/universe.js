@@ -82,6 +82,8 @@ const USAGE_MS = 10 * 60_000;
 const LOG_LENGTH = 12;
 const DETAIL_LENGTH = 80;
 let uses = [];
+// Past this many, the old ones are let go as the next is noted
+const USES_KEPT = 2000;
 
 // A tool's use in a few words: the file relative to the session's folder, a command's first line, the address,
 // the pattern or query, a subagent's task
@@ -124,6 +126,8 @@ export const initUniverse = async dataDir => {
 
 export const noteTool = async (session, name, failed = false, input = undefined) => {
 	lastTools.set(session, name ?? null);
+	// Kept to the last while however long it's gone between looks at the universe
+	if (uses.length > USES_KEPT) uses = uses.filter(({ at }) => Date.now() - at < USAGE_MS);
 	if (name)
 		uses.push({
 			at: Date.now(),
@@ -528,7 +532,15 @@ export const refreshLounge = () => {
 // running on it (each with how full its context is, how long it's run, how much it has made, any usage limit it's
 // waiting out, what its hooks said lately, and its screen) and the stopped ones with news for them or stopped lately,
 // the cargo of each checkout they work in, and who's here to see
+// Looks and records no look would take any more (the longest kept is a stop's going cold, an hour), let go: those of
+// sessions long gone among them
+const forgetStale = (now = Date.now()) => {
+	for (const [key, { at, coming }] of looks) if (!coming && now - at > COLD_MS) looks.delete(key);
+	for (const [id, { at }] of records) if (now - at > COLD_MS) records.delete(id);
+};
+
 export const universe = async identity => {
+	forgetStale();
 	const running = [...allRunning()].filter(session => !session.ended);
 	const roots = new Map(
 		await Promise.all(
