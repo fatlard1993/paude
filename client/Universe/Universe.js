@@ -294,9 +294,12 @@ export default class Universe extends View {
 	me() {
 		const viewer = identity();
 
-		return [...(this.aboard.people?.values() ?? [])].find(person =>
+		// Keyed as the ship keys them, which a person from an older paude, with no key of their own, still has
+		const found = [...(this.aboard.people ?? [])].find(([, person]) =>
 			viewer?.owner ? person.role === 'owner' : person.name === viewer?.name,
 		);
+
+		return found && { ...found[1], key: found[0] };
 	}
 
 	// Beamed over to another ship: walking onto this one's transporter pad and beaming out, then beaming in on that
