@@ -881,3 +881,26 @@ test("through the transporter: onto its pad and away from one ship, in on the ot
 	run(to, 30);
 	expect(arrived.room).toBe(to.bridge);
 });
+
+test('one held up on the way to the transporter beams out from wherever they got to', () => {
+	const me = { key: 'me', name: 'chase', role: 'owner', sessions: [] };
+	const ship = shipWith([
+		{ ...answer('here', [session({ id: 'a', project: 'paude' })], { projects: ['paude'] }), people: [me] },
+	]);
+	let gone = false;
+
+	ship.fleet = [{ key: 'b', name: 'vps' }];
+	ship.update([{ ...answer('here', [session({ id: 'a', project: 'paude' })], { projects: ['paude'] }), people: [me] }]);
+	run(ship, 8);
+	expect(ship.beamOut('me', () => (gone = true))).toBe(true);
+
+	// A detour that would take far longer than it's given
+	const walker = ship.walkers.get('me');
+
+	walker.path = Array.from({ length: 200 }, (_, index) => ({ x: walker.x + (index % 2 ? 4 : -4), y: walker.y }));
+	run(ship, 4);
+	expect(gone).toBe(false);
+	run(ship, 4);
+	expect(gone).toBe(true);
+	expect(ship.walkers.has('me')).toBe(false);
+});
