@@ -106,7 +106,9 @@ const shut = rows => {
 
 const BODIES = {
 	stand: ['..kkcccck..', '.kaaaaaaAk.', 'kaksaaaAkAk', 'kakaaaaAkAk', '.kkak.kAkk.', '..kk...kk..'],
-	stride: ['..kkcccck..', '.kaaaaaaAk.', 'kaksaaaAkAk', 'kakaaaaAkAk', '..kakkAk...', '.kk....kk..'],
+	// A foot lifted, the other planted: walking is these by turns with standing between
+	stepLeft: ['..kkcccck..', '.kaaaaaaAk.', 'kaksaaaAkAk', 'kakaaaaAkAk', '..kkk.kAkk.', '.......kk..'],
+	stepRight: ['..kkcccck..', '.kaaaaaaAk.', 'kaksaaaAkAk', 'kakaaaaAkAk', '.kkak.kkk..', '..kk.......'],
 	wave: [
 		'.........kk',
 		'........kak',
@@ -121,50 +123,29 @@ const BODIES = {
 };
 
 // Someone aboard, in a pressure suit: a gold visor under a stripe of their color, a neck ring, shoulders broader than
-// the helmet with the arms hanging from them, gloved, and their color in the light on the chest; two strides for walking
+// the helmet with the arms hanging from them, gloved, and their color in the light on the chest; a step with each boot for walking
+// Its helmet, body and arms, over legs standing or walking
+const SUIT_TOP = [
+	'...kkkkk...',
+	'..kwcccwk..',
+	'.kwkkkkkwk.',
+	'.kwkyyWkwk.',
+	'.kwkYyykwk.',
+	'.kwwkkkwwk.',
+	'..kklllkk..',
+	'.kwwwwwwwk.',
+	'kwwwwcwwwwk',
+	'kwkwwwwwkwk',
+	'kwkwwwwwkwk',
+	'kwkwlllwkwk',
+	'kmk.kkk.kmk',
+];
+
 const SUIT = {
-	stand: [
-		'...kkkkk...',
-		'..kwcccwk..',
-		'.kwkkkkkwk.',
-		'.kwkyyWkwk.',
-		'.kwkYyykwk.',
-		'.kwwkkkwwk.',
-		'..kklllkk..',
-		'.kwwwwwwwk.',
-		'kwwwwcwwwwk',
-		'kwkwwwwwkwk',
-		'kwkwwwwwkwk',
-		'kwkwlllwkwk',
-		'kmk.kkk.kmk',
-		'..kwwkwwk..',
-		'..kwwkwwk..',
-		'..kwwkwwk..',
-		'..kwwkwwk..',
-		'..kmmkmmk..',
-		'..kkk.kkk..',
-	],
-	stride: [
-		'...kkkkk...',
-		'..kwcccwk..',
-		'.kwkkkkkwk.',
-		'.kwkyyWkwk.',
-		'.kwkYyykwk.',
-		'.kwwkkkwwk.',
-		'..kklllkk..',
-		'.kwwwwwwwk.',
-		'kwwwwcwwwwk',
-		'kwkwwwwwkwk',
-		'kwkwwwwwkwk',
-		'kwkwlllwkwk',
-		'kmk.kkk.kmk',
-		'..kwwkwwk..',
-		'.kwwk.kwwk.',
-		'.kwwk.kwwk.',
-		'kwwk...kwwk',
-		'kmmk...kmmk',
-		'kkk.....kkk',
-	],
+	stand: [...SUIT_TOP, '..kwwkwwk..', '..kwwkwwk..', '..kwwkwwk..', '..kwwkwwk..', '..kmmkmmk..', '..kkk.kkk..'],
+	// A boot lifted, the other planted, as the greys walk
+	stepLeft: [...SUIT_TOP, '..kwwkwwk..', '..kwwkwwk..', '..kwwkwwk..', '..kmmkwwk..', '..kkkkmmk..', '.....kkkk..'],
+	stepRight: [...SUIT_TOP, '..kwwkwwk..', '..kwwkwwk..', '..kwwkwwk..', '..kwwkmmk..', '..kmmkkkk..', '..kkkk.....'],
 };
 
 // Someone seen from behind, looking in: the back of their helmet striped in their color, their air pack
@@ -416,10 +397,12 @@ const SPRITES = {
 	),
 	body: BODIES.stand,
 	bodyWave: BODIES.wave,
-	bodyStride: BODIES.stride,
+	bodyStepLeft: BODIES.stepLeft,
+	bodyStepRight: BODIES.stepRight,
 	bodyBack: BODIES.stand.map(row => row.replace('s', 'a')),
 	suit: SUIT.stand,
-	suitStride: SUIT.stride,
+	suitStepLeft: SUIT.stepLeft,
+	suitStepRight: SUIT.stepRight,
 	lamp: LAMP,
 	core: CORE,
 	asking: ASKING,

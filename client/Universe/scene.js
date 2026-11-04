@@ -118,6 +118,8 @@ const HEAD_SIZES = ['bursting', 'huge', 'big', 'small'];
 const BURSTING = 5;
 const STEAM_SECONDS = 5 * 60;
 const HOT_SECONDS = 15 * 60;
+// A walk's frames by turns, as suffixes of the standing sprite's name
+const STEPS = ['', 'StepLeft', '', 'StepRight'];
 // An island's hit sorts after every figure on it and before the rooms round it
 const ISLAND_HIT = 1e6;
 // Where each kind of stream runs from, in the order their packets are spaced along a shared conduit
@@ -439,7 +441,7 @@ const walk = (mover, budget, seconds) => {
 		left -= travel;
 		if (distance - travel < 0.005) mover.path.shift();
 	}
-	if (mover.path.length) mover.step += seconds * 9;
+	if (mover.path.length) mover.step += seconds * 8;
 };
 
 export const sessionKey = (engineKey, id) => `${engineKey}/${id}`;
@@ -3006,9 +3008,10 @@ export default class Ship {
 			(drowse >= 0.85 && 2) || (drowse >= 0.6 && Math.floor((this.time + worker.seed) * 0.8) % 3 === 0 ? 1 : 0);
 		const neck = at.y - bob - 5 + sag;
 
-		const stride = walking && making >= 1 && Math.floor(worker.step) % 2;
+		// Walking: standing, a step, standing, the other step
+		const stride = walking && making >= 1 ? STEPS[Math.floor(worker.step) % STEPS.length] : '';
 
-		drawSprite(ctx, (waving && 'bodyWave') || (stride && 'bodyStride') || 'body', at.x, at.y - bob, {
+		drawSprite(ctx, (waving && 'bodyWave') || `body${stride}`, at.x, at.y - bob, {
 			colors,
 			flip: (walking && worker.facing < 0) || (!walking && worker.seat?.side < 0),
 		});
@@ -3534,7 +3537,7 @@ export default class Ship {
 	// Walking, seen from the front; at their place by their pose
 	drawWalker(ctx, walker) {
 		const at = this.art(walker);
-		const stride = walker.path.length && Math.floor(walker.step) % 2;
+		const stride = walker.path.length ? STEPS[Math.floor(walker.step) % STEPS.length] : '';
 		const colors = { c: `hsl(${walker.person.hue} 45% 45%)`, s: `hsl(${walker.person.hue} 45% 45%)` };
 		const there = !walker.path.length && !walker.leaving && walker.spot;
 
@@ -3554,7 +3557,7 @@ export default class Ship {
 			}
 		} else {
 			rect(ctx, at.x - 3, at.y, 7, 1, PALETTE.k);
-			drawSprite(ctx, stride ? 'suitStride' : 'suit', at.x, at.y, { colors, flip: walker.facing < 0 });
+			drawSprite(ctx, `suit${stride}`, at.x, at.y, { colors, flip: walker.facing < 0 });
 		}
 		this.hits.push({
 			...this.toScreen({ x: at.x, y: at.y - 7 }),
