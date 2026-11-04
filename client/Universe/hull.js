@@ -196,8 +196,9 @@ const paintHull = building => {
 	return { canvas, x: shape.left, y: shape.top, shape };
 };
 
-// The nose: a cockpit window in an armored rim, space streaming past in it as fast as the ship is going (`pace`)
-const drawCanopy = (ctx, image, { time, pace }) => {
+// The nose: a cockpit window in an armored rim, space streaming past in it as the sky's does: `drift` how far the sky
+// has streamed, in art pixels, so its stars keep the sky's speed at any zoom; `pace` how fast the ship is going
+const drawCanopy = (ctx, image, { time, pace, drift }) => {
 	const { shape } = image;
 	const half = (shape.bottom - shape.top) / 2 - 7;
 	const from = shape.right + 2;
@@ -255,7 +256,7 @@ const drawCanopy = (ctx, image, { time, pace }) => {
 		const y = Math.round(glass[0].y + seeded(`canopy${star}`) * (glass.length - 1));
 		const row = glass[y - glass[0].y];
 		const depth = 0.4 + seeded(`canopyDepth${star}`) * 0.6;
-		const x = from + ((((seeded(`canopyX${star}`) * width - time * 10 * pace * depth) % width) + width) % width);
+		const x = from + ((((seeded(`canopyX${star}`) * width - drift * depth) % width) + width) % width);
 
 		if (row && x < row.to)
 			rect(ctx, Math.round(x), y, depth > 0.75 && pace > 1.5 ? 2 : 1, 1, depth > 0.7 ? PALETTE.W : PALETTE.l);
@@ -469,7 +470,7 @@ const drawTank = (ctx, at, { level, flow, empty, color = FUEL }, { time, below }
 export const drawHull = (
 	ctx,
 	layout,
-	{ time, engines = [], comms, hangarOpen, tanks = [], sections = [], pace = 1 },
+	{ time, engines = [], comms, hangarOpen, tanks = [], sections = [], pace = 1, drift = 0 },
 ) => {
 	const image = hullImage(layout.building);
 	const { shape } = image;
@@ -477,7 +478,7 @@ export const drawHull = (
 	drawFins(ctx, image, layout.engineering, { time });
 	for (const engine of engines) drawEngine(ctx, shape, { ...engine, time });
 	ctx.drawImage(image.canvas, image.x, image.y);
-	drawCanopy(ctx, image, { time, pace });
+	drawCanopy(ctx, image, { time, pace, drift });
 	// Each project's section: plated in its color, its name on the belly, dim while idle, a lamp on its back amber while
 	// one of its sessions asks you something and teal while they work
 	for (const section of sections) {

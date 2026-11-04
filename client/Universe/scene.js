@@ -1280,6 +1280,8 @@ export default class Ship {
 		this.labels = [];
 		drawHull(ctx, this.layout, {
 			time: this.time,
+			// The sky's stream in art pixels, so the window's stars move with the sky's
+			drift: this.drift / this.camera.zoom,
 			tanks: this.tanks,
 			engines: this.engines.map(engine => ({
 				y: this.art(engine.reactor).y - 11,
