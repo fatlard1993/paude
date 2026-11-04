@@ -414,10 +414,16 @@ test("what the work makes leaves its grey's desk: a reply for the bridge, a part
 
 	const reply = made.parcels.find(({ kind }) => kind === 'reply');
 	const part = made.parcels.find(({ kind }) => kind === 'part');
-	const [bridge, hold] = [reply.path.at(-1), part.path.at(-1)];
+	const [bridge, hold] = [reply.path.at(-1), part.legs.at(-1).path.at(-1)];
 
 	expect(bridge.x).toBeGreaterThan(made.bridge.x);
 	expect(hold).toEqual(holdSpotAt(made.layout.hold, 0));
+	// The part by way of the tube: to its station, through it, and down to its stack
+	expect(part.path.at(-1)).toEqual(made.layout.tube.inlet);
+	expect(part.legs[0]).toEqual({ path: made.layout.tube.points.slice(1), tube: true });
+
+	run(made, 12);
+	expect(made.parcels.filter(({ kind }) => kind === 'part')).toEqual([]);
 	run(made, 30);
 	expect(made.parcels).toEqual([]);
 });

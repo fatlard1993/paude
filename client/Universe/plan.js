@@ -541,6 +541,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		})),
 		building: { left, right, top, bottom: top + total },
 		gondola,
+		tube: tubeOf(bridge, kind('hold'), top + total),
 		bounds: {
 			left: left - RIM - NACELLE - 1.4,
 			right: right + RIM + NOSE,
@@ -548,6 +549,21 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 			bottom: top + total + GONDOLA_D + RIM + 3.4,
 		},
 		radius: Math.max(right - left, total),
+	};
+};
+
+// The parcel tube from the bridge to the hold, as a bank's: in at a station by the bridge's near wall, along the floor
+// by that wall aft to over the hold, and down through the belly to a hopper over its stacks
+const tubeOf = (bridge, hold, bottom) => {
+	if (!bridge || !hold) return null;
+
+	const inlet = { x: bridge.x + 0.7, y: bottom - 0.4 };
+	const rail = bottom - 0.12;
+	const drop = hold.x + hold.w - 0.45;
+
+	return {
+		inlet,
+		points: [inlet, { x: inlet.x, y: rail }, { x: drop, y: rail }, { x: drop, y: hold.y + FACE + 0.35 }],
 	};
 };
 
