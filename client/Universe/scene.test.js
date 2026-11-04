@@ -137,14 +137,14 @@ test('a guest comes aboard by the airlock to where their role puts them by their
 	const seat = made.workers.get('here/a').seat;
 	const watched = made.workers.get('here/b').seat;
 
-	// Both on the bridge with the greys, in the aisle before their island, never behind a seat: someone who may only
-	// comment looks in from before its terminal; someone who may drive sits by the grey
+	// Both on the bridge with the greys, just before their island's console, never behind a seat and clear of the next
+	// row's screens: someone who may only comment looks in from before its terminal; someone who may drive sits by the grey
 	expect(sam.pose).toBe('tourist');
 	expect(sam.room).toBe(made.bridge);
-	expect(Math.abs(sam.y - (watched.y + 0.85))).toBeLessThan(0.01);
+	expect(Math.abs(sam.y - (watched.y + 0.25))).toBeLessThan(0.01);
 	expect(sam.y).toBeGreaterThan(watched.y + 0.2);
 	expect(ada.pose).toBe('copilot');
-	expect(Math.hypot(ada.x - (seat.x + 0.55), ada.y - (seat.y + 0.85))).toBeLessThan(0.01);
+	expect(Math.hypot(ada.x - (seat.x + 0.55), ada.y - (seat.y + 0.25))).toBeLessThan(0.01);
 	expect(made.screens).toEqual([]);
 
 	made.update(answers([]));
@@ -163,7 +163,7 @@ test('whoever is aboard when the view opens is found at their place rather than 
 	const seat = made.workers.get('here/a').seat;
 
 	expect(ada.path).toEqual([]);
-	expect(Math.hypot(ada.x - (seat.x + 0.55), ada.y - (seat.y + 0.85))).toBeLessThan(0.01);
+	expect(Math.hypot(ada.x - (seat.x + 0.55), ada.y - (seat.y + 0.25))).toBeLessThan(0.01);
 });
 
 test('a stopped session waits in the lounge, its seat at its island kept, and goes back to its desk once woken', () => {

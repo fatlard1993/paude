@@ -152,15 +152,19 @@ const SYSTEMS = [
 // An engine's reactor in engineering, by its foot, one above another, each in the middle of its share of the room's
 // depth
 const REACTOR_HALF = 1.1;
+// How far a reactor's foot keeps from the spine's lane, above it (its unit's height) and below it (the catwalk's)
+const SPINE_CLEAR = { above: 0.3, below: 2.3 };
 
 const reactorAt = (engineering, index, count) => {
 	const slot = (engineering.d - FACE - 0.4) / Math.max(1, count);
 	const top = engineering.y + FACE + 0.2;
 
-	return {
-		x: engineering.x + ENGINEERING_W * 0.42,
-		y: Math.min(top + slot * (index + 1) - 0.35, top + slot * (index + 0.5) + REACTOR_HALF),
-	};
+	const y = Math.min(top + slot * (index + 1) - 0.35, top + slot * (index + 0.5) + REACTOR_HALF);
+	// Kept off the spine's catwalk where it crosses the bay: a unit standing on it is pushed down clear of it
+	const lane = engineering.door.y;
+	const clear = y > lane - SPINE_CLEAR.above && y < lane + SPINE_CLEAR.below ? lane + SPINE_CLEAR.below : y;
+
+	return { x: engineering.x + ENGINEERING_W * 0.42, y: Math.min(clear, engineering.y + engineering.d - 0.3) };
 };
 
 // Where compacted context goes: the recycler by engineering's door
@@ -182,6 +186,10 @@ export const navAt = bridge => ({ x: bridge.x + bridge.w - BRIDGE_NAV_W / 2 - 0.
 export const seatOf = (bridge, key) => bridge.seats?.[key];
 
 // The aisle in front of the row of islands at `y` on the bridge, where whoever walks it goes
+// Where someone stands before an island, nearest `y`: just in front of its console, their head below its screens and
+// their feet above the next row's, which rise into the aisle
+export const standingOf = (bridge, y) => aisleOf(bridge, y) - 0.6;
+
 export const aisleOf = (bridge, y) => {
 	const first = bridge.y + BRIDGE_ROW_TOP;
 

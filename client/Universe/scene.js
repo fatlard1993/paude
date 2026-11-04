@@ -19,6 +19,7 @@ import {
 } from './hull';
 import {
 	aisleOf,
+	standingOf,
 	clonerAt,
 	holdSpotAt,
 	layOut,
@@ -1066,7 +1067,7 @@ export default class Ship {
 						{
 							pose: 'overseer',
 							room: by.room,
-							spot: { x: by.seat.x - 0.6 - index * 0.4, y: aisleOf(this.bridge, by.seat.y) },
+							spot: { x: by.seat.x - 0.6 - index * 0.4, y: standingOf(this.bridge, by.seat.y) },
 							facing: 1,
 						},
 					];
@@ -1085,8 +1086,8 @@ export default class Ship {
 						room: worker.room,
 						spot:
 							pose === 'copilot'
-								? { x: worker.seat.x + 0.55 + index * 0.4, y: aisleOf(this.bridge, worker.seat.y) }
-								: { x: worker.seat.x - 0.05 + index * 0.45, y: aisleOf(this.bridge, worker.seat.y) },
+								? { x: worker.seat.x + 0.55 + index * 0.4, y: standingOf(this.bridge, worker.seat.y) }
+								: { x: worker.seat.x - 0.05 + index * 0.45, y: standingOf(this.bridge, worker.seat.y) },
 					},
 				];
 			}),
@@ -1278,7 +1279,7 @@ export default class Ship {
 			time: this.time,
 			tanks: this.tanks,
 			engines: this.engines.map(engine => ({
-				y: this.art(engine.reactor).y - 12,
+				y: this.art(engine.reactor).y - 11,
 				hue: engine.hue ?? 215,
 				thrust: Math.min(
 					1,
@@ -1348,7 +1349,7 @@ export default class Ship {
 			const at = this.art(engine.reactor);
 
 			this.hits.push({
-				...this.toScreen({ x: at.x, y: at.y - 16 }),
+				...this.toScreen({ x: at.x, y: at.y - 11 }),
 				r: 12 * this.camera.zoom,
 				kind: 'engine',
 				engine,
@@ -1562,7 +1563,7 @@ export default class Ship {
 
 			lights.push({
 				x: at.x,
-				y: at.y - 16,
+				y: at.y - 11,
 				r: 42,
 				color: engine.limit ? [220, 70, 60] : lightOf(engine.hue ?? 215, 70, 66),
 				strength: (engine.limit && (flicker ? 0.15 : 0.55)) || (running ? 0.95 : 0.6),
@@ -2230,7 +2231,7 @@ export default class Ship {
 		const at = this.art(systemFootOf(room));
 		const main = this.art({ x: 0, y: room.y }).y + 7;
 		const across = this.art({ x: room.feed ?? room.x, y: 0 }).x;
-		const core = engine ? this.art(engine.reactor).y - 16 : main;
+		const core = engine ? this.art(engine.reactor).y - 11 : main;
 
 		return {
 			feed: [

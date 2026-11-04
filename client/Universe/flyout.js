@@ -111,6 +111,7 @@ const FLYOUTS = {
 			.map(({ name }) => name);
 
 		return {
+			hue: session.hue,
 			title: session.title || session.project || 'A new session',
 			rows: [
 				['doing', doing(session)],
@@ -141,6 +142,7 @@ const FLYOUTS = {
 
 		return {
 			title: session.title || session.project || 'A new session',
+			hue: session.hue,
 			rows: [['screen', live(session) ? 'its terminal, as it is now' : 'not running here']],
 			hint: live(session) ? 'Press to open its terminal here' : 'Press to read its last reply',
 		};

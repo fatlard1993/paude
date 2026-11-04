@@ -657,6 +657,10 @@ export const drawHull = (
 
 // Engineering: a reactor for each engine, fed from its account's tank (`feed`: { tank, flow }), browning out under a
 // countdown at a usage limit; by the door, the recycler
+// A reactor's unit, in art pixels up from its foot: how tall, where its shaft runs back to its engine, and where its
+// fuel comes in
+const REACTOR = { tall: 22, shaft: 11, into: 15 };
+
 export const drawEngineering = (ctx, art, label, room, { time, engines, recycling, zoom }) => {
 	floor(ctx, art, room);
 
@@ -734,7 +738,7 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, recyclin
 					const { tank, below, x: through, color, flow } = engine.feed;
 					const pipe = from.x + 3 + tank * 3;
 					const edge = below ? to.y - 3 - tank : from.y + 3 + tank;
-					const into = at.y - 22;
+					const into = at.y - REACTOR.into;
 					const run = [
 						...(through === undefined ? [] : [[through, edge, pipe, edge]]),
 						[pipe, edge, pipe, into],
@@ -758,8 +762,8 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, recyclin
 						}
 					}
 				}
-				rect(ctx, from.x, at.y - 13, at.x - 10 - from.x, 3, PALETTE.k);
-				rect(ctx, from.x, at.y - 12, at.x - 10 - from.x, 1, PALETTE.l);
+				rect(ctx, from.x, at.y - REACTOR.shaft - 1, at.x - 9 - from.x, 3, PALETTE.k);
+				rect(ctx, from.x, at.y - REACTOR.shaft, at.x - 9 - from.x, 1, PALETTE.l);
 				rect(ctx, at.x + 9, at.y - 8, 4, 2, PALETTE.k);
 				rect(ctx, at.x + 12, Math.min(at.y - 8, door.y), 2, Math.abs(door.y - at.y + 8) + 1, PALETTE.k);
 				rect(ctx, at.x + 12, door.y, door.x - at.x - 12, 2, PALETTE.k);
@@ -768,44 +772,33 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, recyclin
 
 					for (let x = at.x + 14 + along; x < door.x; x += 6) rect(ctx, x, door.y, 2, 1, `hsl(${hue} 80% 66%)`);
 				}
-				for (let step = 0; step < 28; step++) {
-					const angle = (step / 28) * Math.PI * 2;
-
-					rect(
-						ctx,
-						Math.round(at.x + Math.cos(angle) * 20),
-						Math.round(at.y - 1 + Math.sin(angle) * 6),
-						2,
-						1,
-						step % 2 ? PALETTE.y : PALETTE.k,
-					);
-				}
-				pixelEllipse(ctx, at.x, at.y - 1, 15, 4, PALETTE.k);
-				pixelEllipse(ctx, at.x, at.y - 2, 13, 3, PALETTE.m);
-				box(ctx, at.x - 7, at.y - 30, 15, 28, '#0d1520');
-				for (let y = at.y - 28; y < at.y - 3; y++) {
+				// Its hazard strip on the floor, and the unit on it: caps over and under a window onto its core
+				for (let x = at.x - 11; x < at.x + 11; x++)
+					rect(ctx, x, at.y, 1, 2, Math.floor((x + 1) / 2) % 2 ? PALETTE.y : PALETTE.k);
+				box(ctx, at.x - 7, at.y - REACTOR.tall, 15, REACTOR.tall - 1, '#0d1520');
+				for (let y = at.y - REACTOR.tall + 3; y < at.y - 3; y++) {
 					const band = busy && (y + Math.floor(time * 18)) % 6 < 2;
 
 					rect(ctx, at.x - 4, y, 9, 1, band ? PALETTE.W : core);
 				}
-				rect(ctx, at.x - 6, at.y - 29, 1, 26, 'rgba(255, 255, 255, 0.12)');
-				box(ctx, at.x - 9, at.y - 33, 19, 5, PALETTE.l);
-				box(ctx, at.x - 9, at.y - 5, 19, 4, PALETTE.l);
-				if (busy) pixelEllipse(ctx, at.x, at.y + 2, 18, 4, `hsla(${hue}, 80%, 60%, 0.10)`);
+				rect(ctx, at.x - 6, at.y - REACTOR.tall + 2, 1, REACTOR.tall - 5, 'rgba(255, 255, 255, 0.12)');
+				box(ctx, at.x - 8, at.y - REACTOR.tall - 2, 17, 4, PALETTE.l);
+				box(ctx, at.x - 8, at.y - 4, 17, 4, PALETTE.l);
+				if (busy) pixelEllipse(ctx, at.x, at.y + 1, 14, 3, `hsla(${hue}, 80%, 60%, 0.10)`);
 				if (engine.link !== undefined) {
 					const bars = engine.link === null ? 0 : 3 - [250, 1000, Infinity].findIndex(most => engine.link < most);
 					const color = [PALETTE.r, PALETTE.r, PALETTE.y, PALETTE.t][bars];
 
 					for (let bar = 0; bar < 3; bar++)
-						rect(ctx, at.x + 11 + bar * 2, at.y - 26 - bar * 2, 1, 2 + bar * 2, bar < bars ? color : PALETTE.d);
+						rect(ctx, at.x + 10 + bar * 2, at.y - 8 - bar * 2, 1, 2 + bar * 2, bar < bars ? color : PALETTE.d);
 				}
 				if (zoom >= 3)
-					label(engine.name, at, { color: `hsl(${hue} 50% 74%)`, align: 'center', lift: -2, gap: 4, size: 1 });
+					label(engine.name, at, { color: `hsl(${hue} 50% 74%)`, align: 'center', lift: -5, gap: 4, size: 1 });
 				if (engine.outage)
 					label(engine.outage, at, {
 						color: PALETTE.r,
 						align: 'center',
-						lift: 36,
+						lift: REACTOR.tall + 4,
 						gap: -2,
 						width: room.w * UNIT.x - 4,
 					});

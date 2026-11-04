@@ -642,7 +642,7 @@ export default class Universe extends View {
 		const who = element('div', 'who');
 		const named = element('strong', '', selected.title);
 
-		tone(this.command, named, selected.bay?.hue);
+		tone(this.command, named, selected.worker?.session.hue ?? selected.bay?.hue);
 		who.append(named, element('span', '', selected.about));
 		this.command.replaceChildren(
 			who,
