@@ -1,5 +1,17 @@
 import { PALETTE, drawSprite } from './art';
-import { NACELLE, NOSE, RIM, clonerAt, padAt, panelAt, recyclerAt, stockAt, systemFootOf, systemTallOf } from './plan';
+import {
+	NACELLE,
+	NOSE,
+	RIM,
+	clonerAt,
+	padAt,
+	panelAt,
+	recyclerAt,
+	busAt,
+	stockAt,
+	systemFootOf,
+	systemTallOf,
+} from './plan';
 import { pixelText, textWidth } from './retro';
 import {
 	COUCH_SEAT,
@@ -661,7 +673,7 @@ export const drawHull = (
 // fuel comes in
 const REACTOR = { tall: 22, shaft: 11, into: 15 };
 
-export const drawEngineering = (ctx, art, label, room, { time, engines, recycling, zoom }) => {
+export const drawEngineering = (ctx, art, label, room, { time, engines, systems = [], recycling, zoom }) => {
 	floor(ctx, art, room);
 
 	const door = art({ x: room.door.x, y: room.door.y });
@@ -742,7 +754,7 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, recyclin
 					const run = [
 						...(through === undefined ? [] : [[through, edge, pipe, edge]]),
 						[pipe, edge, pipe, into],
-						[pipe, into, at.x - 9, into],
+						[pipe, into, at.x - 11, into],
 					];
 
 					for (const [x1, y1, x2, y2] of run) {
@@ -762,8 +774,8 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, recyclin
 						}
 					}
 				}
-				rect(ctx, from.x, at.y - REACTOR.shaft - 1, at.x - 9 - from.x, 3, PALETTE.k);
-				rect(ctx, from.x, at.y - REACTOR.shaft, at.x - 9 - from.x, 1, PALETTE.l);
+				rect(ctx, from.x, at.y - REACTOR.shaft - 1, at.x - 11 - from.x, 3, PALETTE.k);
+				rect(ctx, from.x, at.y - REACTOR.shaft, at.x - 11 - from.x, 1, PALETTE.l);
 				rect(ctx, at.x + 9, at.y - 8, 4, 2, PALETTE.k);
 				rect(ctx, at.x + 12, Math.min(at.y - 8, door.y), 2, Math.abs(door.y - at.y + 8) + 1, PALETTE.k);
 				rect(ctx, at.x + 12, door.y, door.x - at.x - 12, 2, PALETTE.k);
@@ -772,30 +784,57 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, recyclin
 
 					for (let x = at.x + 14 + along; x < door.x; x += 6) rect(ctx, x, door.y, 2, 1, `hsl(${hue} 80% 66%)`);
 				}
-				// Its hazard strip on the floor, and the unit on it: caps over and under a window onto its core
-				for (let x = at.x - 11; x < at.x + 11; x++)
-					rect(ctx, x, at.y, 1, 2, Math.floor((x + 1) / 2) % 2 ? PALETTE.y : PALETTE.k);
-				box(ctx, at.x - 7, at.y - REACTOR.tall, 15, REACTOR.tall - 1, '#0d1520');
-				for (let y = at.y - REACTOR.tall + 3; y < at.y - 3; y++) {
+				// Its bus: out of its side at its core to the riser up the column's inner side, and along the riser to each of
+				// its systems' mains, power running along it while it runs
+				const bus = art({ x: busAt(room), y: 0 }).x;
+				const mains = systems
+					.filter(system => system.engine === engine.key)
+					.map(system => art({ x: 0, y: system.y }).y + 7);
+
+				if (mains.length) {
+					const top = Math.min(at.y - REACTOR.shaft, ...mains);
+					const bottom = Math.max(at.y - REACTOR.shaft, ...mains);
+
+					rect(ctx, at.x + 11, at.y - REACTOR.shaft - 2, bus - at.x - 11, 5, PALETTE.k);
+					rect(ctx, at.x + 11, at.y - REACTOR.shaft - 1, bus - at.x - 11, 3, PALETTE.d);
+					rect(ctx, bus - 2, top - 3, 5, bottom - top + 6, PALETTE.k);
+					rect(ctx, bus - 1, top - 2, 3, bottom - top + 4, PALETTE.d);
+					rect(ctx, bus - 1, top - 2, 1, bottom - top + 4, PALETTE.l);
+					for (const y of mains) rect(ctx, bus - 3, y - 1, 7, 3, PALETTE.l);
+					if (busy) {
+						const along = Math.floor(time * 24) % 5;
+
+						for (let x = at.x + 12 + along; x < bus - 1; x += 5)
+							rect(ctx, x, at.y - REACTOR.shaft, 2, 1, `hsl(${hue} 80% 66%)`);
+						for (let y = top + along; y < bottom; y += 5) rect(ctx, bus, y, 1, 2, `hsl(${hue} 80% 66%)`);
+					}
+				}
+				// A module as the systems are: on a plinth over a hazard strip, a core vessel banded while it runs between two
+				// capacitor columns whose lamps climb toward its coupling into the bus
+				for (let x = at.x - 13; x < at.x + 14; x++)
+					rect(ctx, x, at.y + 2, 1, 1, Math.floor((x + 1) / 2) % 2 ? PALETTE.y : PALETTE.k);
+				rect(ctx, at.x - 13, at.y, 27, 2, PALETTE.k);
+				rect(ctx, at.x - 12, at.y, 25, 1, PALETTE.l);
+				for (const side of [-1, 1]) {
+					const x = at.x + side * 9 - 2;
+
+					box(ctx, x, at.y - REACTOR.tall + 4, 5, REACTOR.tall - 4, PALETTE.m);
+					for (let lamp = 0; lamp < 4; lamp++) {
+						const lit = busy && (Math.floor(time * 8) + lamp) % 4 === 0;
+
+						rect(ctx, x + 1, at.y - 4 - lamp * 4, 3, 2, lit ? `hsl(${hue} 80% 70%)` : PALETTE.d);
+					}
+				}
+				box(ctx, at.x - 5, at.y - REACTOR.tall, 11, REACTOR.tall, '#0d1520');
+				for (let y = at.y - REACTOR.tall + 3; y < at.y - 2; y++) {
 					const band = busy && (y + Math.floor(time * 18)) % 6 < 2;
 
-					rect(ctx, at.x - 4, y, 9, 1, band ? PALETTE.W : core);
+					rect(ctx, at.x - 3, y, 7, 1, band ? PALETTE.W : core);
 				}
-				rect(ctx, at.x - 6, at.y - REACTOR.tall + 2, 1, REACTOR.tall - 5, 'rgba(255, 255, 255, 0.12)');
-				box(ctx, at.x - 8, at.y - REACTOR.tall - 2, 17, 4, PALETTE.l);
-				box(ctx, at.x - 8, at.y - 4, 17, 4, PALETTE.l);
-				// Coils up its sides, lit in a band rising to the core while it runs
-				for (const side of [-1, 1])
-					for (let coil = 0; coil < 5; coil++) {
-						const y = at.y - 6 - coil * 3;
-						const lit = busy && Math.floor(time * 10) % 7 === coil;
-
-						rect(ctx, at.x + side * 10 - 1, y, 3, 2, PALETTE.k);
-						rect(ctx, at.x + side * 10, y, 1, 1, lit ? `hsl(${hue} 80% 70%)` : PALETTE.m);
-					}
-				// Vents on its cap puffing while it runs, and its pump's lamp
+				rect(ctx, at.x - 4, at.y - REACTOR.tall + 2, 1, REACTOR.tall - 4, 'rgba(255, 255, 255, 0.12)');
+				box(ctx, at.x - 7, at.y - REACTOR.tall - 2, 15, 3, PALETTE.l);
 				if (busy)
-					for (const vent of [-4, 4]) {
+					for (const vent of [-4, 3]) {
 						const puff = (time * 1.4 + (vent > 0 ? 0.5 : 0)) % 1;
 
 						ctx.globalAlpha = 0.5 * (1 - puff);
@@ -809,14 +848,13 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, recyclin
 						);
 						ctx.globalAlpha = 1;
 					}
-				rect(ctx, at.x + 5, at.y - 3, 2, 1, busy && Math.floor(time * 4) % 2 ? PALETTE.t : PALETTE.d);
 				if (busy) pixelEllipse(ctx, at.x, at.y + 1, 14, 3, `hsla(${hue}, 80%, 60%, 0.10)`);
 				if (engine.link !== undefined) {
 					const bars = engine.link === null ? 0 : 3 - [250, 1000, Infinity].findIndex(most => engine.link < most);
 					const color = [PALETTE.r, PALETTE.r, PALETTE.y, PALETTE.t][bars];
 
 					for (let bar = 0; bar < 3; bar++)
-						rect(ctx, at.x + 10 + bar * 2, at.y - 8 - bar * 2, 1, 2 + bar * 2, bar < bars ? color : PALETTE.d);
+						rect(ctx, at.x + 14 + bar * 2, at.y - 8 - bar * 2, 1, 2 + bar * 2, bar < bars ? color : PALETTE.d);
 				}
 				if (zoom >= 3)
 					label(engine.name, at, { color: `hsl(${hue} 50% 74%)`, align: 'center', lift: -5, gap: 4, size: 1 });

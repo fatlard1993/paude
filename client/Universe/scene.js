@@ -1319,6 +1319,7 @@ export default class Ship {
 		standing.push(
 			...drawEngineering(ctx, art, label, this.layout.engineering, {
 				time: this.time,
+				systems: Object.values(this.layout.systems),
 				engines: this.engines.map(engine => {
 					const tank = this.tanks.findIndex(({ engines }) => engines.includes(engine));
 
@@ -2224,17 +2225,20 @@ export default class Ship {
 
 	// From an engine-bay system to a worker, in art pixels, by way of its project's machine and conduit (`conduit`), the
 	// system's own riser up the engine bay's wall (the `nth` system): into the machine, and out of it
-	// A stream's way through its engine's tech, in art pixels: from the reactor's core up to the system's main, along it
-	// and down its drop into the unit (`feed`), and out at the unit's foot (`outlet`), which lights up between
+	// A stream's way through its engine's tech, in art pixels: from the reactor's core out to its bus, up or down the bus
+	// to the system's main, along it and down its drop into the unit (`feed`), and out at the unit's foot (`outlet`),
+	// which lights up between
 	throughSystem(room) {
 		const engine = this.engines.find(({ key }) => key === room.engine);
 		const at = this.art(systemFootOf(room));
 		const main = this.art({ x: 0, y: room.y }).y + 7;
 		const across = this.art({ x: room.feed ?? room.x, y: 0 }).x;
-		const core = engine ? this.art(engine.reactor).y - 11 : main;
+		const reactor = engine ? this.art(engine.reactor) : null;
+		const core = reactor ? reactor.y - 11 : main;
 
 		return {
 			feed: [
+				...(reactor ? [{ x: reactor.x, y: core }] : []),
 				{ x: across, y: core },
 				{ x: across, y: main },
 				{ x: at.x, y: main },

@@ -486,7 +486,8 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 				within: engineering,
 				// Part of the engine bay rather than a room of its own, so no sign of its own over it
 				unsigned: true,
-				feed: left + ENGINEERING_W * 0.42,
+				// Its main starts at its engine's bus, up the inner side of the reactors' column
+				feed: busAt(engineering),
 				props: [],
 			});
 		});
@@ -570,6 +571,9 @@ export const stockAt = (room, uses = 0) => {
 // The usage console by a system's door, by its foot
 
 // Where a system's unit stands in its room, by its foot
+// Where an engine's bus rises, up the inner side of the reactors' column, each of its systems' mains starting from it
+export const busAt = engineering => engineering.x + ENGINEERING_W - 0.2;
+
 export const systemFootOf = room =>
 	room.compact
 		? { x: room.x + room.w / 2, y: room.y + FACE + 1 }
