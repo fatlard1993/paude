@@ -9,6 +9,7 @@ import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
 
 import { activitySummary, identityKey, watchedBy, watchesProject } from './activity';
+import { ownerName } from './serverSettings';
 import { sessionArtifacts } from './artifacts';
 import { meterOf } from './cacheMeter';
 import { boostOf, keptOf } from './keepWarm';
@@ -236,15 +237,19 @@ export const instrumentsOf = session => {
 };
 
 // The owner on two devices is one person; so is a guest watching from two
+// The mark a person is told apart by: who they are (the owner, or which invite) with the name they go by, hashed so an
+// invite never leaves the server
+const markOf = (identity, name) => Bun.hash(`${identityKey(identity)}\n${name}`).toString(36);
+
 export const peopleOf = sessions => {
 	const people = new Map();
 
 	for (const session of sessions)
 		for (const client of [...session.clients, ...session.readers.values()]) {
-			const key = `${identityKey(client.identity ?? client.socket?.data.identity)}\n${client.name}`;
-			// Told apart by an opaque mark of who they are, not their invite itself
+			const identity = client.identity ?? client.socket?.data.identity;
+			const key = `${identityKey(identity)}\n${client.name}`;
 			const person = people.get(key) ?? {
-				key: Bun.hash(key).toString(36),
+				key: markOf(identity, client.name),
 				name: client.name,
 				role: client.role,
 				sessions: [],
@@ -255,6 +260,20 @@ export const peopleOf = sessions => {
 		}
 
 	return [...people.values()];
+};
+
+// Whoever is looking at the universe is aboard while they are, attached to a session or not: as the people in
+// sessions are, so the same person attached somewhere is one
+export const withViewer = async (people, identity) => {
+	const name = identity?.owner ? await ownerName() : identity?.name;
+
+	if (!name) return people;
+
+	const key = markOf(identity, name);
+
+	return people.some(person => person.key === key)
+		? people
+		: [...people, { key, name, role: identity.owner ? 'owner' : identity.role, sessions: [] }];
 };
 
 const recordOf = async id => {
@@ -618,6 +637,6 @@ export const universe = async identity => {
 		),
 		sessions,
 		checkouts: checkouts.filter(({ changed }) => changed !== undefined),
-		people: peopleOf(running),
+		people: await withViewer(peopleOf(running), identity),
 	};
 };

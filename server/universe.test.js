@@ -129,11 +129,20 @@ test("each facility's log says what its latest uses were used on, newest first",
 	expect(logOf(Date.now() + 11 * 60_000)).toEqual({});
 });
 
-
 test('a look kept from before is still an answer on its way, as one worked out now is', async () => {
 	const { coldAt } = await import('./universe');
 	const stopped = Date.now() - 60_000;
 
 	await coldAt('kept-twice', '/nowhere', stopped);
 	expect(coldAt('kept-twice', '/nowhere', stopped)).toBeInstanceOf(Promise);
+});
+
+test('whoever looks at the universe is aboard, once, attached to a session or not', async () => {
+	const { withViewer } = await import('./universe');
+	const watcher = { inviteId: 'abc', role: 'watch', name: 'Sam' };
+	const alone = await withViewer([], watcher);
+
+	expect(alone).toEqual([{ key: expect.any(String), name: 'Sam', role: 'watch', sessions: [] }]);
+	expect(await withViewer([{ ...alone[0], sessions: ['one'] }], watcher)).toHaveLength(1);
+	expect(await withViewer([], null)).toEqual([]);
 });
