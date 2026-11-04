@@ -9,6 +9,7 @@ import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
 
 import { activitySummary, identityKey, watchedBy, watchesProject } from './activity';
+import { isArchived } from './archive';
 import { ownerName } from './serverSettings';
 import { sessionArtifacts } from './artifacts';
 import { meterOf } from './cacheMeter';
@@ -27,7 +28,6 @@ import { listProjects, projectOf, projectPath } from './projects';
 import { serverName } from './serverSettings';
 import { sessionRecord } from './sessions/record';
 import { allRunning } from './sessions/running';
-import { listAllSessions } from './sessions/stored';
 import { limitOf } from './usageLimit';
 import { verification } from './verification';
 
@@ -56,9 +56,6 @@ const UNPUSHED_LIMIT = 50;
 const CARGO_SHOWN = { files: 8, commits: 6 };
 // The lounge's: sessions stopped within a day, newest first, as many as it seats. Listing every saved session reads
 // each one's transcript, so it's looked at again only every half minute, or once one is archived or deleted.
-const LOUNGE_MS = 24 * 60 * 60_000;
-const LOUNGE_MOST = 8;
-const LOUNGE_LOOK_MS = 30_000;
 
 // Every tool Claude has used on this machine, persisted: what it can reach here, its MCP servers among them. Each
 // running session's last tool, null once a prompt starts a turn with none used yet; and each session's last finished
@@ -522,27 +519,12 @@ const stoppedOf = async (identity, id) => {
 	};
 };
 
-// The stopped sessions this person sees: those they watch by hand with news for them, then those stopped lately.
-// (Those a watched project covers without a hand-set watch are found among the lately stopped, or left to the home
-// page.)
+// The stopped sessions this person sees: those they watch, and no others; unwatched, one leaves the ship. Archived
+// ones are put away, watched or not.
 const stoppedFor = async (identity, running) => {
-	const withNews = watchedBy(identity).filter(
-		id => !running.has(id) && activitySummary(identity, id, { running: false }).unseen > 0,
-	);
-	const lately = await cached(`lately:${identityKey(identity)}`, LOUNGE_LOOK_MS, async () =>
-		(await listAllSessions(identity))
-			.filter(({ live, archived, lastModified }) => !live && !archived && Date.now() - (lastModified ?? 0) < LOUNGE_MS)
-			.slice(0, LOUNGE_MOST)
-			.map(({ id }) => id),
-	);
-	const ids = [...new Set([...withNews, ...(lately ?? []).filter(id => !running.has(id))])];
+	const ids = watchedBy(identity).filter(id => !running.has(id) && !isArchived(id));
 
 	return (await Promise.all(ids.map(id => stoppedOf(identity, id)))).filter(Boolean);
-};
-
-// Archived or deleted, a session leaves the lounge on the next look
-export const refreshLounge = () => {
-	for (const key of memo.keys()) if (key.startsWith('lately:')) memo.delete(key);
 };
 
 // Cached answers and records nothing asks for any more, let go (the longest cached is a stop's going cold, an hour)
@@ -553,7 +535,7 @@ const forgetStale = (now = Date.now()) => {
 
 // This machine as the universe view draws it, for this person: what its Claude can reach, its projects, the sessions
 // running on it (each with how full its context is, how long it's run, how much it has made, any usage limit it's
-// waiting out, what its hooks said lately, and its screen) and the stopped ones with news for them or stopped lately,
+// waiting out, what its hooks said lately, and its screen) and the stopped ones they watch,
 // the cargo of each checkout they work in, and who's here to see
 export const universe = async identity => {
 	forgetStale();

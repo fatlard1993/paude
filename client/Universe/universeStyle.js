@@ -505,11 +505,6 @@ export const Stage = styled(
 			font-size: 0.85em;
 		}
 
-		.projects-list .project-row.off strong {
-			color: ${colors.muted};
-			text-decoration: line-through;
-		}
-
 		.projects-list .project-row button {
 			grid-column: 2;
 			grid-row: 1 / span 2;

@@ -951,7 +951,7 @@ export default class Ship {
 		};
 	}
 
-	// A bay for each project with a session running here, or watched; a project of the same name on two engines is one
+	// A bay for each project with a session aboard, or watched; a project of the same name on two engines is one
 	// bay
 	baysFor(answers) {
 		const bays = new Map();
@@ -987,15 +987,17 @@ export default class Ship {
 				(this.workers.get(a).session.checkout ?? '').localeCompare(this.workers.get(b).session.checkout ?? ''),
 			);
 
-		// Every project is a section of the hull, idle ones too: those at work nearest the core, then the watched, then
-		// the rest, each group by name
+		// A project is a section of the hull while one of its sessions is aboard or it's watched: those at work nearest
+		// the core, then the watched, each by name; the rest stay off the ship
 		const rank = bay => {
 			if (bay.sessions.length || bay.active) return 0;
 
 			return bay.watching ? 1 : 2;
 		};
 
-		const ranked = [...bays.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+		const ranked = [...bays.values()]
+			.filter(bay => rank(bay) < 2)
+			.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 
 		// Only a project at work has a color: idle ones are plain metal, so no two at work share one and each stays its
 		// own; one too close to a color already taken moves round the wheel until it's clear of the rest
@@ -1044,8 +1046,8 @@ export default class Ship {
 	}
 
 	// Where each person aboard stands, by what their invite lets them do, all of them in the bridge's aisles where
-	// nothing hides them: the owner, the pilot, before one of the sessions they watch, moving on to the next every little
-	// while; someone who may drive a session on a stool before its grey, as its co-pilot; someone who may only watch or
+	// nothing hides them: the owner, the pilot, before one of the sessions whose terminal they have open (or any aboard),
+	// moving on to the next every little while; someone who may drive a session on a stool before its grey, as its co-pilot; someone who may only watch or
 	// comment before its terminal, looking in. Invites are for one session, so a guest is only ever there. One with no
 	// terminal aboard to watch waits by the nav table.
 	spotsOfPeople() {
@@ -1065,9 +1067,10 @@ export default class Ship {
 
 				if (!worker) {
 					const index = pilots.indexOf(name);
-					const watched = person.sessions
-						.map(key => this.workers.get(key))
-						.filter(other => other?.seat && !other.lounging && !other.leaving);
+					const seated = other => other?.seat && !other.lounging && !other.leaving;
+					// Those whose terminals they have open, or with none open, every grey aboard: all of them are watched
+					const open = person.sessions.map(key => this.workers.get(key)).filter(seated);
+					const watched = open.length ? open : [...this.workers.values()].filter(seated);
 
 					if (!watched.length) {
 						const nav = navAt(this.bridge);

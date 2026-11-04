@@ -112,6 +112,7 @@ const FLYOUTS = {
 		const { session } = target.worker;
 		const { context } = session;
 		const checkout = ship.checkoutOf(session);
+		// Who has its terminal open now, apart from whether it's watched
 		const watchers = [...ship.walkers.values()]
 			.filter(({ person }) => person.sessions.includes(session.key))
 			.map(({ name }) => name);
@@ -139,7 +140,8 @@ const FLYOUTS = {
 				checkout && ['branch', whereWorking(checkout)],
 				checkout && ['changes', cargoWords(checkout)],
 				session.assets && ['made', plural(session.assets, 'file')],
-				watchers.length && ['watched by', watchers.join(', ')],
+				watchers.length && ['terminal open', watchers.join(', ')],
+				session.watching === false && ['watch', 'off: it leaves the ship when it stops'],
 			],
 			hint: 'Press to select and read it · its keys along the bottom · right-click or hold for orders',
 		};
@@ -323,7 +325,7 @@ const FLYOUTS = {
 			title: name,
 			rows: [
 				['role', role],
-				['watching', plural(sessions.length, 'session')],
+				['terminals open', String(sessions.length)],
 			],
 		};
 	},
@@ -342,7 +344,7 @@ const FLYOUTS = {
 			title: 'Bridge',
 			rows: [
 				['aboard', people.join(', ') || 'nobody'],
-				['watched', plural(ship.screens.length, 'session')],
+				['terminals open', String(ship.screens.length)],
 			],
 			hint: lookHint(ship, BRIDGE),
 		};

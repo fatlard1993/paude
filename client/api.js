@@ -297,6 +297,9 @@ export const getUniverse = async () => await GET('/api/universe', { invalidateAf
 // Read in the universe view: its changes are seen, here or on the server it runs on
 export const markSeen = async sessionId => await PUT('/api/sessions/:id/seen', { urlParameters: { id: sessionId } });
 
+export const setRemoteWatching = async (url, sessionId, watching) =>
+	await PUT('/api/remotes/watch', { body: { url, sessionId, watching } });
+
 export const markRemoteSeen = async (url, sessionId) => await POST('/api/remotes/seen', { body: { url, sessionId } });
 
 // This machine logged into another paude, by its address and owner password: { url, name }

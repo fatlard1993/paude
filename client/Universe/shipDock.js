@@ -21,7 +21,6 @@ import { matchesFilter } from '../../shared/sessionSearch';
 import ArtifactsPanel from '../Terminal/ArtifactsPanel';
 import LinksPanel from '../Terminal/LinksPanel';
 import { heading } from './replyCard';
-import { LOCAL, hiddenNow, shipsAssigned } from './shown';
 
 // A dock of panes for something bigger than a session (a project, the whole ship): the same frame as a session's,
 // tabs along its top, each pane built the first time it's wanted. `entries` are { key, label, make(body) },
@@ -329,71 +328,3 @@ export const projectPanes = project => [
 			}),
 	},
 ];
-
-// Every engine and project, those hidden too, each with its toggle: `answers` returns each engine's last answer,
-// unfiltered
-export const shownPane = ({ answers, toggle, assign }) => ({
-	key: 'shown',
-	label: 'Shown',
-	make: appendTo => {
-		const elem = element('div', 'pane scrolling shown');
-		const paint = () => {
-			const hidden = hiddenNow();
-			const row = (kind, key, name, detail) => {
-				const off = (hidden[kind] ?? []).includes(key);
-				const line = element('div', `project-row${off ? ' off' : ''}`);
-
-				line.append(
-					element('strong', '', name),
-					element('span', 'about', detail),
-					button(off ? 'Hidden' : 'Shown', () => (toggle(kind, key), paint()), {
-						className: off ? 'variant-flat' : '',
-						title: off ? `Show ${name}` : `Hide ${name}`,
-					}),
-				);
-
-				return line;
-			};
-			const names = [...new Set(answers().flatMap(({ projects = [] }) => projects.map(({ name }) => name)))].sort();
-
-			const engines = element('div', 'projects-list');
-			const projects = element('div', 'projects-list');
-
-			// An engine that doesn't say which Claude account it's on: pressed, it steps through sharing another's
-			// subscription and having its own
-			const ship = answer => {
-				const sharing = shipsAssigned()[answer.key] ?? LOCAL;
-				const others = answers().filter(({ key }) => key !== answer.key);
-				const choices = [...others.map(({ key }) => key), 'own'];
-				const next = choices[(choices.indexOf(sharing) + 1) % choices.length];
-				const shared = others.find(({ key }) => key === sharing);
-
-				return button(
-					shared ? `Same subscription as ${shared.name}` : 'A subscription of its own',
-					() => (assign(answer.key, next), paint()),
-					{
-						className: 'variant-flat',
-						title: 'Which subscription it runs on, as it does not say: the ships are one to a subscription',
-					},
-				);
-			};
-
-			engines.append(
-				...answers().map(answer => {
-					const line = row('engines', answer.key, answer.name, answer.remote ? 'another paude' : 'this machine');
-
-					if (!answer.fuel?.account) line.append(ship(answer));
-
-					return line;
-				}),
-			);
-			projects.append(...names.map(name => row('projects', name, name, '')));
-			elem.replaceChildren(element('p', 'about', 'Engines'), engines, element('p', 'about', 'Projects'), projects);
-		};
-
-		paint();
-		appendTo.append(elem);
-
-		return { elem, refresh: paint };
-	},
-});

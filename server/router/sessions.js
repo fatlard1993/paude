@@ -59,7 +59,7 @@ import {
 } from '../worktrees';
 import { markProjectLink, projectLinks } from '../links';
 import { projectArtifacts } from '../artifacts';
-import { refreshLounge, universe } from '../universe';
+import { universe } from '../universe';
 
 const isFolder = async path =>
 	Boolean(
@@ -320,6 +320,25 @@ const sessionsRoutes = async (request, server) => {
 			});
 
 			return new Response(there.body, { status: there.status, headers: { 'content-type': 'application/json' } });
+		} catch (error) {
+			return new Response(error.message, { status: 502 });
+		}
+	}
+
+	// Watched there, or not, as by its owner
+	if (requestMatch('PUT', '/api/remotes/watch', request)) {
+		const { url, sessionId, watching } = await request.json();
+
+		if (typeof sessionId !== 'string' || !/^[\w-]+$/.test(sessionId))
+			return new Response('No such session', { status: 400 });
+
+		try {
+			const set = await remoteApi(url, `/api/sessions/${sessionId}/watch`, {
+				method: 'PUT',
+				body: JSON.stringify({ watching: Boolean(watching) }),
+			});
+
+			return set === undefined ? new Response('Not one of your servers', { status: 404 }) : new Response(null, { status: 204 });
 		} catch (error) {
 			return new Response(error.message, { status: 502 });
 		}
@@ -694,7 +713,6 @@ const sessionsRoutes = async (request, server) => {
 		const removed = await removeSession(match.id);
 
 		if (removed === null) return new Response('Session not found', { status: 404 });
-		refreshLounge();
 
 		return removed.released ? Response.json(removed.released) : new Response(null, { status: 204 });
 	}
@@ -710,7 +728,6 @@ const sessionsRoutes = async (request, server) => {
 			return new Response('Which sessions, and archived or not?', { status: 400 });
 
 		await setArchived(ids, archived);
-		refreshLounge();
 
 		return new Response(null, { status: 204 });
 	}

@@ -1,7 +1,16 @@
 import { Notify, View } from '@vanilla-bean/components';
 import { relativeTime } from '@vanilla-bean/components/utils/date';
 
-import { getRemotes, getRemoteUniverse, getUniverse, markRemoteSeen, markSeen, openRemote } from '../api';
+import {
+	getRemotes,
+	getRemoteUniverse,
+	getUniverse,
+	markRemoteSeen,
+	markSeen,
+	openRemote,
+	setRemoteWatching,
+	setWatching,
+} from '../api';
 import { Bar } from '../Bar';
 import { breadcrumbs } from '../Breadcrumbs';
 import { button, element } from '../dom';
@@ -9,7 +18,7 @@ import { identity, serverName } from '../identity';
 import { hueOf, onServersChange, setServers } from '../servers';
 import { openMenu } from '../menu';
 import { sessionMenu } from '../sessionActions';
-import { LOCAL, assignShip, hiddenNow, shipsAssigned, shipsOf, shownOf, toggleHidden } from './shown';
+import { LOCAL, shipsOf } from './shown';
 import olderPaude from './olderPaude';
 import { VERBS, dockCard } from './dock';
 import {
@@ -25,7 +34,7 @@ import {
 	titled,
 	whereWorking,
 } from './flyout';
-import { enginesPane, foldersPane, listDock, projectPanes, projectsPane, sessionsPane, shownPane } from './shipDock';
+import { enginesPane, foldersPane, listDock, projectPanes, projectsPane, sessionsPane } from './shipDock';
 import refusal from './reason';
 import { logCard, manifestCard, promptCard, replyCard } from './replyCard';
 import Ship, { BEAM_SECONDS, BRIDGE, LOUNGE, sessionKey, triage } from './scene';
@@ -236,13 +245,12 @@ export default class Universe extends View {
 		return ship;
 	}
 
-	// The answers, less what's hidden, a ship for each subscription, this paude's first. Ships come and go with their
-	// subscriptions.
+	// A ship for each subscription, this paude's first. Ships come and go with their subscriptions.
 	updateShips() {
-		const answers = shownOf(this.answers ?? [], hiddenNow());
-		const groups = shipsOf(answers, shipsAssigned(), this.answers ?? []);
+		const answers = this.answers ?? [];
+		const groups = shipsOf(answers);
 
-		// Everything hidden: one empty ship, so there's always one to draw
+		// No answers yet: one empty ship, so there's always one to draw
 		if (!groups.size) groups.set('', []);
 
 		const keys = [...groups.keys()];
@@ -600,8 +608,21 @@ export default class Universe extends View {
 				label: (stopped ? 'Wake and open' : 'Open session') + (remote ? ` on ${remote.name}` : ''),
 				onPress: () => this.open(session),
 			},
-			...(remote ? [] : sessionMenu({ ...session, live: session.status !== 'stopped' }, () => this.poll())),
+			...(remote
+				? [{ label: session.watching ? 'Stop watching' : 'Watch', onPress: () => this.watch(worker, !session.watching) }]
+				: sessionMenu({ ...session, live: session.status !== 'stopped' }, () => this.poll())),
 		];
+	}
+
+	// Watched, a session stays aboard stopped; unwatched, it's aboard only while it runs
+	async watch(worker, watching) {
+		const { session } = worker;
+		const { response } = session.engine.remote
+			? await setRemoteWatching(session.engine.remote.url, session.id, watching)
+			: await setWatching(session.id, watching);
+
+		if (!response?.ok) return new Notify({ intent: 'warning', content: `Couldn't ${watching ? 'watch' : 'unwatch'} it.` });
+		this.poll();
 	}
 
 	// What's selected: a worker or a deck, ringed on the ship, its verbs along the command bar
@@ -702,6 +723,11 @@ export default class Universe extends View {
 						hotkey,
 						run: () => this.openDock(worker, key),
 					}))),
+			{
+				label: session.watching ? 'Unwatch' : 'Watch',
+				hotkey: 'u',
+				run: () => this.watch(worker, !session.watching),
+			},
 			{ label: remote ? `Open on ${remote.name}` : 'Open', hotkey: 'o', run: () => this.open(session) },
 		];
 	}
@@ -851,28 +877,6 @@ export default class Universe extends View {
 	}
 
 	// Which engines and projects the ship shows, each toggled; every one listed, those hidden too
-	openShown() {
-		this.openListDock('shown', {
-			title: 'Show and hide',
-			about: 'which engines and projects are aboard, kept for this browser',
-			entries: [
-				shownPane({
-					answers: () => this.answers ?? [],
-					toggle: (kind, key) => {
-						toggleHidden(kind, key);
-						this.updateShips();
-						this.paintFocus();
-					},
-					assign: (key, aboard) => {
-						assignShip(key, aboard);
-						this.updateShips();
-						this.paintFocus();
-					},
-				}),
-			],
-		});
-	}
-
 	// A dock for the whole ship, or one engine: its sessions to find, read and wake, and folders to add as projects
 	openShipDock(open, remotes = this.remotes, only) {
 		const withLocal = !only || only === localName();
@@ -1380,7 +1384,6 @@ export default class Universe extends View {
 				commands: [
 					...this.placeCommands('bridge').filter(({ hotkey }) => hotkey !== 'z'),
 					{ label: 'New project', hotkey: 'p', run: () => this.openShipDock('projects') },
-					{ label: 'Show and hide', hotkey: 'e', run: () => this.openShown() },
 					...(this.aboard.layout?.transporter
 						? [{ label: 'Transporter', hotkey: 'x', run: () => this.aboard.look('transporter') }]
 						: []),

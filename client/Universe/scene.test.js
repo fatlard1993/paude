@@ -38,7 +38,7 @@ const shipWith = answers => {
 // Someone aboard, by the name they go by
 const walkerNamed = (made, name) => [...made.walkers.values()].find(walker => walker.name === name);
 
-test('every project is a section of the hull, its sessions in it whichever machine runs them: those at work first, then the watched, then the idle', () => {
+test('a project is a section of the hull while a session of it is aboard or it is watched, those at work first: the rest stay off', () => {
 	const made = shipWith([
 		answer('here', [session(), session({ id: 'b', project: 'site' })], {
 			projects: ['paude', 'site', 'idle', { name: 'kept', hue: 20, watching: true }],
@@ -50,7 +50,6 @@ test('every project is a section of the hull, its sessions in it whichever machi
 		['paude', ['here/a', 'vps/c']],
 		['site', ['here/b']],
 		['kept', []],
-		['idle', []],
 	]);
 	expect(made.bays.find(({ name }) => name === 'paude').engines.map(({ key }) => key)).toEqual(['here', 'vps']);
 });
@@ -190,14 +189,17 @@ test('a stopped session waits in the lounge, its seat at its island kept, and go
 	expect(made.workers.get('here/b').bay.name).toBe('site');
 });
 
-test("an ended session leaves, and its project's machine stays aboard, nobody at it", () => {
+test("an ended session leaves, and a watched project's machine stays aboard, nobody at it; one unwatched goes too", () => {
+	const projects = ['paude', { name: 'site', hue: 10, watching: true }, 'other'];
 	const made = shipWith([
-		answer('here', [session(), session({ id: 'b', project: 'site' })], { projects: ['paude', 'site'] }),
+		answer('here', [session(), session({ id: 'b', project: 'site' }), session({ id: 'c', project: 'other' })], {
+			projects,
+		}),
 	]);
 
-	made.update([answer('here', [session()], { projects: ['paude', 'site'] })]);
+	made.update([answer('here', [session()], { projects })]);
 	run(made, 1);
-	made.update([answer('here', [session()], { projects: ['paude', 'site'] })]);
+	made.update([answer('here', [session()], { projects })]);
 
 	const site = made.layout.bays.find(({ name }) => name === 'site');
 
@@ -206,8 +208,11 @@ test("an ended session leaves, and its project's machine stays aboard, nobody at
 	expect([site.parts.length, site.sessions.length, site.parts[0].machine > 0]).toEqual([1, 0, true]);
 });
 
-test('idle projects are machines like any other, packed after those at work into whichever deck is shorter', () => {
-	const made = shipWith([answer('here', [session()], { projects: ['paude', 'a', 'b', 'c'] })]);
+test('watched projects with nothing at work are machines like any other, packed after those at work into whichever deck is shorter', () => {
+	const watched = name => ({ name, hue: 10, watching: true });
+	const made = shipWith([
+		answer('here', [session()], { projects: ['paude', watched('a'), watched('b'), watched('c')] }),
+	]);
 	const [paude, ...idle] = made.layout.bays;
 
 	expect(paude.name).toBe('paude');
@@ -513,7 +518,12 @@ test('a hundred projects make a deeper ship rather than an endless one: more lev
 	const names = Array.from({ length: 100 }, (_, index) => `p${index}`);
 	const made = shipWith([
 		answer('here', [session({ project: 'p0' }), session({ id: 'b', project: 'p1' })], {
-			projects: names.map((name, index) => ({ name, hue: index * 7, character: { files: 3 + ((index * 37) % 400) } })),
+			projects: names.map((name, index) => ({
+				name,
+				hue: index * 7,
+				watching: true,
+				character: { files: 3 + ((index * 37) % 400) },
+			})),
 		}),
 	]);
 	const { building, bays, halls } = made.layout;
@@ -680,35 +690,7 @@ test('a waiting session whose cache has gone cold rests in the lounge, unless it
 	expect(worker.seat).not.toEqual(worker.homeSeat);
 });
 
-test("what's hidden is left out of the looks: a hidden engine's paude altogether, a hidden project on every engine", async () => {
-	const { shownOf } = await import('./shown');
-	const looks = [
-		answer('here', [session(), session({ id: 'b', project: 'site' })], { projects: ['paude', 'site'] }),
-		answer('vps', [session({ id: 'c' })], { projects: ['paude'] }),
-	];
-	const shown = shownOf(looks, { engines: ['vps'], projects: ['site'] });
-
-	expect(shown.map(({ key }) => key)).toEqual(['here']);
-	expect(shown[0].sessions.map(({ id }) => id)).toEqual(['a']);
-	expect(shown[0].projects.map(({ name }) => name)).toEqual(['paude']);
-	expect(shownOf(looks, { engines: [], projects: [] })).toHaveLength(2);
-});
-
-test('engines hidden under the older `machines` field stay hidden, and are kept as `engines` from then on', async () => {
-	const { hiddenNow, toggleHidden } = await import('./shown');
-	const stored = { 'paude-universe-hidden': JSON.stringify({ machines: ['vps'], projects: ['site'] }) };
-
-	globalThis.localStorage = { getItem: key => stored[key] ?? null, setItem: (key, value) => (stored[key] = value) };
-	try {
-		expect(hiddenNow()).toEqual({ engines: ['vps'], projects: ['site'] });
-		toggleHidden('engines', 'here');
-		expect(JSON.parse(stored['paude-universe-hidden'])).toEqual({ engines: ['vps', 'here'], projects: ['site'] });
-	} finally {
-		delete globalThis.localStorage;
-	}
-});
-
-test("a ship for each subscription: paudes on one account together, one that does not say sharing this machine's unless set otherwise", async () => {
+test("a ship for each subscription: paudes on one account together, one that does not say sharing this machine's", async () => {
 	const { shipsOf } = await import('./shown');
 	const looks = [
 		{ key: 'vps' },
@@ -723,25 +705,7 @@ test("a ship for each subscription: paudes on one account together, one that doe
 		['account:a', ['here', 'vps', 'laptop', 'old']],
 		['account:b', ['work']],
 	]);
-	// Set by hand: one with a subscription of its own, one sharing another's
-	expect(keys(shipsOf(looks, { old: 'own', vps: 'work' }))).toEqual([
-		['account:a', ['here', 'laptop']],
-		['account:b', ['vps', 'work']],
-		['own:old', ['old']],
-	]);
-	// A loop of them each on its own
-	// Set to share each other's: one ship, the same from either side
-	expect(keys(shipsOf([{ key: 'x' }, { key: 'y' }], { x: 'y', y: 'x' }))).toEqual([['own:x', ['x', 'y']]]);
-	// This machine hidden: those sharing its subscription stay on its ship
-	expect(
-		keys(
-			shipsOf([{ key: 'vps' }, { key: 'old' }], {}, [
-				{ key: 'here', fuel: { account: 'a1' } },
-				{ key: 'vps' },
-				{ key: 'old' },
-			]),
-		),
-	).toEqual([['account:a1', ['vps', 'old']]]);
+	expect(keys(shipsOf([{ key: 'here' }, { key: 'old' }]))).toEqual([['own:here', ['here', 'old']]]);
 });
 
 test("a session's subagent count is its paude's word: no more small greys are made than are ever drawn", () => {
