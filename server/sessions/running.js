@@ -1,6 +1,6 @@
-import { getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import { statSync } from 'fs';
 import path from 'path';
+import { getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 
 import { setArchived } from '../archive';
 import { stopKeepingWarm } from '../keepWarm';
