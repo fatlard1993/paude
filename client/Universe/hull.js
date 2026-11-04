@@ -674,6 +674,9 @@ export const drawHull = (
 // fuel comes in
 const REACTOR = { tall: 22, shaft: 11, into: 15 };
 
+// How far out from its middle a reactor module's side is, where its bus couples on
+export const REACTOR_SIDE = 12;
+
 export const drawEngineering = (ctx, art, label, room, { time, engines, systems = [], recycling, zoom }) => {
 	floor(ctx, art, room);
 
@@ -778,7 +781,7 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, systems 
 					rect(ctx, x, y, w, h, PALETTE.l);
 				}
 				// Its bus: out of its side at its core to the riser up the column's inner side, and along the riser to each of
-				// its systems' mains, power running along it while it runs
+				// its systems' mains; what runs along it is its sessions' streams, drawn with them
 				const bus = art({ x: busAt(room), y: 0 }).x;
 				const mains = systems
 					.filter(system => system.engine === engine.key)
@@ -788,19 +791,12 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, systems 
 					const top = Math.min(at.y - REACTOR.shaft, ...mains);
 					const bottom = Math.max(at.y - REACTOR.shaft, ...mains);
 
-					rect(ctx, at.x + 11, at.y - REACTOR.shaft - 2, bus - at.x - 11, 5, PALETTE.k);
-					rect(ctx, at.x + 11, at.y - REACTOR.shaft - 1, bus - at.x - 11, 3, PALETTE.d);
+					rect(ctx, at.x + REACTOR_SIDE, at.y - REACTOR.shaft - 2, bus - at.x - REACTOR_SIDE, 5, PALETTE.k);
+					rect(ctx, at.x + REACTOR_SIDE, at.y - REACTOR.shaft - 1, bus - at.x - REACTOR_SIDE, 3, PALETTE.d);
 					rect(ctx, bus - 2, top - 3, 5, bottom - top + 6, PALETTE.k);
 					rect(ctx, bus - 1, top - 2, 3, bottom - top + 4, PALETTE.d);
 					rect(ctx, bus - 1, top - 2, 1, bottom - top + 4, PALETTE.l);
 					for (const y of mains) rect(ctx, bus - 3, y - 1, 7, 3, PALETTE.l);
-					if (busy) {
-						const along = Math.floor(time * 24) % 5;
-
-						for (let x = at.x + 12 + along; x < bus - 1; x += 5)
-							rect(ctx, x, at.y - REACTOR.shaft, 2, 1, `hsl(${hue} 80% 66%)`);
-						for (let y = top + along; y < bottom; y += 5) rect(ctx, bus, y, 1, 2, `hsl(${hue} 80% 66%)`);
-					}
 				}
 				// A module as the systems are: on a plinth over a hazard strip, a core vessel banded while it runs between two
 				// capacitor columns whose lamps climb toward its coupling into the bus
