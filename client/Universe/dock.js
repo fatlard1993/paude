@@ -126,7 +126,8 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose 
 			new NotesPanel({
 				...common('notes'),
 				send: message => canNote() && Boolean(connected().send(message)),
-				jump: () => {},
+				// To where a quote is in the terminal, when there's one to open
+				jump: quote => verbs.some(({ key }) => key === 'terminal') && card.show('terminal').jumpTo(quote),
 				openComment: comment => card.show('files').openComment(comment),
 				attach: attachToPrompt,
 				commentsChanged: () => panels.get('files')?.commentsChanged(),
@@ -167,7 +168,13 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose 
 				load: () => getLinks(session.id),
 				mark: (url, change) => markLink(session.id, url, change),
 			}),
-		terminal: () => new TerminalPanel({ ...common('terminal'), session }),
+		terminal: () =>
+			new TerminalPanel({
+				...common('terminal'),
+				session,
+				openFile: (path, line, lastLine) => card.show('files').open(path, line, lastLine),
+				comment: quote => card.show('notes').startComment(quote),
+			}),
 		shares: () => new SharesPanel({ ...common('shares') }),
 		shell: () =>
 			new SideShell({

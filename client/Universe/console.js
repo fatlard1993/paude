@@ -2,10 +2,12 @@ import { Notify } from '@vanilla-bean/components';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 
-import { canType } from '../identity';
+import { canBrowse, canNote, canType } from '../identity';
 import attach from '../Terminal/attach';
+import { copySelection, isCopyKey } from '../Terminal/copySelection';
+import { linkFilePaths, linkUrls } from '../Terminal/linkProviders';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from '../Terminal/xtermOptions';
-import { element } from '../dom';
+import { button, element } from '../dom';
 
 const FONT = { most: 14, least: 8, tiny: 6 };
 // The dock's own width, the least it narrows to for a small terminal
@@ -15,13 +17,61 @@ const DOCK_LEAST = 620;
 // as large as lets that size fit (smaller than the least, it scrolls across). Sized by its font, never a CSS transform:
 // a transform blurs the text and puts clicks where they aren't.
 export default class TerminalPanel {
-	constructor({ appendTo, session, addClass = [] }) {
+	// `openFile(path, line, lastLine)` opens a file path Claude names; `comment(quote)` starts a comment on a selection
+	constructor({ appendTo, session, addClass = [], openFile, comment }) {
 		this.session = session;
+		this.openFile = openFile;
+		this.comment = comment;
 		this.elem = element('div', ['docked-terminal', ...addClass].join(' '));
 		this.state = element('div', 'about', 'connecting…');
 		this.screen = element('div', 'screen');
-		this.elem.append(this.state, this.screen);
+		// What can be done with what's selected, as on the session's own page
+		this.selected = element('div', 'selected');
+		this.selected.hidden = true;
+		this.selected.append(
+			button('Copy', () => copySelection(this.terminal), { icon: 'copy', className: 'variant-flat' }),
+			...(canNote() && comment
+				? [button('Comment', () => this.commentOnSelection(), { icon: 'comment', className: 'variant-flat' })]
+				: []),
+		);
+		// Pressed without taking the focus, so the selection is still there to act on
+		this.selected.addEventListener('mousedown', event => event.preventDefault());
+		this.elem.append(this.state, this.selected, this.screen);
 		appendTo.append(this.elem);
+	}
+
+	commentOnSelection() {
+		const quote = this.terminal?.getSelection().trim();
+
+		if (!quote) return;
+		this.comment(quote);
+		this.terminal.clearSelection();
+	}
+
+	// Where a quote from the chat is in the terminal's history, scrolled to and selected
+	jumpTo(quote) {
+		const lines = quote.split('\n').map(line => line.trim());
+		const anchor = lines.find(Boolean);
+		const buffer = this.terminal?.buffer.active;
+
+		if (!anchor) return;
+		// Its history not here yet: once it is
+		if (!this.arrived) {
+			this.pendingJump = quote;
+
+			return;
+		}
+		for (let index = buffer.length - 1; index >= 0; index--) {
+			if (!(buffer.getLine(index)?.translateToString(true) ?? '').includes(anchor)) continue;
+
+			const start = Math.max(0, index - lines.indexOf(anchor));
+
+			this.terminal.scrollToLine(Math.max(0, start - 2));
+			this.terminal.selectLines(start, start + lines.length - 1);
+
+			return;
+		}
+		new Notify({ intent: 'warning', content: 'That text is no longer in the terminal history.' });
 	}
 
 	start() {
@@ -43,6 +93,18 @@ export default class TerminalPanel {
 		this.terminal = terminal;
 		terminal.open(this.screen);
 		terminal.resize(cols, rows);
+		// Its URLs open in a new tab and the project's files it names in the dock's files; Ctrl+C with something selected
+		// copies it rather than interrupting Claude
+		linkUrls(terminal);
+		if (canBrowse() && this.openFile) linkFilePaths(terminal, session.id, { open: this.openFile });
+		terminal.attachCustomKeyEventHandler(event => {
+			if (!isCopyKey(event, terminal)) return true;
+			event.preventDefault();
+			copySelection(terminal);
+
+			return false;
+		});
+		terminal.onSelectionChange(() => (this.selected.hidden = !terminal.hasSelection()));
 		redrawWhenSymbolsLoad(terminal);
 		terminal.onData(data => this.connection?.send({ type: 'input', data }));
 		this.connection = attach(session.id, {
@@ -59,7 +121,12 @@ export default class TerminalPanel {
 					terminal.resize(message.cols, message.rows);
 					decoder = new TextDecoder();
 					loadSymbolsFor(message.data);
-					terminal.write(message.data, () => this.fit());
+					terminal.write(message.data, () => {
+						this.arrived = true;
+						this.fit();
+						if (this.pendingJump) this.jumpTo(this.pendingJump);
+						this.pendingJump = null;
+					});
 				} else if (message.type === 'size') {
 					terminal.resize(message.cols, message.rows);
 					this.fit();

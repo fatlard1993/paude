@@ -12,7 +12,6 @@ import {
 	getSession,
 	getLinks,
 	getTurns,
-	listFiles,
 	logout,
 	markLink,
 	nameSession,
@@ -30,10 +29,9 @@ import {
 import confirmDialog, { confirmDeleteSession, nameDialog } from '../confirmDialog';
 import { canBrowse, canNote, canType, identity } from '../identity';
 import DONE_MARKER from '../../shared/doneMarker';
-import findFilePaths, { pathResolver } from '../../shared/filePaths';
 import { tintsOf } from '../../shared/hues';
 import tokens from '../../shared/tokenCount';
-import findUrls from '../../shared/terminalLinks';
+import { bufferCells, linkFilePaths, linkUrls } from './linkProviders';
 import withoutPointerReporting from '../../shared/pointerReporting';
 import { NOTE_TYPES } from '../../shared/protocol';
 import { showNotification } from '../notify';
@@ -75,7 +73,6 @@ const BACKGROUND = theme.colors.black.toHexString();
 // How far a finger can wander and still be tapping rather than scrolling
 const TAP_SLOP = 8;
 // How far above and below a row to look for the rest of a URL Claude broke across rows
-const URL_ROWS = 6;
 // How long after finding no pull request to look again, in ms
 const PULL_REQUEST_RECHECK = 60_000;
 // Room kept for the new-session button after a done line, in cells
@@ -1393,64 +1390,17 @@ export default class TerminalView extends View {
 		return fork;
 	}
 
-	// Plain URLs open in a new tab, one Claude broke across rows included; the rows around each one are searched so a
-	// broken URL is the same link from any of its rows
+	// Its URLs and the project's file paths in it pressable: a URL opens in a new tab, a file in the files panel
 	linkUrls() {
-		this.terminal.registerLinkProvider({
-			provideLinks: (lineNumber, callback) => {
-				const first = Math.max(lineNumber - 1 - URL_ROWS, 0);
-				const rows = [];
-
-				for (let index = first; index <= lineNumber - 1 + URL_ROWS; index++) rows.push(this.bufferCells(index));
-
-				const links = findUrls(
-					rows.map(({ text }) => text),
-					this.terminal.cols,
-				)
-					.filter(({ parts }) => parts.some(({ row }) => first + row === lineNumber - 1))
-					.map(({ url, parts }) => {
-						const [start, end] = [parts[0], parts.at(-1)];
-
-						return {
-							range: {
-								start: { x: rows[start.row].columns[start.from], y: first + start.row + 1 },
-								end: { x: rows[end.row].columns[end.to - 1], y: first + end.row + 1 },
-							},
-							text: url,
-							decorations: { pointerCursor: true, underline: true },
-							hover: () => (this.overLink = true),
-							leave: () => (this.overLink = false),
-							activate: () => window.open(url, '_blank', 'noopener,noreferrer'),
-						};
-					});
-
-				callback(links.length ? links : undefined);
-			},
-		});
+		linkUrls(this.terminal, { over: on => (this.overLink = on) });
 	}
 
-	// The project's files Claude names open in the files panel, at the lines named
 	linkFilePaths() {
-		this.terminal.registerLinkProvider({
-			provideLinks: async (lineNumber, callback) => {
-				this.resolvePath ??= listFiles(this.options.id).then(({ body, response }) =>
-					pathResolver(response?.ok ? body : []),
-				);
-
-				const { text, columns } = this.bufferCells(lineNumber - 1);
-				const links = findFilePaths(text, await this.resolvePath).map(({ path, line, lastLine, from, to }) => ({
-					range: { start: { x: columns[from], y: lineNumber }, end: { x: columns[to - 1], y: lineNumber } },
-					text: path,
-					decorations: { pointerCursor: true, underline: true },
-					hover: () => (this.overLink = true),
-					leave: () => (this.overLink = false),
-					activate: () => {
-						this.toggleFiles(true);
-						this.files.open(path, line, lastLine);
-					},
-				}));
-
-				callback(links.length ? links : undefined);
+		linkFilePaths(this.terminal, this.options.id, {
+			over: on => (this.overLink = on),
+			open: (path, line, lastLine) => {
+				this.toggleFiles(true);
+				this.files.open(path, line, lastLine);
 			},
 		});
 	}
@@ -1480,22 +1430,7 @@ export default class TerminalView extends View {
 
 	// A row's text and, for each character of it, the 1-based column it's drawn in (a wide character takes two)
 	bufferCells(index) {
-		const line = this.terminal.buffer.active.getLine(index);
-		const columns = [];
-		let text = '';
-
-		for (let x = 0; line && x < this.terminal.cols; x++) {
-			const cell = line.getCell(x);
-
-			if (!cell || cell.getWidth() === 0) continue;
-
-			const chars = cell.getChars() || ' ';
-
-			text += chars;
-			for (let unit = 0; unit < chars.length; unit++) columns.push(x + 1);
-		}
-
-		return { text: text.trimEnd(), columns };
+		return bufferCells(this.terminal, index);
 	}
 
 	bufferLine(index) {

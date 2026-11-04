@@ -147,9 +147,24 @@ export const Stage = styled(
 		}
 
 		.docked-terminal {
+			position: relative;
 			display: flex;
 			flex-direction: column;
 			gap: ${space.xs};
+		}
+
+		/* What can be done with a selection, over the terminal's top corner */
+		.docked-terminal .selected {
+			position: absolute;
+			z-index: 2;
+			top: 4px;
+			right: 4px;
+			display: flex;
+			gap: ${space.xs};
+			padding: 2px;
+			border: 1px solid ${colors.border};
+			border-radius: ${radius.md};
+			background: ${colors.alpha(colors.black, 0.85)};
 		}
 
 		.docked-terminal .about {
