@@ -2512,7 +2512,8 @@ export default class Ship {
 
 		return [
 			{ y: seat.y + 0.3, draw: () => this.drawCans(ctx, worker, Math.min(cans, CANS_DROPPED), 0) },
-			{ y: seat.y - 0.1, draw: () => this.drawCans(ctx, worker, cans, CANS_DROPPED) },
+			// Behind the couch's back, so the heap shows over it rather than lying on its front
+			{ y: seat.y - 0.3, draw: () => this.drawCans(ctx, worker, cans, CANS_DROPPED) },
 			{
 				y: seat.y + 0.2,
 				draw: () => {
@@ -2583,7 +2584,8 @@ export default class Ship {
 	// on the backrest
 	canAt(worker, can) {
 		const seat = this.art({ x: worker.seat.x, y: worker.seat.y + 0.15 });
-		const back = this.art(worker.seat).y - 18;
+		// Behind the backrest, its bottom row tucked under the backrest's top edge
+		const back = this.art(worker.seat).y - 20;
 		const key = worker.session.key;
 
 		if (can < CANS_DROPPED) {
