@@ -1126,8 +1126,16 @@ export default class Universe extends View {
 	}
 
 	// Reading it is seeing it, here and on the engine it runs on
+	// A session running here opens its side panel on its terminal, to read and type in; the card is only for one stopped,
+	// to wake it, or one on another paude, which has no side panel here
 	openReply(worker, { focus = true } = {}) {
 		const { session } = worker;
+
+		if (live(session)) {
+			this.seen(session);
+
+			return this.dockOrReply(worker, 'terminal');
+		}
 
 		this.openCard(
 			replyCard({
