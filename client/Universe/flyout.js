@@ -382,9 +382,20 @@ const FLYOUTS = {
 
 		return {
 			title: bay.name,
+			hue: bay.hue,
 			rows: [
 				['sessions', plural(bay.sessions.length, 'session')],
-				['on', bay.engines.map(({ name }) => name).join(', ')],
+				[
+					'on',
+					bay.engines.length > 1
+						? bay.engines
+								.map(
+									({ key, name }) =>
+										`${name} (${bay.sessions.filter(session => session.startsWith(`${key}/`)).length})`,
+								)
+								.join(', ')
+						: bay.engines.map(({ name }) => name).join(', '),
+				],
 				cargo && ['changes', cargo],
 				language && ['written in', LANGUAGE_NAMES[language] ?? language],
 				files && ['size', plural(files, 'file')],

@@ -117,6 +117,8 @@ const HEAD_SIZES = ['bursting', 'huge', 'big', 'small'];
 const BURSTING = 5;
 const STEAM_SECONDS = 5 * 60;
 const HOT_SECONDS = 15 * 60;
+// An island's hit sorts after every figure on it and before the rooms round it
+const ISLAND_HIT = 1e6;
 // Where each kind of stream runs from, in the order their packets are spaced along a shared conduit
 const STREAM_LANES = ['library', 'forge', 'reactor', 'dish', 'tower', 'outpost'];
 // A lightning bolt, three pixels across, for the side of an energy drink
@@ -960,7 +962,7 @@ export default class Ship {
 
 				bay.watching ||= project.watching;
 				bay.character ??= project.character;
-				bay.engines.push({ key: answer.key, name: answer.name, remote: answer.remote });
+				bay.engines.push({ key: answer.key, name: answer.name, remote: answer.remote, hue: answer.hue });
 			}
 
 		// Gone to rest in the lounge, it keeps its seat at its project's island all the same: its terminal frosted over
@@ -1755,6 +1757,17 @@ export default class Ship {
 						pressure,
 						fed: this.fed?.get(bay.name) ?? [],
 					});
+					// On more than one engine, a light in each one's color by its name
+					if (deck === 0 && bay.engines.length > 1) {
+						const top = this.art({ x: housing.middle, y: part.y + 0.3 });
+
+						bay.engines.forEach(({ hue }, index) => {
+							const x = Math.round(top.x - bay.engines.length * 3.5 + index * 7);
+
+							rect(ctx, x, top.y + 1, 6, 5, PALETTE.k);
+							rect(ctx, x + 1, top.y + 2, 4, 3, `hsl(${hue ?? 215} 75% 66%)`);
+						});
+					}
 				},
 			})),
 		];
@@ -1825,7 +1838,7 @@ export default class Ship {
 				out: { x: exit.x + 4 + (lane % 3) * 2, y: exit.y },
 				plates: (this.bridge.islands ?? [])
 					.filter(({ name }) => name === bay.name)
-					.map(island => ({ island, at: this.art({ x: island.x + 0.45, y: island.y + 0.2 }) })),
+					.map(island => ({ island, at: this.art({ x: island.x + 0.15, y: island.y + 0.2 }) })),
 			};
 		});
 		const order = this.riserOrder(routes, wall);
@@ -2048,8 +2061,8 @@ export default class Ship {
 		];
 	}
 
-	// The bridge: each project's island, its console in the project's color with its name on its end; the shipping
-	// bay's log and the materializer pressable
+	// The bridge: each project's island, its console striped in the project's color and pressable as the project; the
+	// shipping bay's log and the materializer pressable
 	bridgeParts(ctx, art, label) {
 		const bridge = this.bridge;
 		const islands = (bridge.islands ?? []).map(island => ({
@@ -2060,14 +2073,17 @@ export default class Ship {
 				const color = island.hue === null || island.hue === undefined ? PALETTE.l : `hsl(${island.hue} 55% 50%)`;
 
 				drawIsland(ctx, { from: from.x, to: to.x, y: from.y }, { color });
-				this.labels.push({
-					text: island.name,
-					at: { x: from.x + 9, y: from.y - 5 },
-					color: island.hue === null ? PALETTE.w : `hsl(${island.hue} 60% 76%)`,
-					align: 'center',
-					size: 1,
-					width: 16,
-				});
+
+				const bay = this.bays.find(({ name }) => name === island.name);
+
+				// Beneath anything on it, over the bridge itself
+				if (bay)
+					this.hits.push({
+						area: this.area({ x: island.x, y: island.y - 0.8, w: island.w, d: 1 }),
+						r: ISLAND_HIT,
+						kind: 'bay',
+						bay,
+					});
 			},
 		}));
 

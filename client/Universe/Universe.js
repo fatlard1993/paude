@@ -167,6 +167,14 @@ const checkStatus = ({ draft, checks: { passing = 0, failing = 0, pending = 0 } 
 
 // The universe view: a ship for each subscription, one of them aboard and on the stage, with the cards, docks, panel
 // and command bar about it
+// A panel bordered, and its title colored, in a project's color when it's about a project; its own otherwise
+const tone = (panel, title, hue) => {
+	const color = Number.isFinite(hue) ? `hsl(${hue} 60% 68%)` : '';
+
+	panel.style.setProperty('--aug-border-bg', color);
+	title.style.color = color;
+};
+
 export default class Universe extends View {
 	build() {
 		const bar = new Bar({ appendTo: this });
@@ -471,11 +479,13 @@ export default class Universe extends View {
 			return;
 		}
 
-		const { title, rows = [], hint } = flyoutOf(target, this.aboard);
+		const { title, rows = [], hint, hue } = flyoutOf(target, this.aboard);
 		const table = element('div', 'rows');
+		const heading = element('strong', '', title);
 
 		for (const row of rows.filter(Boolean)) table.append(element('span', 'key', row[0]), element('span', '', row[1]));
-		this.tip.replaceChildren(element('strong', '', title), table, ...(hint ? [element('div', 'about', hint)] : []));
+		tone(this.tip, heading, hue);
+		this.tip.replaceChildren(heading, table, ...(hint ? [element('div', 'about', hint)] : []));
 		this.tip.style.display = '';
 
 		const { width, height } = this.stage.elem.getBoundingClientRect();
@@ -573,29 +583,6 @@ export default class Universe extends View {
 		];
 	}
 
-	bayMenu(bay, point) {
-		const local = bay.engines.find(({ remote }) => !remote);
-
-		return [
-			{ heading: bay.name },
-			{
-				label: 'New prompt here',
-				detail: 'paude finds the session it carries on, or starts one in this project',
-				onPress: () => this.newPrompt(bay.name, point),
-			},
-			{ label: 'Look closer', onPress: () => this.aboard.look(bay.name) },
-			local
-				? {
-						label: 'Open project',
-						onPress: () => (window.location.hash = `#/projects/${encodeURIComponent(bay.name)}`),
-					}
-				: {
-						label: `Open project on ${bay.engines[0]?.name}`,
-						onPress: () => this.openProject(bay.engines[0], bay.name),
-					},
-		];
-	}
-
 	// What's selected: a worker or a deck, ringed on the ship, its verbs along the command bar
 	select(selected) {
 		const same = selectionKey(selected) === selectionKey(this.selected);
@@ -653,8 +640,10 @@ export default class Universe extends View {
 		this.painted = painted;
 
 		const who = element('div', 'who');
+		const named = element('strong', '', selected.title);
 
-		who.append(element('strong', '', selected.title), element('span', '', selected.about));
+		tone(this.command, named, selected.bay?.hue);
+		who.append(named, element('span', '', selected.about));
 		this.command.replaceChildren(
 			who,
 			...commands.map(({ label, hotkey, run }) => {
@@ -689,8 +678,12 @@ export default class Universe extends View {
 		];
 	}
 
+	// A project's verbs. On more than one engine, each one that acts on one engine's copy says which: new prompts and
+	// its lists are this paude's, and each other engine's copy is opened there
 	bayCommands(bay) {
 		const local = bay.engines.find(({ remote }) => !remote);
+		const remotes = bay.engines.filter(({ remote }) => remote);
+		const on = name => (bay.engines.length > 1 ? ` on ${name}` : '');
 		const anchor = this.aboard.screen({ x: bay.x + bay.w / 2, y: bay.y + bay.d / 2 });
 
 		const worker = [...this.aboard.workers.values()].find(
@@ -698,12 +691,16 @@ export default class Universe extends View {
 		);
 
 		return [
-			{ label: 'New prompt here', hotkey: 'n', run: () => this.newPrompt(bay.name, anchor) },
+			{
+				label: local && remotes.length ? `New prompt${on(local.name)}` : 'New prompt here',
+				hotkey: 'n',
+				run: () => this.newPrompt(bay.name, anchor),
+			},
 			...(local
 				? [
-						{ label: 'Sessions', hotkey: 'h', run: () => this.openProjectDock(bay.name, 'sessions') },
+						{ label: `Sessions${on(local.name)}`, hotkey: 'h', run: () => this.openProjectDock(bay.name, 'sessions') },
 						{
-							label: 'Files',
+							label: `Files${on(local.name)}`,
 							hotkey: 'f',
 							run: () =>
 								worker
@@ -713,22 +710,54 @@ export default class Universe extends View {
 											content: `Files are read through a session: start one in ${bay.name} first.`,
 										}),
 						},
-						{ label: 'Links', hotkey: 'l', run: () => this.openProjectDock(bay.name, 'links') },
-						{ label: 'Made', hotkey: 'm', run: () => this.openProjectDock(bay.name, 'artifacts') },
+						{ label: `Links${on(local.name)}`, hotkey: 'l', run: () => this.openProjectDock(bay.name, 'links') },
+						{ label: `Made${on(local.name)}`, hotkey: 'm', run: () => this.openProjectDock(bay.name, 'artifacts') },
 					]
 				: []),
 			{ label: 'Look closer', hotkey: 'z', run: () => this.aboard.look(bay.name) },
-			local
-				? {
-						label: 'Open project',
-						hotkey: 'o',
-						run: () => (window.location.hash = `#/projects/${encodeURIComponent(bay.name)}`),
-					}
-				: {
-						label: `Open on ${bay.engines[0]?.name}`,
-						hotkey: 'o',
-						run: () => this.openProject(bay.engines[0], bay.name),
-					},
+			...(local
+				? [
+						{
+							label: `Open project${on(local.name)}`,
+							hotkey: 'o',
+							run: () => (window.location.hash = `#/projects/${encodeURIComponent(bay.name)}`),
+						},
+					]
+				: []),
+			// Each other engine's copy by its number, or by o when there's no copy here
+			...remotes.map((engine, index) => ({
+				label: `Open on ${engine.name}`,
+				hotkey: local || index ? String(index + 1) : 'o',
+				run: () => this.openProject(engine, bay.name),
+			})),
+		];
+	}
+
+	bayMenu(bay, point) {
+		const local = bay.engines.find(({ remote }) => !remote);
+		const remotes = bay.engines.filter(({ remote }) => remote);
+		const on = name => (bay.engines.length > 1 ? ` on ${name}` : '');
+
+		return [
+			{ heading: bay.name },
+			{
+				label: local && remotes.length ? `New prompt${on(local.name)}` : 'New prompt here',
+				detail: 'paude finds the session it carries on, or starts one in this project',
+				onPress: () => this.newPrompt(bay.name, point),
+			},
+			{ label: 'Look closer', onPress: () => this.aboard.look(bay.name) },
+			...(local
+				? [
+						{
+							label: `Open project${on(local.name)}`,
+							onPress: () => (window.location.hash = `#/projects/${encodeURIComponent(bay.name)}`),
+						},
+					]
+				: []),
+			...remotes.map(engine => ({
+				label: `Open project on ${engine.name}`,
+				onPress: () => this.openProject(engine, bay.name),
+			})),
 		];
 	}
 
@@ -1367,7 +1396,7 @@ export default class Universe extends View {
 		this.paintedTight = this.aboard.tight;
 		if (tight && !this.bridgeOpen) return this.paintSummary(focus);
 
-		const { title, rows = [], items = [], commands = [] } = this.focusOf(focus);
+		const { title, rows = [], items = [], commands = [], hue } = this.focusOf(focus);
 		const painted = JSON.stringify([
 			tight,
 			focus.key,
@@ -1406,6 +1435,7 @@ export default class Universe extends View {
 		}
 		const heading = element('strong', 'title', title);
 
+		tone(this.focus, heading, hue);
 		this.focus.classList.remove('folded');
 
 		if (tight)

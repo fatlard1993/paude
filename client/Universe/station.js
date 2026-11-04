@@ -342,8 +342,8 @@ export const box = (ctx, x, y, w, h, color) => {
 	rect(ctx, x + 1, y + 1, w - 2, h - 2, color);
 };
 
-// A project's island on the bridge, `from` and `to` its ends and `y` its foot: one long console in its color, its
-// name plate on its stern end (the name drawn over it), legs at its ends
+// A project's island on the bridge, `from` and `to` its ends and `y` its foot: one long console with a stripe of its
+// project's color, legs at its ends
 export const drawIsland = (ctx, { from, to, y }, { color }) => {
 	rect(ctx, from + 1, y - 3, 2, 3, PALETTE.k);
 	rect(ctx, to - 3, y - 3, 2, 3, PALETTE.k);
@@ -352,8 +352,6 @@ export const drawIsland = (ctx, { from, to, y }, { color }) => {
 	rect(ctx, from, y - 12, to - from, 4, PALETTE.l);
 	rect(ctx, from, y - 8, to - from, 5, PALETTE.m);
 	rect(ctx, from, y - 4, to - from, 1, color);
-	rect(ctx, from + 1, y - 12, 16, 8, color);
-	rect(ctx, from + 2, y - 11, 14, 6, PALETTE.k);
 };
 
 // A grey's seat at its island, `at` its foot: its screen on a stand before it, large enough to read, showing what it's

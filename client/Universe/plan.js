@@ -41,7 +41,7 @@ const SEAT_W = 1.5;
 // A subagent's small terminal beside its grey's seat, as many as are shown
 const SMALL_W = 0.8;
 const MOST_SMALL = 4;
-const ISLAND_END = 0.9;
+const ISLAND_END = 0.3;
 const ISLAND_GAP = 0.6;
 
 // The islands of the bridge `from` its stern edge down `rows`, for the bays at work: [{ name, hue, keys, x, y, w,
