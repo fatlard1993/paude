@@ -804,3 +804,25 @@ test("more engines' systems go compact, so the ship keeps its depth and its leng
 	expect(depthWith(3)).toBeCloseTo(depthWith(1));
 	expect(widthWith(3)).toBeCloseTo(widthWith(1));
 });
+
+test('a walk across the bridge runs along the fronts of its consoles and up its aft wall, never over a screen', async () => {
+	const { standingOf } = await import('./plan');
+	const made = shipWith([
+		answer(
+			'here',
+			['one', 'two', 'three'].map((project, index) => session({ id: `s${index}`, project })),
+			{ projects: ['one', 'two', 'three'] },
+		),
+	]);
+	const seats = [...made.workers.values()].map(({ seat }) => seat).filter(Boolean);
+	const wall = made.bridge.x + 0.6;
+
+	for (const from of seats)
+		for (const to of seats) {
+			const path = made.acrossBridge(from, to);
+
+			// Every leg but the last step to the seat itself runs before a row's consoles or along the aft wall
+			for (const point of path.slice(0, -1))
+				expect(point.x === wall || Math.abs(point.y - standingOf(made.bridge, point.y)) < 1e-9).toBe(true);
+		}
+});
