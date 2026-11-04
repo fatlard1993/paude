@@ -25,16 +25,18 @@ const Panel = styled(
 			border-radius: ${radius.md};
 		}
 
+		/* Wrapping when it runs out of room, as in a narrow side panel, rather than its buttons running over the search */
 		.bar {
 			display: flex;
+			flex-wrap: wrap;
 			gap: ${space.sm};
 			padding: ${space.sm};
 			align-items: center;
 		}
 
 		.search {
-			flex: 1;
-			min-width: 0;
+			flex: 1 1 180px;
+			min-width: 160px;
 			display: flex;
 			align-items: center;
 			gap: 2px;
