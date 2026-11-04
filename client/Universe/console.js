@@ -8,8 +8,8 @@ import { copySelection, isCopyKey } from '../Terminal/copySelection';
 import { linkFilePaths, linkUrls } from '../Terminal/linkProviders';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from '../Terminal/xtermOptions';
 import { button, element } from '../dom';
+import { FONT, fitFont } from './fitFont';
 
-const FONT = { most: 14, least: 8, tiny: 6 };
 // The dock's own width, the least it narrows to for a small terminal
 const DOCK_LEAST = 620;
 
@@ -151,24 +151,44 @@ export default class TerminalPanel {
 
 		if (!drawn || !dock || !drawn.offsetWidth || this.elem.hidden) return;
 
-		const chrome = dock.offsetWidth - screen.clientWidth;
+		// Measured by the boxes' outer widths, which a scrollbar showing or hiding doesn't change: measured inside them, a
+		// scrollbar coming and going as the font changed fitted it again and again
+		const chrome = dock.offsetWidth - screen.offsetWidth;
 		// Sized by hand, the terminal fits the dock as it is; otherwise the most the dock can take
 		const sized = dock.dataset.sized === 'true';
-		const room = sized ? screen.clientWidth : dock.parentElement.clientWidth - 32 - chrome;
+		const room = sized ? screen.offsetWidth : dock.parentElement.clientWidth - 32 - chrome;
+		const height = screen.offsetHeight;
 		const size = terminal.options.fontSize;
-		const across = Math.floor((size * (room - 24)) / drawn.offsetWidth);
-		const down = Math.floor((size * (screen.clientHeight - 8)) / drawn.offsetHeight);
-		// Sized narrow by hand, smaller still, so it fits the width chosen for it
-		const font = Math.max(sized ? FONT.tiny : FONT.least, Math.min(FONT.most, across, down));
+
+		// What was found too big is kept only while the room stays the same
+		if (this.room !== `${room}x${height}`) {
+			this.room = `${room}x${height}`;
+			this.tooBig = Infinity;
+		}
+
+		const { font, tooBig } = fitFont({
+			size,
+			drawn: { width: drawn.offsetWidth, height: drawn.offsetHeight },
+			room,
+			height,
+			sized,
+			tooBig: this.tooBig,
+		});
+
+		this.tooBig = tooBig;
 
 		// Fitted again once drawn at the new size, as the panel round it settles, until it no longer changes
 		if (font !== size) {
 			terminal.options.fontSize = font;
-			if ((this.refits = (this.refits ?? 0) + 1) < 6) requestAnimationFrame(() => this.fit());
-		} else this.refits = 0;
+			requestAnimationFrame(() => this.fit());
+		}
 		requestAnimationFrame(() => {
 			if (this.elem.hidden || sized) return;
-			dock.style.width = `${Math.min(dock.parentElement.clientWidth - 32, Math.max(DOCK_LEAST, drawn.offsetWidth + chrome + 24))}px`;
+
+			const width = `${Math.min(dock.parentElement.clientWidth - 32, Math.max(DOCK_LEAST, drawn.offsetWidth + chrome + 24))}px`;
+
+			// Written only when it changes, so the panel resizing under it doesn't fit it again for nothing
+			if (dock.style.width !== width) dock.style.width = width;
 		});
 	}
 
