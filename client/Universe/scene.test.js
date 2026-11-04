@@ -862,9 +862,44 @@ test('one held up on the way to the transporter beams out from wherever they got
 	const walker = ship.walkers.get('me');
 
 	walker.path = Array.from({ length: 200 }, (_, index) => ({ x: walker.x + (index % 2 ? 4 : -4), y: walker.y }));
-	run(ship, 4);
+	run(ship, 2);
 	expect(gone).toBe(false);
 	run(ship, 4);
 	expect(gone).toBe(true);
 	expect(ship.walkers.has('me')).toBe(false);
+});
+
+test('looking at the transporter, whoever looks walks onto its pad, so beaming away is at once; looking off, they walk back', async () => {
+	const me = { key: 'me', name: 'chase', role: 'owner', sessions: [] };
+	const looks = [{ ...answer('here', [session({ id: 'a', project: 'paude' })], { projects: ['paude'] }), people: [me] }];
+	const ship = shipWith(looks);
+	const { padAt } = await import('./plan');
+	let gone = false;
+
+	ship.fleet = [{ key: 'b', name: 'vps' }];
+	ship.update(looks);
+	ship.viewer = 'me';
+	run(ship, 8);
+	ship.look('transporter');
+	run(ship, 4);
+
+	const walker = ship.walkers.get('me');
+	const pad = padAt(ship.layout.transporter);
+
+	expect(Math.hypot(walker.x - pad.x, walker.y - pad.y)).toBeLessThan(0.05);
+	ship.beamOut('me', () => (gone = true));
+	run(ship, 1.2);
+	expect(gone).toBe(true);
+
+	const stays = shipWith(looks);
+
+	stays.fleet = ship.fleet;
+	stays.update(looks);
+	stays.viewer = 'me';
+	run(stays, 8);
+	stays.look('transporter');
+	run(stays, 4);
+	stays.look('all');
+	run(stays, 8);
+	expect(stays.walkers.get('me').room).toBe(stays.bridge);
 });

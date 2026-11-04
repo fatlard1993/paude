@@ -67,8 +67,8 @@ const DRINK_SECONDS = 3;
 // How long a beam off a transporter, or onto one, lasts
 export const BEAM_SECONDS = 0.9;
 // Someone off to the transporter walks this many times as fast, and beams out after this long however far they got
-const HURRY = 3;
-const TRAVEL_MOST = 6;
+const HURRY = 5;
+const TRAVEL_MOST = 3;
 // How long a stream stays after its tool, fading, and how far apart its packets run
 const STREAM_LINGER = 4;
 const PACKET_GAP = 14;
@@ -607,10 +607,16 @@ export default class Ship {
 		};
 	}
 
+	// Looking at the transporter, whoever is looking (`viewer`, their key aboard) walks onto its pad, ready to go
 	look(at) {
 		const known = Boolean(this.roomOf(at));
+		const readying = this.roomOf(at)?.kind === 'transporter';
 
 		this.looking = known ? at : 'all';
+		if (readying !== Boolean(this.readying)) {
+			this.readying = readying;
+			if (this.layout) this.board();
+		}
 	}
 
 	// A room by what it's looked at by: a bay by its project, engineering by an engine's key, or the bridge or lounge
@@ -1059,8 +1065,8 @@ export default class Ship {
 
 		return new Map(
 			names.map(name => {
-				// Off to the transporter: its pad
-				if (this.departing?.key === name && this.layout.transporter)
+				// Off to the transporter, or ready by it: its pad
+				if ((this.departing?.key === name || (this.readying && this.viewer === name)) && this.layout.transporter)
 					return [name, { pose: 'traveler', spot: padAt(this.layout.transporter), room: this.layout.transporter }];
 
 				const person = this.people.get(name);
@@ -1241,7 +1247,7 @@ export default class Ship {
 		for (const worker of this.workers.values()) this.tendSmallGreys(worker, calm);
 		this.tendCrew(seconds);
 		for (const [name, walker] of this.walkers)
-			walk(walker, calm ? Infinity : WALK_SPEED * seconds * (this.departing?.key === name ? HURRY : 1), seconds);
+			walk(walker, calm ? Infinity : WALK_SPEED * seconds * (this.departing?.key === name || (this.readying && this.viewer === name) ? HURRY : 1), seconds);
 		this.tendTravel();
 		for (const worker of this.workers.values())
 			if (worker.path?.length && (calm || this.time - (worker.madeAt ?? -Infinity) >= MAKE_SECONDS))

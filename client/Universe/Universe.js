@@ -296,6 +296,7 @@ export default class Universe extends View {
 		hear();
 		for (const [key, ship] of this.ships) ship.update(groups.get(key));
 		hear();
+		this.aboard.viewer = this.me()?.key;
 	}
 
 	// Whoever is looking, as the ship aboard has them: the owner, or a guest by their name
@@ -330,9 +331,12 @@ export default class Universe extends View {
 			this.closeDock();
 			this.select(null);
 			this.aboard = ship;
+			ship.viewer = me?.key;
 			ship.beamAt = ship.time;
 			if (me) ship.beamIn(me);
-			ship.look(ship.layout.transporter ? 'transporter' : 'all');
+			// The bridge selected, the view panning to it as the spaceman walks there off the pad
+			this.select(selectionOf({ kind: 'bridge' }, this));
+			ship.look(BRIDGE);
 			this.focusPainted = null;
 			this.paintFocus();
 		};
