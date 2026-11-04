@@ -111,7 +111,8 @@ const FLYOUTS = {
 			.map(({ name }) => name);
 
 		return {
-			hue: session.hue,
+			hue: ship.projectHues?.get(session.project),
+			titleHue: session.hue,
 			title: session.title || session.project || 'A new session',
 			rows: [
 				['doing', doing(session)],
@@ -137,12 +138,13 @@ const FLYOUTS = {
 			hint: 'Press to select and read it · its keys along the bottom · right-click or hold for orders',
 		};
 	},
-	monitor: target => {
+	monitor: (target, ship) => {
 		const { session } = target.worker;
 
 		return {
 			title: session.title || session.project || 'A new session',
-			hue: session.hue,
+			hue: ship.projectHues?.get(session.project),
+			titleHue: session.hue,
 			rows: [['screen', live(session) ? 'its terminal, as it is now' : 'not running here']],
 			hint: live(session) ? 'Press to open its terminal here' : 'Press to read its last reply',
 		};

@@ -167,12 +167,13 @@ const checkStatus = ({ draft, checks: { passing = 0, failing = 0, pending = 0 } 
 
 // The universe view: a ship for each subscription, one of them aboard and on the stage, with the cards, docks, panel
 // and command bar about it
-// A panel bordered, and its title colored, in a project's color when it's about a project; its own otherwise
-const tone = (panel, title, hue) => {
-	const color = Number.isFinite(hue) ? `hsl(${hue} 60% 68%)` : '';
+// A panel bordered in a project's color when it's about a project, its own otherwise; its title in the same color, or
+// in a session's own (`titleHue`) when it's about one of the project's sessions
+const tone = (panel, title, hue, titleHue = hue) => {
+	const colorOf = value => (Number.isFinite(value) ? `hsl(${value} 60% 68%)` : '');
 
-	panel.style.setProperty('--aug-border-bg', color);
-	title.style.color = color;
+	panel.style.setProperty('--aug-border-bg', colorOf(hue));
+	title.style.color = colorOf(titleHue);
 };
 
 export default class Universe extends View {
@@ -479,12 +480,12 @@ export default class Universe extends View {
 			return;
 		}
 
-		const { title, rows = [], hint, hue } = flyoutOf(target, this.aboard);
+		const { title, rows = [], hint, hue, titleHue } = flyoutOf(target, this.aboard);
 		const table = element('div', 'rows');
 		const heading = element('strong', '', title);
 
 		for (const row of rows.filter(Boolean)) table.append(element('span', 'key', row[0]), element('span', '', row[1]));
-		tone(this.tip, heading, hue);
+		tone(this.tip, heading, hue, titleHue);
 		this.tip.replaceChildren(heading, table, ...(hint ? [element('div', 'about', hint)] : []));
 		this.tip.style.display = '';
 
@@ -642,7 +643,14 @@ export default class Universe extends View {
 		const who = element('div', 'who');
 		const named = element('strong', '', selected.title);
 
-		tone(this.command, named, selected.worker?.session.hue ?? selected.bay?.hue);
+		const session = selected.worker?.session;
+
+		tone(
+			this.command,
+			named,
+			session ? this.aboard.projectHues?.get(session.project) : selected.bay?.hue,
+			session ? session.hue : selected.bay?.hue,
+		);
 		who.append(named, element('span', '', selected.about));
 		this.command.replaceChildren(
 			who,
