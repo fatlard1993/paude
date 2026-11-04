@@ -1,5 +1,5 @@
 import { PALETTE, drawSprite } from './art';
-import { NACELLE, NOSE, RIM, clonerAt, padAt, panelAt, recyclerAt, stockAt, systemFootOf } from './plan';
+import { NACELLE, NOSE, RIM, clonerAt, padAt, panelAt, recyclerAt, stockAt, systemFootOf, systemTallOf } from './plan';
 import { pixelText, textWidth } from './retro';
 import {
 	COUCH_SEAT,
@@ -1038,7 +1038,78 @@ const mount = (ctx, art, room, at, { active, accent, time }) => {
 	for (let x = at.x - 22; x < at.x + 24; x += 9) rect(ctx, x, at.y + 1, 1, 1, PALETTE.w);
 };
 
-// A shared system's room
+// A compact system: the main along the ceiling from its reactor, a short drop into a cabinet with a window showing
+// its work, its load along the bottom and a light that blinks red once a use has failed
+const compactMount = (ctx, art, room, at, { active, accent, time }) => {
+	const ceiling = art({ x: 0, y: room.y }).y + 1;
+	const right = art({ x: room.x + room.w, y: 0 }).x;
+	const left = art({ x: room.feed ?? room.x, y: 0 }).x;
+	const main = ceiling + 6;
+	const top = at.y - systemTallOf(room);
+
+	rect(ctx, left, main - 3, right - left, 7, PALETTE.k);
+	rect(ctx, left, main - 2, right - left, 5, PALETTE.d);
+	rect(ctx, left, main - 2, right - left, 1, PALETTE.l);
+	rect(ctx, right - 1, main - 4, 1, 9, PALETTE.l);
+	if (active) for (let x = left + (Math.floor(time * 30) % 7); x < right - 2; x += 7) rect(ctx, x, main, 3, 1, accent);
+	rect(ctx, at.x - 2, main + 3, 5, top - main - 3, PALETTE.k);
+	rect(ctx, at.x - 1, main + 3, 3, top - main - 3, active ? accent : PALETTE.d);
+	rect(ctx, at.x - 11, at.y, 23, 2, PALETTE.k);
+	rect(ctx, at.x - 10, at.y, 21, 1, PALETTE.l);
+};
+
+const COMPACT_ICONS = {
+	// Lines of text running past
+	library: (ctx, x, y, { active, accent, time }) => {
+		const run = active ? Math.floor(time * 6) : 0;
+
+		for (let line = 0; line < 3; line++) rect(ctx, x + 1, y + 1 + line * 2, 4 + ((line * 5 + run) % 9), 1, accent);
+	},
+	// A line written out to a blinking caret
+	forge: (ctx, x, y, { active, accent, time }) => {
+		const written = active ? Math.floor(time * 8) % 10 : 6;
+
+		rect(ctx, x + 1, y + 3, written, 1, accent);
+		if (!active || Math.floor(time * 3) % 2) rect(ctx, x + 1 + written, y + 1, 2, 4, PALETTE.w);
+	},
+	// A prompt and its cursor
+	reactor: (ctx, x, y, { active, accent, time }) => {
+		for (const [dx, dy] of [
+			[1, 1],
+			[2, 2],
+			[3, 3],
+			[2, 4],
+			[1, 5],
+		])
+			rect(ctx, x + dx, y + dy, 1, 1, accent);
+		if (!active || Math.floor(time * 3) % 2) rect(ctx, x + 6, y + 5, 4, 1, PALETTE.w);
+	},
+	// A beacon, rings going out from it while it's in use
+	dish: (ctx, x, y, { active, accent, time }) => {
+		rect(ctx, x + 7, y + 3, 1, 1, PALETTE.w);
+		if (!active) return;
+
+		const ring = Math.floor(time * 4) % 3;
+
+		rect(ctx, x + 6 - ring * 2, y + 3, 1, 1, accent);
+		rect(ctx, x + 8 + ring * 2, y + 3, 1, 1, accent);
+		rect(ctx, x + 7, y + 3 - ring, 1, 1, accent);
+		rect(ctx, x + 7, y + 3 + ring, 1, 1, accent);
+	},
+};
+
+const drawCompactUnit = (ctx, at, room, { active, accent, time, load = 0, failures = 0, hue }) => {
+	const top = at.y - systemTallOf(room);
+
+	box(ctx, at.x - 9, top, 19, systemTallOf(room), PALETTE.d);
+	rect(ctx, at.x - 7, top + 2, 15, 7, '#0d1218');
+	COMPACT_ICONS[room.key](ctx, at.x - 7, top + 2, { active, accent, time });
+	rect(ctx, at.x - 7, top + 11, 12, 1, PALETTE.m);
+	rect(ctx, at.x - 7, top + 11, Math.round(12 * load), 1, `hsl(${hue} 75% 64%)`);
+	rect(ctx, at.x + 6, top + 10, 2, 3, failures > 0 && Math.floor(time * 3) % 2 ? PALETTE.r : PALETTE.m);
+};
+
+// A system's room: one engine's full size, with its console and its spent stock; more engines' compact
 export const drawSystem = (ctx, art, label, room, { time, system }) => {
 	floor(ctx, art, room);
 
@@ -1056,6 +1127,12 @@ export const drawSystem = (ctx, art, label, room, { time, system }) => {
 
 				rect(ctx, at.x, at.y + 2, door.x - at.x, 1, `hsl(${hue} 30% 28%)`);
 				rect(ctx, door.x, Math.min(at.y + 2, door.y), 1, Math.abs(door.y - at.y - 2), `hsl(${hue} 30% 28%)`);
+				if (room.compact) {
+					compactMount(ctx, art, room, at, { active: system.active, accent, time });
+					drawCompactUnit(ctx, at, room, { ...system, accent, time });
+
+					return;
+				}
 				mount(ctx, art, room, at, { active: system.active, accent, time });
 				SYSTEM_ART[room.key](ctx, at, { active: system.active, accent, time, masts: system.masts });
 				usagePanel(ctx, art(panelAt(room)), { ...system, faulty: system.failures > 0, time });

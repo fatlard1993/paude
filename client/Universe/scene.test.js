@@ -786,3 +786,21 @@ test('each engine has its own reading, editing, commands and web beside it, none
 			).toBe(false);
 	}
 });
+
+test("more engines' systems go compact, so the ship keeps its depth and its length and the projects their shape", () => {
+	const bayWith = count =>
+		shipWith(
+			['here', 'https://vps', 'https://work'].slice(0, count).map(key => ({
+				...answer(key, key === 'here' ? [session({ id: 'a', project: 'paude' })] : [], {
+					projects: key === 'here' ? ['paude', 'site', 'notes'] : [],
+				}),
+				fuel: { account: 'x' },
+			})),
+		).layout.engineering;
+	const depthWith = count => bayWith(count).d;
+	const widthWith = count => bayWith(count).w;
+
+	expect(depthWith(2)).toBeCloseTo(depthWith(1));
+	expect(depthWith(3)).toBeCloseTo(depthWith(1));
+	expect(widthWith(3)).toBeCloseTo(widthWith(1));
+});

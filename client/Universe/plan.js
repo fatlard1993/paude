@@ -8,7 +8,13 @@ const DECK_BOTTOM = 2.4;
 const PER_REACTOR = 2.4;
 // A system's room in the engine bay
 const SYSTEM = { w: 2.6, d: FACE + 2.3 };
-const ENGINE_BAY_W = ENGINEERING_W + 2 * SYSTEM.w;
+const ENGINE_BAY_W = ENGINEERING_W + SYSTEM.w;
+// One engine's systems full size in a column down the bay; more engines' compact, half as wide and shallower, two over
+// two beside each reactor, so the bay keeps one engine's width and the hull its depth for up to four engines (the
+// ship's zoom steps by whole numbers, so a little more length can halve it)
+const COMPACT = { w: SYSTEM.w / 2, d: FACE + 1.2 };
+// How tall a system's unit stands from its foot, in art pixels
+export const systemTallOf = room => (room.compact ? 15 : 33);
 const HANGAR_W = 2.6;
 // The shipping bay, a gondola hung under the belly, what's staged to ship and the pad it leaves from
 const GONDOLA_D = FACE + 2.3;
@@ -224,9 +230,13 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 	// stacked beside them, any more it needs shared out among its levels
 	const depth = { top: DECK_TOP, bottom: DECK_BOTTOM };
 	const engineCount = Math.max(1, engines.length);
+	const compact = engineCount > 1;
+	const unit = compact ? COMPACT : SYSTEM;
+	const across = compact ? 2 : 1;
+	const bayW = ENGINE_BAY_W;
 	const need = Math.max(
 		FACE + 0.6 + engineCount * PER_REACTOR,
-		Math.max(SYSTEMS.length, engineCount * 2) * SYSTEM.d + 0.4,
+		Math.max(SYSTEMS.length * SYSTEM.d, ((engineCount * SYSTEMS.length) / across) * unit.d) + 0.4,
 	);
 	const base = depth.top + hall + depth.bottom;
 	const extraDepthOf = levels => Math.max(0, need - levels * base) / levels;
@@ -281,7 +291,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 	};
 	// Another level only while it shortens the ship: one that only adds empty decks under the core and the bridge isn't
 	// worth its depth
-	const long = ({ width, bridgeW }) => ENGINE_BAY_W + width + bridgeW;
+	const long = ({ width, bridgeW }) => bayW + width + bridgeW;
 	let layout = plan(1);
 
 	for (let levels = 2; levels <= MAX_LEVELS && long(layout) > ASPECT * layout.total; levels++) {
@@ -297,7 +307,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 	depth.bottom += extraDepthOf(levels) / 2;
 
 	const level = depth.top + hall + depth.bottom;
-	const left = -(ENGINE_BAY_W + width + bridgeW) / 2;
+	const left = -(bayW + width + bridgeW) / 2;
 	const top = -total / 2;
 	const spines = Array.from({ length: levels }, (_, index) => {
 		const hallTop = top + index * level + depth.top;
@@ -305,7 +315,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		return { hallTop, lane: hallTop + HALL_FACE + HALL_LANE / 2 };
 	});
 	const { lane } = spines[0];
-	const middle = left + ENGINE_BAY_W;
+	const middle = left + bayW;
 	const right = middle + width + bridgeW;
 	// Each placed on its deck: the upper of a level's pair above its spine (its door on it), the lower below, open onto
 	// it; only the very top and bottom decks against the hull
@@ -388,7 +398,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		name: 'engines',
 		x: left,
 		y: top,
-		w: ENGINE_BAY_W,
+		w: bayW,
 		d: total,
 		face: FACE,
 		door: { x: middle, y: lane, side: 'right', lane },
@@ -441,16 +451,16 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 
 		rooms.push({ ...placed, props: furnish(placed) });
 	}
-	// Each engine's reading, editing, commands and web in its share of the engine bay beside its reactor, two over two,
-	// each with a main of its own from that reactor. Named for their engine where there's more than one, as rooms are
+	// Each engine's reading, editing, commands and web in its share of the engine bay beside its reactor, each with a main of its own from that reactor. Named for their engine where there's more than one, as rooms are
 	// found by name.
 	const slot = (total - 0.4) / engineCount;
-	const row = Math.max(SYSTEM.d, slot / 2);
+	const rows = SYSTEMS.length / across;
+	const row = Math.max(unit.d, slot / rows);
 
 	engines.forEach((engine, nth) => {
 		SYSTEMS.forEach((which, index) => {
-			const x = left + ENGINEERING_W + (index % 2) * SYSTEM.w;
-			const y = Math.min(top + nth * slot + Math.floor(index / 2) * row, top + total - SYSTEM.d);
+			const x = left + ENGINEERING_W + (index % across) * unit.w;
+			const y = Math.min(top + nth * slot + Math.floor(index / across) * row, top + total - unit.d);
 
 			rooms.push({
 				...system(which),
@@ -458,11 +468,12 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 				engine: engine.key,
 				x,
 				y,
-				w: SYSTEM.w,
-				d: SYSTEM.d,
+				w: unit.w,
+				d: unit.d,
+				compact,
 				face: FACE,
-				door: { x: x + SYSTEM.w / 2, y: y + SYSTEM.d, side: 'bottom', lane },
-				hull: { top: nth === 0 && index < 2 },
+				door: { x: x + unit.w / 2, y: y + unit.d, side: 'bottom', lane },
+				hull: { top: nth === 0 && index < across },
 				joined: { left: true, right: true },
 				within: engineering,
 				// Part of the engine bay rather than a room of its own, so no sign of its own over it
@@ -549,10 +560,18 @@ export const stockAt = (room, uses = 0) => {
 };
 
 // The usage console by a system's door, by its foot
-// Where a system's unit stands in its room, by its foot
-export const systemFootOf = room => ({ x: room.x + (room.w - 0.9) / 2, y: room.y + FACE + 2.1 });
 
-export const panelAt = room => ({
-	x: room.door.x - 0.95,
-	y: room.door.side === 'bottom' ? room.y + room.d - 0.35 : room.y + FACE + 0.75,
-});
+// Where a system's unit stands in its room, by its foot
+export const systemFootOf = room =>
+	room.compact
+		? { x: room.x + room.w / 2, y: room.y + FACE + 1 }
+		: { x: room.x + (room.w - 0.9) / 2, y: room.y + FACE + 2.1 };
+
+// A compact unit's console is on its own face
+export const panelAt = room =>
+	room.compact
+		? systemFootOf(room)
+		: {
+				x: room.door.x - 0.95,
+				y: room.door.side === 'bottom' ? room.y + room.d - 0.35 : room.y + FACE + 0.75,
+			};

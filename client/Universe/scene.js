@@ -29,6 +29,7 @@ import {
 	seatOf,
 	stockAt,
 	systemFootOf,
+	systemTallOf,
 } from './plan';
 import {
 	DESK_PITCH,
@@ -2220,7 +2221,7 @@ export default class Ship {
 				{ x: across, y: core },
 				{ x: across, y: main },
 				{ x: at.x, y: main },
-				{ x: at.x, y: at.y - 33 },
+				{ x: at.x, y: at.y - systemTallOf(room) },
 			],
 			outlet: { x: at.x, y: at.y + 2 },
 		};
