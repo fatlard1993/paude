@@ -233,8 +233,7 @@ const wallTop = (ctx, from, to) => {
 };
 
 // A hall: its grated floor, the far wall's face with the doors above it, and down its middle lights that run while
-// anything aboard is working. Through a project's machine (`gaps`, spans of art pixels across) it's a catwalk with a
-// rail, no wall behind it or before it.
+// anything aboard is working. Through a room (`gaps`, spans of art pixels across) it has no wall behind it or before it.
 export const drawHall = (ctx, art, hall, { doors, time, running, gaps = [] }) => {
 	floor(ctx, art, hall, HALL_FLOOR);
 
@@ -265,18 +264,6 @@ export const drawHall = (ctx, art, hall, { doors, time, running, gaps = [] }) =>
 				}
 			},
 		},
-		...gaps.map(gap => ({
-			y: hall.lane - 0.25,
-			draw: () => {
-				const [top, bottom] = [lane - 5, lane + 4];
-
-				rect(ctx, gap.from, top, gap.to - gap.from, bottom - top, 'rgba(10, 13, 19, 0.55)');
-				for (let y = top + 1; y < bottom; y += 2) rect(ctx, gap.from, y, gap.to - gap.from, 1, '#2a3242');
-				rect(ctx, gap.from, top - 6, gap.to - gap.from, 1, PALETTE.l);
-				for (let x = gap.from + 2; x < gap.to; x += 6) rect(ctx, x, top - 6, 1, 6, PALETTE.m);
-				rect(ctx, gap.from, bottom, gap.to - gap.from, 1, PALETTE.k);
-			},
-		})),
 	];
 };
 

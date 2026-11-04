@@ -1308,7 +1308,7 @@ export default class Ship {
 
 		for (const hall of this.layout.halls) {
 			const doors = hall.airlock ? [{ ...hall.airlock, open: near(hall.airlock), lamp: PALETTE.r }] : [];
-			// Past the ship's bare machinery the hall is an open catwalk
+			// Through the rooms, no walls
 			const gaps = this.layout.rooms.map(room => ({
 				from: art({ x: room.x, y: 0 }).x,
 				to: art({ x: room.x + room.w, y: 0 }).x,
