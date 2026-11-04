@@ -139,7 +139,7 @@ const islandsOf = (bays, { from, top, rows, lounge, agents = {} }) => {
 // The hull round the rooms, the bow's nose beyond them, and an engine's nacelle out past the stern
 export const RIM = 0.5;
 export const NOSE = 2.6;
-export const NACELLE = 1.8;
+export const NACELLE = 1.3;
 
 // Each engine's own systems, beside its reactor in the engine bay, two over two
 const SYSTEMS = [

@@ -330,7 +330,8 @@ const drawFins = (ctx, image, engineering, { time = 0 } = {}) => {
 };
 
 // An engine out past the stern behind its reactor, its plume as long as its work is heavy (`thrust`, 0 to 1),
-// sputtering red and short at a usage limit
+// sputtering red and short at a usage limit: a housing faired into the hull, its chamber with a pump riding on it,
+// a gimbal ring, and a wide bell banded with cooling rings, its throat glowing while it burns
 const drawEngine = (ctx, shape, { y, hue, thrust, limited, time }) => {
 	const front = shape.leftAt(y) + 4;
 	const back = front - Math.round(NACELLE * UNIT.x);
@@ -339,17 +340,19 @@ const drawEngine = (ctx, shape, { y, hue, thrust, limited, time }) => {
 	const sputter = Math.sin(time * 9) > 0.6 ? 6 : 2;
 	const length = limited ? sputter : Math.round(8 + thrust * 36) + flicker * 2;
 	const color = limited ? 'hsl(4 70% 45%)' : `hsl(${hue} 75% ${48 + thrust * 14}%)`;
-	const bell = 8;
+	const bell = 12;
 	const mouth = back - bell;
+	const fairing = 9;
+	const chamber = 5;
 
 	if (burning) {
 		ctx.globalAlpha = 0.1 + thrust * 0.1;
-		pixelEllipse(ctx, mouth - length / 2, y, length / 2 + 10, 11, color);
+		pixelEllipse(ctx, mouth - length / 2, y, length / 2 + 10, 12, color);
 		ctx.globalAlpha = 1;
 	}
 	for (let step = 0; step < length; step++) {
 		const part = step / length;
-		const spread = Math.max(1, Math.round(8 * (1 - part) ** 0.7));
+		const spread = Math.max(1, Math.round(9 * (1 - part) ** 0.7));
 
 		rect(ctx, mouth - step - 1, y - spread, 1, spread * 2 + 1, color);
 		if (!limited && part < 0.6)
@@ -358,37 +361,55 @@ const drawEngine = (ctx, shape, { y, hue, thrust, limited, time }) => {
 	if (burning)
 		for (let diamond = 6 + (Math.floor(time * 12) % 2); diamond < length * 0.7; diamond += 9)
 			rect(ctx, mouth - diamond - 1, y - 1, 2, 3, '#ffffff');
-	const shades = [PALETTE.k, PALETTE.l, '#8994aa', PALETTE.l, PALETTE.m, PALETTE.m, '#3a4357', '#3a4357'];
 
-	for (let row = -8; row <= 8; row++) {
-		const away = Math.abs(row);
-		const shade =
-			(away === 8 && PALETTE.k) ||
-			(row < 0 ? shades[8 - away] : ['#343c4e', '#2b3242', PALETTE.d, '#1f2533'][Math.min(3, Math.floor(row / 2))]);
+	// The fairing: deep where it meets the hull, tapering back to the chamber, lit from above
+	for (let x = back + fairing; x < front; x++) {
+		const half = chamber + 2 + Math.round(((x - back - fairing) / (front - back - fairing)) * 5);
 
-		rect(ctx, back, y + row, front - back, 1, shade);
+		rect(ctx, x, y - half - 1, 1, half * 2 + 3, PALETTE.k);
+		rect(ctx, x, y - half, 1, half, PALETTE.m);
+		rect(ctx, x, y, 1, half + 1, '#2b3242');
+		rect(ctx, x, y - half, 1, 1, '#8994aa');
 	}
-	for (let rib = back + 5; rib < front - 3; rib += 7) {
-		rect(ctx, rib, y - 7, 1, 15, '#1b2130');
-		rect(ctx, rib + 1, y - 7, 1, 1, '#9aa5bb');
-	}
-	rect(ctx, back + 2, y - 7, 2, 15, `hsl(${hue} 55% ${limited ? 30 : 45}%)`);
+	rect(ctx, front - 6, y - 4, 1, 9, '#1b2130');
+	rect(ctx, back + fairing + 3, y - chamber - 1, front - back - fairing - 9, 1, `hsl(${hue} 55% ${limited ? 30 : 45}%)`);
+	// The chamber, a round tube shaded top to bottom, and the pump on its back with its feed line down into it
+	const shades = ['#8994aa', PALETTE.l, PALETTE.m, PALETTE.m, '#3a4357', '#343c4e', '#2b3242', PALETTE.d, '#1f2533'];
+
+	for (let row = -chamber; row <= chamber; row++)
+		rect(ctx, back + 2, y + row, fairing - 2, 1, Math.abs(row) === chamber ? PALETTE.k : shades[Math.round(((row + chamber) / (chamber * 2)) * (shades.length - 1))]);
+	box(ctx, back + 3, y - chamber - 4, 5, 4, PALETTE.l);
+	rect(ctx, back + 4, y - chamber - 3, 1, 1, burning && Math.floor(time * 6) % 2 ? `hsl(${hue} 90% 72%)` : PALETTE.d);
+	rect(ctx, back + 8, y - chamber - 2, 3, 1, PALETTE.k);
+	// The gimbal ring
+	rect(ctx, back, y - chamber - 2, 2, chamber * 2 + 5, PALETTE.k);
+	rect(ctx, back + 1, y - chamber - 1, 1, chamber * 2 + 3, '#6c7790');
+	// The bell, flaring out wide, a cooling ring every few pixels, its inner throat glowing back from the burn
 	for (let step = 0; step < bell; step++) {
-		const flare = 6 + Math.round(step * 0.55);
+		const flare = 4 + Math.round((step / (bell - 1)) ** 1.4 * 8);
 		const x = back - 1 - step;
+		const ring = step % 4 === 2;
 
 		rect(ctx, x, y - flare - 1, 1, flare * 2 + 3, PALETTE.k);
-		rect(ctx, x, y - flare, 1, flare * 2 + 1, step < 2 ? '#4b5468' : '#2a3040');
-		rect(ctx, x, y - flare, 1, 1, '#6c7790');
+		rect(ctx, x, y - flare, 1, flare, ring ? '#5a6478' : '#3a4357');
+		rect(ctx, x, y, 1, flare + 1, ring ? '#343c4e' : '#232a38');
+		rect(ctx, x, y - flare, 1, 1, '#8994aa');
+		if (burning && step < 4) {
+			ctx.globalAlpha = 0.55 - step * 0.12;
+			rect(ctx, x, y - 2, 1, 5, `hsl(${hue} 90% 72%)`);
+			ctx.globalAlpha = 1;
+		}
 	}
-	const lip = 6 + Math.round((bell - 1) * 0.55);
+	const lip = 12;
 
 	rect(ctx, mouth, y - lip, 1, lip * 2 + 1, burning ? `hsl(${hue} 90% 72%)` : PALETTE.m);
-	if (burning) rect(ctx, back - 2, y - 4, 1, 9, `hsl(${hue} 90% 80%)`);
-	rect(ctx, front - 2, y - 11, 6, 3, PALETTE.k);
-	rect(ctx, front - 1, y - 10, 4, 1, PALETTE.l);
-	rect(ctx, front - 2, y + 9, 6, 3, PALETTE.k);
-	rect(ctx, front - 1, y + 10, 4, 1, PALETTE.m);
+	// Struts from the hull to the fairing, above and below
+	for (const side of [-1, 1]) {
+		const at = y + side * (chamber + 6);
+
+		rect(ctx, front - 1, at - 1, 5, 3, PALETTE.k);
+		rect(ctx, front, at, 3, 1, side < 0 ? PALETTE.l : PALETTE.m);
+	}
 };
 
 const FUEL = '#f0b43c';
