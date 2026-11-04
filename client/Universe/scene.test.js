@@ -826,3 +826,25 @@ test('a walk across the bridge runs along the fronts of its consoles and up its 
 				expect(point.x === wall || Math.abs(point.y - standingOf(made.bridge, point.y)) < 1e-9).toBe(true);
 		}
 });
+
+test('the transporter is a room to press: looked at, its own flyout naming the other ships to beam to', async () => {
+	const { ROOMS, flyoutOf } = await import('./flyout');
+	const made = new Ship();
+
+	made.resize(800, 600);
+	made.fleet = [{ key: 'account:b', name: 'vps', needs: 0, news: 1, working: 0 }];
+	made.update([answer('here', [session({ id: 'a', project: 'paude' })], { projects: ['paude'] })]);
+	run(made, 1);
+
+	const room = made.layout.transporter;
+
+	expect(ROOMS.transporter).toBeDefined();
+	expect(made.roomOf('transporter')).toBe(room);
+	made.look('transporter');
+	expect(made.looking).toBe('transporter');
+
+	const flyout = flyoutOf({ kind: 'transporter', room }, made);
+
+	expect(flyout.title).toBe('Transporter');
+	expect(flyout.rows.map(([name]) => name)).toEqual(['vps']);
+});
