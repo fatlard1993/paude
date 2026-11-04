@@ -46,27 +46,35 @@ export const housingOf = part => {
 	return { x, w, middle: x + w / 2, floor: part.y + part.d - 0.75, part };
 };
 
-// The lounge, where sessions that have stopped wait: couches of two, two to a row, facing the viewer as greys at their
+// The lounge, where sessions that have stopped wait: couches of two in rows, facing the viewer as greys at their
 // desks do, the TV on the near wall with its back to us, so only its frame and the light it throws up at them show
-export const COUCH_SEAT = 1.15;
-const COUCH_GAP = 0.4;
-const LOUNGE_ROW = 1.7;
-const PER_COUCH_ROW = 4;
+export const COUCH_SEAT = 0.9;
+const COUCH_GAP = 0.3;
+const LOUNGE_ROW = 1.45;
+const MOST_COLUMNS = 8;
 
-const loungeColumns = count => Math.min(Math.max(count, 2), PER_COUCH_ROW);
+// Couches of two side by side, as many to a row as keeps the lounge about as wide as it is deep
+const loungeColumns = count =>
+	Math.max(2, Math.min(MOST_COLUMNS, 2 * Math.ceil(Math.sqrt(Math.max(count, 1) * 1.5) / 2)));
 
-export const loungeWidth = count => Math.max(BAY_MIN, loungeColumns(count) * COUCH_SEAT + COUCH_GAP + 1.6);
+const loungeSpan = columns => columns * COUCH_SEAT + (columns / 2 - 1) * COUCH_GAP;
 
-export const loungeDepth = count => FACE + 0.6 + Math.ceil(Math.max(count, 1) / PER_COUCH_ROW) * LOUNGE_ROW + 1.1;
+export const loungeWidth = count => Math.max(BAY_MIN, loungeSpan(loungeColumns(count)) + 1.6);
+
+export const loungeDepth = count =>
+	FACE + 0.6 + Math.ceil(Math.max(count, 1) / loungeColumns(count)) * LOUNGE_ROW + 1.1;
 
 export const loungeSeatAt = (lounge, index) => {
 	const columns = loungeColumns(lounge.count);
-	const column = index % PER_COUCH_ROW;
-	const span = columns * COUCH_SEAT + (columns > 2 ? COUCH_GAP : 0);
+	const column = index % columns;
 
 	return {
-		x: lounge.x + (lounge.w - span) / 2 + (column + 0.5) * COUCH_SEAT + (column >= 2 ? COUCH_GAP : 0),
-		y: lounge.y + FACE + 1.9 + Math.floor(index / PER_COUCH_ROW) * LOUNGE_ROW,
+		x:
+			lounge.x +
+			(lounge.w - loungeSpan(columns)) / 2 +
+			(column + 0.5) * COUCH_SEAT +
+			Math.floor(column / 2) * COUCH_GAP,
+		y: lounge.y + FACE + 1.9 + Math.floor(index / columns) * LOUNGE_ROW,
 	};
 };
 
@@ -74,7 +82,7 @@ export const loungeSeatAt = (lounge, index) => {
 // where its empties go, the couches standing too close together for anything between them
 export const couchEndOf = (lounge, index) => {
 	const columns = loungeColumns(lounge.count);
-	const column = index % PER_COUCH_ROW;
+	const column = index % columns;
 	const side = column < (columns - 1) / 2 ? -1 : 1;
 
 	return { side, seat: loungeSeatAt(lounge, index - column + (side < 0 ? 0 : columns - 1)) };
