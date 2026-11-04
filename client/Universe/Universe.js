@@ -20,6 +20,7 @@ import { identity, serverName } from '../identity';
 import { hueOf, onServersChange, setServers } from '../servers';
 import { openMenu } from '../menu';
 import { LIFETIMES, WARM_LIFETIMES } from '../../shared/lifetimes';
+import tokenCount from '../../shared/tokenCount';
 import { confirmDeleteSession } from '../confirmDialog';
 import { sessionMenu } from '../sessionActions';
 import { LOCAL, shipsOf } from './shown';
@@ -1340,7 +1341,7 @@ export default class Universe extends View {
 				title: titled(room.name),
 				rows: aboard.tanks.map(({ plan, level, rate }) => [
 					`fuel${plan ? ` (${plan})` : ''}`,
-					`${level === null ? 'size not known yet' : `${Math.round(level * 100)}% left`}, burning ${Math.round(rate / 1000)}k a minute`,
+					`${level === null ? 'size not known yet' : `${Math.round(level * 100)}% left`}, burning ${tokenCount(rate)} a minute`,
 				]),
 				items: aboard.engines.map(engine => ({
 					label: engine.name,

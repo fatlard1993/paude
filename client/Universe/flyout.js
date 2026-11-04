@@ -2,6 +2,7 @@ import { relativeTime } from '@vanilla-bean/components/utils/date';
 
 import { facilitiesFor, facilityOf } from '../../shared/facilities';
 import { LIFETIMES } from '../../shared/lifetimes';
+import tokenCount from '../../shared/tokenCount';
 import { BRIDGE, LOUNGE } from './scene';
 
 export const STATUS = { working: 'working', waiting: 'needs you', ready: 'ready for a prompt', stopped: 'stopped' };
@@ -127,7 +128,7 @@ const FLYOUTS = {
 				['where', [session.project, session.engine.name].filter(Boolean).join(' on ')],
 				context && [
 					'context',
-					`${Math.round(context.fill * 100)}% of ${Math.round(context.window / 1000)}k${context.fill >= 0.75 ? ', getting full' : ''}`,
+					`${Math.round(context.fill * 100)}% of ${tokenCount(context.window)}${context.fill >= 0.75 ? ', getting full' : ''}`,
 				],
 				session.limit && ['usage limit', limitWords(session.limit.resetAt)],
 				session.todos?.length && ['todos', todoWords(session.todos)],
@@ -274,14 +275,12 @@ const FLYOUTS = {
 				hint: "One tank for every machine that doesn't say which account it runs on",
 			};
 
-		const tokens = count => (count >= 1e6 ? `${(count / 1e6).toFixed(1)}M` : `${Math.round(count / 1000)}k`);
-
 		return {
 			title: tank.plan ? `Fuel: ${tank.plan}` : 'Fuel',
 			rows: [
 				['feeds', tank.engines.map(({ name }) => name).join(', ')],
-				['burned', `${tokens(tank.burned)} in the last five hours`],
-				['burning', `${tokens(tank.rate)} a minute`],
+				['burned', `${tokenCount(tank.burned)} in the last five hours`],
+				['burning', `${tokenCount(tank.rate)} a minute`],
 				[
 					'left',
 					(tank.empty && 'none: a usage limit is in force') ||

@@ -1,3 +1,4 @@
+import tokens from '../../shared/tokenCount';
 import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { getTimeline, getVerification } from '../api';
 import { button, closeButton, element, icon } from '../dom';
@@ -19,7 +20,6 @@ const TOOL_ICONS = {
 	TodoWrite: 'list-check',
 };
 
-const tokens = count => (count >= 1000 ? `${Math.round(count / 1000)}k` : String(count));
 
 const duration = (from, to) => {
 	const seconds = Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 1000));
