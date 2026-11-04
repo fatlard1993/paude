@@ -1283,8 +1283,8 @@ export default class Ship {
 			// The sky's stream in art pixels, so the window's stars move with the sky's
 			drift: this.drift / this.camera.zoom,
 			tanks: this.tanks,
-			engines: this.engines.map(engine => ({
-				y: this.art(engine.reactor).y - 11,
+			engines: this.engines.map((engine, index) => ({
+				y: this.thrusterAt(index),
 				hue: engine.hue ?? 215,
 				thrust: Math.min(
 					1,
@@ -1325,11 +1325,12 @@ export default class Ship {
 			...drawEngineering(ctx, art, label, this.layout.engineering, {
 				time: this.time,
 				systems: Object.values(this.layout.systems),
-				engines: this.engines.map(engine => {
+				engines: this.engines.map((engine, index) => {
 					const tank = this.tanks.findIndex(({ engines }) => engines.includes(engine));
 
 					return {
 						...engine,
+						thruster: this.thrusterAt(index),
 						working: sessions.filter(session => session.engine.key === engine.key && session.status === 'working')
 							.length,
 						outage: engine.limit ? countdown(engine.limit.resetAt, Date.now()) : undefined,
@@ -2112,6 +2113,14 @@ export default class Ship {
 				plans: Boolean(this.systems.get('tower')?.active),
 			}),
 		];
+	}
+
+	// Where an engine's thruster sits on the stern, in art pixels down: the engines spread evenly down the hull and
+	// centered on it, a lone one at its middle, wherever their reactors stand inside
+	thrusterAt(index) {
+		const { top, bottom } = this.layout.building;
+
+		return this.art({ x: 0, y: top + ((bottom - top) * (index + 0.5)) / Math.max(1, this.engines.length) }).y;
 	}
 
 	// The system in a system's room, as its own engine has it

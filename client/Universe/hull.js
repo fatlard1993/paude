@@ -775,8 +775,19 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, systems 
 						}
 					}
 				}
-				rect(ctx, from.x, at.y - REACTOR.shaft - 1, at.x - 11 - from.x, 3, PALETTE.k);
-				rect(ctx, from.x, at.y - REACTOR.shaft, at.x - 11 - from.x, 1, PALETTE.l);
+				// Its shaft back through the stern to its thruster, jogging to the thruster's height just inside the wall
+				const shaft = at.y - REACTOR.shaft;
+				const thruster = engine.thruster ?? shaft;
+				const jog = from.x + 5;
+
+				for (const [x, y, w, h] of [
+					[from.x, thruster, jog - from.x, 1],
+					[jog, Math.min(thruster, shaft), 1, Math.abs(thruster - shaft) + 1],
+					[jog, shaft, at.x - 11 - jog, 1],
+				]) {
+					rect(ctx, x - (h > 1 ? 1 : 0), y - (w > 1 ? 1 : 0), w + (h > 1 ? 2 : 0), h + (w > 1 ? 2 : 0), PALETTE.k);
+					rect(ctx, x, y, w, h, PALETTE.l);
+				}
 				rect(ctx, at.x + 9, at.y - 8, 4, 2, PALETTE.k);
 				rect(ctx, at.x + 12, Math.min(at.y - 8, door.y), 2, Math.abs(door.y - at.y + 8) + 1, PALETTE.k);
 				rect(ctx, at.x + 12, door.y, door.x - at.x - 12, 2, PALETTE.k);
