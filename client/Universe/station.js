@@ -350,8 +350,8 @@ export const drawIsland = (ctx, { from, to, y }, { color }) => {
 };
 
 // A grey's seat at its island, `at` its foot: its screen on a stand before it, large enough to read, showing what it's
-// at or what needs you; its todos in lamps along the console's front under it, a keyboard, its branch's pennant
-export const drawSeat = (ctx, at, { screen, engineColor, time, seed, branch, todos = [], frost }) => {
+// at or what needs you; its todos in lamps along the console's front under it, and a keyboard
+export const drawSeat = (ctx, at, { screen, engineColor, time, seed, todos = [], frost }) => {
 	const { x, y } = at;
 
 	drawTodos(ctx, { x: x - 13, y: y - 7, w: 26 }, todos, time);
@@ -363,7 +363,6 @@ export const drawSeat = (ctx, at, { screen, engineColor, time, seed, branch, tod
 	rect(ctx, x - 16, y - 30, 17, 13, PALETTE.d);
 	drawScreen(ctx, { x: x - 15, y: y - 29, w: 15, h: 11 }, { ...screen, time, seed });
 	if (frost) drawFrost(ctx, { x: x - 17, y: y - 31, w: 19, h: 15 });
-	if (branch !== undefined) drawPennant(ctx, { x: x + 2, y: y - 31, pole: 10 }, branch);
 };
 
 // A branch's pennant on its pole, `x` and `y` the pole's top, in the branch's hue (null for none)

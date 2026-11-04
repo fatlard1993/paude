@@ -2127,8 +2127,6 @@ export default class Ship {
 			return [...(walker.length ? walker : this.loungerParts(ctx, worker)), ...this.homeSeatParts(ctx, worker)];
 		const engineColor = `hsl(${session.engine.hue ?? 215} 45% 50%)`;
 		const at = this.art({ x: seat.x, y: seat.y + 0.2 });
-		const checkout = this.checkoutOf(session);
-		const branch = checkout && !checkout.trunk ? checkout.branch && branchHue(checkout.branch) : undefined;
 		// Its terminal says what it's at, or what needs you, in place of a badge over its head: news while there's
 		// something new it hasn't been looked at for
 		const status = !working && this.needs(session) === 'unread' ? { ...screen, kind: 'news' } : screen;
@@ -2173,7 +2171,6 @@ export default class Ship {
 						engineColor,
 						time: this.time,
 						seed: worker.seed,
-						branch,
 						todos: session.todos,
 						frost: session.status === 'ready' && session.context?.warm === false,
 					});
@@ -3507,8 +3504,7 @@ export default class Ship {
 		}));
 	}
 
-	// A rug in its branch's hue under each seat working in a worktree of its own, those in the same one joined into one
-	// rug; and hazard tape round a seat whose session asks nothing before it acts
+	// Hazard tape round a seat whose session asks nothing before it acts
 	drawMats(ctx) {
 		for (const { seat, session, lounging } of this.workers.values()) {
 			if (!seat || lounging || seat.housing || session.mode !== 'bypassPermissions') continue;
@@ -3517,44 +3513,6 @@ export default class Ship {
 			const to = this.art({ x: seat.x + DESK_PITCH / 2 - 0.1, y: seat.y + 0.45 });
 
 			ctx.drawImage(tapeOf(from, to), from.x, from.y);
-		}
-
-		const mats = [...this.workers.values()]
-			.filter(({ seat, session }) => seat && !seat.housing && this.checkoutOf(session)?.worktree)
-			.map(({ seat, session }) => ({
-				x: seat.x - DESK_PITCH / 2,
-				y: seat.y - DESK_ROW + 0.5,
-				checkout: session.checkout,
-				hue: branchHue(this.checkoutOf(session).branch ?? session.checkout),
-			}));
-		const beside = (mat, across, down) =>
-			mats.some(
-				other =>
-					other.checkout === mat.checkout &&
-					Math.abs(other.x - mat.x - across * DESK_PITCH) < 0.01 &&
-					Math.abs(other.y - mat.y - down * DESK_ROW) < 0.01,
-			);
-
-		for (const mat of mats) {
-			const from = this.art(mat);
-			const to = this.art({ x: mat.x + DESK_PITCH, y: mat.y + DESK_ROW });
-			const [left, right, top, bottom] = [
-				!beside(mat, -1, 0),
-				!beside(mat, 1, 0),
-				!beside(mat, 0, -1),
-				!beside(mat, 0, 1),
-			];
-			const inset = { left: from.x + (left ? 2 : 0), top: from.y + (top ? 2 : 0) };
-
-			rect(ctx, from.x, from.y, to.x - from.x, to.y - from.y, `hsl(${mat.hue} 35% 32%)`);
-			rect(
-				ctx,
-				inset.left,
-				inset.top,
-				to.x - (right ? 2 : 0) - inset.left,
-				to.y - (bottom ? 2 : 0) - inset.top,
-				`hsl(${mat.hue} 30% 21%)`,
-			);
 		}
 	}
 
