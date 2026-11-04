@@ -50,7 +50,10 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose 
 	const tabs = element('div', 'tabs');
 	const body = element('div', 'body');
 	const panels = new Map();
-	const verbs = VERBS.filter(({ key, allowed }) => allowed() && (key !== 'terminal' || live));
+	// Another paude's session docks its terminal alone: the other panels read this server's own sessions
+	const verbs = session.engine.remote
+		? VERBS.filter(({ key }) => key === 'terminal')
+		: VERBS.filter(({ key, allowed }) => allowed() && (key !== 'terminal' || live));
 	let connection;
 	let showing;
 

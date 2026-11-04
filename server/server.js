@@ -2,6 +2,7 @@ import { serve } from '@vanilla-bean/components/app';
 
 import router from './router/router';
 import attachSocket from './sessions/attachSocket';
+import remoteAttach from './sessions/remoteAttach';
 import sideShell from './sessions/sideShell';
 
 export default {
@@ -16,12 +17,17 @@ export default {
 				maxPayloadLength: 1024 * 1024,
 				// Claude's redraws are mostly repeated escape sequences; compressed, they cost a fraction on a slow link
 				perMessageDeflate: true,
+				open(socket) {
+					if (socket.data.route === 'remoteAttach') remoteAttach.open(socket);
+				},
 				message(socket, message) {
-					if (socket.data.route === 'attach') attachSocket.message(socket, message);
+					if (socket.data.route === 'remoteAttach') remoteAttach.message(socket, message);
+					else if (socket.data.route === 'attach') attachSocket.message(socket, message);
 					else if (socket.data.route === 'shell') sideShell.message(socket, message);
 				},
 				close(socket) {
-					if (socket.data.route === 'attach') attachSocket.close(socket);
+					if (socket.data.route === 'remoteAttach') remoteAttach.close(socket);
+					else if (socket.data.route === 'attach') attachSocket.close(socket);
 					else if (socket.data.route === 'shell') sideShell.close(socket);
 				},
 			},

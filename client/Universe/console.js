@@ -30,7 +30,7 @@ export default class TerminalPanel {
 		this.selected.hidden = true;
 		this.selected.append(
 			button('Copy', () => copySelection(this.terminal), { icon: 'copy', className: 'variant-flat' }),
-			...(canNote() && comment
+			...(canNote() && comment && !session.engine.remote
 				? [button('Comment', () => this.commentOnSelection(), { icon: 'comment', className: 'variant-flat' })]
 				: []),
 		);
@@ -79,6 +79,7 @@ export default class TerminalPanel {
 
 		const { session } = this;
 		const { cols = 100, rows = 30 } = session.screen ?? {};
+		const { remote } = session.engine;
 		// See-through, so the ship shows behind it
 		const terminal = new Terminal({
 			...xtermOptions,
@@ -96,7 +97,7 @@ export default class TerminalPanel {
 		// Its URLs open in a new tab and the project's files it names in the dock's files; Ctrl+C with something selected
 		// copies it rather than interrupting Claude
 		linkUrls(terminal);
-		if (canBrowse() && this.openFile) linkFilePaths(terminal, session.id, { open: this.openFile });
+		if (canBrowse() && this.openFile && !remote) linkFilePaths(terminal, session.id, { open: this.openFile });
 		terminal.attachCustomKeyEventHandler(event => {
 			if (!isCopyKey(event, terminal)) return true;
 			event.preventDefault();
@@ -108,6 +109,7 @@ export default class TerminalPanel {
 		redrawWhenSymbolsLoad(terminal);
 		terminal.onData(data => this.connection?.send({ type: 'input', data }));
 		this.connection = attach(session.id, {
+			...(remote && { url: `${window.location.origin}/api/remotes/at/${encodeURIComponent(remote.url)}` }),
 			hello: () => ({ kind: 'web', label: 'universe', cols: terminal.cols, rows: terminal.rows }),
 			onOutput: data => {
 				const text = decoder.decode(data, { stream: true });
@@ -133,7 +135,14 @@ export default class TerminalPanel {
 				} else if (message.type === 'notice') new Notify({ intent: 'warning', content: message.text });
 			},
 			onState: value => {
-				this.state.textContent = { connected: 'live', reconnecting: 'reconnecting…', ended: 'ended' }[value] ?? value;
+				this.state.textContent =
+					{
+						connected: 'live',
+						reconnecting: 'reconnecting…',
+						ended: 'ended',
+						// Another paude's session refused on this machine's login there, which only that command renews
+						unauthorized: remote ? `the login on ${remote.name} has ended; run: paude login ${remote.url}` : undefined,
+					}[value] ?? value;
 			},
 		});
 		this.resizing = new ResizeObserver(() => this.fit());

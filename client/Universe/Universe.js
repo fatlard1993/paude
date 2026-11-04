@@ -5,11 +5,11 @@ import { getRemotes, getRemoteUniverse, getUniverse, markRemoteSeen, markSeen, o
 import { Bar } from '../Bar';
 import { breadcrumbs } from '../Breadcrumbs';
 import { button, element } from '../dom';
-import { LOCAL, assignShip, hiddenNow, shipsAssigned, shipsOf, shownOf, toggleHidden } from './shown';
 import { identity, serverName } from '../identity';
 import { hueOf, onServersChange, setServers } from '../servers';
 import { openMenu } from '../menu';
 import { sessionMenu } from '../sessionActions';
+import { LOCAL, assignShip, hiddenNow, shipsAssigned, shipsOf, shownOf, toggleHidden } from './shown';
 import olderPaude from './olderPaude';
 import { VERBS, dockCard } from './dock';
 import {
@@ -1045,10 +1045,15 @@ export default class Universe extends View {
 		return this.dock.card.show(key);
 	}
 
-	// A panel of a session on this paude; another paude's session opens its reply
+	// A panel of a session on this paude; another paude's session docks its terminal alone, or opens its reply stopped
 	dockOrReply(worker, key) {
 		this.select(selectionOf({ kind: 'worker', worker }, this));
-		if (worker.session.engine.remote) return this.openReply(worker);
+		if (worker.session.engine.remote) {
+			if (!live(worker.session)) return this.openReply(worker);
+			this.seen(worker.session);
+
+			return this.openDock(worker, 'terminal');
+		}
 		// Its terminal attached marks it seen on its engine; here at once
 		if (key === 'terminal' && this.aboard.needs(worker.session) === 'unread') {
 			this.aboard.markRead(worker.session);
@@ -1146,8 +1151,8 @@ export default class Universe extends View {
 	}
 
 	// Reading it is seeing it, here and on the engine it runs on
-	// A session running here opens its side panel on its terminal, to read and type in; the card is only for one stopped,
-	// to wake it, or one on another paude, which has no side panel here
+	// A running session opens its side panel on its terminal, to read and type in; the card is only for one stopped, to
+	// wake it
 	openReply(worker, { focus = true } = {}) {
 		const { session } = worker;
 

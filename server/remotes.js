@@ -94,8 +94,10 @@ export const ownedRemotes = async () => {
 
 // A call to one of those servers, as its owner: its JSON, null for no content, and undefined for a server this
 // machine isn't logged into
+export const remoteServer = async url => (await remoteServers()).find(remote => remote.url === url);
+
 export const remoteApi = async (url, route, init) => {
-	const server = (await remoteServers()).find(remote => remote.url === url);
+	const server = await remoteServer(url);
 
 	return server ? serverApi(server, route, init) : undefined;
 };

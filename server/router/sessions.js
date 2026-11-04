@@ -28,7 +28,8 @@ import { findHome, localCandidates } from '../promptHome';
 import { askClaude } from '../claudeInbox';
 import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
-import { connectRemote, listRemotes, remoteApi, remoteLink, remoteSessions } from '../remotes';
+import { connectRemote, listRemotes, remoteApi, remoteLink, remoteServer, remoteSessions } from '../remotes';
+import { trustedCertificates } from '../../shared/certificates';
 import { mayListRemotes } from '../serverSettings';
 import { sessionTurns } from '../sessions/history';
 import {
@@ -287,6 +288,38 @@ const sessionsRoutes = async (request, server) => {
 			const there = await remoteApi(match.url, '/api/universe');
 
 			return there === undefined ? new Response('Not one of your servers', { status: 404 }) : Response.json(there);
+		} catch (error) {
+			return new Response(error.message, { status: 502 });
+		}
+	}
+
+	// A session there, attached from here as on this server: its socket relayed on this machine's login there, and
+	// its state asked there, so a socket refused for good says why
+	match = requestMatch('GET', '/api/remotes/at/:url/api/sessions/:id/attach', request);
+	if (match) {
+		const remote = /^[\w-]+$/.test(match.id) && (await remoteServer(match.url));
+
+		if (!remote) return new Response('Not one of your servers', { status: 404 });
+
+		const upgraded = server.upgrade(request, { data: { route: 'remoteAttach', server: remote, sessionId: match.id } });
+
+		return upgraded ? undefined : new Response('WebSocket upgrade failed', { status: 400 });
+	}
+
+	match = requestMatch('GET', '/api/remotes/at/:url/api/sessions/:id', request);
+	if (match) {
+		const remote = /^[\w-]+$/.test(match.id) && (await remoteServer(match.url));
+
+		if (!remote) return new Response('Not one of your servers', { status: 404 });
+
+		try {
+			const there = await fetch(`${remote.url}/api/sessions/${match.id}`, {
+				headers: { authorization: `Bearer ${remote.token}` },
+				tls: trustedCertificates(),
+				signal: AbortSignal.timeout(8000),
+			});
+
+			return new Response(there.body, { status: there.status, headers: { 'content-type': 'application/json' } });
 		} catch (error) {
 			return new Response(error.message, { status: 502 });
 		}

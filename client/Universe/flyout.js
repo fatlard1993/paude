@@ -83,7 +83,7 @@ const todoWords = todos => {
 };
 
 // A session whose terminal can be opened here: running, on this paude
-export const live = session => !session.engine.remote && session.status !== 'stopped' && Boolean(session.screen);
+export const live = session => session.status !== 'stopped' && Boolean(session.screen);
 
 export const cargoWords = ({ changed, unpushed }) =>
 	[changed && `${plural(changed, 'file')} changed`, unpushed && `${plural(unpushed, 'commit')} to push`]
