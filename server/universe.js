@@ -14,6 +14,7 @@ import { ownerName } from './serverSettings';
 import { sessionArtifacts } from './artifacts';
 import { meterOf } from './cacheMeter';
 import { boostOf, keptOf } from './keepWarm';
+import { lifetimeOf } from './lifetime';
 import { crewOf } from './crew';
 import { fuelOf } from './fuel';
 import { getNotes } from './notes';
@@ -586,6 +587,7 @@ export const universe = async identity => {
 				limit: limitOf(session.id) ?? undefined,
 				// 'warm', 'going' or none
 				keeping: keptOf(session.id) ?? undefined,
+				lifetime: lifetimeOf(session.id),
 				boost: boostOf(session.id) ?? undefined,
 				...instrumentsOf(session),
 				// Its size, for a terminal opened from the universe to take

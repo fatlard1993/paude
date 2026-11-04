@@ -351,11 +351,13 @@ export const drawIsland = (ctx, { from, to, y }, { color }) => {
 
 // A grey's seat at its island, `at` its foot: its screen on a stand before it, large enough to read, showing what it's
 // at or what needs you; its todos in lamps along the console's front under it, and a keyboard
-export const drawSeat = (ctx, at, { screen, engineColor, time, seed, todos = [], frost }) => {
+// `bare`, its place at the console without its screen or keyboard, for one working from a laptop on the floor
+export const drawSeat = (ctx, at, { screen, engineColor, time, seed, todos = [], frost, bare = false }) => {
 	const { x, y } = at;
 
 	drawTodos(ctx, { x: x - 13, y: y - 7, w: 26 }, todos, time);
 	rect(ctx, x - 13, y - 5, 26, 1, engineColor);
+	if (bare) return;
 	rect(ctx, x + 1, y - 11, 9, 2, PALETTE.d);
 	rect(ctx, x + 2, y - 11, 7, 1, PALETTE.m);
 	rect(ctx, x - 9, y - 16, 3, 4, PALETTE.d);
@@ -363,6 +365,22 @@ export const drawSeat = (ctx, at, { screen, engineColor, time, seed, todos = [],
 	rect(ctx, x - 16, y - 30, 17, 13, PALETTE.d);
 	drawScreen(ctx, { x: x - 15, y: y - 29, w: 15, h: 11 }, { ...screen, time, seed });
 	if (frost) drawFrost(ctx, { x: x - 17, y: y - 31, w: 19, h: 15 });
+};
+
+// A laptop open on the floor, `at` its front middle: its screen showing what the session's at, as a monitor's does, and
+// its cable out of its back
+export const drawLaptop = (ctx, at, { screen, time, seed }) => {
+	const { x, y } = at;
+
+	rect(ctx, x - 6, y - 1, 12, 2, PALETTE.k);
+	rect(ctx, x - 5, y - 1, 10, 1, PALETTE.m);
+	rect(ctx, x - 5, y - 9, 10, 8, PALETTE.k);
+	ctx.save();
+	ctx.beginPath();
+	ctx.rect(x - 4, y - 8, 8, 6);
+	ctx.clip();
+	drawScreen(ctx, { x: x - 4, y: y - 8, w: 8, h: 6 }, { ...screen, time, seed });
+	ctx.restore();
 };
 
 // A branch's pennant on its pole, `x` and `y` the pole's top, in the branch's hue (null for none)
