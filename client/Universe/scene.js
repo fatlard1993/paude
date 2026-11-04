@@ -64,7 +64,9 @@ const WALK_SPEED = 1.2;
 const ABOARD_SECONDS = 6;
 // How long a can's toss onto its pile takes, and a drink of a grey's coffee or energy drink
 const TOSS_SECONDS = 0.7;
-const DRINK_SECONDS = 3;
+const DRINK_SECONDS = 6;
+// The part of a drink spent lifting the cup to its mouth, and again setting it back
+const DRINK_LIFT = 0.15;
 // How long a beam off a transporter, or onto one, lasts
 export const BEAM_SECONDS = 0.9;
 // Someone off to the transporter walks this many times as fast, and beams out after this long however far they got
@@ -133,16 +135,8 @@ const STEPS = ['', 'StepLeft', '', 'StepRight'];
 const ISLAND_HIT = 1e6;
 // Where each kind of stream runs from, in the order their packets are spaced along a shared conduit
 const STREAM_LANES = ['library', 'forge', 'reactor', 'dish', 'tower', 'outpost'];
-// A lightning bolt, three pixels across, for the side of an energy drink
-const ZAP = [
-	[2, 0],
-	[1, 1],
-	[0, 2],
-	[1, 2],
-	[2, 2],
-	[1, 3],
-	[0, 4],
-];
+// The giant cup's colors, its zap the dot on its band
+const CUP = { red: '#d63a3a', lit: '#ef7a6a', shade: '#9e2626', band: '#f2eee6', zap: '#ffe14a', lid: '#b8c4d4' };
 // A context this much emptier than last seen was compacted (or cleared)
 const COMPACTED = 0.2;
 // Whether what changed was tested since, worst first, and how inspection shows each
@@ -3154,39 +3148,102 @@ export default class Ship {
 	}
 
 	drawSip(ctx, worker, at, neck) {
-		const body = keepingOf(worker.session) === 'warm' ? '#e8e2d6' : '#3ad07a';
 		const spot = { x: at.x + 2, y: neck - 1 };
 
-		for (let step = 0; step < 3; step++) rect(ctx, spot.x + step, spot.y - step, 3, 3, step === 1 ? body : PALETTE.k);
-		rect(ctx, spot.x + 1, spot.y - 1, 1, 1, keepingOf(worker.session) === 'warm' ? body : '#ffe14a');
-		rect(ctx, spot.x + 3, spot.y + 2, 1, 3, PALETTE.a);
+		if (keepingOf(worker.session) === 'warm') {
+			for (let step = 0; step < 3; step++)
+				rect(ctx, spot.x + step, spot.y - step, 3, 3, step === 1 ? '#e8e2d6' : PALETTE.k);
+			rect(ctx, spot.x + 3, spot.y + 2, 1, 3, PALETTE.a);
+
+			return;
+		}
+		// The giant cup lifted off the desk to its mouth, its straw between its lips, a long pull on it, and set back
+		const t = Math.min(1, (this.time - worker.boostAt) / DRINK_SECONDS);
+		const lift = Math.min(1, t / DRINK_LIFT, (1 - t) / DRINK_LIFT);
+		// Held beside its head, above the desk it sits behind, the straw bent across to its mouth
+		const held = { x: at.x + 10, y: neck + 1 };
+		const desk = { x: at.x + 13, y: at.y + 2 };
+		const slurp = lift === 1 ? Math.floor(this.time * 3) % 2 : 0;
+		const cup = {
+			x: Math.round(desk.x + (held.x - desk.x) * lift),
+			y: Math.round(desk.y + (held.y - desk.y) * lift) - slurp,
+		};
+
+		this.drawCup(ctx, cup, { straw: lift < 1 });
+		if (lift < 1) return;
+		// The straw out of its lid and across to its lips; its hand round the cup
+		for (let step = 0; step <= cup.x - at.x - 4; step++)
+			rect(ctx, cup.x - step, cup.y - 10 + Math.min(step, 6), 1, 1, step % 2 ? CUP.red : CUP.band);
+		rect(ctx, cup.x - 4, cup.y - 5, 2, 3, PALETTE.a);
 	}
 
+	// A giant fountain cup of something caffeinated, `spot` its foot: red, wider at the rim, a white band round it, a
+	// domed lid and a bent straw
+	drawCup(ctx, spot, { straw = true } = {}) {
+		const { x, y } = spot;
+		// Its body from the rim down, narrowing toward its foot
+		const rows = [
+			[-3, 7],
+			[-3, 7],
+			[-3, 7],
+			[-3, 6],
+			[-2, 5],
+			[-2, 5],
+			[-2, 5],
+			[-2, 4],
+		];
+
+		rows.forEach(([from, w], row) => {
+			const at = y - rows.length + 1 + row;
+			const band = row === 2 || row === 3;
+
+			rect(ctx, x + from - 1, at, w + 2, 1, PALETTE.k);
+			rect(ctx, x + from, at, w, 1, band ? CUP.band : CUP.red);
+			if (!band) {
+				rect(ctx, x + from, at, 1, 1, CUP.lit);
+				rect(ctx, x + from + w - 1, at, 1, 1, CUP.shade);
+			}
+		});
+		rect(ctx, x - 2, y + 1, 4, 1, PALETTE.k);
+		// Its label on the band, a red mark in the middle of the white
+		rect(ctx, x - 1, y - 5, 3, 2, CUP.red);
+		rect(ctx, x, y - 5, 1, 1, CUP.zap);
+		// The lid, clear plastic domed over the rim and wider than it, and the straw high out of it
+		const lid = y - rows.length;
+
+		rect(ctx, x - 5, lid - 1, 11, 2, PALETTE.k);
+		rect(ctx, x - 4, lid, 9, 1, CUP.lid);
+		rect(ctx, x - 3, lid - 2, 7, 1, PALETTE.k);
+		rect(ctx, x - 2, lid - 1, 5, 1, CUP.lid);
+		rect(ctx, x - 1, lid - 1, 1, 1, CUP.band);
+		if (!straw) return;
+		for (let up = 0; up < 5; up++) rect(ctx, x + 1, lid - 2 - up, 1, 1, up % 2 ? CUP.red : CUP.band);
+		rect(ctx, x + 2, lid - 7, 1, 1, CUP.band);
+	}
+
+
+
 	// What keeps it going on the console beside it, `at` the console's front (art pixels): a mug of coffee kept warm, a
-	// tall energy drink kept going. Off the console while it's drinking.
+	// giant cup of something caffeinated kept going. Off the console while it's drinking.
 	drawPick(ctx, worker, at) {
 		if (this.drinking(worker)) return;
 
 		const spot = { x: at.x + 12, y: at.y - 7 };
 
-		if (keepingOf(worker.session) === 'warm') {
-			rect(ctx, spot.x - 3, spot.y - 6, 7, 7, PALETTE.k);
-			rect(ctx, spot.x - 2, spot.y - 5, 5, 5, '#e8e2d6');
-			rect(ctx, spot.x - 2, spot.y - 5, 5, 1, '#5a3a22');
-			rect(ctx, spot.x + 4, spot.y - 4, 2, 3, PALETTE.k);
-			rect(ctx, spot.x + 4, spot.y - 3, 1, 1, '#e8e2d6');
+		// The cup stands back on the desk's top, behind the mug's place at its front edge
+		if (keepingOf(worker.session) !== 'warm') return this.drawCup(ctx, { x: spot.x + 3, y: spot.y - 6 });
 
-			const rise = (this.time * 0.9 + worker.seed) % 1;
+		rect(ctx, spot.x - 3, spot.y - 6, 7, 7, PALETTE.k);
+		rect(ctx, spot.x - 2, spot.y - 5, 5, 5, '#e8e2d6');
+		rect(ctx, spot.x - 2, spot.y - 5, 5, 1, '#5a3a22');
+		rect(ctx, spot.x + 4, spot.y - 4, 2, 3, PALETTE.k);
+		rect(ctx, spot.x + 4, spot.y - 3, 1, 1, '#e8e2d6');
 
-			ctx.globalAlpha = 0.7 * (1 - rise);
-			rect(ctx, spot.x + (Math.floor(rise * 3) % 2), spot.y - 8 - Math.round(rise * 6), 1, 2, PALETTE.W);
-			ctx.globalAlpha = 1;
-		} else {
-			rect(ctx, spot.x - 3, spot.y - 11, 7, 12, PALETTE.k);
-			rect(ctx, spot.x - 2, spot.y - 10, 5, 10, '#3ad07a');
-			rect(ctx, spot.x - 2, spot.y - 10, 5, 1, PALETTE.g);
-			for (const [dx, dy] of ZAP) rect(ctx, spot.x - 1 + dx, spot.y - 8 + dy, 1, 1, '#ffe14a');
-		}
+		const rise = (this.time * 0.9 + worker.seed) % 1;
+
+		ctx.globalAlpha = 0.7 * (1 - rise);
+		rect(ctx, spot.x + (Math.floor(rise * 3) % 2), spot.y - 8 - Math.round(rise * 6), 1, 2, PALETTE.W);
+		ctx.globalAlpha = 1;
 	}
 
 	// The worker: its body, and over it a head sized by its context. Its state shows in how it carries on: typing at
