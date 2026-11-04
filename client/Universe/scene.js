@@ -18,7 +18,6 @@ import {
 	drawTransporter,
 } from './hull';
 import {
-	aisleOf,
 	standingOf,
 	clonerAt,
 	holdSpotAt,
@@ -365,9 +364,10 @@ const exitOf = (room, from, lane) => {
 		const inside = door.x + (door.side === 'left' ? 0.6 : -0.6);
 		const outside = door.x + (door.side === 'left' ? -0.4 : 0.4);
 
-		// Off the bridge by the aisle before its row, then along its aft wall, never behind an island
+		// Off the bridge along the front of its row's consoles, then along its aft wall, never behind an island nor over
+		// the screens of the row before it
 		if (room.kind === 'bridge') {
-			const aisle = aisleOf(room, from.y);
+			const aisle = standingOf(room, from.y);
 
 			return [
 				{ x: from.x, y: aisle },
@@ -804,10 +804,11 @@ export default class Ship {
 		return [...out, ...exitOf(toRoom, to, lane).reverse(), to];
 	}
 
-	// From one place on the bridge to another by the aisles and its aft wall
+	// From one place on the bridge to another along the fronts of the rows' consoles and up or down its aft wall, where
+	// nobody walks over a screen
 	acrossBridge(from, to) {
 		const wall = this.bridge.x + 0.6;
-		const [leave, reach] = [aisleOf(this.bridge, from.y), aisleOf(this.bridge, to.y)];
+		const [leave, reach] = [standingOf(this.bridge, from.y), standingOf(this.bridge, to.y)];
 
 		if (leave === reach) return [{ x: from.x, y: leave }, { x: to.x, y: reach }, to];
 
