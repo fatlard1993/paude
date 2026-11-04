@@ -1708,7 +1708,7 @@ export default class Ship {
 	}
 
 	// Corner brackets round what's selected (a worker at its seat, a deck, engineering for an engine, the bridge or the
-	// materializer), pulsing a little
+	// materializer), pulsing a little; one resting on a couch both there and at the terminal it left
 	drawSelection(ctx) {
 		const { selected } = this;
 
@@ -1718,26 +1718,32 @@ export default class Ship {
 		const name = rest.join(':');
 		const around = room =>
 			room && { from: this.art(room), to: this.art({ x: room.x + room.w, y: room.y + room.d }), inset: 2 };
-		let box;
+		const atSeat = seat => {
+			const at = this.art(seat);
 
-		if (kind === 'bay') box = around(this.bays.find(bay => bay.name === name));
-		else if (kind === 'engine') box = around(this.layout.engineering);
-		else if (kind === 'room') box = around(name === 'bridge' ? this.bridge : this.layout.materializer);
+			return { from: { x: at.x - 19, y: at.y - 40 }, to: { x: at.x + 19, y: at.y + 3 }, inset: 0 };
+		};
+		const boxes = [];
+
+		if (kind === 'bay') boxes.push(around(this.bays.find(bay => bay.name === name)));
+		else if (kind === 'engine') boxes.push(around(this.layout.engineering));
+		else if (kind === 'room') boxes.push(around(name === 'bridge' ? this.bridge : this.layout.materializer));
 		else if (kind === 'worker') {
 			const worker = this.workers.get(name);
 
-			if (worker?.seat && !worker.lounging) {
-				const at = this.art(this.walking(worker) ? worker : { x: worker.seat.x, y: worker.seat.y + 0.2 });
-
-				box = { from: { x: at.x - 19, y: at.y - 40 }, to: { x: at.x + 19, y: at.y + 3 }, inset: 0 };
-			} else if (worker?.lounging) {
+			if (worker?.seat && !worker.lounging)
+				boxes.push(atSeat(this.walking(worker) ? worker : { x: worker.seat.x, y: worker.seat.y + 0.2 }));
+			else if (worker?.lounging) {
 				const at = this.art(worker);
 
-				box = { from: { x: at.x - 9, y: at.y - 24 }, to: { x: at.x + 9, y: at.y + 2 }, inset: 0 };
+				boxes.push({ from: { x: at.x - 9, y: at.y - 24 }, to: { x: at.x + 9, y: at.y + 2 }, inset: 0 });
+				if (worker.homeSeat) boxes.push(atSeat({ x: worker.homeSeat.x, y: worker.homeSeat.y + 0.2 }));
 			}
 		}
-		if (!box) return;
+		for (const box of boxes.filter(Boolean)) this.drawBrackets(ctx, box);
+	}
 
+	drawBrackets(ctx, box) {
 		const grow = Math.floor(this.time * 3) % 2;
 		const [left, top] = [box.from.x + box.inset - grow, box.from.y + box.inset - grow];
 		const [right, bottom] = [box.to.x - box.inset + grow, box.to.y - box.inset + grow];
@@ -2638,11 +2644,9 @@ export default class Ship {
 		];
 	}
 
-	// A stopped session lounging on a couch, eyes shut, its name under it once close enough to read
+	// A stopped session lounging on a couch, eyes shut
 	loungerParts(ctx, worker) {
-		const { session, seat } = worker;
-		const below = this.art({ x: seat.x, y: seat.y + 0.15 });
-		const hue = this.projectHues?.get(session.project);
+		const { seat } = worker;
 		const cans = this.cansOf(worker);
 
 		return [
@@ -2664,19 +2668,7 @@ export default class Ship {
 			},
 			{
 				y: seat.y - 0.1,
-				draw: () => {
-					this.drawWorker(ctx, worker);
-					if (this.camera.zoom >= 4)
-						this.labels.push({
-							text: session.title || session.project || 'a session',
-							at: below,
-							color: hue === undefined ? PALETTE.w : `hsl(${hue} 55% 72%)`,
-							align: 'center',
-							size: 1,
-							gap: 2,
-							width: 1.15 * UNIT.x,
-						});
-				},
+				draw: () => this.drawWorker(ctx, worker),
 			},
 		];
 	}

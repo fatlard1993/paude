@@ -484,11 +484,6 @@ export const Stage = styled(
 			text-transform: uppercase;
 		}
 
-		/* While the command bar's keys are the ones that work, the panel's buttons still press, their keys dimmed */
-		.focus.keys-on-bar kbd {
-			opacity: 0.3;
-		}
-
 		.projects-list {
 			display: flex;
 			flex-direction: column;
@@ -517,73 +512,6 @@ export const Stage = styled(
 
 		.dock > .body > .scrolling {
 			overflow-y: auto;
-		}
-
-		.command {
-			position: absolute;
-			z-index: 2;
-			left: 50%;
-			bottom: 12px;
-			transform: translateX(-50%);
-			display: flex;
-			flex-wrap: wrap;
-			align-items: center;
-			justify-content: center;
-			gap: 4px ${space.sm};
-			max-width: calc(100% - 32px);
-			padding: ${space.xs} calc(10px + ${space.sm});
-			background: ${colors.alpha(colors.black, 0.85)};
-			--aug-tl1: 8px;
-			--aug-br1: 8px;
-			--aug-border-all: 1px;
-			--aug-border-bg: ${colors.light(colors.teal)};
-		}
-
-		.command .who {
-			display: flex;
-			flex-direction: column;
-			min-width: 0;
-			max-width: 260px;
-			margin-right: ${space.sm};
-		}
-
-		.command .who strong {
-			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
-		}
-
-		.command .who span {
-			color: ${colors.muted};
-			font-size: 0.8em;
-			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
-		}
-
-		.command button {
-			display: flex;
-			align-items: center;
-			gap: 4px;
-			padding: 2px ${space.sm};
-			border: 1px solid ${colors.alpha(colors.light(colors.teal), 0.35)};
-			border-radius: 0;
-			background: none;
-			color: inherit;
-			font: inherit;
-			font-size: 0.85em;
-			cursor: pointer;
-		}
-
-		.command button:hover {
-			border-color: ${colors.light(colors.teal)};
-		}
-
-		.command kbd {
-			color: ${colors.light(colors.teal)};
-			font: inherit;
-			font-size: 0.8em;
-			text-transform: uppercase;
 		}
 	`,
 );

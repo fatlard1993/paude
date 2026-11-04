@@ -78,9 +78,8 @@ const composer = ({ placeholder, send, actions }) => {
 	return form;
 };
 
-// One session's reply, beside its worker. `session` is as the last answer had it; `onLive` only when its terminal
-// can be opened here.
-export const replyCard = ({ session, onOpen, onLive, onClose, note }) => {
+// One session's reply, beside its worker. `session` is as the last answer had it.
+export const replyCard = ({ session, onOpen, onClose, note }) => {
 	const { reply, engine } = session;
 	const card = element('div', 'reply-card');
 
@@ -129,7 +128,6 @@ export const replyCard = ({ session, onOpen, onLive, onClose, note }) => {
 				onClose();
 			},
 			actions: [
-				...(onLive ? [button('Live terminal', onLive, { icon: 'terminal', className: 'variant-flat' })] : []),
 				button('Open session', onOpen, { icon: 'up-right-from-square', className: 'variant-flat' }),
 			],
 		}),

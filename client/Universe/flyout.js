@@ -143,7 +143,9 @@ const FLYOUTS = {
 				watchers.length && ['terminal open', watchers.join(', ')],
 				session.watching === false && ['watch', 'off: it leaves the ship when it stops'],
 			],
-			hint: 'Press to select and read it · its keys along the bottom · right-click or hold for orders',
+			hint: live(session)
+				? 'Press for its terminal · right-click or hold for orders'
+				: 'Press to look at it, its card beside it · right-click or hold for orders',
 		};
 	},
 	monitor: (target, ship) => {

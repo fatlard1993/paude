@@ -2,6 +2,7 @@ import { Notify, View } from '@vanilla-bean/components';
 import { relativeTime } from '@vanilla-bean/components/utils/date';
 
 import {
+	deleteSession,
 	getRemotes,
 	getRemoteUniverse,
 	getUniverse,
@@ -17,6 +18,7 @@ import { button, element } from '../dom';
 import { identity, serverName } from '../identity';
 import { hueOf, onServersChange, setServers } from '../servers';
 import { openMenu } from '../menu';
+import { confirmDeleteSession } from '../confirmDialog';
 import { sessionMenu } from '../sessionActions';
 import { LOCAL, shipsOf } from './shown';
 import olderPaude from './olderPaude';
@@ -203,10 +205,7 @@ export default class Universe extends View {
 		this.focus = element('div', 'focus');
 		this.focus.dataset.augmentedUi = FRAME.large;
 		this.focus.style.display = 'none';
-		this.command = element('div', 'command');
-		this.command.dataset.augmentedUi = FRAME.small;
-		this.command.style.display = 'none';
-		this.stage.elem.append(this.canvas, this.focus, this.tip, this.command);
+		this.stage.elem.append(this.canvas, this.focus, this.tip);
 		// A ship for each subscription; `aboard` the one on the stage
 		this.ships = new Map([['', this.makeShip()]]);
 		this.aboard = this.ships.get('');
@@ -537,9 +536,7 @@ export default class Universe extends View {
 
 		this.showTip(null);
 		this.select(selectionOf(target, this));
-		if (target?.kind === 'worker') return this.openReply(target.worker, { focus: false });
-		if (target?.kind === 'monitor')
-			return live(target.worker.session) ? this.dockOrReply(target.worker, 'terminal') : this.openReply(target.worker);
+		if (target?.kind === 'worker' || target?.kind === 'monitor') return this.openWorker(target.worker);
 		if (target?.kind === 'cloner') return this.newPrompt(undefined, point);
 		if (target?.kind === 'log') return this.openLog(target, point);
 		// The work itself opens where it's worked on: a checkout's cargo or pull request in its git, a chat in the chat, a
@@ -561,7 +558,7 @@ export default class Universe extends View {
 			return this.dockOrReply(this.workerOf(target.session), 'tasks');
 		if (target?.kind === 'processes') return this.dockOrReply(target.worker, 'shares');
 		if (target?.kind === 'use' && this.workerOf(target.use.session))
-			return this.openReply(this.workerOf(target.use.session));
+			return this.openWorker(this.workerOf(target.use.session));
 		if (target?.kind === 'bridge' || target?.kind === 'lounge') {
 			const at = target.kind === 'bridge' ? BRIDGE : LOUNGE;
 
@@ -629,16 +626,16 @@ export default class Universe extends View {
 		this.poll();
 	}
 
-	// What's selected: a worker or a deck, ringed on the ship, its verbs along the command bar
+	// What's selected: a worker or a deck, ringed on the ship; a worker or an engine has its own card in the panel
 	select(selected) {
 		const same = selectionKey(selected) === selectionKey(this.selected);
 
 		this.selected = selected;
 		this.aboard.selected = selectionKey(selected);
-		if (!same) this.paintCommand();
+		if (!same) this.paintFocus();
 	}
 
-	// After each answer: a selected worker that's gone is let go, and one still aboard has its bar say how it is now
+	// After each answer: a selected worker that's gone is let go, and one still aboard has its card say how it is now
 	refreshSelection() {
 		const worker = this.selected?.worker;
 
@@ -648,68 +645,17 @@ export default class Universe extends View {
 
 		if (!now || now.leaving) return this.select(null);
 		this.selected = selectionOf({ kind: 'worker', worker: now }, this);
-		this.paintCommand();
 	}
 
-	// The command bar: what's selected and what can be done to it, each with its key
-	paintCommand() {
-		const selected = this.selected;
-
-		this.focus.classList.toggle('keys-on-bar', this.barLeads());
-
-		if (!selected) {
-			this.command.style.display = 'none';
-			this.commands = [];
-
-			return;
-		}
-
-		const commands =
-			(selected.worker && this.workerCommands(selected.worker)) ||
-			(selected.bay && this.bayCommands(selected.bay)) ||
-			(selected.engine && this.engineCommands(selected.engine)) ||
-			this.placeCommands(selected.place);
-		// A room's verbs are on the panel beside it while it's looked at; the bar is for a worker or an engine, or a room
-		// seen from afar
-		if (!this.barLeads()) {
-			this.command.style.display = 'none';
-			this.painted = null;
-
-			return;
-		}
-
-		const painted = [selected.title, selected.about, ...commands.map(({ label }) => label)].join('|');
-
-		this.commands = commands;
-		// Unchanged, it's left be, so a press isn't lost to a repaint under it
-		if (painted === this.painted && this.command.style.display !== 'none') return;
-		this.painted = painted;
-
-		const who = element('div', 'who');
-		const named = element('strong', '', selected.title);
-
-		const session = selected.worker?.session;
-
-		tone(
-			this.command,
-			named,
-			session ? this.aboard.projectHues?.get(session.project) : selected.bay?.hue,
-			session ? session.hue : selected.bay?.hue,
-		);
-		who.append(named, element('span', '', selected.about));
-		this.command.replaceChildren(
-			who,
-			...commands.map(({ label, hotkey, run }) => {
-				const press = element('button');
-
-				press.append(element('kbd', '', hotkey), document.createTextNode(label));
-				press.title = `${label} (${hotkey})`;
-				press.addEventListener('click', run);
-
-				return press;
-			}),
-		);
-		this.command.style.display = '';
+	// A session pressed: running here or there, its terminal in the side panel; stopped, looked at closely where its
+	// terminal waits, its card beside it
+	openWorker(worker) {
+		this.select(selectionOf({ kind: 'worker', worker }, this));
+		if (live(worker.session)) return this.dockOrReply(worker, 'terminal');
+		this.closeDock();
+		this.closeCard();
+		this.aboard.lookAt(worker.homeSeat ?? worker.seat);
+		this.paintFocus();
 	}
 
 	workerCommands(worker) {
@@ -733,7 +679,17 @@ export default class Universe extends View {
 				run: () => this.watch(worker, !session.watching),
 			},
 			{ label: remote ? `Open on ${remote.name}` : 'Open', hotkey: 'o', run: () => this.open(session) },
+			...(remote || !identity()?.owner
+				? []
+				: [{ label: 'Delete', hotkey: 'x', run: () => this.remove(worker) }]),
 		];
+	}
+
+	// Deleted once that's confirmed, and gone from the ship at the next answer
+	async remove(worker) {
+		if (!(await confirmDeleteSession(worker.session, deleteSession))) return;
+		if (this.selected?.worker === worker) this.select(null);
+		this.poll();
 	}
 
 	// A project's verbs. On more than one engine, each one that acts on one engine's copy says which: new prompts and
@@ -949,13 +905,7 @@ export default class Universe extends View {
 		const key = sessionKey(session.remote ? session.remote.url : LOCAL, session.id);
 		const worker = this.aboard.workers.get(key);
 
-		if (worker?.seat) {
-			this.closeDock();
-			this.select(selectionOf({ kind: 'worker', worker }, this));
-			this.aboard.lookAt(worker.seat);
-
-			return requestAnimationFrame(() => this.openReply(worker));
-		}
+		if (worker?.seat) return this.openWorker(worker);
 
 		const engine = session.remote
 			? { key: session.remote.url, name: session.remote.name, remote: session.remote }
@@ -995,17 +945,10 @@ export default class Universe extends View {
 			});
 	}
 
-	// Whether the command bar's keys are the ones that work: for a worker or an engine selected, or anything when no room
-	// is looked at; otherwise the room's panel's
-	barLeads() {
-		return Boolean(this.selected && (this.selected.worker || this.selected.engine || !this.focused));
-	}
-
 	hotkey(event) {
 		if (event.shiftKey || event.repeat) return;
 
-		const commands = this.barLeads() ? this.commands : this.focusCommands;
-		const command = commands?.find(({ hotkey }) => hotkey === event.key.toLowerCase());
+		const command = this.focusCommands?.find(({ hotkey }) => hotkey === event.key.toLowerCase());
 
 		if (!command) return;
 		event.preventDefault();
@@ -1151,7 +1094,7 @@ export default class Universe extends View {
 				title: `${titled(room.name)} log`,
 				about: `${plural(system.uses ?? 0, 'use')} in the last ten minutes${system.failures ? `, ${system.failures} failed` : ''}`,
 				log: system.log ?? [],
-				onPick: use => this.workerOf(use.session) && this.openReply(this.workerOf(use.session)),
+				onPick: use => this.workerOf(use.session) && this.openWorker(this.workerOf(use.session)),
 				onClose: () => this.closeCard(),
 			}),
 			point,
@@ -1161,7 +1104,7 @@ export default class Universe extends View {
 	// Reading it is seeing it, here and on the engine it runs on
 	// A running session opens its side panel on its terminal, to read and type in; the card is only for one stopped, to
 	// wake it
-	openReply(worker, { focus = true } = {}) {
+	openReply(worker) {
 		const { session } = worker;
 
 		if (live(session)) {
@@ -1174,11 +1117,9 @@ export default class Universe extends View {
 			replyCard({
 				session,
 				onOpen: () => this.open(session),
-				onLive: live(session) ? () => this.dockOrReply(worker, 'terminal') : undefined,
 				onClose: () => this.closeCard(),
 			}),
 			worker.screen,
-			{ focus },
 		);
 		this.card.worker = worker;
 		this.seen(session);
@@ -1214,8 +1155,7 @@ export default class Universe extends View {
 		if (!point) return null;
 
 		const { width, height: stage } = this.stageSize ?? this.stage.elem.getBoundingClientRect();
-		// Clear of the command bar along the bottom
-		const height = stage - (this.command.style.display === 'none' ? 0 : this.command.offsetHeight + 16);
+		const height = stage;
 		const box = card.getBoundingClientRect();
 		const above = point.y - box.height - 16;
 		const top = above >= 8 ? above : Math.min(height - box.height - 8, point.y + 24);
@@ -1229,8 +1169,25 @@ export default class Universe extends View {
 
 	// The room looked at, whichever way it came to be; nothing while the whole ship, a worker's seat or free roaming is
 	focusedRoom() {
-		const { aboard } = this;
+		const { aboard, selected } = this;
 		const { looking } = aboard;
+
+		// What's selected first: a session, or an engine
+		if (selected?.worker) {
+			const { worker } = selected;
+			const seat = worker.homeSeat ?? worker.seat;
+			// Beside its terminal, where it's looked at
+			const room = seat ? { x: seat.x - 0.9, y: seat.y - 1.6, w: 1.8, d: 1.8 } : aboard.bridge;
+
+			return { key: `worker:${worker.session.key}`, kind: 'worker', worker, room };
+		}
+		if (selected?.engine)
+			return {
+				key: `engine:${selected.engine.key}`,
+				kind: 'engine',
+				engine: selected.engine,
+				room: aboard.layout.engineering,
+			};
 
 		// The whole ship has the bridge's panel, where the ship's health, what needs you and starting work are kept
 		if (!looking || looking === 'all')
@@ -1276,7 +1233,13 @@ export default class Universe extends View {
 	// What the panel beside a room says: the room's facts as its flyout has them, what's in it to pick, and its verbs
 	focusOf(focus) {
 		const { aboard } = this;
-		const { kind, room, bay } = focus;
+		const { kind, room, bay, worker, engine } = focus;
+
+		if (kind === 'worker')
+			return { ...flyoutOf({ kind: 'worker', worker }, aboard), commands: this.workerCommands(worker) };
+		if (kind === 'engine')
+			return { ...flyoutOf({ kind: 'engine', engine }, aboard), commands: this.engineCommands(engine) };
+
 		const workerItem = worker => {
 			const { session } = worker;
 			const need = aboard.needs(session);
@@ -1285,10 +1248,7 @@ export default class Universe extends View {
 				label: session.title || session.project || 'A new session',
 				detail: [need ? NEEDS[need] : doing(session), session.tested?.said].filter(Boolean).join(' · '),
 				tone: (need === 'asking' && 'warn') || ({ working: 'busy', stopped: 'off' }[session.status] ?? ''),
-				run: () => {
-					this.select(selectionOf({ kind: 'worker', worker }, this));
-					this.openReply(worker);
-				},
+				run: () => this.openWorker(worker),
 			};
 		};
 		const workersIn = keys => keys.map(key => aboard.workers.get(key)).filter(Boolean);
@@ -1332,7 +1292,7 @@ export default class Universe extends View {
 					label: use.detail ?? use.tool,
 					detail: [use.failed && 'failed', use.tool, relativeTime(Date.now() - use.ago)].filter(Boolean).join(' · '),
 					tone: use.failed ? 'warn' : '',
-					run: () => this.workerOf(use.session) && this.openReply(this.workerOf(use.session)),
+					run: () => this.workerOf(use.session) && this.openWorker(this.workerOf(use.session)),
 				})),
 				commands: system
 					? [{ label: 'Whole log', hotkey: 'l', run: () => this.openLog({ room, system }, this.aboard.screen(room)) }]
@@ -1444,7 +1404,7 @@ export default class Universe extends View {
 		this.paintedTight = this.aboard.tight;
 		if (tight && !this.bridgeOpen) return this.paintSummary(focus);
 
-		const { title, rows = [], items = [], commands = [], hue } = this.focusOf(focus);
+		const { title, rows = [], items = [], commands = [], hue, titleHue } = this.focusOf(focus);
 		const painted = JSON.stringify([
 			tight,
 			focus.key,
@@ -1483,7 +1443,7 @@ export default class Universe extends View {
 		}
 		const heading = element('strong', 'title', title);
 
-		tone(this.focus, heading, hue);
+		tone(this.focus, heading, hue, titleHue);
 		this.focus.classList.remove('folded');
 
 		if (tight)
@@ -1496,7 +1456,6 @@ export default class Universe extends View {
 			);
 		this.focus.replaceChildren(heading, table, ...(items.length ? [list] : []), ...(commands.length ? [verbs] : []));
 		this.focus.style.display = '';
-		this.paintCommand();
 	}
 
 	// The bridge's panel folded to a line: its health at a glance, pressed to open
