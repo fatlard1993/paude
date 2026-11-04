@@ -909,3 +909,72 @@ test('looking at the transporter, whoever looks walks onto its pad, so beaming a
 	run(stays, 8);
 	expect(stays.walkers.get('me').room).toBe(stays.bridge);
 });
+
+test("a stream's straight run across the lounge bends round it, by its far side when it's against the hull; one clear of it is left be", () => {
+	const made = shipWith([lounger(0)]);
+	const { lounge } = made;
+	const [from, past] = [made.art(lounge), made.art({ x: lounge.x + lounge.w, y: lounge.y + lounge.d })];
+	const nearTop = Math.round(from.y + (past.y - from.y) / 4);
+	const across = [
+		{ x: from.x - 20, y: nearTop },
+		{ x: past.x + 20, y: nearTop },
+	];
+	const bent = made.clearOfLounge(across);
+	const inside = point => point.x > from.x && point.x < past.x && point.y > from.y && point.y < past.y;
+
+	expect(bent.length).toBeGreaterThan(2);
+	expect(bent.some(inside)).toBe(false);
+	// By the top, the nearer edge
+	expect(Math.min(...bent.map(({ y }) => y))).toBeLessThan(from.y);
+	// Nearer its bottom, still by the top while the lounge stands against the hull
+	const nearBottom = Math.round(past.y - (past.y - from.y) / 4);
+	const low = made.clearOfLounge([
+		{ x: from.x - 20, y: nearBottom },
+		{ x: past.x + 20, y: nearBottom },
+	]);
+
+	expect(lounge.y + lounge.d).toBeCloseTo(made.layout.building.bottom, 5);
+	expect(Math.max(...low.map(({ y }) => y))).toBe(nearBottom);
+	for (const [index, point] of bent.slice(1).entries())
+		expect(point.x === bent[index].x || point.y === bent[index].y).toBe(true);
+
+	const clear = [
+		{ x: from.x - 20, y: from.y - 30 },
+		{ x: past.x + 20, y: from.y - 30 },
+	];
+
+	expect(made.clearOfLounge(clear)).toEqual(clear);
+});
+
+test('several bent round the lounge run side by side, each its own way out from it, never on one line', () => {
+	const made = shipWith([lounger(0)]);
+	const { lounge } = made;
+	const [from, past] = [made.art(lounge), made.art({ x: lounge.x + lounge.w, y: lounge.y + lounge.d })];
+	const y = Math.round((from.y + past.y) / 2);
+	const run = [
+		{ x: from.x - 20, y },
+		{ x: past.x + 20, y },
+	];
+	const tops = [0, 6, 12].map(apart => Math.min(...made.clearOfLounge(run, apart).map(point => point.y)));
+
+	expect(new Set(tops).size).toBe(3);
+	expect(tops[1] - tops[0]).toBe(-6);
+	expect(tops[2] - tops[1]).toBe(-6);
+});
+
+test('a lounge clear of the hull lets a run nearer its near side go round by that side', () => {
+	const made = shipWith([lounger(0)]);
+	const { lounge } = made;
+
+	made.layout = { ...made.layout, building: { ...made.layout.building, bottom: made.layout.building.bottom + 5 } };
+
+	const [from, past] = [made.art(lounge), made.art({ x: lounge.x + lounge.w, y: lounge.y + lounge.d })];
+	const y = Math.round(past.y - (past.y - from.y) / 4);
+	const bent = made.clearOfLounge([
+		{ x: from.x - 20, y },
+		{ x: past.x + 20, y },
+	]);
+
+	expect(Math.max(...bent.map(point => point.y))).toBeGreaterThan(past.y);
+	expect(Math.min(...bent.map(point => point.y))).toBe(y);
+});

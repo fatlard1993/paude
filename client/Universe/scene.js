@@ -2042,7 +2042,12 @@ export default class Ship {
 					);
 				continue;
 			}
-			for (const { at } of plates) this.drawWire(ctx, [at, { x: riser, y: at.y }, { x: riser, y: tray }], style);
+			for (const { at } of plates)
+				this.drawWire(
+					ctx,
+					this.clearOfLounge([at, { x: riser, y: at.y }, { x: riser, y: tray }], this.besideOf(riser)),
+					style,
+				);
 			this.drawWire(ctx, [{ x: riser, y: tray }, { x: out.x, y: tray }, out, exit], style);
 		}
 	}
@@ -2302,8 +2307,8 @@ export default class Ship {
 			// Into the machine at its intake, and out of its outlet: through it, it lights up rather than being drawn over
 			return [
 				...fed,
-				{ track: trackOf(into), ports: [...(tech ? [tech.outlet] : []), into.at(-1)] },
-				{ track: trackOf(out), ports: [out[0]] },
+				{ track: trackOf(this.clearOfLounge(into)), ports: [...(tech ? [tech.outlet] : []), into.at(-1)] },
+				{ track: trackOf(this.clearOfLounge(out, this.besideOf(conduit.riser))), ports: [out[0]] },
 			];
 		}
 
@@ -2311,7 +2316,9 @@ export default class Ship {
 		const start = key === 'tower' ? navAt(room) : { x: room.door.x, y: room.door.y };
 		const end = { x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 };
 		const offset = (sources.indexOf(key) - (sources.length - 1) / 2) * 0.09;
-		const points = [start, ...this.route(start, room, end, worker.room, lane + offset)].map(point => this.art(point));
+		const points = this.clearOfLounge(
+			[start, ...this.route(start, room, end, worker.room, lane + offset)].map(point => this.art(point)),
+		);
 
 		if (tech)
 			return [
@@ -2397,6 +2404,49 @@ export default class Ship {
 				...(plate ? [{ x: riser, y: plate.y }, plate, { x: seat.x, y: plate.y }, seat] : []),
 			],
 		];
+	}
+
+	// How far out from the lounge a conduit bends round it, by its riser's place along the bridge's aft wall, so each
+	// runs its own line as its riser does, and a stream along it with it
+	besideOf(riser) {
+		return riser - this.art({ x: this.bridge.x, y: 0 }).x - 4;
+	}
+
+	// A stream's or a conduit's points, in art pixels, bent round the lounge wherever a straight run of it would cross it
+	// end to end: out to the lounge's nearer edge (its far one when it stands against the hull), along it, and back,
+	// rather than under its couches; `apart` more pixels out, so several bent round it run side by side, not on one line
+	clearOfLounge(points, apart = 0) {
+		const { lounge } = this;
+
+		if (!lounge?.count) return points;
+
+		const from = this.art({ x: lounge.x, y: lounge.y });
+		const past = this.art({ x: lounge.x + lounge.w, y: lounge.y + lounge.d });
+		const box = { left: from.x - 2, right: past.x + 2, top: from.y - 2, bottom: past.y + 2 };
+		// Against the hull, its near side has no room to run along: round by its far side then
+		const walled = lounge.y + lounge.d >= this.layout.building.bottom - 0.05;
+		const bent = [points[0]];
+
+		for (const [index, to] of points.slice(1).entries()) {
+			const at = points[index];
+			const across = at.y === to.y && at.y > box.top && at.y < box.bottom;
+			const down = at.x === to.x && at.x > box.left && at.x < box.right;
+
+			if (across && Math.min(at.x, to.x) < box.left && Math.max(at.x, to.x) > box.right) {
+				const edge = walled || at.y - box.top < box.bottom - at.y ? box.top - apart : box.bottom + apart;
+				const [enter, leave] = to.x > at.x ? [box.left - 1, box.right + 1] : [box.right + 1, box.left - 1];
+
+				bent.push({ x: enter, y: at.y }, { x: enter, y: edge }, { x: leave, y: edge }, { x: leave, y: at.y });
+			} else if (down && Math.min(at.y, to.y) < box.top && Math.max(at.y, to.y) > box.bottom) {
+				const edge = at.x - box.left < box.right - at.x ? box.left - apart : box.right + apart;
+				const [enter, leave] = to.y > at.y ? [box.top - 1, box.bottom + 1] : [box.bottom + 1, box.top - 1];
+
+				bent.push({ x: at.x, y: enter }, { x: edge, y: enter }, { x: edge, y: leave }, { x: at.x, y: leave });
+			}
+			bent.push(to);
+		}
+
+		return bent;
 	}
 
 	// The colors of the systems' data running through each project's machine, by project: those its sessions at their
