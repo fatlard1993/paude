@@ -677,7 +677,6 @@ const REACTOR = { tall: 22, shaft: 11, into: 15 };
 export const drawEngineering = (ctx, art, label, room, { time, engines, systems = [], recycling, zoom }) => {
 	floor(ctx, art, room);
 
-	const door = art({ x: room.door.x, y: room.door.y });
 	const recycler = art(recyclerAt(room));
 
 	const boardWidth = Math.max(18, engines.length * 8 + 6);
@@ -748,7 +747,7 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, systems 
 				// Fuel from its account's tank: in through the hull, along inside it to a riser by the bay's back wall, and to
 				// the reactor
 				if (engine.feed) {
-					const { tank, below, x: through, color, flow } = engine.feed;
+					const { tank, below, x: through, color } = engine.feed;
 					const pipe = from.x + 3 + tank * 3;
 					const edge = below ? to.y - 3 - tank : from.y + 3 + tank;
 					const into = at.y - REACTOR.into;
@@ -764,16 +763,6 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, systems 
 						rect(ctx, x, y, Math.abs(x2 - x1) + 2, Math.abs(y2 - y1) + 2, PALETTE.k);
 						rect(ctx, x, y, Math.abs(x2 - x1) + 1, Math.abs(y2 - y1) + 1, `${color}66`);
 					}
-					if (flow > 0) {
-						const along = Math.floor(time * (6 + flow * 24)) % 5;
-
-						for (const [x1, y1, x2, y2] of run) {
-							const length = Math.abs(x2 - x1) + Math.abs(y2 - y1);
-							const [dx, dy] = [Math.sign(x2 - x1), Math.sign(y2 - y1)];
-
-							for (let step = along; step < length; step += 5) rect(ctx, x1 + dx * step, y1 + dy * step, 1, 1, color);
-						}
-					}
 				}
 				// Its shaft back through the stern to its thruster, jogging to the thruster's height just inside the wall
 				const shaft = at.y - REACTOR.shaft;
@@ -787,14 +776,6 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, systems 
 				]) {
 					rect(ctx, x - (h > 1 ? 1 : 0), y - (w > 1 ? 1 : 0), w + (h > 1 ? 2 : 0), h + (w > 1 ? 2 : 0), PALETTE.k);
 					rect(ctx, x, y, w, h, PALETTE.l);
-				}
-				rect(ctx, at.x + 9, at.y - 8, 4, 2, PALETTE.k);
-				rect(ctx, at.x + 12, Math.min(at.y - 8, door.y), 2, Math.abs(door.y - at.y + 8) + 1, PALETTE.k);
-				rect(ctx, at.x + 12, door.y, door.x - at.x - 12, 2, PALETTE.k);
-				if (busy) {
-					const along = Math.floor(time * 20) % 6;
-
-					for (let x = at.x + 14 + along; x < door.x; x += 6) rect(ctx, x, door.y, 2, 1, `hsl(${hue} 80% 66%)`);
 				}
 				// Its bus: out of its side at its core to the riser up the column's inner side, and along the riser to each of
 				// its systems' mains, power running along it while it runs

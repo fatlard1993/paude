@@ -1415,7 +1415,6 @@ export default class Ship {
 										below: tank % 2 === 1,
 										x: this.tanks[tank].at?.x,
 										color: TANK_COLORS[tank % TANK_COLORS.length],
-										flow: flowOf(engine.fuel?.rate ?? 0),
 									},
 					};
 				}),
