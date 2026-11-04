@@ -999,3 +999,51 @@ test('a session resting on a couch, selected, is bracketed on the couch and at t
 	expect(boxes.filter(around(couch))).toHaveLength(1);
 	expect(boxes.find(around(terminal))).not.toBe(boxes.find(around(couch)));
 });
+
+test("a conduit bent round the lounge turns up its riser from the lounge's edge, not back down to where it started", () => {
+	const made = shipWith([lounger(0)]);
+	const { lounge } = made;
+	const [from, past] = [made.art(lounge), made.art({ x: lounge.x + lounge.w, y: lounge.y + lounge.d })];
+	const y = Math.round((from.y + past.y) / 2);
+	const riser = from.x - 30;
+	const bent = made.clearOfLounge([
+		{ x: past.x + 20, y },
+		{ x: riser, y },
+		{ x: riser, y: from.y - 80 },
+	]);
+	const up = bent.findIndex(point => point.y < y);
+
+	// Once it's left its island's height it never comes back to it, and it climbs its riser from above the lounge
+	expect(bent.slice(up).some(point => point.y === y)).toBe(false);
+	expect(bent.filter(point => point.x === riser).every(point => point.y < from.y)).toBe(true);
+});
+
+test('walking about the bridge, or off it to the spine, goes round the lounge, never over its couches', () => {
+	const made = shipWith([answer('here', [session(), ...Array.from({ length: 8 }, (_, index) => session({ id: `s${index}`, status: 'stopped' }))], { projects: ['paude'] })]);
+
+	run(made, 4);
+
+	const { lounge } = made;
+	const middle = lounge.y + lounge.d / 2;
+	const from = { x: made.bridge.x + 0.6, y: lounge.y - 0.5 };
+	const to = { x: lounge.x + lounge.w + 1.5, y: middle };
+	const there = [from, ...made.acrossBridge(from, to)];
+	const back = [to, ...made.acrossBridge(to, from)];
+	const out = [to, ...made.viaSpine(to, made.bridge, made.layout.halls[0].airlock, null)];
+	const tour = [to, ...made.walkTo({ ...to, room: made.bridge }, from, made.bridge)];
+	const inside = { left: lounge.x, right: lounge.x + lounge.w, top: lounge.y + 0.3, bottom: lounge.y + lounge.d };
+
+	for (const path of [there, back, out, tour])
+		for (const [index, point] of path.slice(1).entries()) {
+			const at = path[index];
+		const crosses =
+			Math.max(at.x, point.x) > inside.left &&
+			Math.min(at.x, point.x) < inside.right &&
+			Math.max(at.y, point.y) > inside.top &&
+			Math.min(at.y, point.y) < inside.bottom;
+
+		expect(crosses).toBe(false);
+	}
+	expect(there.at(-1)).toEqual(to);
+	expect(back.at(-1)).toEqual(from);
+});

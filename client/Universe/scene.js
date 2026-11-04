@@ -454,6 +454,74 @@ const walk = (mover, budget, seconds) => {
 	if (mover.path.length) mover.step += seconds * 8;
 };
 
+// Axis-aligned points bent round `box` ({ left, right, top, bottom }) wherever a straight run of them would cross it end
+// to end: out to its nearer edge (its far one, the top, when it's `walled` at the bottom), along it, and back, `apart`
+// further out and `step` clear of its sides; then without the back-and-forth that leaves where the run before or after
+// already heads that way
+export const bendAround = (points, box, { walled = false, apart = 0, step = 1 } = {}) => {
+	const bent = [points[0]];
+
+	for (const [index, to] of points.slice(1).entries()) {
+		const at = points[index];
+		const across = at.y === to.y && at.y > box.top && at.y < box.bottom;
+		const down = at.x === to.x && at.x > box.left && at.x < box.right;
+
+		if (across && Math.min(at.x, to.x) < box.left && Math.max(at.x, to.x) > box.right) {
+			const edge = walled || at.y - box.top < box.bottom - at.y ? box.top - apart : box.bottom + apart;
+			const [enter, leave] = to.x > at.x ? [box.left - step, box.right + step] : [box.right + step, box.left - step];
+
+			bent.push({ x: enter, y: at.y }, { x: enter, y: edge }, { x: leave, y: edge }, { x: leave, y: at.y });
+		} else if (down && Math.min(at.y, to.y) < box.top && Math.max(at.y, to.y) > box.bottom) {
+			const edge = at.x - box.left < box.right - at.x ? box.left - apart : box.right + apart;
+			const [enter, leave] = to.y > at.y ? [box.top - step, box.bottom + step] : [box.bottom + step, box.top - step];
+
+			bent.push({ x: at.x, y: enter }, { x: edge, y: enter }, { x: edge, y: leave }, { x: at.x, y: leave });
+		}
+		bent.push(to);
+	}
+
+	return bent.length === points.length ? points : withoutDoublingBack(bent, box);
+};
+
+const within = (value, a, b) => value >= Math.min(a, b) && value <= Math.max(a, b);
+
+// Whether an axis-aligned run from `a` to `b` passes through the inside of `box`
+const through = (a, b, box) =>
+	Math.max(a.x, b.x) > box.left &&
+	Math.min(a.x, b.x) < box.right &&
+	Math.max(a.y, b.y) > box.top &&
+	Math.min(a.y, b.y) < box.bottom;
+
+// Axis-aligned points without a U: a run out, across, and straight back toward where it came from is cut short at the
+// turn it needed, so long as the shorter way stays out of `box`
+const withoutDoublingBack = (points, box) => {
+	const out = [...points];
+
+	for (let index = 0; index + 3 < out.length; index++) {
+		const [a, b, c, d] = out.slice(index, index + 4);
+
+		for (const [main, cross] of [
+			['y', 'x'],
+			['x', 'y'],
+		]) {
+			if (a[cross] !== b[cross] || b[main] !== c[main] || c[cross] !== d[cross]) continue;
+			if ((b[main] - a[main]) * (d[main] - c[main]) >= 0) continue;
+
+			const turn =
+				(within(d[main], a[main], b[main]) && { [cross]: a[cross], [main]: d[main] }) ||
+				(within(a[main], c[main], d[main]) && { [cross]: c[cross], [main]: a[main] });
+
+			if (turn && !through(a, turn, box) && !through(turn, d, box)) {
+				out.splice(index + 1, 2, turn);
+				index = Math.max(-1, index - 2);
+				break;
+			}
+		}
+	}
+
+	return out;
+};
+
 export const sessionKey = (engineKey, id) => `${engineKey}/${id}`;
 
 // What needs this person, most pressing first: those asking something, then those with something new for them
@@ -832,9 +900,30 @@ export default class Ship {
 		const wall = this.bridge.x + 0.6;
 		const [leave, reach] = [standingOf(this.bridge, from.y), standingOf(this.bridge, to.y)];
 
-		if (leave === reach) return [{ x: from.x, y: leave }, { x: to.x, y: reach }, to];
+		const path =
+			leave === reach
+				? [{ x: from.x, y: leave }, { x: to.x, y: reach }, to]
+				: [{ x: from.x, y: leave }, { x: wall, y: leave }, { x: wall, y: reach }, { x: to.x, y: reach }, to];
+		return this.walkAround(from, path);
+	}
 
-		return [{ x: from.x, y: leave }, { x: wall, y: leave }, { x: wall, y: reach }, { x: to.x, y: reach }, to];
+	// From where a walker is to a new spot: across the ship by the spine; within the bridge along its aisles; within
+	// any other room straight there
+	walkTo(walker, spot, room) {
+		if (room !== walker.room) return this.viaSpine(walker, walker.room, spot, room);
+
+		return room?.kind === 'bridge' ? this.acrossBridge(walker, spot) : [spot];
+	}
+
+	// A walk's path from `from`, bent round the lounge rather than over its couches
+	walkAround(from, path) {
+		const { lounge } = this;
+
+		if (!lounge?.count) return path;
+
+		const box = { left: lounge.x - 0.1, right: lounge.x + lounge.w + 0.2, top: lounge.y + 0.2, bottom: lounge.y + lounge.d };
+
+		return bendAround([from, ...path], box, { walled: this.loungeWalled(), step: 0.1 }).slice(1);
 	}
 
 	// Workers set off: one new from the materializer, one stopped or woken from where it was; and one already on its way
@@ -1146,7 +1235,7 @@ export default class Ship {
 		const out = fromRoom ? exitOf(fromRoom, from, lane) : [{ x: airlock.x, y: lane }];
 		const into = toRoom ? [...exitOf(toRoom, to, lane).reverse(), to] : [{ x: airlock.x, y: lane }, airlock];
 
-		return [...out, ...into];
+		return this.walkAround(from, [...out, ...into]);
 	}
 
 	// Each person comes aboard by the airlock and walks to where they belong, and walks back out when they go; one
@@ -1178,7 +1267,7 @@ export default class Ship {
 			// Beamed in on the transporter's pad: from there to where they belong
 			else if (!walker.spot) walker.path = this.viaSpine(walker, walker.room, spot, room);
 			// Along the console to a new seat as others come and go; across the ship to a new place
-			else if (moved) walker.path = room === walker.room ? [spot] : this.viaSpine(walker, walker.room, spot, room);
+			else if (moved) walker.path = this.walkTo(walker, spot, room);
 			Object.assign(walker, { spot, pose, room, stand: facing ?? 1 });
 		}
 	}
@@ -2413,9 +2502,8 @@ export default class Ship {
 		return riser - this.art({ x: this.bridge.x, y: 0 }).x - 4;
 	}
 
-	// A stream's or a conduit's points, in art pixels, bent round the lounge wherever a straight run of it would cross it
-	// end to end: out to the lounge's nearer edge (its far one when it stands against the hull), along it, and back,
-	// rather than under its couches; `apart` more pixels out, so several bent round it run side by side, not on one line
+	// A stream's or a conduit's points, in art pixels, bent round the lounge rather than under its couches; `apart` more
+	// pixels out, so several bent round it run side by side, not on one line
 	clearOfLounge(points, apart = 0) {
 		const { lounge } = this;
 
@@ -2423,31 +2511,17 @@ export default class Ship {
 
 		const from = this.art({ x: lounge.x, y: lounge.y });
 		const past = this.art({ x: lounge.x + lounge.w, y: lounge.y + lounge.d });
-		const box = { left: from.x - 2, right: past.x + 2, top: from.y - 2, bottom: past.y + 2 };
-		// Against the hull, its near side has no room to run along: round by its far side then
-		const walled = lounge.y + lounge.d >= this.layout.building.bottom - 0.05;
-		const bent = [points[0]];
 
-		for (const [index, to] of points.slice(1).entries()) {
-			const at = points[index];
-			const across = at.y === to.y && at.y > box.top && at.y < box.bottom;
-			const down = at.x === to.x && at.x > box.left && at.x < box.right;
+		return bendAround(points, { left: from.x - 2, right: past.x + 2, top: from.y - 2, bottom: past.y + 2 }, {
+			walled: this.loungeWalled(),
+			apart,
+			step: 1,
+		});
+	}
 
-			if (across && Math.min(at.x, to.x) < box.left && Math.max(at.x, to.x) > box.right) {
-				const edge = walled || at.y - box.top < box.bottom - at.y ? box.top - apart : box.bottom + apart;
-				const [enter, leave] = to.x > at.x ? [box.left - 1, box.right + 1] : [box.right + 1, box.left - 1];
-
-				bent.push({ x: enter, y: at.y }, { x: enter, y: edge }, { x: leave, y: edge }, { x: leave, y: at.y });
-			} else if (down && Math.min(at.y, to.y) < box.top && Math.max(at.y, to.y) > box.bottom) {
-				const edge = at.x - box.left < box.right - at.x ? box.left - apart : box.right + apart;
-				const [enter, leave] = to.y > at.y ? [box.top - 1, box.bottom + 1] : [box.bottom + 1, box.top - 1];
-
-				bent.push({ x: at.x, y: enter }, { x: edge, y: enter }, { x: edge, y: leave }, { x: at.x, y: leave });
-			}
-			bent.push(to);
-		}
-
-		return bent;
+	// Against the hull, the lounge's near side has no room to run along
+	loungeWalled() {
+		return this.lounge.y + this.lounge.d >= this.layout.building.bottom - 0.05;
 	}
 
 	// The colors of the systems' data running through each project's machine, by project: those its sessions at their
