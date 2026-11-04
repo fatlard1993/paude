@@ -65,6 +65,9 @@ const TOSS_SECONDS = 0.7;
 const DRINK_SECONDS = 3;
 // How long a beam off a transporter, or onto one, lasts
 export const BEAM_SECONDS = 0.9;
+// Someone off to the transporter walks this many times as fast, and beams out after this long however far they got
+const HURRY = 3;
+const TRAVEL_MOST = 6;
 // How long a stream stays after its tool, fading, and how far apart its packets run
 const STREAM_LINGER = 4;
 const PACKET_GAP = 14;
@@ -533,6 +536,12 @@ export default class Ship {
 	// The other ships of its fleet, as its transporter hears from them: [{ key, name, needs, news, working }]
 	fleet = [];
 	beamAt = -Infinity;
+	// Someone traveling by the transporter: aboard from another ship (`visitor`), gone to one (`away`, their key), walking
+	// to its pad to go (`departing`), and just beamed in (`arriving`)
+	visitor = null;
+	away = null;
+	departing = null;
+	arriving = null;
 
 	get offset() {
 		return {
@@ -1027,6 +1036,10 @@ export default class Ship {
 				people.set(key, known);
 			}
 
+		// Someone beamed aboard from another ship, though this one's paude doesn't list them; and someone beamed away
+		if (this.visitor && !people.has(this.visitor.key)) people.set(this.visitor.key, { ...this.visitor, sessions: [] });
+		if (this.away) people.delete(this.away);
+
 		return people;
 	}
 
@@ -1043,6 +1056,10 @@ export default class Ship {
 
 		return new Map(
 			names.map(name => {
+				// Off to the transporter: its pad
+				if (this.departing?.key === name && this.layout.transporter)
+					return [name, { pose: 'traveler', spot: padAt(this.layout.transporter), room: this.layout.transporter }];
+
 				const person = this.people.get(name);
 				const worker = seatedHostOf(person);
 
@@ -1142,10 +1159,64 @@ export default class Ship {
 			if (placed || (this.moved && walker.spot)) Object.assign(walker, spot, { path: [] });
 			else if (walker.x === undefined)
 				Object.assign(walker, airlock, { path: this.viaSpine(airlock, null, spot, room) });
+			// Beamed in on the transporter's pad: from there to where they belong
+			else if (!walker.spot) walker.path = this.viaSpine(walker, walker.room, spot, room);
 			// Along the console to a new seat as others come and go; across the ship to a new place
 			else if (moved) walker.path = room === walker.room ? [spot] : this.viaSpine(walker, walker.room, spot, room);
 			Object.assign(walker, { spot, pose, room, stand: facing ?? 1 });
 		}
+	}
+
+	// The person `key` walks onto the transporter's pad, in a hurry, and beams away, `then` called once they're gone;
+	// false when there's no transporter or they're not aboard, so they go at once
+	beamOut(key, then) {
+		if (!this.layout.transporter || !this.walkers.has(key)) return false;
+		this.departing = { key, then, since: this.time };
+		this.board();
+		this.look('transporter');
+
+		return true;
+	}
+
+	// The person beams in on the transporter's pad and walks to where they belong: a visitor where this ship's paude
+	// doesn't list them
+	beamIn(person) {
+		const transporter = this.layout.transporter;
+
+		this.away = null;
+		if (!this.people.has(person.key)) {
+			this.visitor = person;
+			this.people = new Map([...this.people, [person.key, { ...person, sessions: [] }]]);
+		}
+		if (transporter) {
+			const pad = padAt(transporter);
+			const walker = this.walkers.get(person.key) ?? { name: person.name, person, step: 0, facing: 1 };
+
+			this.walkers.set(person.key, Object.assign(walker, pad, { path: [], spot: null, room: transporter }));
+			this.arriving = { key: person.key, at: this.time };
+		}
+		this.board();
+	}
+
+	// One walking to the pad beams out once there (or once they've taken too long), and is gone a beam later
+	tendTravel() {
+		const going = this.departing;
+
+		if (!going) return;
+
+		const walker = this.walkers.get(going.key);
+		// By its kind: the layout's rooms are made anew with each look
+		const there = walker && !walker.path.length && walker.room?.kind === 'transporter';
+
+		if (walker && going.beamAt === undefined && (there || this.time - going.since > TRAVEL_MOST))
+			going.beamAt = this.beamAt = this.time;
+		if (walker && (going.beamAt === undefined || this.time - going.beamAt < BEAM_SECONDS)) return;
+		this.away = going.key;
+		if (this.visitor?.key === going.key) this.visitor = null;
+		this.walkers.delete(going.key);
+		this.people.delete(going.key);
+		this.departing = null;
+		going.then();
 	}
 
 	step(seconds, calm) {
@@ -1165,7 +1236,9 @@ export default class Ship {
 
 		for (const worker of this.workers.values()) this.tendSmallGreys(worker, calm);
 		this.tendCrew(seconds);
-		for (const walker of this.walkers.values()) walk(walker, calm ? Infinity : WALK_SPEED * seconds, seconds);
+		for (const [name, walker] of this.walkers)
+			walk(walker, calm ? Infinity : WALK_SPEED * seconds * (this.departing?.key === name ? HURRY : 1), seconds);
+		this.tendTravel();
 		for (const worker of this.workers.values())
 			if (worker.path?.length && (calm || this.time - (worker.madeAt ?? -Infinity) >= MAKE_SECONDS))
 				walk(worker, calm ? Infinity : WORKER_SPEED * seconds, seconds);
@@ -3549,6 +3622,17 @@ export default class Ship {
 	// Walking, seen from the front; at their place by their pose
 	drawWalker(ctx, walker) {
 		const at = this.art(walker);
+		const key = walker.person?.key;
+		const { departing, arriving } = this;
+		// Beaming out on the transporter's pad, or just beamed in on it: fading inside a column of light
+		const out =
+			key && departing?.key === key && departing.beamAt !== undefined
+				? (this.time - departing.beamAt) / BEAM_SECONDS
+				: null;
+		const into = key && arriving?.key === key ? (this.time - arriving.at) / BEAM_SECONDS : null;
+		const beam = out ?? (into !== null && into < 1 ? 1 - into : null);
+
+		if (beam !== null) ctx.globalAlpha = Math.max(0, 1 - beam);
 		const stride = walker.path.length ? STEPS[Math.floor(walker.step) % STEPS.length] : '';
 		const colors = { c: `hsl(${walker.person.hue} 45% 45%)`, s: `hsl(${walker.person.hue} 45% 45%)` };
 		const there = !walker.path.length && !walker.leaving && walker.spot;
@@ -3571,6 +3655,8 @@ export default class Ship {
 			rect(ctx, at.x - 3, at.y, 7, 1, PALETTE.k);
 			drawSprite(ctx, `suit${stride}`, at.x, at.y, { colors, flip: walker.facing < 0 });
 		}
+		ctx.globalAlpha = 1;
+		if (beam !== null) this.drawBeam(ctx, at, Math.min(1, 0.4 + beam));
 		this.hits.push({
 			...this.toScreen({ x: at.x, y: at.y - 7 }),
 			r: 7 * this.camera.zoom,

@@ -290,29 +290,46 @@ export default class Universe extends View {
 		hear();
 	}
 
-	// Beamed over to another ship: off this one's transporter, and on at that one's
+	// Whoever is looking, as the ship aboard has them: the owner, or a guest by their name
+	me() {
+		const viewer = identity();
+
+		return [...(this.aboard.people?.values() ?? [])].find(person =>
+			viewer?.owner ? person.role === 'owner' : person.name === viewer?.name,
+		);
+	}
+
+	// Beamed over to another ship: walking onto this one's transporter pad and beaming out, then beaming in on that
+	// one's and walking to their place there; straight over when they aren't aboard to walk
 	travel(key) {
 		const ship = this.ships.get(key);
+		const from = this.aboard;
+		const me = this.me();
 
-		if (!ship || ship === this.aboard) return;
-		this.aboard.beamAt = this.aboard.time;
+		if (!ship || ship === from) return;
 		this.closeCard();
 		this.closeDock();
 		this.select(null);
-		clearTimeout(this.beaming);
-		this.beaming = setTimeout(() => {
-			// Gone while beaming (its paude hidden, say): staying put
-			if (![...this.ships.values()].includes(ship)) return;
+
+		const arrive = () => {
+			// Gone while beaming (its paude hidden, say), or somewhere else meanwhile: staying put
+			if (![...this.ships.values()].includes(ship) || this.aboard !== from) return;
 			// Anything opened on the way is left behind with the old ship
 			this.closeCard();
 			this.closeDock();
 			this.select(null);
 			this.aboard = ship;
 			ship.beamAt = ship.time;
+			if (me) ship.beamIn(me);
 			ship.look(ship.layout.transporter ? 'transporter' : 'all');
 			this.focusPainted = null;
 			this.paintFocus();
-		}, BEAM_SECONDS * 1000);
+		};
+
+		clearTimeout(this.beaming);
+		if (me && from.beamOut(me.key, arrive)) return;
+		from.beamAt = from.time;
+		this.beaming = setTimeout(arrive, BEAM_SECONDS * 1000);
 	}
 
 	watchSize() {

@@ -848,3 +848,36 @@ test('the transporter is a room to press: looked at, its own flyout naming the o
 	expect(flyout.title).toBe('Transporter');
 	expect(flyout.rows.map(([name]) => name)).toEqual(['vps']);
 });
+
+test("through the transporter: onto its pad and away from one ship, in on the other's pad and off to their place", async () => {
+	const me = { key: 'me', name: 'chase', role: 'owner', sessions: [] };
+	const from = new Ship();
+	const to = new Ship();
+
+	for (const ship of [from, to]) ship.resize(800, 600);
+	from.fleet = [{ key: 'b', name: 'vps' }];
+	to.fleet = [{ key: 'a', name: 'dellbook' }];
+	from.update([{ ...answer('here', [session({ id: 'a', project: 'paude' })], { projects: ['paude'] }), people: [me] }]);
+	to.update([answer('https://vps', [session({ id: 'v', project: 'site' })], { projects: ['site'] })]);
+	run(from, 8);
+	run(to, 8);
+
+	let gone = false;
+
+	expect(from.beamOut('me', () => (gone = true))).toBe(true);
+	for (let second = 0; second < 10 && !gone; second++) run(from, 1);
+	expect(gone).toBe(true);
+	expect(from.walkers.has('me')).toBe(false);
+
+	to.beamIn(me);
+
+	const arrived = to.walkers.get('me');
+	const { padAt } = await import('./plan');
+	const pad = padAt(to.layout.transporter);
+
+	expect([arrived.x, arrived.y]).toEqual([pad.x, pad.y]);
+	run(to, 1);
+	expect(arrived.path.length).toBeGreaterThan(0);
+	run(to, 30);
+	expect(arrived.room).toBe(to.bridge);
+});
