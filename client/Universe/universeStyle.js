@@ -179,11 +179,13 @@ export const Stage = styled(
 			outline-offset: -2px;
 		}
 
+		/* Its own stacking context, so xterm's layers stay under what's laid over the terminal */
 		.docked-terminal .screen {
 			flex: 1;
 			min-height: 0;
 			overflow: hidden;
 			padding: 2px;
+			isolation: isolate;
 		}
 
 		.docked-terminal .xterm {
