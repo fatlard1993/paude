@@ -1512,6 +1512,8 @@ export default class Ship {
 			standing.push(...drawHall(ctx, art, hall, { doors, time: this.time, running, gaps }));
 		}
 		standing.push(
+			// The streams' trunk in the bay's inner wall, behind its units
+			{ y: this.layout.engineering.y + 0.001, draw: () => this.drawTrunk(ctx) },
 			...drawEngineering(ctx, art, label, this.layout.engineering, {
 				time: this.time,
 				systems: Object.values(this.layout.systems),
@@ -2416,6 +2418,52 @@ export default class Ship {
 		ctx.globalAlpha = 1;
 	}
 
+	// Where the systems' streams leave the engine bay: a lane each up its inner wall (`nth` of STREAM_LANES), in art
+	// pixels across
+	trunkLane(nth) {
+		const { gap, nths } = this.trunk();
+		const rank = nths.indexOf(nth);
+
+		return gap.left + 2 + Math.max(0, rank) * Math.max(1, Math.floor((gap.right - gap.left - 3) / nths.length));
+	}
+
+	// The gap between the bay's units and its inner wall the trunk runs in, in art pixels across, and the lanes in it:
+	// the systems the bay has, in STREAM_LANES order
+	trunk() {
+		const { engineering, systems = {} } = this.layout;
+
+		if (this.trunkOf?.layout === this.layout) return this.trunkOf;
+
+		const rooms = Object.values(systems);
+		const right = this.art({ x: engineering.x + engineering.w, y: 0 }).x;
+		const left = rooms.length ? Math.max(...rooms.map(room => this.art({ x: room.x + room.w, y: 0 }).x)) : right - 8;
+		const nths = [...new Set(rooms.map(({ key }) => STREAM_LANES.indexOf(key)).filter(nth => nth >= 0))].sort(
+			(a, b) => a - b,
+		);
+
+		this.trunkOf = { layout: this.layout, gap: { left: Math.min(left, right - 6), right }, nths };
+
+		return this.trunkOf;
+	}
+
+	// The channel those lanes run in, set into the engine bay's inner wall from its highest unit to the hall's conduits,
+	// behind the units standing before it: always there, so a stream is seen to take it
+	drawTrunk(ctx) {
+		const systems = Object.values(this.layout.systems ?? {});
+
+		if (!systems.length) return;
+
+		const { gap } = this.trunk();
+		const trays = [...(this.cables?.values() ?? [])].map(({ tray }) => tray);
+		const top = Math.min(...systems.map(room => this.art(systemFootOf(room)).y)) - 2;
+		const bottom = trays.length ? Math.max(...trays) + 2 : this.art({ x: 0, y: this.layout.halls[0].lane }).y;
+		const [left, right] = [gap.left + 1, gap.right - 1];
+
+		rect(ctx, left, top, right - left + 1, bottom - top, '#0a0e16');
+		rect(ctx, left, top, 1, bottom - top, PALETTE.m);
+		rect(ctx, right, top, 1, bottom - top, PALETTE.d);
+	}
+
 	// A worker's stream from its system, in art pixels: by way of its project's machine when `conduit`, its two halves
 	streamRoute(worker, room, sources, key, conduit) {
 		const tech = room.kind === 'system' ? this.throughSystem(room) : null;
@@ -2436,6 +2484,23 @@ export default class Ship {
 		const start = key === 'tower' ? navAt(room) : { x: room.door.x, y: room.door.y };
 		const end = { x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 };
 		const offset = (sources.indexOf(key) - (sources.length - 1) / 2) * 0.09;
+
+		// From an engine-bay unit: straight across into its lane of the trunk, down it to the hall, and on from there
+		if (tech && room.within?.kind === 'engineering') {
+			const along = this.trunkLane(sources.indexOf(key));
+			const hall = { x: along / UNIT.x, y: lane + offset };
+			const onward = this.clearOfLounge(
+				[hall, ...this.route(hall, null, end, worker.room, lane + offset)].map(point => this.art(point)),
+			);
+
+			return [
+				...fed,
+				{
+					track: trackOf([tech.outlet, { x: along, y: tech.outlet.y }, { x: along, y: onward[0].y }, ...onward.slice(1)]),
+					ports: [tech.outlet],
+				},
+			];
+		}
 		const points = this.clearOfLounge(
 			[start, ...this.route(start, room, end, worker.room, lane + offset)].map(point => this.art(point)),
 		);
@@ -2497,7 +2562,7 @@ export default class Ship {
 
 	throughProject(worker, room, conduit, nth, outlet) {
 		const door = this.art({ x: room.door.x, y: room.door.side === 'bottom' ? room.y + room.d : room.y + FACE });
-		const wall = this.art({ x: room.within.x + room.within.w, y: 0 }).x - 3 - nth * 3;
+		const wall = this.trunkLane(nth);
 		const { tray, entry, exit, out, riser, plates } = conduit;
 		const into = { x: entry.x - 4, y: entry.y };
 		const seat = this.art({ x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 });
@@ -2508,9 +2573,8 @@ export default class Ship {
 
 		return [
 			[
-				...(outlet ? [outlet, { x: door.x, y: outlet.y }] : []),
-				door,
-				{ x: wall, y: door.y },
+				// From its unit's foot straight across into its lane of the trunk, or out of its room's door to it
+				...(outlet ? [outlet, { x: wall, y: outlet.y }] : [door, { x: wall, y: door.y }]),
 				{ x: wall, y: tray },
 				{ x: into.x, y: tray },
 				into,

@@ -1047,3 +1047,27 @@ test('walking about the bridge, or off it to the spine, goes round the lounge, n
 	expect(there.at(-1)).toEqual(to);
 	expect(back.at(-1)).toEqual(from);
 });
+
+test("a stream leaves its engine-bay unit straight across into its lane of the trunk, and along it to the hall", () => {
+	const made = shipWith([
+		{ ...answer('here', [session({ status: 'working', tool: 'Bash' })], { projects: ['paude'] }), tools: ['Bash'] },
+	]);
+
+	run(made, 2);
+
+	const worker = made.workers.get('here/a');
+	const room = made.layout.systems['here/reactor'];
+	const lanes = ['library', 'forge', 'reactor', 'dish', 'tower', 'outpost'];
+	const routed = made.streamRoute(worker, room, lanes, 'reactor', null);
+	const [outlet, across, down] = routed.at(-1).track.legs.map(({ from }) => from);
+	const lane = made.trunkLane(lanes.indexOf('reactor'));
+
+	expect(outlet).toEqual(made.throughSystem(room).outlet);
+	// In the gap beside the units, not over any of them
+	for (const unit of Object.values(made.layout.systems)) expect(lane).toBeGreaterThan(made.art({ x: unit.x + unit.w, y: 0 }).x);
+	expect([across.x, across.y]).toEqual([lane, outlet.y]);
+	// Along its lane to the hall, up or down as the hall lies
+	expect(down.x).toBe(lane);
+	expect(routed.at(-1).track.legs[2].to.x).toBe(lane);
+	expect(routed.at(-1).track.legs[2].to.y).not.toBe(outlet.y);
+});

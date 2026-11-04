@@ -8,7 +8,9 @@ const DECK_BOTTOM = 2.4;
 const PER_REACTOR = 2.4;
 // A system's room in the engine bay
 const SYSTEM = { w: 2.6, d: FACE + 2.3 };
-const ENGINE_BAY_W = ENGINEERING_W + SYSTEM.w;
+// Room left between the systems and the bay's inner wall for the channel their streams leave by
+const TRUNK_W = 0.4;
+const ENGINE_BAY_W = ENGINEERING_W + SYSTEM.w + TRUNK_W;
 // One engine's systems full size in a column down the bay; more engines' compact, half as wide and shallower, two over
 // two beside each reactor, so the bay keeps one engine's width and the hull its depth for up to four engines (the
 // ship's zoom steps by whole numbers, so a little more length can halve it)
