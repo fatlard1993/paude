@@ -62,6 +62,10 @@ export const ROOMS = {
 		ship.charged ? 'a new session is on its way' : 'where new sessions start; press it to write a prompt',
 	hold: ship => `each checkout's changes and commits not pushed: ${plural(ship.cargo.length, 'checkout')}`,
 	hangar: () => 'pushes leaving, and pull requests waiting for review',
+	transporter: ship =>
+		ship.fleet.length
+			? `beams you to the ship of another subscription: ${ship.fleet.map(({ name }) => name).join(', ')}`
+			: 'beams you to the ship of another subscription',
 };
 
 const MODES = {
@@ -96,6 +100,8 @@ const ROOM_FLYOUT = (target, ship) => ({
 
 // By the kind of thing under the pointer: { title, rows: [[label, words] or false], hint }; any other kind is a bay's
 const FLYOUTS = {
+	// A room's own when it has one, below, over the plain room's
+	...Object.fromEntries(Object.keys(ROOMS).map(kind => [kind, ROOM_FLYOUT])),
 	transporter: (target, ship) => ({
 		title: 'Transporter',
 		rows: ship.fleet.map(other => [other.name, shipWords(other)]),
@@ -408,7 +414,6 @@ const FLYOUTS = {
 			hint: `${lookHint(ship, bay.name)} · right-click or hold for orders`,
 		};
 	},
-	...Object.fromEntries(Object.keys(ROOMS).map(kind => [kind, ROOM_FLYOUT])),
 };
 
 export const flyoutOf = (target, ship) => (FLYOUTS[target.kind] ?? FLYOUTS.bay)(target, ship);

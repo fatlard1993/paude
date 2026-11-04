@@ -1474,7 +1474,8 @@ export default class Universe extends View {
 		const painted = JSON.stringify(['summary', focus.key, line]);
 
 		this.focused = focus;
-		this.focusCommands = [];
+		// Folded, its keys still work: X for the transporter, H for every session and the rest
+		this.focusCommands = this.focusOf(focus).commands ?? [];
 		if (painted === this.focusPainted) return;
 		this.focusPainted = painted;
 
