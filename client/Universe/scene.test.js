@@ -978,3 +978,24 @@ test('a lounge clear of the hull lets a run nearer its near side go round by tha
 	expect(Math.max(...bent.map(point => point.y))).toBeGreaterThan(past.y);
 	expect(Math.min(...bent.map(point => point.y))).toBe(y);
 });
+
+test('a session resting on a couch, selected, is bracketed on the couch and at the terminal it left', () => {
+	const made = shipWith([answer('here', [session(), session({ id: 'b', status: 'stopped' })], { projects: ['paude'] })]);
+	const worker = made.workers.get('here/b');
+
+	run(made, 4);
+	expect(worker.lounging).toBe(true);
+	expect(worker.homeSeat).toBeTruthy();
+	made.selected = 'worker:here/b';
+
+	const boxes = made.selectionBoxes();
+	const terminal = made.art({ x: worker.homeSeat.x, y: worker.homeSeat.y + 0.2 });
+
+	const couch = made.art(made.placeOf(worker));
+	const around = point => ({ from, to }) => from.x < point.x && to.x > point.x && from.y < point.y && to.y >= point.y;
+
+	expect(boxes).toHaveLength(2);
+	expect(boxes.filter(around(terminal))).toHaveLength(1);
+	expect(boxes.filter(around(couch))).toHaveLength(1);
+	expect(boxes.find(around(terminal))).not.toBe(boxes.find(around(couch)));
+});

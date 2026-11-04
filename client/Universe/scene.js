@@ -1710,9 +1710,13 @@ export default class Ship {
 	// Corner brackets round what's selected (a worker at its seat, a deck, engineering for an engine, the bridge or the
 	// materializer), pulsing a little; one resting on a couch both there and at the terminal it left
 	drawSelection(ctx) {
+		for (const box of this.selectionBoxes()) this.drawBrackets(ctx, box);
+	}
+
+	selectionBoxes() {
 		const { selected } = this;
 
-		if (!selected) return;
+		if (!selected) return [];
 
 		const [kind, ...rest] = selected.split(':');
 		const name = rest.join(':');
@@ -1734,13 +1738,13 @@ export default class Ship {
 			if (worker?.seat && !worker.lounging)
 				boxes.push(atSeat(this.walking(worker) ? worker : { x: worker.seat.x, y: worker.seat.y + 0.2 }));
 			else if (worker?.lounging) {
-				const at = this.art(worker);
+				const at = this.art(this.placeOf(worker));
 
 				boxes.push({ from: { x: at.x - 9, y: at.y - 24 }, to: { x: at.x + 9, y: at.y + 2 }, inset: 0 });
 				if (worker.homeSeat) boxes.push(atSeat({ x: worker.homeSeat.x, y: worker.homeSeat.y + 0.2 }));
 			}
 		}
-		for (const box of boxes.filter(Boolean)) this.drawBrackets(ctx, box);
+		return boxes.filter(Boolean);
 	}
 
 	drawBrackets(ctx, box) {
