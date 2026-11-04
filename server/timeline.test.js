@@ -89,3 +89,12 @@ test('names what each kind of tool was about', () => {
 	expect(describeTool('WebFetch', { url: 'https://e.x' }).summary).toBe('https://e.x');
 	expect(describeTool('Read', { file_path: '/elsewhere/y.js' }, '/repo').file).toBe('/elsewhere/y.js');
 });
+
+test('a turn keeps the start and the end of what Claude last wrote, where its list of what it did often sits', () => {
+	const text = `Done: the cans and the plates. ${'x'.repeat(5000)} Left: the walk cycle.`;
+	const [turn] = timelineFrom([prompt('fix them', 0), use(1, [{ type: 'text', text }])], '/repo');
+
+	expect(turn.said).toStartWith('Done: the cans and the plates.');
+	expect(turn.said).toEndWith('Left: the walk cycle.');
+	expect(turn.said.length).toBeLessThan(2100);
+});

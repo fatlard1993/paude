@@ -13,8 +13,9 @@ const OUTPUT_CHARACTERS = 2000;
 const PROMPT_PREVIEW = 200;
 // The prompt as asked, for what reads a turn's words rather than lists it
 const ASKED_CHARACTERS = 2000;
-// The end of what Claude last wrote in a turn: its answer, usually
-const SAID_CHARACTERS = 800;
+// What Claude last wrote in a turn, its start and its end when long: its answer, usually, whose list of what it did
+// sits at its start as often as its end
+const SAID_CHARACTERS = 2000;
 
 const cache = new Map();
 const DECLINED = /doesn't want to proceed with this tool use/;
@@ -81,19 +82,21 @@ export const describeTool = (name, input = {}, cwd = '') => {
 	}
 };
 
+// A text's start and its end, when it's longer than room
+export const startAndEnd = (text, room) =>
+	text.length <= room ? text : `${text.slice(0, room / 2)}\n[...]\n${text.slice(-room / 2)}`;
+
 // What a tool printed, its start and its end when it said more: a test run's summary comes last
-const resultText = content => {
-	const text =
+const resultText = content =>
+	startAndEnd(
 		typeof content === 'string'
 			? content
 			: (content ?? [])
 					.filter(block => block.type === 'text')
 					.map(block => block.text)
-					.join('\n');
-	const half = OUTPUT_CHARACTERS / 2;
-
-	return text.length <= OUTPUT_CHARACTERS ? text : `${text.slice(0, half)}\n[...]\n${text.slice(-half)}`;
-};
+					.join('\n'),
+		OUTPUT_CHARACTERS,
+	);
 
 // How much of the context the request after this message carried: what was sent, cached or not
 const contextOf = usage =>
@@ -151,7 +154,7 @@ export const timelineFrom = (lines, cwd) => {
 				.join('\n')
 				.trim();
 
-			if (said) turn.said = said.slice(-SAID_CHARACTERS);
+			if (said) turn.said = startAndEnd(said, SAID_CHARACTERS);
 
 			for (const block of content) {
 				if (block.type !== 'tool_use') continue;

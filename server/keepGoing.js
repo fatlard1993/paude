@@ -4,7 +4,7 @@ import { noteCrew } from './crew';
 import { sessionDecisions } from './decisions';
 import { goingOn, isNudge, nudgeWith, typeWhenIdle } from './keepWarm';
 import { runningSession } from './sessions/running';
-import { sessionTurns } from './timeline';
+import { sessionTurns, startAndEnd } from './timeline';
 
 // A session that keeps going doesn't stop doing something while there's anything useful left that needs nothing from
 // the person: after each turn Haiku names what Claude should do next, the goal's next step or something useful toward
@@ -17,9 +17,8 @@ export const MOST_NUDGES = 50;
 // asking again only rereads the whole conversation from the cache
 export const MOST_IDLE = 2;
 const SLIGHT = 2;
-// What Claude ended each earlier turn of the run with, as Haiku is shown it
+// How many earlier turns Haiku is shown, each by what Claude ended it with (the timeline keeps its start and end)
 const RUN_SHOWN = 6;
-const RUN_CHARACTERS = 500;
 const REPLY_CHARACTERS = 4000;
 const ASKED_CHARACTERS = 1500;
 // What the session settled, as Haiku is shown it, newest first
@@ -50,29 +49,39 @@ export const holdBefore = turns => {
 
 const ASKED_PROMPTS = 4;
 
-// What the person last asked for, oldest first: the goal, and how they've been steering toward it
+// The turns from the person's last few prompts on: the goal, and how they've been steering toward it
+const lately = turns => {
+	const asked = turns.flatMap((turn, index) => (theirs(turn) ? [index] : []));
+
+	return turns.slice(asked.at(-ASKED_PROMPTS) ?? asked[0] ?? 0);
+};
+
+// What the person last asked for, oldest first
 const lastAsked = turns =>
-	turns
+	lately(turns)
 		.filter(theirs)
-		.slice(-ASKED_PROMPTS)
 		.map(turn => turn.asked);
 
-// What Claude ended each turn since the person's last prompt with, before the one just ended: without it Haiku sees
-// only the latest reply, and sends Claude back to check what an earlier turn already did
+// How Claude ended the turns before the one just ended, whoever prompted them: without them Haiku sees only the latest
+// reply, and sends Claude back to do what an earlier turn already did
 const runSoFar = turns =>
-	sinceTheirs(turns)
+	lately(turns)
 		.slice(0, -1)
 		.filter(turn => turn.said)
 		.slice(-RUN_SHOWN)
-		.map(turn => turn.said.slice(-RUN_CHARACTERS));
+		.map(turn => `${theirs(turn) ? 'After the person asked' : 'After a nudge'}: ${turn.said}`);
 
 const SAID_AS = { decision: 'Decided', direction: 'Direction', deferred: 'Put off', finding: 'Found' };
 
-// What the session settled that still stands (not set aside by the person), newest first: work put off is work left,
-// and each decision and direction is something the work can be checked against. One waiting on the person's answer is
-// shown as theirs, so the way forward goes around it rather than through it.
-export const settledSoFar = decisions => {
-	const open = decisions.filter(decision => !decision.dismissed);
+// What the session settled lately that still stands (not set aside by the person), newest first: work put off is work
+// left, and each decision and direction is something the work can be checked against. Only from the turns given (the
+// person's last few prompts on): nothing marks work put off as done once it is, and older put-off work came back
+// as suggestions long after it was done. One waiting on the person's answer is shown whenever it was asked, as theirs,
+// so the way forward goes around it rather than through it.
+export const settledSoFar = (decisions, within = null) => {
+	const open = decisions.filter(
+		decision => !decision.dismissed && (decision.question || !within || within.has(decision.turnId)),
+	);
 	const first = decision => decision.question || decision.kind === 'deferred';
 	const shown = new Set([...open.filter(first), ...open.filter(decision => !first(decision))].slice(0, SETTLED_SHOWN));
 
@@ -115,14 +124,14 @@ export const promptFor = (reply, asked, earlier = [], settled = []) =>
 			: []),
 		...(earlier.length
 			? [
-					"How Claude ended its earlier turns since the person's last message, oldest first. Don't send Claude back to do or check what these already did; if every way forward left is something they already did or declined, say go false.",
+					"How Claude ended its earlier turns, oldest first. Don't send Claude back to do or check what these already did: a request or work put off that any of them reports done is done, even when the latest reply doesn't mention it. If every way forward left is something they already did or declined, say go false.",
 					...earlier.map(text => `<earlier>\n${text}\n</earlier>`),
 					'',
 				]
 			: []),
-		"Claude's latest reply (its end, if long):",
+		"Claude's latest reply (its start and end, if long):",
 		'<reply>',
-		reply.slice(-REPLY_CHARACTERS),
+		startAndEnd(reply, REPLY_CHARACTERS),
 		'</reply>',
 		'',
 		'Reply with only a JSON object: {"go": true or false, "next": "what Claude should do next, one or two sentences spoken to Claude, specific to this work", "why": "one plain sentence"}.',
@@ -153,7 +162,7 @@ export const keepGoing = async (
 		ask = text => askHaiku(text, 'deciding to keep going'),
 		sessionOf = runningSession,
 		turnsOf = sessionTurns,
-		decisionsOf = (sessionId, cwd) => sessionDecisions(sessionId, cwd, { onlyRead: true, whole: true }),
+		decisionsOf = (sessionId, cwd) => sessionDecisions(sessionId, cwd, { onlyRead: true }),
 	} = {},
 ) => {
 	const session = sessionOf(id);
@@ -172,7 +181,10 @@ export const keepGoing = async (
 	}
 
 	const { decisions } = await decisionsOf(id, session.cwd).catch(() => ({ decisions: [] }));
-	const verdict = jsonIn(await ask(promptFor(reply, lastAsked(turns), runSoFar(turns), settledSoFar(decisions))));
+	const within = new Set(lately(turns).map(turn => turn.id));
+	const verdict = jsonIn(
+		await ask(promptFor(reply, lastAsked(turns), runSoFar(turns), settledSoFar(decisions, within))),
+	);
 	const why = verdict ? (verdict.why ?? 'no reason given') : 'no answer from Haiku';
 
 	if (verdict?.go === false) {

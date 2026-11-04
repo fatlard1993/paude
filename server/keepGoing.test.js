@@ -154,7 +154,7 @@ test("Haiku is shown how the run's earlier turns ended, and a turn that did next
 			return '{"go": false}';
 		},
 	});
-	expect(prompt).toContain('<earlier>\nThe cans are done and tested.\n</earlier>');
+	expect(prompt).toContain('<earlier>\nAfter the person asked: The cans are done and tested.\n</earlier>');
 
 	const slight = { prompt: NUDGE, asked: NUDGE, steps: [{ summary: 'Read a file' }] };
 
@@ -214,4 +214,41 @@ test('a turn end a Stop hook turned back is answered only by the turn end after 
 	expect(await blocked).toBe(false);
 	expect(session.typed).toHaveLength(1);
 	expect(session.typed[0]).toContain('Check it.');
+});
+
+test("work put off before the person's last few prompts isn't shown, since nothing marks it done once it is; a question for them always is", async () => {
+	const turns = [
+		{ ...turn('prune the client', true, 'Pruned it all.'), id: 'old' },
+		...['a', 'b', 'c', 'd'].map(id => ({ ...turn(`ask ${id}`, true, `Did ${id}.`), id })),
+	];
+	const decisions = [
+		{ turnId: 'old', kind: 'deferred', chose: 'The pruning pass, for later.' },
+		{ turnId: 'old', kind: 'decision', chose: 'Hold credit?', question: 'Hold credit until commands end?' },
+		{ turnId: 'c', kind: 'deferred', chose: 'Splitting ship.js, for later.' },
+	];
+	let prompt = '';
+
+	await keepWarm('going', 12, Date.now(), { going: true });
+	await keepGoing('going', 'Did d.', {
+		...going(fakeSession(), turns, decisions),
+		ask: async text => {
+			prompt = text;
+
+			return '{"go": false}';
+		},
+	});
+	expect(prompt).toContain('Put off: Splitting ship.js, for later.');
+	expect(prompt).toContain('Waiting on the person: Hold credit until commands end?');
+	expect(prompt).not.toContain('The pruning pass');
+	// Earlier turns are shown past the person's last prompt, and a long one by its start and end
+	expect(prompt).toContain('After the person asked: Did b.');
+	expect(prompt).not.toContain('Pruned it all.');
+});
+
+test('the latest reply is shown by its start and its end, where a list of what it did often sits', () => {
+	const prompt = promptFor(`Done: the cans and the plates. ${'x'.repeat(10_000)} Left: the walk cycle.`, ['all of it']);
+
+	expect(prompt).toContain('Done: the cans and the plates.');
+	expect(prompt).toContain('[...]');
+	expect(prompt).toContain('Left: the walk cycle.');
 });
