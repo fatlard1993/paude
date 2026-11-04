@@ -1,6 +1,7 @@
 import { relativeTime } from '@vanilla-bean/components/utils/date';
 
 import { facilitiesFor, facilityOf } from '../../shared/facilities';
+import { LIFETIMES } from '../../shared/lifetimes';
 import { BRIDGE, LOUNGE } from './scene';
 
 export const STATUS = { working: 'working', waiting: 'needs you', ready: 'ready for a prompt', stopped: 'stopped' };
@@ -142,6 +143,7 @@ const FLYOUTS = {
 				session.assets && ['made', plural(session.assets, 'file')],
 				watchers.length && ['terminal open', watchers.join(', ')],
 				session.watching === false && ['watch', 'off: it leaves the ship when it stops'],
+				LIFETIMES[session.lifetime] && ['lasts', LIFETIMES[session.lifetime].label.toLowerCase()],
 			],
 			hint: live(session)
 				? 'Press for its terminal · right-click or hold for orders'

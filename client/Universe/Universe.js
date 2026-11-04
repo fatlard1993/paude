@@ -9,6 +9,7 @@ import {
 	markRemoteSeen,
 	markSeen,
 	openRemote,
+	setLifetime,
 	setRemoteWatching,
 	setWatching,
 } from '../api';
@@ -18,6 +19,7 @@ import { button, element } from '../dom';
 import { identity, serverName } from '../identity';
 import { hueOf, onServersChange, setServers } from '../servers';
 import { openMenu } from '../menu';
+import { LIFETIMES, WARM_LIFETIMES } from '../../shared/lifetimes';
 import { confirmDeleteSession } from '../confirmDialog';
 import { sessionMenu } from '../sessionActions';
 import { LOCAL, shipsOf } from './shown';
@@ -536,7 +538,9 @@ export default class Universe extends View {
 
 		this.showTip(null);
 		this.select(selectionOf(target, this));
-		if (target?.kind === 'worker' || target?.kind === 'monitor') return this.openWorker(target.worker);
+		// Its terminal opens it; the grey itself only says what it is
+		if (target?.kind === 'monitor') return this.openWorker(target.worker);
+		if (target?.kind === 'worker') return this.paintFocus();
 		if (target?.kind === 'cloner') return this.newPrompt(undefined, point);
 		if (target?.kind === 'log') return this.openLog(target, point);
 		// The work itself opens where it's worked on: a checkout's cargo or pull request in its git, a chat in the chat, a
@@ -678,11 +682,43 @@ export default class Universe extends View {
 				hotkey: 'u',
 				run: () => this.watch(worker, !session.watching),
 			},
+			...(remote || !identity()?.owner || !session.lifetime
+				? []
+				: [{ label: 'Lifetime', hotkey: 'i', run: event => this.lifetimeMenu(worker, event) }]),
 			{ label: remote ? `Open on ${remote.name}` : 'Open', hotkey: 'o', run: () => this.open(session) },
 			...(remote || !identity()?.owner
 				? []
 				: [{ label: 'Delete', hotkey: 'x', run: () => this.remove(worker) }]),
 		];
+	}
+
+	// How long it lasts, picked from a menu by the pressed button, or by the panel when its key was pressed: running, it
+	// can be kept warm or kept going; stopped, only ordinary or short-lived
+	lifetimeMenu(worker, event) {
+		const { session } = worker;
+		const box = this.focus.getBoundingClientRect();
+		const at = event?.clientX ? { x: event.clientX, y: event.clientY } : { x: box.left, y: box.bottom };
+		const running = session.status !== 'stopped';
+
+		openMenu(at, [
+			{ heading: 'How long it lasts' },
+			...Object.entries(LIFETIMES)
+				.filter(([key]) => running || !WARM_LIFETIMES.includes(key))
+				.map(([key, { label, detail }]) => ({
+					label: key === session.lifetime ? `${label} ✓` : label,
+					detail,
+					onPress: () => this.setLifetime(worker, key),
+				})),
+		]);
+	}
+
+	async setLifetime(worker, lifetime) {
+		if (worker.session.lifetime === lifetime) return;
+
+		const { response, body } = await setLifetime(worker.session.id, lifetime);
+
+		if (!response?.ok) return new Notify({ intent: 'warning', content: refusal("Couldn't change how long it lasts", body) });
+		this.poll();
 	}
 
 	// Deleted once that's confirmed, and gone from the ship at the next answer
