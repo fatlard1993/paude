@@ -2660,9 +2660,9 @@ export default class Ship {
 					const swing = Math.floor(this.time * 1.5 + worker.seed) % 2;
 
 					for (const side of [-2, 1]) {
-						rect(ctx, at.x + side - 1, at.y - 6, 3, 6, PALETTE.k);
-						rect(ctx, at.x + side, at.y - 6, 1, 5, PALETTE.a);
-						rect(ctx, at.x + side - 1 + (side > 0 ? swing : 0), at.y - 1, 3, 2, PALETTE.k);
+						rect(ctx, at.x + side - 1, at.y - 6, 3, 4, PALETTE.k);
+						rect(ctx, at.x + side, at.y - 6, 1, 3, PALETTE.a);
+						rect(ctx, at.x + side - 1 + (side > 0 ? swing : 0), at.y - 3, 3, 2, PALETTE.k);
 					}
 				},
 			},

@@ -62,7 +62,7 @@ const loungeSpan = columns => columns * COUCH_SEAT + (columns / 2 - 1) * COUCH_G
 export const loungeWidth = count => Math.max(BAY_MIN, loungeSpan(loungeColumns(count)) + 1.6);
 
 export const loungeDepth = count =>
-	FACE + 0.6 + Math.ceil(Math.max(count, 1) / loungeColumns(count)) * LOUNGE_ROW + 1.1;
+	FACE + 0.6 + Math.ceil(Math.max(count, 1) / loungeColumns(count)) * LOUNGE_ROW + 1.8;
 
 export const loungeSeatAt = (lounge, index) => {
 	const columns = loungeColumns(lounge.count);
