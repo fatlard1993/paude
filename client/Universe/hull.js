@@ -784,6 +784,32 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, recyclin
 				rect(ctx, at.x - 6, at.y - REACTOR.tall + 2, 1, REACTOR.tall - 5, 'rgba(255, 255, 255, 0.12)');
 				box(ctx, at.x - 8, at.y - REACTOR.tall - 2, 17, 4, PALETTE.l);
 				box(ctx, at.x - 8, at.y - 4, 17, 4, PALETTE.l);
+				// Coils up its sides, lit in a band rising to the core while it runs
+				for (const side of [-1, 1])
+					for (let coil = 0; coil < 5; coil++) {
+						const y = at.y - 6 - coil * 3;
+						const lit = busy && Math.floor(time * 10) % 7 === coil;
+
+						rect(ctx, at.x + side * 10 - 1, y, 3, 2, PALETTE.k);
+						rect(ctx, at.x + side * 10, y, 1, 1, lit ? `hsl(${hue} 80% 70%)` : PALETTE.m);
+					}
+				// Vents on its cap puffing while it runs, and its pump's lamp
+				if (busy)
+					for (const vent of [-4, 4]) {
+						const puff = (time * 1.4 + (vent > 0 ? 0.5 : 0)) % 1;
+
+						ctx.globalAlpha = 0.5 * (1 - puff);
+						rect(
+							ctx,
+							at.x + vent + (Math.floor(puff * 4) % 2),
+							at.y - REACTOR.tall - 4 - Math.round(puff * 7),
+							2,
+							2,
+							PALETTE.W,
+						);
+						ctx.globalAlpha = 1;
+					}
+				rect(ctx, at.x + 5, at.y - 3, 2, 1, busy && Math.floor(time * 4) % 2 ? PALETTE.t : PALETTE.d);
 				if (busy) pixelEllipse(ctx, at.x, at.y + 1, 14, 3, `hsla(${hue}, 80%, 60%, 0.10)`);
 				if (engine.link !== undefined) {
 					const bars = engine.link === null ? 0 : 3 - [250, 1000, Infinity].findIndex(most => engine.link < most);
@@ -1031,8 +1057,7 @@ const mount = (ctx, art, room, at, { active, accent, time }) => {
 	for (let x = at.x - 22; x < at.x + 24; x += 9) rect(ctx, x, at.y + 1, 1, 1, PALETTE.w);
 };
 
-// A compact system: the main along the ceiling from its reactor, a short drop into a cabinet with a window showing
-// its work, its load along the bottom and a light that blinks red once a use has failed
+// A compact system's mount: the main along the ceiling from its reactor, a short drop into the machine, a plinth
 const compactMount = (ctx, art, room, at, { active, accent, time }) => {
 	const ceiling = art({ x: 0, y: room.y }).y + 1;
 	const right = art({ x: room.x + room.w, y: 0 }).x;
@@ -1051,55 +1076,103 @@ const compactMount = (ctx, art, room, at, { active, accent, time }) => {
 	rect(ctx, at.x - 10, at.y, 21, 1, PALETTE.l);
 };
 
-const COMPACT_ICONS = {
-	// Lines of text running past
-	library: (ctx, x, y, { active, accent, time }) => {
-		const run = active ? Math.floor(time * 6) : 0;
+// Each compact system a small machine of its kind, `at` its foot and `tall` its height, running while it's used
+const COMPACT_ART = {
+	// A drive tower, its bays lit in a band running down it as files are read, a rack of blinking lamps beside it
+	library: (ctx, at, { active, accent, time, tall }) => {
+		box(ctx, at.x - 6, at.y - tall, 9, tall, PALETTE.d);
+		for (let bay = 0; bay < 5; bay++) {
+			const y = at.y - tall + 2 + bay * 3;
+			const lit = active && (Math.floor(time * 8) % 6 === bay || Math.floor(time * 8) % 6 === bay + 1);
 
-		for (let line = 0; line < 3; line++) rect(ctx, x + 1, y + 1 + line * 2, 4 + ((line * 5 + run) % 9), 1, accent);
+			rect(ctx, at.x - 4, y, 5, 2, '#0d1218');
+			rect(ctx, at.x - 3, y, 3, 1, lit ? accent : PALETTE.m);
+		}
+		box(ctx, at.x + 3, at.y - tall + 4, 6, tall - 4, PALETTE.m);
+		for (let lamp = 0; lamp < 4; lamp++) {
+			const on = active ? Math.sin(time * (5 + lamp * 1.7) + lamp * 2) > 0 : lamp === 0;
+
+			rect(ctx, at.x + 5, at.y - tall + 6 + lamp * 3, 2, 1, on ? accent : PALETTE.d);
+		}
 	},
-	// A line written out to a blinking caret
-	forge: (ctx, x, y, { active, accent, time }) => {
-		const written = active ? Math.floor(time * 8) % 10 : 6;
+	// A press over a sheet in its bed: the ram comes down on it while files are edited, sparks flying where it strikes
+	forge: (ctx, at, { active, accent, time, tall }) => {
+		const stroke = active ? Math.abs(Math.sin(time * 6)) : 0.2;
+		const ram = Math.round(at.y - tall + 4 + stroke * 5);
 
-		rect(ctx, x + 1, y + 3, written, 1, accent);
-		if (!active || Math.floor(time * 3) % 2) rect(ctx, x + 1 + written, y + 1, 2, 4, PALETTE.w);
+		box(ctx, at.x - 9, at.y - tall, 3, tall, PALETTE.m);
+		box(ctx, at.x + 7, at.y - tall, 3, tall, PALETTE.m);
+		box(ctx, at.x - 7, at.y - tall, 15, 3, PALETTE.l);
+		rect(ctx, at.x - 1, at.y - tall + 3, 3, ram - (at.y - tall + 3), PALETTE.l);
+		box(ctx, at.x - 5, ram, 11, 3, PALETTE.d);
+		box(ctx, at.x - 7, at.y - 5, 15, 5, PALETTE.d);
+		rect(ctx, at.x - 4, at.y - 6, 9, 1, PALETTE.w);
+		if (active && stroke > 0.9)
+			for (const [dx, dy] of [
+				[-6, -8],
+				[6, -9],
+				[-4, -10],
+				[5, -7],
+			])
+				rect(ctx, at.x + dx, at.y + dy, 1, 1, accent);
 	},
-	// A prompt and its cursor
-	reactor: (ctx, x, y, { active, accent, time }) => {
-		for (const [dx, dy] of [
-			[1, 1],
-			[2, 2],
-			[3, 3],
-			[2, 4],
-			[1, 5],
-		])
-			rect(ctx, x + dx, y + dy, 1, 1, accent);
-		if (!active || Math.floor(time * 3) % 2) rect(ctx, x + 6, y + 5, 4, 1, PALETTE.w);
+	// Two drums, their pistons pumping in turn while commands run, and a gauge whose needle swings with them
+	reactor: (ctx, at, { active, accent, time, tall }) => {
+		for (const side of [-1, 1]) {
+			const x = at.x + side * 5 - 3;
+			const pump = active ? Math.round((Math.sin(time * 7 + (side > 0 ? Math.PI : 0)) + 1) * 2) : 0;
+
+			box(ctx, x, at.y - 10, 7, 10, PALETTE.m);
+			rect(ctx, x + 1, at.y - 7, 5, 1, PALETTE.d);
+			rect(ctx, x + 1, at.y - 4, 5, 1, active ? accent : PALETTE.d);
+			rect(ctx, x + 3, at.y - 13 - pump, 1, 3 + pump, PALETTE.l);
+			rect(ctx, x + 2, at.y - 14 - pump, 3, 1, PALETTE.w);
+		}
+		box(ctx, at.x - 3, at.y - tall, 7, 6, '#0d1218');
+
+		const swing = active ? Math.sin(time * 3) : -0.8;
+
+		rect(ctx, at.x + Math.round(swing * 2), at.y - tall + 2, 1, 2, accent);
+		rect(ctx, at.x, at.y - tall + 4, 1, 1, PALETTE.w);
 	},
-	// A beacon, rings going out from it while it's in use
-	dish: (ctx, x, y, { active, accent, time }) => {
-		rect(ctx, x + 7, y + 3, 1, 1, PALETTE.w);
-		if (!active) return;
+	// A transceiver rack, its lamps chattering, a little dish on top turning and sending rings out while it's used
+	dish: (ctx, at, { active, accent, time, tall }) => {
+		box(ctx, at.x - 6, at.y - tall + 6, 13, tall - 6, PALETTE.d);
+		for (let row = 0; row < 3; row++)
+			for (let lamp = 0; lamp < 3; lamp++) {
+				const on = active && seededLamp(row, lamp, Math.floor(time * 6));
 
-		const ring = Math.floor(time * 4) % 3;
+				rect(ctx, at.x - 4 + lamp * 4, at.y - tall + 9 + row * 3, 2, 1, on ? accent : PALETTE.m);
+			}
 
-		rect(ctx, x + 6 - ring * 2, y + 3, 1, 1, accent);
-		rect(ctx, x + 8 + ring * 2, y + 3, 1, 1, accent);
-		rect(ctx, x + 7, y + 3 - ring, 1, 1, accent);
-		rect(ctx, x + 7, y + 3 + ring, 1, 1, accent);
+		const facing = active ? [-1, 0, 1, 0][Math.floor(time * 2) % 4] : 0;
+
+		rect(ctx, at.x, at.y - tall + 3, 1, 3, PALETTE.l);
+		rect(ctx, at.x - 3 + facing, at.y - tall + 1, 7, 1, PALETTE.w);
+		rect(ctx, at.x - 2 + facing, at.y - tall + 2, 5, 1, PALETTE.l);
+		if (active) {
+			const ring = (time * 1.5) % 1;
+
+			ctx.globalAlpha = 1 - ring;
+			rect(ctx, at.x - 2 - Math.round(ring * 6), at.y - tall - Math.round(ring * 3), 1, 1, accent);
+			rect(ctx, at.x + 2 + Math.round(ring * 6), at.y - tall - Math.round(ring * 3), 1, 1, accent);
+			rect(ctx, at.x, at.y - tall - 1 - Math.round(ring * 5), 1, 1, accent);
+			ctx.globalAlpha = 1;
+		}
 	},
 };
 
-const drawCompactUnit = (ctx, at, room, { active, accent, time, load = 0, failures = 0, hue }) => {
-	const top = at.y - systemTallOf(room);
+// Whether a rack lamp is lit this tick: chattering, as a rack's do
+const seededLamp = (row, lamp, tick) => (row * 7 + lamp * 13 + tick * 29) % 11 < 5;
 
-	box(ctx, at.x - 9, top, 19, systemTallOf(room), PALETTE.d);
-	rect(ctx, at.x - 7, top + 2, 15, 7, '#0d1218');
-	COMPACT_ICONS[room.key](ctx, at.x - 7, top + 2, { active, accent, time });
-	rect(ctx, at.x - 7, top + 11, 12, 1, PALETTE.m);
-	rect(ctx, at.x - 7, top + 11, Math.round(12 * load), 1, `hsl(${hue} 75% 64%)`);
-	rect(ctx, at.x + 6, top + 10, 2, 3, failures > 0 && Math.floor(time * 3) % 2 ? PALETTE.r : PALETTE.m);
+const drawCompactUnit = (ctx, at, room, { active, accent, time, load = 0, failures = 0, hue }) => {
+	const tall = systemTallOf(room);
+
+	COMPACT_ART[room.key](ctx, at, { active, accent, time, tall });
+	// Its load along the plinth, and a lamp blinking red once a use has failed
+	rect(ctx, at.x - 9, at.y + 2, 16, 1, PALETTE.d);
+	rect(ctx, at.x - 9, at.y + 2, Math.round(16 * load), 1, `hsl(${hue} 75% 64%)`);
+	rect(ctx, at.x + 8, at.y + 1, 2, 2, failures > 0 && Math.floor(time * 3) % 2 ? PALETTE.r : PALETTE.m);
 };
 
 // A system's room: one engine's full size, with its console and its spent stock; more engines' compact

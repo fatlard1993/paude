@@ -14,7 +14,7 @@ const ENGINE_BAY_W = ENGINEERING_W + SYSTEM.w;
 // ship's zoom steps by whole numbers, so a little more length can halve it)
 const COMPACT = { w: SYSTEM.w / 2, d: FACE + 1.2 };
 // How tall a system's unit stands from its foot, in art pixels
-export const systemTallOf = room => (room.compact ? 15 : 33);
+export const systemTallOf = room => (room.compact ? 16 : 33);
 const HANGAR_W = 2.6;
 // The shipping bay, a gondola hung under the belly, what's staged to ship and the pad it leaves from
 const GONDOLA_D = FACE + 2.3;
