@@ -4,6 +4,7 @@ import '@xterm/xterm/css/xterm.css';
 
 import { canBrowse, canNote, canType } from '../identity';
 import attach from '../Terminal/attach';
+import { acceptFiles } from '../Terminal/fileDrop';
 import { copySelection, isCopyKey } from '../Terminal/copySelection';
 import { linkFilePaths, linkUrls } from '../Terminal/linkProviders';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from '../Terminal/xtermOptions';
@@ -74,12 +75,21 @@ export default class TerminalPanel {
 		new Notify({ intent: 'warning', content: 'That text is no longer in the terminal history.' });
 	}
 
+	// Pasted rather than typed, so it lands in Claude's prompt as one paste and nothing is sent until Enter
+	paste(text) {
+		if (!this.connection?.send({ type: 'input', data: `\x1b[200~${text}\x1b[201~` }))
+			return new Notify({ intent: 'warning', content: 'Not attached: reconnecting. Try again in a moment.' });
+		this.terminal.focus();
+		new Notify({ intent: 'success', content: 'Added to the prompt', timeout: 1500 });
+	}
+
 	start() {
 		if (this.terminal) return this.fit();
 
 		const { session } = this;
 		const { cols = 100, rows = 30 } = session.screen ?? {};
 		const { remote } = session.engine;
+		const through = remote ? `/api/remotes/at/${encodeURIComponent(remote.url)}` : '';
 		// See-through, so the ship shows behind it
 		const terminal = new Terminal({
 			...xtermOptions,
@@ -108,8 +118,9 @@ export default class TerminalPanel {
 		terminal.onSelectionChange(() => (this.selected.hidden = !terminal.hasSelection()));
 		redrawWhenSymbolsLoad(terminal);
 		terminal.onData(data => this.connection?.send({ type: 'input', data }));
+		if (canType()) acceptFiles(this.screen, session.id, text => this.paste(text), through);
 		this.connection = attach(session.id, {
-			...(remote && { url: `${window.location.origin}/api/remotes/at/${encodeURIComponent(remote.url)}` }),
+			...(remote && { url: `${window.location.origin}${through}` }),
 			hello: () => ({ kind: 'web', label: 'universe', cols: terminal.cols, rows: terminal.rows }),
 			onOutput: data => {
 				const text = decoder.decode(data, { stream: true });

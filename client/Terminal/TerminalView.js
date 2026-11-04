@@ -5,7 +5,6 @@ import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 
 import {
-	attachFile,
 	deleteSession,
 	forkSession,
 	getGit,
@@ -31,7 +30,6 @@ import { canBrowse, canNote, canType, identity } from '../identity';
 import DONE_MARKER from '../../shared/doneMarker';
 import { tintsOf } from '../../shared/hues';
 import tokens from '../../shared/tokenCount';
-import { bufferCells, linkFilePaths, linkUrls } from './linkProviders';
 import withoutPointerReporting from '../../shared/pointerReporting';
 import { NOTE_TYPES } from '../../shared/protocol';
 import { showNotification } from '../notify';
@@ -43,6 +41,8 @@ import { AskingCard, showAsking, showLimit } from '../Asking';
 import { ghostButton } from '../Bar';
 import { LIFETIMES, WARM_LIFETIMES, clockTime } from '../../shared/lifetimes';
 import { updateTabTitle } from '../tabTitle';
+import { acceptFiles } from './fileDrop';
+import { bufferCells, linkFilePaths, linkUrls } from './linkProviders';
 import attach from './attach';
 import { startCatchUp, trackLastSeen } from './catchUp';
 import KeyBar from './KeyBar';
@@ -598,7 +598,7 @@ export default class TerminalView extends View {
 		redrawWhenSymbolsLoad(this.terminal);
 		if (identity()?.owner) this.markDoneLines();
 		this.linkUrls();
-		if (canType()) this.acceptFiles();
+		if (canType()) acceptFiles(this.screen.elem, this.options.id, text => this.attachToPrompt(text));
 		if (canBrowse()) this.linkFilePaths();
 		this.terminal.onData(data => this.sendInput(data));
 		this.scrollClaudeWithWheel();
@@ -1243,50 +1243,6 @@ export default class TerminalView extends View {
 	// Wheel notches up or down at a point on the terminal
 	sendWheel(up, point, notches) {
 		this.sendInput(this.mouseReport(up ? 64 : 65, point).repeat(notches));
-	}
-
-	// A file dropped or pasted onto the terminal is saved on the server and its path put in the prompt, where Claude
-	// reads it (an image's path becomes an attached image); a text paste still goes through as typing
-	acceptFiles() {
-		const screen = this.screen.elem;
-		const carriesFiles = event => event.dataTransfer?.types.includes('Files');
-
-		screen.addEventListener('dragover', event => {
-			if (!carriesFiles(event)) return;
-			event.preventDefault();
-			screen.classList.add('dropping');
-		});
-		screen.addEventListener('dragleave', () => screen.classList.remove('dropping'));
-		screen.addEventListener('drop', event => {
-			screen.classList.remove('dropping');
-			if (!carriesFiles(event)) return;
-			event.preventDefault();
-			this.attachFiles([...event.dataTransfer.files]);
-		});
-		screen.addEventListener(
-			'paste',
-			event => {
-				const files = [...(event.clipboardData?.files ?? [])];
-
-				if (!files.length) return;
-				event.preventDefault();
-				event.stopPropagation();
-				this.attachFiles(files);
-			},
-			true,
-		);
-	}
-
-	async attachFiles(files) {
-		const paths = [];
-
-		for (const file of files) {
-			const { response, body } = await attachFile(this.options.id, file);
-
-			if (response.ok) paths.push(body.path);
-			else new Notify({ intent: 'warning', content: `${file.name || 'The file'} wasn't attached: ${body}` });
-		}
-		if (paths.length) this.attachToPrompt(`${paths.join(' ')} `);
 	}
 
 	// A click or tap that selected nothing goes to Claude, which moves its cursor there; a drag still selects

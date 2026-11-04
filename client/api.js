@@ -316,9 +316,10 @@ export const getRemoteSessions = async (url, { searchParameters: page }) =>
 export const openRemote = async (url, to) => await POST('/api/remotes/open', { body: { url, ...to } });
 
 // A dropped or pasted file, saved where Claude can read it: { path }
-export const attachFile = async (sessionId, file) => {
+// `base` reaches another paude's session through this one
+export const attachFile = async (sessionId, file, base = '') => {
 	const response = await fetch(
-		`/api/sessions/${encodeURIComponent(sessionId)}/attachments?name=${encodeURIComponent(file.name)}`,
+		`${base}/api/sessions/${encodeURIComponent(sessionId)}/attachments?name=${encodeURIComponent(file.name)}`,
 		{ method: 'POST', body: file },
 	);
 

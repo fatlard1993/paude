@@ -174,6 +174,11 @@ export const Stage = styled(
 
 		/* The terminal see-through over a tint dark enough to read it by, the glass showing past its rows; sized to fit,
 		   so no scrollbars */
+		.docked-terminal .screen.dropping {
+			outline: 2px dashed ${colors.light(colors.orange)};
+			outline-offset: -2px;
+		}
+
 		.docked-terminal .screen {
 			flex: 1;
 			min-height: 0;

@@ -306,6 +306,31 @@ const sessionsRoutes = async (request, server) => {
 		return upgraded ? undefined : new Response('WebSocket upgrade failed', { status: 400 });
 	}
 
+	// A file dropped on its terminal here, saved there for it
+	match = requestMatch('POST', '/api/remotes/at/:url/api/sessions/:id/attachments', request);
+	if (match) {
+		const remote = /^[\w-]+$/.test(match.id) && (await remoteServer(match.url));
+
+		if (!remote) return new Response('Not one of your servers', { status: 404 });
+
+		try {
+			const there = await fetch(
+				`${remote.url}/api/sessions/${match.id}/attachments?name=${encodeURIComponent(match.name ?? '')}`,
+				{
+					method: 'POST',
+					body: request.body,
+					headers: { authorization: `Bearer ${remote.token}` },
+					tls: trustedCertificates(),
+					signal: AbortSignal.timeout(60_000),
+				},
+			);
+
+			return new Response(there.body, { status: there.status, headers: { 'content-type': there.headers.get('content-type') ?? 'text/plain' } });
+		} catch (error) {
+			return new Response(error.message, { status: 502 });
+		}
+	}
+
 	match = requestMatch('GET', '/api/remotes/at/:url/api/sessions/:id', request);
 	if (match) {
 		const remote = /^[\w-]+$/.test(match.id) && (await remoteServer(match.url));
