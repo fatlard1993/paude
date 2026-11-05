@@ -59,6 +59,23 @@ const usedWords = ({ percent, resetsAt }) => {
 	return `${Math.round(percent)}% used, resets ${when}`;
 };
 
+// How long its context stays cached, counted down as its grey dozes off, or how long since it went cold and what its
+// next turn costs for it; null when it isn't known
+const freshness = (worker, ship) => {
+	const { context } = worker.session;
+	const { cache } = context;
+
+	if (!cache?.life) return context.warm === false ? 'gone cold: its next turn costs more' : null;
+
+	const since = (ship.time - (worker.cacheAt ?? ship.time)) * 1000;
+	const left = cache.left - since;
+	const life = `${Math.round(cache.life / 60_000)}-minute`;
+
+	if (left > 0) return `fresh for ${left < 60_000 ? 'under a minute' : `${lasted(left)} more`}, of its ${life} cache`;
+
+	return `gone cold ${lasted(Math.max(60_000, (cache.ago ?? 0) + since - cache.left))} ago: its next turn writes its ${tokenCount(context.tokens)} context to the cache again`;
+};
+
 const lasted = age => {
 	const minutes = Math.round(age / 60_000);
 
@@ -159,7 +176,7 @@ const FLYOUTS = {
 				session.faults && ['failed', `${plural(session.faults, 'tool')} this turn`],
 				MODES[session.mode] && ['mode', MODES[session.mode]],
 				context?.model && ['model', context.model],
-				context?.warm === false && session.status !== 'stopped' && ['cache', 'gone cold: its next turn costs more'],
+				session.status !== 'stopped' && context && ['cache', freshness(target.worker, ship)],
 				session.status === 'working' && session.turnAge && ['this turn', lasted(session.turnAge)],
 				session.age && ['running', lasted(session.age)],
 				checkout && ['branch', whereWorking(checkout)],
