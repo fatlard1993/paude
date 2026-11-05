@@ -82,7 +82,7 @@ const SHUTTLE = { fly: 1.6, tube: 0.6, walk: 1.6, retract: 0.5 };
 // close up (`warp`); the ship pulling in under it as the view draws back to all of it (the ship's own coming in,
 // ENTER_SECONDS); its plating shimmering as the shuttle settles on it (`settle`); then its tube and their walk. How
 // much closer than the whole ship the view starts, in zoom.
-const JOIN = { warp: 1.2, settle: 1.2, closer: 3, tubeCloser: 2, opened: 2.6, stepped: 1.4 };
+const JOIN = { warp: 1.2, settle: 1.2, closer: 3, tubeCloser: 2, opened: 2.6, stepped: 1.7 };
 // How long the view watches the one looking walk out from the airlock before what's to be focused on opening is, in
 // seconds: long enough to see them clear it, not the whole way to where they belong
 const WALK_IN_MOST = 1.4;
@@ -1737,14 +1737,12 @@ export default class Ship {
 		this.tendCrew(seconds);
 		this.tendCrane(seconds);
 		for (const [name, walker] of this.walkers)
+			// People walk at their pace even asked for less motion: one small figure crossing the floor is no sweep of
+			// the view, and their coming aboard through the airlock is what's to be seen
 			if (!this.boarding(walker) && !this.inDoorway(walker))
 				walk(
 					walker,
-					calm
-						? Infinity
-						: WALK_SPEED *
-								seconds *
-								(this.departing?.key === name || (this.readying && this.viewer === name) ? HURRY : 1),
+					WALK_SPEED * seconds * (this.departing?.key === name || (this.readying && this.viewer === name) ? HURRY : 1),
 					seconds,
 				);
 		this.tendTravel();
