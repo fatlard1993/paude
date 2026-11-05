@@ -4025,8 +4025,9 @@ export default class Ship {
 
 		const bots = this.bots.size ? [...this.bots.values()] : [{ ...this.berthOf(0), index: 0, docked: true, path: [] }];
 
+		// Over the conduits they drive across, which lie over everything
 		return bots.map(bot => ({
-			y: bot.y,
+			y: TUBE_FRONT - 0.001,
 			draw: () => {
 				const at = this.art(bot);
 				const working = !bot.docked && !bot.back && !bot.path.length;
