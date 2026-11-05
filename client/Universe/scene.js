@@ -85,7 +85,7 @@ const SHUTTLE = { fly: 1.6, tube: 0.6, walk: 1.6, retract: 0.5 };
 const JOIN = { warp: 1.2, settle: 1.2, closer: 3, tubeCloser: 2, opened: 2.6, stepped: 1.4 };
 // How long the view watches the one looking walk out from the airlock before what's to be focused on opening is, in
 // seconds: long enough to see them clear it, not the whole way to where they belong
-const WALK_IN_MOST = 2;
+const WALK_IN_MOST = 1.4;
 // How long someone just come aboard stands in the airlock's doorway as its door opens before stepping out, in seconds
 const DOORWAY_SECONDS = 0.6;
 // How fast the view's zoom eases to where it's going, as a rate
