@@ -1243,17 +1243,24 @@ export default class Ship {
 				(this.workers.get(a).session.checkout ?? '').localeCompare(this.workers.get(b).session.checkout ?? ''),
 			);
 
-		// A project is a section of the hull while one of its sessions is aboard or it's watched: those at work nearest
-		// the core, then the watched, each by name; the rest stay off the ship
+		// A project is a section of the hull while one of its sessions is aboard or it's watched; the rest stay off the
+		// ship. Each keeps its place along the ship as long as the view is open, so the floor plan changes as little as
+		// it can: those first aboard by name, each later one after them, and one that leaves and comes back where it was.
 		const rank = bay => {
 			if (bay.sessions.length || bay.active) return 0;
 
 			return bay.watching ? 1 : 2;
 		};
+		const aboard = [...bays.values()].filter(bay => rank(bay) < 2);
+		const known = this.bayOrder ?? [];
+		const newcomers = aboard
+			.map(({ name }) => name)
+			.filter(name => !known.includes(name))
+			.sort((a, b) => a.localeCompare(b));
 
-		const ranked = [...bays.values()]
-			.filter(bay => rank(bay) < 2)
-			.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+		this.bayOrder = [...known, ...newcomers];
+
+		const ranked = aboard.sort((a, b) => this.bayOrder.indexOf(a.name) - this.bayOrder.indexOf(b.name));
 
 		// Only a project at work has a color: idle ones are plain metal, so no two at work share one and each stays its
 		// own; one too close to a color already taken moves round the wheel until it's clear of the rest

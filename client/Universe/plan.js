@@ -314,10 +314,10 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 	const transporter = fleet ? TRANSPORTER_W : 0;
 	const system = ({ key, name }) => ({ kind: 'system', key, name, w: SYSTEM.w, d: SYSTEM.d });
 	// Each project's machine stands on one deck, as wide as the project is big, into whichever deck reaches least far
-	// yet; none spans two decks. A project with nothing going on is a machine all the same, after those at work, a little
-	// more compact.
+	// yet, in the order given (which keeps each where it was); none spans two decks. A project with nothing going on is
+	// a machine all the same, a little more compact.
 	const idle = bay => !bay.seated && !bay.watching;
-	const order = [...bays.filter(bay => !idle(bay)), ...bays.filter(idle)].map(bay => {
+	const order = bays.map(bay => {
 		const machine = machineWidth(bay.character?.files) * (idle(bay) ? IDLE_SCALE : 1);
 
 		return { bay, machine, w: footprintOf(machine) };

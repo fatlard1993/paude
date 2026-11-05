@@ -39,7 +39,7 @@ const shipWith = answers => {
 // Someone aboard, by the name they go by
 const walkerNamed = (made, name) => [...made.walkers.values()].find(walker => walker.name === name);
 
-test('a project is a section of the hull while a session of it is aboard or it is watched, those at work first: the rest stay off', () => {
+test('a project is a section of the hull while a session of it is aboard or it is watched, in its place, by name when first aboard: the rest stay off', () => {
 	const made = shipWith([
 		answer('here', [session(), session({ id: 'b', project: 'site' })], {
 			projects: ['paude', 'site', 'idle', { name: 'kept', hue: 20, watching: true }],
@@ -48,11 +48,26 @@ test('a project is a section of the hull while a session of it is aboard or it i
 	]);
 
 	expect(made.bays.map(({ name, sessions }) => [name, sessions])).toEqual([
+		['kept', []],
 		['paude', ['here/a', 'vps/c']],
 		['site', ['here/b']],
-		['kept', []],
 	]);
 	expect(made.bays.find(({ name }) => name === 'paude').engines.map(({ key }) => key)).toEqual(['here', 'vps']);
+});
+
+test('each project keeps its place along the ship: one coming aboard goes after the rest, and one that leaves and comes back is where it was', () => {
+	const projects = ['paude', 'site', 'alpha', 'zeta'];
+	const at = ids => [answer('here', ids.map(([id, project]) => session({ id, project })), { projects })];
+	const made = shipWith(at([['a', 'paude'], ['b', 'site']]));
+
+	expect(made.bays.map(({ name }) => name)).toEqual(['paude', 'site']);
+	// site's one session gone, faded out
+	made.update(at([['a', 'paude'], ['c', 'zeta'], ['d', 'alpha']]));
+	run(made, 3);
+	made.update(at([['a', 'paude'], ['c', 'zeta'], ['d', 'alpha']]));
+	expect(made.bays.map(({ name }) => name)).toEqual(['paude', 'alpha', 'zeta']);
+	made.update(at([['a', 'paude'], ['b', 'site'], ['c', 'zeta'], ['d', 'alpha']]));
+	expect(made.bays.map(({ name }) => name)).toEqual(['paude', 'site', 'alpha', 'zeta']);
 });
 
 test('what needs you: those asking first, then those with news, newest reply first', () => {
@@ -209,15 +224,14 @@ test("an ended session leaves, and a watched project's machine stays aboard, nob
 	expect([site.parts.length, site.sessions.length, site.parts[0].machine > 0]).toEqual([1, 0, true]);
 });
 
-test('watched projects with nothing at work are machines like any other, packed after those at work into whichever deck is shorter', () => {
+test('watched projects with nothing at work are machines like any other, each in its place along the ship, packed into whichever deck is shorter', () => {
 	const watched = name => ({ name, hue: 10, watching: true });
 	const made = shipWith([
 		answer('here', [session()], { projects: ['paude', watched('a'), watched('b'), watched('c')] }),
 	]);
-	const [paude, ...idle] = made.layout.bays;
+	const idle = made.layout.bays.filter(({ name }) => name !== 'paude');
 
-	expect(paude.name).toBe('paude');
-	expect(idle.map(({ name }) => name)).toEqual(['a', 'b', 'c']);
+	expect(made.layout.bays.map(({ name }) => name)).toEqual(['a', 'b', 'c', 'paude']);
 	for (const bay of idle)
 		expect([bay.parts.length, bay.parts[0].machine > 0, Boolean(bay.sealed)]).toEqual([1, true, false]);
 	// Each placed after those before it on its deck
