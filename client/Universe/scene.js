@@ -136,6 +136,11 @@ const STEPS = ['', 'StepLeft', '', 'StepRight'];
 const ISLAND_HIT = 1e6;
 // Where each kind of stream runs from, in the order their packets are spaced along a shared conduit
 const STREAM_LANES = ['library', 'forge', 'reactor', 'dish', 'tower', 'outpost'];
+// How long a deleted session takes to crumble to dust, and how long its heap stays after
+const VAPOR_SECONDS = 1.6;
+const DUST_SECONDS = 6;
+const DUST = { light: '#a7adb6', dark: '#6f7680' };
+
 // The giant cup's colors, its zap the dot on its band
 const CUP = { red: '#d63a3a', lit: '#ef7a6a', shade: '#9e2626', band: '#f2eee6', zap: '#ffe14a', lid: '#b8c4d4' };
 // A context this much emptier than last seen was compacted (or cleared)
@@ -560,6 +565,8 @@ export default class Ship {
 	// What the work made, waiting to set off from its seat, and on its way: replies to the bridge, parts to the hold
 	outgoing = [];
 	parcels = [];
+	// Heaps of dust where deleted sessions crumbled: { x, y, depth, at }
+	dust = [];
 	// Each session's changes as of when they were read here, until the server says it's seen them too
 	read = new Map();
 	stars = [];
@@ -740,7 +747,8 @@ export default class Ship {
 		);
 		const keys = new Set(sessions.map(({ key }) => key));
 
-		for (const worker of this.workers.values()) worker.leaving = !keys.has(worker.session.key);
+		for (const worker of this.workers.values())
+			worker.leaving = !keys.has(worker.session.key) || worker.vaporizedAt !== undefined;
 		for (const session of sessions) {
 			const worker = this.workers.get(session.key);
 
@@ -761,7 +769,7 @@ export default class Ship {
 				worker.compactedAt = this.time;
 				worker.compactedFrom = this.headOf(worker.session);
 			}
-			if (worker) Object.assign(worker, { session, lounging, leaving: false });
+			if (worker) Object.assign(worker, { session, lounging, leaving: worker.vaporizedAt !== undefined });
 			if (worker) this.noteKeeping(worker, session);
 			else
 				this.workers.set(session.key, {
@@ -1337,9 +1345,16 @@ export default class Ship {
 		if (!calm) this.drift += seconds * STAR_SPEED * this.pace;
 
 		for (const [key, worker] of this.workers) {
-			worker.opacity = worker.leaving ? worker.opacity - seconds * 1.5 : Math.min(1, worker.opacity + seconds * 2);
-			if (worker.opacity <= 0 && worker.leaving) this.workers.delete(key);
+			const fade = worker.vaporizedAt === undefined ? seconds * 1.5 : seconds / VAPOR_SECONDS;
+
+			worker.opacity = worker.leaving ? worker.opacity - fade : Math.min(1, worker.opacity + seconds * 2);
+			if (worker.opacity > 0 || !worker.leaving) continue;
+			// Its dust stays a while where it was
+			if (worker.vaporizedAt !== undefined && worker.dustAt)
+				this.dust.push({ ...worker.dustAt, hue: worker.session.hue, at: this.time });
+			this.workers.delete(key);
 		}
+		this.dust = this.dust.filter(({ at }) => this.time - at < DUST_SECONDS);
 
 		for (const worker of this.workers.values()) this.tendSmallGreys(worker, calm);
 		this.tendCrew(seconds);
@@ -1369,6 +1384,26 @@ export default class Ship {
 			this.camera.zoom = goal.zoom;
 			for (const measure of ['x', 'y']) this.camera[measure] = mix(this.camera[measure], goal[measure], ease);
 		}
+	}
+
+	// Deleted from here: it crumbles to dust rather than beaming away
+	vaporize(key) {
+		const worker = this.workers.get(key);
+
+		if (!worker) return;
+
+		const walking = this.walking(worker);
+		const place = walking ? worker : this.placeOf(worker);
+		const ground = this.art(place);
+		// Where its dust lands: on the desk before it at its console, on the cushion on a couch, else on the floor
+		const desk = !walking && !worker.lounging && !briefOf(worker) && !worker.seat?.housing;
+		const lift = (desk && -13) || (worker.lounging && !walking && -2) || 1;
+
+		Object.assign(worker, {
+			vaporizedAt: this.time,
+			leaving: true,
+			dustAt: { x: ground.x, y: ground.y + lift, depth: place.y + 0.3 },
+		});
 	}
 
 	// Read here: its marker goes until something newer comes
@@ -1640,6 +1675,19 @@ export default class Ship {
 		standing.push(...this.cargoParts(ctx));
 		for (const worker of this.workers.values()) if (worker.seat) standing.push(...this.workerParts(ctx, worker));
 		standing.push(...this.tubeParts(ctx));
+		// The deleted crumbling, over what they sat at, and their dust after, fading out in its last seconds
+		for (const worker of this.workers.values())
+			if (worker.crumble && worker.vaporizedAt !== undefined)
+				standing.push({ y: worker.dustAt.depth, draw: () => this.drawCrumbling(ctx, worker) });
+		for (const heap of this.dust)
+			standing.push({
+				y: heap.depth,
+				draw: () => {
+					ctx.globalAlpha = Math.min(1, (DUST_SECONDS - (this.time - heap.at)) / 2);
+					this.drawDustHeap(ctx, heap, 1);
+					ctx.globalAlpha = 1;
+				},
+			});
 		for (const parcel of this.parcels)
 			standing.push({ y: parcel.tube ? TUBE_FRONT : parcel.y, draw: () => this.drawParcel(ctx, parcel) });
 
@@ -3357,10 +3405,29 @@ export default class Ship {
 		if (!walking && !worker.seat?.housing) at.y -= (worker.lounging && 4) || (briefOf(worker) && -2) || 10;
 		worker.headX = at.x;
 
+		// Deleted: crumbling from the top down, its dust falling to a heap where it was
+		if (worker.vaporizedAt !== undefined && !worker.crumbling) {
+			const gone = Math.min(1, (this.time - worker.vaporizedAt) / VAPOR_SECONDS);
+
+			worker.crumbling = true;
+			const top = at.y - 26;
+
+			worker.crumble = { x: at.x, line: Math.round(top + (worker.dustAt.y - top) * gone), gone };
+			ctx.save();
+			ctx.beginPath();
+			ctx.rect(at.x - 24, worker.crumble.line, 48, 60);
+			ctx.clip();
+			this.drawWorker(ctx, worker);
+			ctx.restore();
+			worker.crumbling = false;
+
+			return;
+		}
+
 		const making = (this.time - (worker.madeAt ?? -Infinity)) / MAKE_SECONDS;
 
-		if (worker.leaving) this.drawBeam(ctx, at, 1 - worker.opacity);
-		if (worker.leaving && worker.opacity < 0.5) return;
+		if (worker.leaving && worker.vaporizedAt === undefined) this.drawBeam(ctx, at, 1 - worker.opacity);
+		if (worker.leaving && worker.vaporizedAt === undefined && worker.opacity < 0.5) return;
 		if (making < 1) {
 			this.drawBeam(ctx, at, 1 - making / 2);
 			ctx.save();
@@ -3473,6 +3540,40 @@ export default class Ship {
 			kind: 'worker',
 			worker,
 		});
+	}
+
+	// A deleted worker's dust as it crumbles, `gone` 0 to 1: specks breaking off at the line eating down it and falling,
+	// and the heap they make growing on the floor
+	drawCrumbling(ctx, worker) {
+		const { x: middle, line, gone } = worker.crumble;
+		const floor = worker.dustAt.y;
+
+		for (let speck = 0; speck < 26; speck++) {
+			const seed = seeded(`${worker.session.key}|dust${speck}`);
+			const start = (speck / 26) * 0.9;
+			const fall = (gone - start) / 0.35;
+
+			if (fall <= 0 || fall >= 1) continue;
+
+			const from = Math.min(line, floor - 2);
+			const x = middle - 7 + Math.round(seed * 14) + Math.round(Math.sin(seed * 20 + fall * 3) * 2);
+			const y = Math.round(from + (floor - from) * fall * fall);
+
+			rect(ctx, x, y, 1, 1, speck % 3 ? DUST.light : DUST.dark);
+		}
+		this.drawDustHeap(ctx, worker.dustAt, gone);
+	}
+
+	// A heap of dust, `size` 0 to 1 of its full size
+	drawDustHeap(ctx, { x, y }, size) {
+		const w = Math.round(2 + size * 10);
+		const h = Math.max(1, Math.round(size * 3));
+
+		for (let row = 0; row < h; row++) {
+			const across = Math.max(1, w - row * 4);
+
+			rect(ctx, x - Math.floor(across / 2), y - row, across, 1, row ? DUST.light : DUST.dark);
+		}
 	}
 
 	// A column of light, every other pixel lit so the worker shows through it, fading as `strength` goes to nothing

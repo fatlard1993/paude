@@ -726,6 +726,7 @@ export default class Universe extends View {
 	async remove(worker) {
 		if (!(await confirmDeleteSession(worker.session, deleteSession))) return;
 		if (this.selected?.worker === worker) this.select(null);
+		this.aboard.vaporize(worker.session.key);
 		this.poll();
 	}
 

@@ -1071,3 +1071,20 @@ test("a stream leaves its engine-bay unit straight across into its lane of the t
 	expect(routed.at(-1).track.legs[2].to.x).toBe(lane);
 	expect(routed.at(-1).track.legs[2].to.y).not.toBe(outlet.y);
 });
+
+test('a session deleted from here crumbles to a heap of dust, which stays a while after it is gone', () => {
+	const made = shipWith([answer('here', [session(), session({ id: 'b' })], { projects: ['paude'] })]);
+
+	run(made, 2);
+	made.vaporize('here/b');
+	run(made, 0.5);
+	expect(made.workers.get('here/b')?.leaving).toBe(true);
+	// Still listed by its paude a moment longer, it keeps crumbling
+	made.update([answer('here', [session(), session({ id: 'b' })], { projects: ['paude'] })]);
+	expect(made.workers.get('here/b').leaving).toBe(true);
+	run(made, 2);
+	expect(made.workers.has('here/b')).toBe(false);
+	expect(made.dust).toHaveLength(1);
+	run(made, 7);
+	expect(made.dust).toHaveLength(0);
+});
