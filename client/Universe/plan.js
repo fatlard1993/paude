@@ -57,8 +57,8 @@ const islandsOf = (bays, { from, top, rows, lounge, agents = {} }) => {
 	// One island for each project however many it seats, never split, in the order given: the order their conduits come
 	// to the bridge
 	const runs = bays.map(({ name, hue, sessions = [] }) => ({ name, hue, keys: sessions }));
-	// The lounge first, at the back of the bottom rows it covers, so the islands pack round it; then each island into
-	// whichever row reaches least far yet, so short ones fill in beside long ones
+	// The lounge's room first, in the bottom rows it covers, so the islands pack round it; then each island into whichever
+	// row reaches least far yet, so short ones fill in beside long ones
 	const reach = Array(rows).fill(0);
 	// (less a hair, so a lounge exactly two rows deep isn't rounded up to three)
 	const covers = lounge ? Math.min(rows, Math.ceil((lounge.d - 0.6) / BRIDGE_ROW - 1e-9)) : 0;
@@ -130,10 +130,22 @@ const islandsOf = (bays, { from, top, rows, lounge, agents = {} }) => {
 		};
 	});
 
+	// The lounge at the forward end of the rows it covers, past their islands, so every island has a clear way to the
+	// aft wall its conduit comes down: its room was kept at the start of those rows, so they move back into it
+	const covered = row => row >= rows - covers;
+	const shift = lounge ? lounge.w + ISLAND_GAP : 0;
+	const past = Math.max(0, ...reach.filter((_, row) => covered(row)).map(far => far - shift));
+
+	for (const island of islands) {
+		if (!covered(Math.round((island.y - top - BRIDGE_ROW_TOP) / BRIDGE_ROW))) continue;
+		island.x -= shift;
+		for (const seat of island.seats) seat.x -= shift;
+	}
+
 	return {
 		islands,
 		reach: Math.max(0, ...reach.map(far => far - ISLAND_GAP)),
-		lounge: lounge && { x: from },
+		lounge: lounge && { x: from + past },
 	};
 };
 
@@ -437,7 +449,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		props: [],
 	};
 	const stern = sternRoom(inLine(layout.placed));
-	const { islands } = islandsOf(inLine(layout.placed), {
+	const { islands, lounge: loungeAt } = islandsOf(inLine(layout.placed), {
 		from: bridge.x + stern,
 		top,
 		rows: bridgeRows,
@@ -461,7 +473,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		// At the back of the bridge's bottom rows, its foot on the bridge's floor
 		const placed = aboard(
 			{ ...lounge, kind: 'lounge', name: 'resting' },
-			bridge.x + stern,
+			loungeAt.x,
 			loungeBlock.w,
 			loungeBlock.d,
 			top + total - Math.min(loungeBlock.d, total),
