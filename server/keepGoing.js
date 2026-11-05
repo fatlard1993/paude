@@ -1,4 +1,5 @@
 import askHaiku, { jsonIn } from './haiku';
+import { statusOf } from './activity';
 import { waitingToAsk } from './claudeInbox';
 import { noteCrew } from './crew';
 import { sessionDecisions } from './decisions';
@@ -25,7 +26,8 @@ const ASKED_CHARACTERS = 1500;
 const SETTLED_SHOWN = 12;
 const SETTLED_CHARACTERS = 300;
 // Claude's title shows it busy until the turn's last Stop hook is done, and paude's is only one of them: Haiku often
-// answers before the rest finish. How long a nudge waits for that, and how often it looks
+// answers before the rest finish, and the title goes idle before the prompt box is drawn back. How long a nudge waits
+// for both, and how often it looks
 const IDLE_WAIT_MS = 5 * 60_000;
 const IDLE_CHECK_MS = 1000;
 
@@ -154,6 +156,20 @@ const keptOut = (id, session, ended, sessionOf) => {
 	return null;
 };
 
+const FINISHING = 'finishing';
+
+// Why a nudge can't go in now: FINISHING while Claude is still ending its turn (busy, or no prompt box drawn yet),
+// why when someone has the session, or null when it can
+const notIdle = (id, session) => {
+	if (statusOf(id) === 'waiting') return 'Claude is asking something';
+
+	const draft = session.promptDraft();
+
+	if (draft) return 'someone is typing';
+
+	return session.busy || draft === null ? FINISHING : null;
+};
+
 // After a turn ends in a session that keeps going: told what to do next unless Haiku finds nothing useful left that
 // doesn't need the person. Without an answer from Haiku it's still told to carry on toward the goal. Typed in only
 // once Claude sits idle with an empty prompt box and nobody's message waiting to go in (whoever came back and started
@@ -200,14 +216,15 @@ export const keepGoing = async (
 
 	const next = typeof verdict?.next === 'string' ? verdict.next : '';
 	// Asking takes seconds: answered by a later turn end, switched off, ended, or taken up by someone meanwhile
-	let out = keptOut(id, session, ended, sessionOf);
+	const look = () => keptOut(id, session, ended, sessionOf) ?? notIdle(id, session);
+	let out = look();
 
-	for (let waited = 0; !out && session.busy && waited < IDLE_WAIT_MS; waited += IDLE_CHECK_MS) {
+	for (let waited = 0; out === FINISHING && waited < IDLE_WAIT_MS; waited += IDLE_CHECK_MS) {
 		await pause();
-		out = keptOut(id, session, ended, sessionOf);
+		out = look();
 	}
-	if (!out && session.busy) out = `Claude was still busy after ${IDLE_WAIT_MS / 60_000} minutes`;
-	if (!out && !typeWhenIdle(id, session, nudgeWith(next))) out = 'Claude is asking, or someone is typing';
+	if (out === FINISHING) out = `Claude hadn't finished its turn after ${IDLE_WAIT_MS / 60_000} minutes`;
+	if (!out && !typeWhenIdle(id, session, nudgeWith(next))) out = 'Claude is busy, asking, or someone is typing';
 
 	console.log(`Keep going ${id}: ${out ? `not sent, ${out}:` : 'on,'} ${next || 'toward the goal'} (${why})`);
 	if (out) return false;

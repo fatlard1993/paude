@@ -85,7 +85,7 @@ test('someone typing, or the session switched off while Haiku thinks, keeps the 
 	expect(session.typed).toEqual([]);
 });
 
-test("a nudge Haiku answers while the turn's other Stop hooks still run waits for Claude to go idle", async () => {
+test("a nudge Haiku answers while the turn's other Stop hooks still run waits for Claude to finish its turn", async () => {
 	const session = fakeSession();
 	let pauses = 0;
 
@@ -102,6 +102,21 @@ test("a nudge Haiku answers while the turn's other Stop hooks still run waits fo
 		}),
 	).toBe(true);
 	expect(session.typed[0]).toContain('Check it.');
+
+	// Its title goes idle before its prompt box is drawn back
+	const redrawing = fakeSession();
+
+	redrawing.draft = null;
+	expect(
+		await keepGoing('hooks', 'Done.', {
+			...going(redrawing),
+			ask: says('{"go": true, "next": "Check it."}'),
+			pause: async () => {
+				redrawing.draft = '';
+			},
+		}),
+	).toBe(true);
+	expect(redrawing.typed[0]).toContain('Check it.');
 
 	const stuck = fakeSession();
 
