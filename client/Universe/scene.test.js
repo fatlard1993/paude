@@ -445,7 +445,11 @@ test("what the work makes leaves its grey's desk: a reply for the bridge, a part
 	expect(part.legs[0]).toEqual({
 		x: made.layout.tube.drop,
 		y: made.layout.tube.hopper,
-		path: [{ x: hold.x, y: made.layout.tube.hopper }, hold],
+		path: [
+			{ x: made.layout.tube.drop, y: made.layout.tube.hopper + 0.6 },
+			{ x: hold.x, y: made.layout.tube.hopper + 0.6 },
+			hold,
+		],
 		craned: true,
 	});
 

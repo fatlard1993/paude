@@ -80,6 +80,8 @@ const GREY_SIZE = { half: 6, tall: 26 };
 const PACK_SECONDS = 1.4;
 // How fast the hold's crane wanders its rail when it has nothing to press, as a rate
 const CRANE_WANDER = 0.3;
+// How far under the hopper a part hangs on the crane's hook as it's carried, in world units
+const HOOK_HANG = 0.6;
 const HAUL_LIFT = 0.2;
 const DRINK_SECONDS = 6;
 // Thinking: how long a grey's skull takes to brighten and dim again, in seconds, and how far up from its chin its eyes
@@ -1657,7 +1659,18 @@ export default class Ship {
 								path: [],
 								tube: { pipe, desk: this.art({ x: worker.seat.x + 0.55, y: worker.seat.y + 0.2 }), along: 0 },
 								// Out of the hopper on the crane's hook, along the rail to over its pod, and let down onto it
-								legs: [{ x: tube.drop, y: tube.hopper, path: [{ x: to.x, y: tube.hopper }, to], craned: true }],
+								legs: [
+									{
+										x: tube.drop,
+										y: tube.hopper,
+										path: [
+											{ x: tube.drop, y: tube.hopper + HOOK_HANG },
+											{ x: to.x, y: tube.hopper + HOOK_HANG },
+											to,
+										],
+										craned: true,
+									},
+								],
 							}
 						: { path: this.route(from, worker.room, to, kind === 'reply' ? consoleRoom : hold), legs: [] }),
 					step: -index * 4,
@@ -1925,7 +1938,11 @@ export default class Ship {
 			});
 		for (const parcel of this.parcels)
 			standing.push({
-				y: (parcel.tube && (parcel.tube.age ?? 0) >= POP_SECONDS && TUBE_FRONT) || parcel.y + 0.5,
+				// On the crane's hook, over the pods it's carried above
+				y:
+					(parcel.tube && (parcel.tube.age ?? 0) >= POP_SECONDS && TUBE_FRONT) ||
+					(parcel.craned && TUBE_FRONT - 0.0005) ||
+					parcel.y + 0.5,
 				draw: () => this.drawParcel(ctx, parcel),
 			});
 
