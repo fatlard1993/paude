@@ -1925,3 +1925,36 @@ test('the bay doors in the belly slide open while a push goes out through them a
 	expect(made.haulers).toHaveLength(0);
 	expect(made.bayDoors).toEqual({ hold: 0, hangar: 0 });
 });
+
+test('a couch more needed is dropped out of the tube; one no longer needed is phasered by the last to get up, and its ash left for the tube', () => {
+	const resting = ids => [
+		answer(
+			'here',
+			['a', 'b', 'c', 'd'].map(id => session({ id, status: ids.includes(id) ? 'stopped' : 'working' })),
+			{ projects: ['paude'] },
+		),
+	];
+	const made = shipWith(resting(['a', 'b']));
+
+	run(made, 2);
+	expect(made.couches).toBe(1);
+
+	// Two more come to rest: a second couch is needed, dropped in
+	made.update(resting(['a', 'b', 'c']));
+	expect(made.couches).toBe(2);
+	expect(made.couchDrops).toMatchObject([{ index: 1 }]);
+	expect(made.couchesLifted()[1]).toBeGreaterThan(0);
+	run(made, 3);
+	expect(made.couchesLifted()[1] ?? 0).toBe(0);
+
+	// The one on it gets up: it's no longer needed, and they stop to phaser it
+	made.update(resting(['a', 'b']));
+	expect(made.couches).toBe(1);
+	expect(made.couchBlasts).toMatchObject([{ index: 1, shooter: 'here/c' }]);
+	expect(made.workers.get('here/c').aimingUntil).toBeGreaterThan(made.time);
+
+	const ashes = made.dust.length;
+
+	run(made, 2);
+	expect(made.dust.length).toBe(ashes + 1);
+});

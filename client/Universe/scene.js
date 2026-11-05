@@ -248,6 +248,11 @@ const VAPOR_SECONDS = 1.6;
 // coming down, takes sucking it up, and takes going back up, in seconds
 const ASH = { lies: 2.5, down: 0.6, sucks: 1.4, up: 0.6 };
 const DUST_SECONDS = ASH.lies + ASH.down + ASH.sucks + ASH.up;
+// A couch dropped into the lounge by the tube: how long its nozzle takes to come down, the couch to fall out of it and
+// settle, and the nozzle to go back up; and one no longer needed, phasered by the last to get up from it: how long they
+// aim and fire, and it takes to crumble to ash, in seconds; how lately they must have got up to be the one
+const COUCH_DROP = { down: 0.5, fall: 0.45, settle: 0.25, up: 0.5 };
+const COUCH_BLAST = { aim: 1, crumble: 0.6, lately: 6 };
 const DUST = { light: '#a7adb6', dark: '#6f7680' };
 
 // The giant cup's colors, its zap the dot on its band
@@ -1067,6 +1072,8 @@ export default class Ship {
 
 			// Its empties go with it from the lounge, so a pile is only ever since its cache last went cold
 			if (worker && !lounging) worker.cans = undefined;
+			// The last to get up from the lounge, to phaser a couch no longer needed
+			if (worker?.lounging && !lounging) this.lastUp = { key: session.key, at: this.time };
 			if (worker?.seat && worker.lounging !== lounging)
 				worker.trip = {
 					from: { x: worker.x ?? this.placeOf(worker).x, y: worker.y ?? this.placeOf(worker).y },
@@ -1172,6 +1179,7 @@ export default class Ship {
 		);
 		this.bridge = this.layout.bridge;
 		this.lounge = this.layout.lounge;
+		this.tendCouches();
 
 		// The rooms moved round as bays came and went: whoever was aboard is put straight where they're going
 		const plan = this.layout.rooms.map(({ name, x, y, w }) => `${name}@${x},${y},${w}`).join('|');
@@ -1766,7 +1774,11 @@ export default class Ship {
 				);
 		this.tendTravel();
 		for (const worker of this.workers.values())
-			if (worker.path?.length && (calm || this.time - (worker.madeAt ?? -Infinity) >= MAKE_SECONDS))
+			if (
+				worker.path?.length &&
+				(calm || this.time - (worker.madeAt ?? -Infinity) >= MAKE_SECONDS) &&
+				!(worker.aimingUntil > this.time)
+			)
 				walk(worker, calm ? Infinity : WORKER_SPEED * seconds, seconds);
 		this.tendShuttles();
 
@@ -1780,6 +1792,7 @@ export default class Ship {
 		this.parcels = this.parcels.filter(({ path, tube }) => tube || path.length);
 		for (const hauler of this.haulers) hauler.time += seconds / HAUL_SECONDS;
 		this.tendBayDoors(calm ? Infinity : seconds);
+		this.ashCouches();
 		for (const refuel of this.refuels) refuel.time += seconds / REFUEL_SECONDS;
 		this.refuels = this.refuels.filter(({ time }) => time < 1);
 		this.haulers = this.haulers.filter(({ time }) => time < 1);
@@ -2124,7 +2137,11 @@ export default class Ship {
 			this.bayHits(bay);
 		}
 		if (this.bridge) standing.push(...this.bridgeParts(ctx, art, label));
-		if (this.lounge) standing.push(...drawLounge(ctx, art, label, this.lounge, { time: this.time }));
+		if (this.lounge)
+			standing.push(
+				...drawLounge(ctx, art, label, this.lounge, { time: this.time, lifted: this.couchesLifted() }),
+				...this.couchParts(ctx),
+			);
 		for (const room of this.layout.rooms.filter(({ kind }) => kind))
 			this.hits.push({
 				...this.screen({ x: room.x + room.w / 2, y: room.y + room.d / 2 }),
@@ -4461,6 +4478,173 @@ export default class Ship {
 	}
 
 	// A heap of dust, `size` 0 to 1 of its full size
+	// The lounge's couches come and go with those resting there: one more needed is dropped out of the tube onto its
+	// place; one no longer needed is phasered to ash by the last to get up from it, if they got up lately, and its ash
+	// sucked up by the tube as any is
+	tendCouches() {
+		const needed = this.lounge ? Math.ceil(Math.max(this.lounge.count, 1) / 2) : 0;
+		const had = this.couches ?? needed;
+
+		this.couchDrops ??= [];
+		this.couchBlasts ??= [];
+		for (let index = had; index < needed; index++) this.couchDrops.push({ index, at: this.time });
+		for (let index = needed; index < had; index++) {
+			const seat = this.lastLounge && loungeSeatAt(this.lastLounge, index * 2);
+			const shooter =
+				this.lastUp && this.time - this.lastUp.at < COUCH_BLAST.lately && this.workers.get(this.lastUp.key);
+
+			if (!seat) continue;
+			if (shooter) shooter.aimingUntil = this.time + COUCH_BLAST.aim;
+			this.couchBlasts.push({ index, at: this.time, seat, shooter: shooter && this.lastUp.key });
+		}
+		this.couchDrops = this.couchDrops.filter(({ index }) => index < needed);
+		this.couches = needed;
+		this.lastLounge = this.lounge && { ...this.lounge };
+	}
+
+	// How high a couch hangs from the tube's nozzle before it drops, in art pixels: its top at the nozzle's mouth, let
+	// down just under the lounge's ceiling
+	couchHang(index) {
+		const seat = loungeSeatAt(this.lounge, index * 2);
+		const foot = this.art(seat).y;
+		const ceiling = this.art({ x: 0, y: this.lounge.y }).y + 2;
+
+		return Math.max(0, Math.min(40, foot - 19 - (ceiling + 10)));
+	}
+
+	// How far up each couch dropping out of the tube still is, in art pixels, by its index
+	couchesLifted() {
+		const lifted = [];
+		const { down, fall, settle } = COUCH_DROP;
+
+		for (const { index, at } of this.couchDrops ?? []) {
+			const since = this.time - at;
+			const hang = this.lounge ? this.couchHang(index) : 0;
+
+			if (since < down) lifted[index] = hang;
+			else if (since < down + fall) lifted[index] = hang * (1 - ((since - down) / fall) ** 2);
+			else if (since < down + fall + settle)
+				lifted[index] = Math.round(Math.sin(((since - down - fall) / settle) * Math.PI) * 2);
+		}
+
+		return lifted;
+	}
+
+	// The nozzle bringing a couch, and couches being phasered and crumbling to ash
+	couchParts(ctx) {
+		const { lounge } = this;
+
+		if (!lounge) return [];
+
+		const ceiling = this.art({ x: 0, y: lounge.y }).y + 2;
+		const { down, fall, settle, up } = COUCH_DROP;
+
+		this.couchDrops = (this.couchDrops ?? []).filter(({ at }) => this.time - at < down + fall + settle + up);
+		this.couchBlasts = (this.couchBlasts ?? []).filter(
+			({ at }) => this.time - at < COUCH_BLAST.aim + COUCH_BLAST.crumble,
+		);
+
+		return [
+			...this.couchDrops.map(({ index, at }) => {
+				const seat = loungeSeatAt(lounge, index * 2);
+				const middle = this.art({ x: seat.x + COUCH_SEAT / 2, y: seat.y });
+				const since = this.time - at;
+				const over = middle.y - 19 - this.couchHang(index) - 1;
+				const reach = (() => {
+					if (since < down) return since / down;
+					if (since < down + fall + settle) return 1;
+
+					return Math.max(0, 1 - (since - down - fall - settle) / up);
+				})();
+
+				return {
+					y: seat.y + 0.2,
+					draw: () => this.drawNozzle(ctx, middle.x, ceiling, Math.round(ceiling + (over - ceiling) * reach)),
+				};
+			}),
+			...this.couchBlasts.map(blast => ({ y: blast.seat.y + 0.2, draw: () => this.drawCouchBlast(ctx, blast) })),
+		];
+	}
+
+	// A couch no longer needed: phasered by the last to get up from it, then crumbling, its ash left for the tube
+	drawCouchBlast(ctx, blast) {
+		const since = this.time - blast.at;
+		const at = this.art(blast.seat);
+		const width = Math.round(COUCH_SEAT * UNIT.x * 2);
+		const left = at.x - Math.round(COUCH_SEAT * UNIT.x) / 2;
+		const shooter = blast.shooter && this.workers.get(blast.shooter);
+		const fabric =
+			since < COUCH_BLAST.aim
+				? 'hsl(14 38% 42%)'
+				: `hsl(14 ${Math.round(38 * (1 - (since - COUCH_BLAST.aim) / COUCH_BLAST.crumble))}% 30%)`;
+		const standing = since < COUCH_BLAST.aim ? 1 : Math.max(0, 1 - (since - COUCH_BLAST.aim) / COUCH_BLAST.crumble);
+		const tall = Math.round(19 * standing);
+
+		// The couch, its back, cushions and arms, crumbling away from its top once hit
+		if (tall > 0) {
+			ctx.save();
+			ctx.beginPath();
+			ctx.rect(left - 6, at.y - tall, width + 12, tall + 6);
+			ctx.clip();
+			rect(ctx, left - 3, at.y - 19, width + 6, 14, PALETTE.k);
+			rect(ctx, left - 2, at.y - 18, width + 4, 12, fabric);
+			rect(ctx, left + width / 2, at.y - 17, 1, 11, PALETTE.k);
+			rect(ctx, left - 3, at.y - 6, width + 6, 9, PALETTE.k);
+			rect(ctx, left - 2, at.y - 5, width + 4, 7, fabric);
+			for (const arm of [left - 4, left + width]) {
+				rect(ctx, arm, at.y - 9, 4, 12, PALETTE.k);
+				rect(ctx, arm + 1, at.y - 8, 2, 10, fabric);
+			}
+			ctx.restore();
+		}
+		if (since >= COUCH_BLAST.aim)
+			for (let fleck = 0; fleck < 6; fleck++) {
+				const drift = (since - COUCH_BLAST.aim) * 14;
+
+				rect(
+					ctx,
+					left + ((fleck * 7) % width),
+					at.y - tall - 2 - Math.round(drift * (0.4 + (fleck % 3) * 0.3)),
+					1,
+					1,
+					DUST.light,
+				);
+			}
+		// The phaser's beam from the shooter's hand, crackling, while they fire
+		if (shooter && since > 0.35 && since < COUCH_BLAST.aim + 0.15) {
+			const hand = this.art({ x: shooter.x, y: shooter.y });
+			const from = { x: hand.x + (at.x > hand.x ? 4 : -4), y: hand.y - 12 };
+			const to = { x: left + width / 2, y: at.y - 9 };
+			const steps = Math.max(1, Math.round(Math.hypot(to.x - from.x, to.y - from.y) / 2));
+
+			rect(ctx, from.x - 1, from.y - 1, 3, 2, PALETTE.k);
+			rect(ctx, from.x, from.y, 2, 1, '#9aa5bb');
+			for (let step = 0; step <= steps; step++) {
+				const x = Math.round(from.x + ((to.x - from.x) * step) / steps);
+				const y = Math.round(from.y + ((to.y - from.y) * step) / steps + (Math.floor(this.time * 30 + step) % 3) - 1);
+
+				rect(ctx, x, y, 1, 1, step % 2 ? '#ffd0ff' : '#ff6bf0');
+			}
+		}
+	}
+
+	// A phasered couch gone to ash: its heap left on the floor where it stood, for the tube to suck up
+	ashCouches() {
+		for (const blast of this.couchBlasts ?? []) {
+			if (blast.ashed || this.time - blast.at < COUCH_BLAST.aim + COUCH_BLAST.crumble - 0.05) continue;
+
+			const at = this.art(blast.seat);
+
+			blast.ashed = true;
+			this.dust.push({
+				x: at.x + Math.round(COUCH_SEAT * UNIT.x) / 2,
+				y: at.y + 2,
+				depth: blast.seat.y + 0.3,
+				at: this.time,
+			});
+		}
+	}
+
 	// A heap of ash, lying a moment, then sucked up into the tube: its nozzle let down from the ceiling of the room it
 	// lies in to just over it, the heap dwindling as flecks of it rise into the nozzle, and the nozzle drawn back up
 	drawAshSucked(ctx, heap) {

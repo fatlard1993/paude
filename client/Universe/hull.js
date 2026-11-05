@@ -1706,7 +1706,8 @@ export const drawHangar = (ctx, art, label, room, { time, journey, launching = f
 };
 
 // The lounge: a TV and couches of two facing it, so whoever sits on one has their back to the viewer
-export const drawLounge = (ctx, art, label, lounge, { time }) => {
+// `lifted`: how far up each couch still is (art pixels, by its index), dropping out of the tube onto its place
+export const drawLounge = (ctx, art, label, lounge, { time, lifted = [] }) => {
 	floor(ctx, art, lounge);
 
 	const couches = [];
@@ -1715,7 +1716,12 @@ export const drawLounge = (ctx, art, label, lounge, { time }) => {
 	for (let index = 0; index < Math.max(lounge.count, 1); index += 2) {
 		const first = art(loungeSeatAt(lounge, index));
 
-		couches.push({ x: first.x - Math.round(COUCH_SEAT * UNIT.x) / 2, y: first.y, seat: loungeSeatAt(lounge, index) });
+		couches.push({
+			x: first.x - Math.round(COUCH_SEAT * UNIT.x) / 2,
+			y: first.y - Math.round(lifted[index / 2] ?? 0),
+			seat: loungeSeatAt(lounge, index),
+			landed: !lifted[index / 2],
+		});
 	}
 
 	const width = Math.round(COUCH_SEAT * UNIT.x * 2);
@@ -1728,7 +1734,7 @@ export const drawLounge = (ctx, art, label, lounge, { time }) => {
 		{
 			y: lounge.y + 0.005,
 			draw: () => {
-				for (const couch of couches) {
+				for (const couch of couches.filter(({ landed }) => landed)) {
 					rect(ctx, couch.x - 4, couch.y - 6, width + 8, 13, PALETTE.k);
 					rect(ctx, couch.x - 3, couch.y - 6, width + 6, 11, '#1a202c');
 					rect(ctx, couch.x - 3, couch.y - 6, width + 6, 1, PALETTE.m);
