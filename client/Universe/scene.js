@@ -92,6 +92,8 @@ const ENTER_SECONDS = 3.5;
 const LAYOUT_EASE = 7;
 // How long a conduit laid anew takes to fade from where it ran to where it runs now
 const CABLE_FADE_SECONDS = 0.5;
+// How long the conduits last drawn stay while a changed layout has none yet, at most
+const CABLE_HOLD_SECONDS = 0.25;
 // How long the stars' streaks are at the start of it, in screen pixels for the nearest
 const WARP_STREAK = 160;
 // How long the outer plating takes to fade once what's aboard has come in
@@ -2642,12 +2644,19 @@ export default class Ship {
 	// project's machine, along its lane, up its riser and along its row to its island, so its corners join and its color
 	// holds the whole way
 	drawTerminalCables(ctx) {
-		// None for a frame while a changed layout's machines are first measured: the last drawn stay meanwhile
+		// None for a frame while a changed layout's machines are first measured: the last drawn stay meanwhile, only that
+		// long, so a ship left with none isn't left with conduits joined to nothing
 		if (!this.cables.size && this.cablesDrawn?.size) {
-			for (const paths of this.cablesDrawn.values()) for (const { points, style } of paths) this.drawWire(ctx, points, style);
+			this.cablesGoneAt ??= this.time;
+			if (this.time - this.cablesGoneAt < CABLE_HOLD_SECONDS) {
+				for (const paths of this.cablesDrawn.values())
+					for (const { points, style } of paths) this.drawWire(ctx, points, style);
 
-			return;
+				return;
+			}
+			this.cablesDrawn = new Map();
 		}
+		this.cablesGoneAt = null;
 
 		const now = new Map();
 
