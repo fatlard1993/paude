@@ -1,6 +1,9 @@
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
+import os from 'os';
+import { join } from 'path';
 import { expect, test } from 'bun:test';
 
-import { describeTool, timelineFrom } from './timeline';
+import { describeTool, sessionTurns, timelineFrom } from './timeline';
 
 const at = second => `2026-10-07T12:00:${String(second).padStart(2, '0')}.000Z`;
 const prompt = (text, second) => ({
@@ -106,4 +109,48 @@ test('a turn keeps the start and the end of what Claude last wrote, where its li
 	expect(turn.said).toStartWith('Done: the cans and the plates.');
 	expect(turn.said).toEndWith('Left: the walk cycle.');
 	expect(turn.said.length).toBeLessThan(2100);
+});
+
+test('a whole transcript is read as it grows, once each line, a line still being written left until it ends', async () => {
+	const home = await mkdtemp(join(os.tmpdir(), 'paude-whole-'));
+	const was = process.env.CLAUDE_CONFIG_DIR;
+	const id = 'w0000000-0000-4000-8000-000000000000';
+	const file = join(home, 'projects', '-repo', `${id}.jsonl`);
+	const line = value => `${JSON.stringify(value)}\n`;
+	const read = async () => sessionTurns(id, '/repo', { whole: true });
+
+	process.env.CLAUDE_CONFIG_DIR = home;
+	try {
+		await mkdir(join(home, 'projects', '-repo'), { recursive: true });
+		await writeFile(file, line(prompt('fix the tests', 0)) + line(use(1, [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }])));
+		expect((await read()).map(turn => turn.prompt)).toEqual(['fix the tests']);
+
+		// Cut mid-character, as a write can leave it
+		const next = Buffer.from(line(prompt('the ❯ box ─ edge', 2)));
+		const cut = next.indexOf(Buffer.from('❯')) + 1;
+
+		await appendFile(file, line(result(2, 't1', 'contents')));
+		await appendFile(file, next.subarray(0, cut));
+		expect((await read()).map(turn => turn.prompt)).toEqual(['fix the tests']);
+
+		await appendFile(file, next.subarray(cut));
+		// Read twice at once, as a turn's end does
+		const [once, twice] = await Promise.all([read(), read()]);
+
+		expect(once.map(turn => turn.prompt)).toEqual(['fix the tests', 'the ❯ box ─ edge']);
+		expect(twice).toHaveLength(2);
+		expect(once[0].steps[0]).toMatchObject({ ok: true, output: 'contents' });
+
+		// A line longer than a slice
+		await appendFile(file, line({ ...prompt('a big screenshot', 3), pad: 'x'.repeat(9 * 1024 * 1024) }));
+		expect((await read()).map(turn => turn.prompt)).toEqual(['fix the tests', 'the ❯ box ─ edge', 'a big screenshot']);
+
+		// Written anew, shorter
+		await writeFile(file, line(prompt('fresh', 0)));
+		expect((await read()).map(turn => turn.prompt)).toEqual(['fresh']);
+	} finally {
+		if (was === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+		else process.env.CLAUDE_CONFIG_DIR = was;
+		await rm(home, { recursive: true, force: true });
+	}
 });

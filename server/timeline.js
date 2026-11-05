@@ -24,17 +24,7 @@ export const lastLines = async (file, bytes = TAIL_BYTES) => {
 	const size = file.size;
 	const text = await file.slice(Math.max(0, size - bytes)).text();
 	// Read from partway through a line: the first is cut short
-	const lines = text.split('\n').slice(size > bytes ? 1 : 0);
-
-	return lines.flatMap(line => {
-		if (!line) return [];
-
-		try {
-			return [JSON.parse(line)];
-		} catch {
-			return [];
-		}
-	});
+	return parseLines(text.split('\n').slice(size > bytes ? 1 : 0));
 };
 
 const shown = (cwd, file) => {
@@ -104,11 +94,8 @@ const contextOf = usage =>
 		? (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
 		: null;
 
-// The transcript's lines as turns, newest last: [{ id, prompt, at, endedAt, steps, context, output, said }]
-export const timelineFrom = (lines, cwd) => {
-	const turns = [];
-	const pending = new Map();
-
+// More of the transcript's lines folded into the turns read so far, which can go on being folded into as it grows
+const foldLines = ({ turns, pending }, lines, cwd) => {
 	for (const line of lines) {
 		const prompt = promptText(line);
 
@@ -187,8 +174,69 @@ export const timelineFrom = (lines, cwd) => {
 			}
 		}
 	}
+};
 
-	return turns;
+// The transcript's lines as turns, newest last: [{ id, prompt, at, endedAt, steps, context, output, said }]
+export const timelineFrom = (lines, cwd) => {
+	const state = { turns: [], pending: new Map() };
+
+	foldLines(state, lines, cwd);
+
+	return state.turns;
+};
+
+// A whole transcript is read once, then only what it has grown by, a slice at a time: one can run to hundreds of
+// megabytes, mostly screenshots, and a session's are read again every few seconds while it works
+const WHOLE_SLICE_BYTES = 8 * 1024 * 1024;
+const NEWLINE = 0x0a;
+const decoder = new TextDecoder();
+const wholes = new Map();
+
+const parseLines = lines =>
+	lines.flatMap(line => {
+		if (!line) return [];
+
+		try {
+			return [JSON.parse(line)];
+		} catch {
+			return [];
+		}
+	});
+
+const catchUp = async (read, file, cwd) => {
+	// Up to the last whole line: the rest is still being written, or cut at the slice's end, perhaps mid-character
+	for (let size = WHOLE_SLICE_BYTES; read.offset < file.size; ) {
+		const bytes = new Uint8Array(await file.slice(read.offset, read.offset + size).arrayBuffer());
+		const through = bytes.lastIndexOf(NEWLINE) + 1;
+
+		if (!through && read.offset + size >= file.size) return;
+		// One line longer than the slice
+		if (!through) size *= 2;
+		else {
+			size = WHOLE_SLICE_BYTES;
+			read.offset += through;
+			foldLines(read.state, parseLines(decoder.decode(bytes.subarray(0, through)).split('\n')), cwd);
+		}
+	}
+};
+
+const wholeTurns = async (id, file, cwd) => {
+	let read = wholes.get(id);
+
+	if (read?.name !== file.name || read.offset > file.size)
+		wholes.set(id, (read = { name: file.name, offset: 0, state: { turns: [], pending: new Map() }, reading: null }));
+
+	// One reader at a time: two would fold the same lines in twice
+	const reading = (read.reading ?? Promise.resolve()).then(() => catchUp(read, file, cwd));
+
+	read.reading = reading.catch(() => {});
+	await reading;
+
+	// The newest turn is still filled in as the transcript grows: what's handed out is a copy, left as it was
+	const { turns } = read.state;
+	const last = turns.at(-1);
+
+	return last ? [...turns.slice(0, -1), { ...last, steps: last.steps.map(step => ({ ...step })) }] : [];
 };
 
 // The files a step changed: an edit tool's one, or those a command changed (commandEdits)
@@ -222,13 +270,13 @@ export const sessionTurns = async (id, cwd, { whole = false } = {}) => {
 
 	if (!file) return [];
 
-	const key = `${file.name}:${file.size}:${whole}`;
-	const cached = `${id}:${whole}`;
+	if (whole) return withCommandEdits(await wholeTurns(id, file, cwd), id);
 
-	if (cache.get(cached)?.key !== key)
-		cache.set(cached, { key, turns: timelineFrom(await lastLines(file, whole ? file.size : TAIL_BYTES), cwd) });
+	const key = `${file.name}:${file.size}`;
 
-	return withCommandEdits(cache.get(cached).turns, id);
+	if (cache.get(id)?.key !== key) cache.set(id, { key, turns: timelineFrom(await lastLines(file), cwd) });
+
+	return withCommandEdits(cache.get(id).turns, id);
 };
 
 // The latest turns, newest first, and how full the context is now
