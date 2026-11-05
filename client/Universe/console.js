@@ -10,7 +10,7 @@ import { copySelection, isCopyKey } from '../Terminal/copySelection';
 import { linkFilePaths, linkUrls } from '../Terminal/linkProviders';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from '../Terminal/xtermOptions';
 import { button, element } from '../dom';
-import { FONT, fitFont } from './fitFont';
+import { FONT, fitFont, roomFor } from './fitFont';
 import withoutPointerReporting from '../../shared/pointerReporting';
 
 // The dock's own width, the least it narrows to for a small terminal
@@ -227,13 +227,16 @@ export default class TerminalPanel {
 	// and as tall as the panel
 	claimRoom({ drawn, dock, chrome, sized, height }) {
 		const { terminal } = this;
-		const stage = dock.parentElement.clientWidth;
-		const width = sized ? dock.offsetWidth : Math.min(stage - 32, Math.max(DOCK_LEAST, stage * 0.5));
-		const scale = FONT.room / terminal.options.fontSize;
-		const natural = {
-			cols: Math.max(80, Math.floor((width - chrome - 24) / ((drawn.offsetWidth / terminal.cols) * scale))),
-			rows: Math.max(24, Math.floor((height - 8) / ((drawn.offsetHeight / terminal.rows) * scale))),
-		};
+		const natural = roomFor({
+			stage: dock.parentElement.clientWidth,
+			sized,
+			width: dock.offsetWidth,
+			least: DOCK_LEAST,
+			chrome,
+			height,
+			cell: { width: drawn.offsetWidth / terminal.cols, height: drawn.offsetHeight / terminal.rows },
+			size: terminal.options.fontSize,
+		});
 
 		if (natural.cols === this.natural?.cols && natural.rows === this.natural?.rows) return;
 		this.natural = natural;

@@ -16,3 +16,17 @@ export const fitFont = ({ size, drawn, room, height, sized = false, tooBig = Inf
 		tooBig: known,
 	};
 };
+
+// The size the panel's terminal is laid out for when it's driving, in columns and rows: as wide as the panel's been
+// dragged (`sized`, its `width`), else half the stage, never narrower than `least` nor wider than the stage less its
+// margin, and as tall as the panel (`height`), at FONT.room for cells drawn `cell` big at `size`; never less than a
+// terminal's usual 80 by 24
+export const roomFor = ({ stage, sized = false, width, least, chrome, height, cell, size }) => {
+	const across = Math.min(stage - 32, sized ? width : Math.max(least, stage * 0.5));
+	const scale = FONT.room / size;
+
+	return {
+		cols: Math.max(80, Math.floor((across - chrome - 24) / (cell.width * scale))),
+		rows: Math.max(24, Math.floor((height - 8) / (cell.height * scale))),
+	};
+};

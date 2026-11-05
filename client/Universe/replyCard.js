@@ -8,6 +8,7 @@ import { AskingCard, showAsking } from '../Asking';
 import { button, element } from '../dom';
 import { placePrompt } from '../PromptHome';
 import refusal from './reason';
+import { afterReply } from './sidePanel';
 
 // Claude's markdown, sanitized as a file's is: nothing that could pass for a form of paude's own
 const rendered = text => {
@@ -118,7 +119,9 @@ export const replyCard = ({ session, onOpen, onSent, onClose, note }) => {
 					? await sendRemotePrompt(engine.remote.url, session.id, text)
 					: await sendPrompt(session.id, text);
 
-				if (!response?.ok)
+				const { close, wake } = afterReply(session, Boolean(response?.ok));
+
+				if (!close)
 					return new Notify({
 						intent: 'danger',
 						content: refusal(`Could not send that to ${engine.name}`, body),
@@ -126,7 +129,7 @@ export const replyCard = ({ session, onOpen, onSent, onClose, note }) => {
 
 				new Notify({ intent: 'success', content: 'Sent', timeout: 2000 });
 				onClose();
-				if (session.status === 'stopped') onSent?.();
+				if (wake) onSent?.();
 			},
 			actions: [
 				button('Open session', onOpen, { icon: 'up-right-from-square', className: 'variant-flat' }),

@@ -42,6 +42,7 @@ import {
 import { enginesPane, foldersPane, listDock, projectPanes, projectsPane, sessionsPane } from './shipDock';
 import refusal from './reason';
 import { logCard, manifestCard, promptCard, replyCard } from './replyCard';
+import { arrivalOf } from './sidePanel';
 import Ship, { BEAM_SECONDS, BRIDGE, LOUNGE, sessionKey, triage } from './scene';
 import { UNIT } from './station';
 import { FOCUS_WIDTH, Stage } from './universeStyle';
@@ -1096,16 +1097,10 @@ export default class Universe extends View {
 	}
 
 	dockArrived() {
-		const { arriving } = this;
+		const { worker, arriving } = arrivalOf(this.arriving, this.aboard.workers, Date.now());
 
-		if (!arriving) return;
-		if (Date.now() > arriving.until) return (this.arriving = null);
-
-		const worker = this.aboard.workers.get(arriving.key);
-
-		if (!worker) return;
-		this.arriving = null;
-		this.wake(worker);
+		this.arriving = arriving;
+		if (worker) this.wake(worker);
 	}
 
 	// A panel of a session on this paude; another paude's session docks its terminal alone, or opens its reply stopped
