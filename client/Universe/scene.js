@@ -81,7 +81,7 @@ const SHUTTLE = { fly: 1.6, tube: 0.5, walk: 1, retract: 0.5 };
 // The one opening the view comes aboard as the ship comes in: in warp, just their shuttle among the streaking stars,
 // close up (`warp`); the ship pulling in under it as the view draws back to all of it (the ship's own coming in,
 // ENTER_SECONDS); its plating shimmering as the shuttle settles on it (`settle`); then its tube and their walk. How
-// many zoom steps closer than the whole ship the view starts.
+// much closer than the whole ship the view starts, in zoom.
 const JOIN = { warp: 1.2, settle: 1.2, closer: 3 };
 const SHUTTLE_WAITS = 20;
 // How long a can's toss onto its pile takes, and a drink of a grey's coffee or energy drink
@@ -938,7 +938,8 @@ export default class Ship {
 		return {
 			x: near.x + (whole.x - near.x) * back,
 			y: near.y + (whole.y - near.y) * back,
-			zoom: Math.min(ZOOMS.most, whole.zoom + Math.round(JOIN.closer * (1 - back))),
+			// Drawn back smoothly rather than a step at a time, ending on the whole ship's own zoom
+			zoom: Math.min(ZOOMS.most, whole.zoom + JOIN.closer * (1 - back) ** 2),
 		};
 	}
 
