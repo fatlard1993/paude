@@ -1425,3 +1425,40 @@ test("one deleted on a couch keeps its place till its dust has gone, the others 
 	made.update([answer('here', [stopped('a'), stopped('c')], { projects: ['paude'] })]);
 	expect(made.layout.rooms.find(({ kind }) => kind === 'lounge').count).toBe(2);
 });
+
+test('a sealed ship comes in out of warp once there is one to show, and opens only once it has arrived, however soon it is asked to', () => {
+	const made = new Ship();
+
+	made.resize(1600, 900);
+	made.sealed = true;
+	// Nothing to show yet: not on its way, and asked to open, it waits
+	run(made, 1);
+	made.open();
+	expect(made.entering()).toBe(0);
+	expect(made.coverOf()).toBe(1);
+
+	made.update([answer('here', [session()], { projects: ['paude'] })]);
+	run(made, 1);
+	expect(made.entering()).toBeGreaterThan(0);
+	expect(made.entering()).toBeLessThan(1);
+	expect(made.entryShift()).toBeLessThan(0);
+	expect(made.coverOf()).toBe(1);
+
+	// Arrived: the open asked for before comes, the plating fading, the ship at its place
+	run(made, 3);
+	expect(made.arrived()).toBe(true);
+	expect(made.sealed).toBe(false);
+	expect(made.entryShift()).toBeCloseTo(0);
+	run(made, 1);
+	expect(made.coverOf()).toBe(0);
+});
+
+test("a ship that's never sealed never comes in, nor is covered", () => {
+	const made = shipWith([answer('here', [session()], { projects: ['paude'] })]);
+
+	expect(made.entering()).toBe(1);
+	expect(made.entryShift()).toBeCloseTo(0);
+	expect(made.coverOf()).toBe(0);
+	made.open();
+	expect(made.coverOf()).toBe(0);
+});
