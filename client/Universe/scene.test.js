@@ -1864,3 +1864,39 @@ test("a project's sessions share one rack for what they run beside Claude, at it
 	expect(racks).toHaveLength(2);
 	expect(racks.some(({ y }) => Math.abs(y - (island.y - 0.15)) < 1e-9)).toBe(true);
 });
+
+test('rooms laid out anew while the one looking comes aboard keep them at the airlock, then walking out of it, rather than put in place', () => {
+	const me = { key: 'me', name: 'chase', role: 'owner', sessions: [] };
+	const looks = projects => [
+		{
+			...answer(
+				'here',
+				projects.map((project, index) => session({ id: `s${index}`, project })),
+				{ projects },
+			),
+			people: [me],
+		},
+	];
+	const made = new Ship();
+
+	made.resize(1600, 900);
+	made.sealed = true;
+	made.update(looks(['paude']));
+	made.viewer = 'me';
+	made.open();
+	run(made, 6);
+	// Another engine's projects come in: the rooms move round while they're on their way down the shuttle's tube
+	made.update(looks(['paude', 'site', 'notes']));
+	expect(made.moved).toBe(true);
+
+	const walker = made.walkers.get('me');
+
+	run(made, 0.1);
+	expect(made.boarding(walker)).toBe(true);
+	expect(Math.hypot(walker.x - made.airlock.x, walker.y - made.airlock.y)).toBeLessThan(0.01);
+	expect(walker.path.length).toBeGreaterThan(0);
+	// Down it and out of the doorway, they walk from the airlock rather than being found where they belong
+	run(made, 3);
+	expect(Math.hypot(walker.x - made.airlock.x, walker.y - made.airlock.y)).toBeGreaterThan(0.1);
+	expect(walker.path.length).toBeGreaterThan(0);
+});

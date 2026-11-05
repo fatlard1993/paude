@@ -1628,7 +1628,17 @@ export default class Ship {
 			const placed =
 				walker.x === undefined && !joining && (!airlock || !this.answered.size || this.time < ABOARD_SECONDS);
 
-			if (placed || (this.moved && walker.spot)) Object.assign(walker, spot, { path: [] });
+			// Still coming aboard through the airlock when the rooms move round: kept at it, wherever it is now, and
+			// walking out of it from there, rather than put in place
+			const arriving =
+				walker.shuttle?.kind === 'in' &&
+				(this.boarding(walker) || this.inDoorway(walker) || (name === this.viewer && this.walkingIn()));
+
+			if (this.moved && walker.spot && arriving && airlock) {
+				const out = this.boarding(walker) || this.inDoorway(walker) ? airlock : walker;
+
+				Object.assign(walker, out, { path: this.route(out, this.bridge, spot, room), room: this.bridge });
+			} else if (placed || (this.moved && walker.spot)) Object.assign(walker, spot, { path: [] });
 			else if (walker.x === undefined) {
 				Object.assign(walker, airlock, { path: this.route(airlock, this.bridge, spot, room), room: this.bridge });
 				// Brought by shuttle, held at the airlock till they've come down its tube
