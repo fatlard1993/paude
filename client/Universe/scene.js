@@ -83,6 +83,8 @@ const MILL_SECONDS = 25;
 const WORKER_SPEED = 2.6;
 // How fast the service crew trundles about the ship
 const BOT_SPEED = 2.2;
+// How far in from the bridge's aft wall those walking along it go: clear of the ends of its islands' consoles
+const BRIDGE_WALL = 0.4;
 // How long after another the next bot sent out sets off
 const BOT_GAP = 0.45;
 // How long a worker takes to be made in the materializer
@@ -390,11 +392,12 @@ const exitOf = (room, from, lane) => {
 		// the screens of the row before it
 		if (room.kind === 'bridge') {
 			const aisle = standingOf(room, from.y);
+			const wall = door.x + (door.side === 'left' ? BRIDGE_WALL : -BRIDGE_WALL);
 
 			return [
 				{ x: from.x, y: aisle },
-				{ x: inside, y: aisle },
-				{ x: inside, y: lane },
+				{ x: wall, y: aisle },
+				{ x: wall, y: lane },
 				{ x: door.x, y: lane },
 				{ x: outside, y: lane },
 			];
@@ -928,13 +931,14 @@ export default class Ship {
 
 		const out = room ? exitOf(room, from, lane) : [{ x: from.x, y: lane }];
 
-		return [...out, ...exitOf(toRoom, to, lane).reverse(), to];
+		// Round the lounge on the way, whoever's walking
+		return this.walkAround(from, [...out, ...exitOf(toRoom, to, lane).reverse(), to]);
 	}
 
 	// From one place on the bridge to another along the fronts of the rows' consoles and up or down its aft wall, where
 	// nobody walks over a screen
 	acrossBridge(from, to) {
-		const wall = this.bridge.x + 0.6;
+		const wall = this.bridge.x + BRIDGE_WALL;
 		const [leave, reach] = [standingOf(this.bridge, from.y), standingOf(this.bridge, to.y)];
 
 		const path =
@@ -3802,7 +3806,7 @@ export default class Ship {
 				// Setting off one behind another, so those sent together trail along rather than ride on each other
 				wait: [...this.bots.values()].filter(bot => !bot.back && bot.path.length).length * BOT_GAP,
 				...home,
-				path: place ? this.walkAround(home, this.route(home, engineering, place.at, place.room)) : [],
+				path: place ? this.route(home, engineering, place.at, place.room) : [],
 				room: place?.room ?? engineering,
 			});
 		}
@@ -3813,7 +3817,7 @@ export default class Ship {
 
 				Object.assign(bot, {
 					back: true,
-					path: room === engineering ? [home] : this.walkAround(bot, this.route(bot, room, home, engineering)),
+					path: room === engineering ? [home] : this.route(bot, room, home, engineering),
 				});
 			}
 			if (bot.wait > 0) {

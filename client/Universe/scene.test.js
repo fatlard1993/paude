@@ -1024,7 +1024,7 @@ test("a conduit bent round the lounge turns up its riser from the lounge's edge,
 	expect(bent.filter(point => point.x === riser).every(point => point.y < from.y)).toBe(true);
 });
 
-test('walking about the bridge, or off it to the spine, goes round the lounge, never over its couches', () => {
+test('walking about the bridge, off it to the spine, or onto it from where new sessions are made, goes round the lounge', () => {
 	const made = shipWith([answer('here', [session(), ...Array.from({ length: 8 }, (_, index) => session({ id: `s${index}`, status: 'stopped' }))], { projects: ['paude'] })]);
 
 	run(made, 4);
@@ -1037,9 +1037,12 @@ test('walking about the bridge, or off it to the spine, goes round the lounge, n
 	const back = [to, ...made.acrossBridge(to, from)];
 	const out = [to, ...made.viaSpine(to, made.bridge, made.layout.halls[0].airlock, null)];
 	const tour = [to, ...made.walkTo({ ...to, room: made.bridge }, from, made.bridge)];
+	const { materializer } = made.layout;
+	const fresh = { x: materializer.x + materializer.w / 2, y: materializer.y + 1 };
+	const arriving = [fresh, ...made.route(fresh, materializer, to, made.bridge)];
 	const inside = { left: lounge.x, right: lounge.x + lounge.w, top: lounge.y + 0.3, bottom: lounge.y + lounge.d };
 
-	for (const path of [there, back, out, tour])
+	for (const path of [there, back, out, tour, arriving])
 		for (const [index, point] of path.slice(1).entries()) {
 			const at = path[index];
 		const crosses =
