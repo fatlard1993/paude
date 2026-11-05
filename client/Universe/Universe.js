@@ -42,6 +42,7 @@ import { enginesPane, foldersPane, listDock, projectPanes, projectsPane, session
 import refusal from './reason';
 import { logCard, manifestCard, promptCard, replyCard } from './replyCard';
 import { arrivalOf } from './sidePanel';
+import { recall, remember } from '../storage';
 import Ship, { BEAM_SECONDS, BRIDGE, LOUNGE, sessionKey, triage } from './scene';
 import { UNIT } from './station';
 import { FOCUS_WIDTH, Stage } from './universeStyle';
@@ -105,6 +106,8 @@ const selectionOf = (target, view) => {
 	return null;
 };
 
+// What was last focused, kept for this browser so a reload comes back to it
+const FOCUS_KEPT = 'paude-universe-focus';
 // The width the docks were last dragged to, kept for this browser (where it can be: storage can be off)
 const DOCK_WIDTH = 'paude-universe-dock-width';
 const DOCK_LEAST = 360;
@@ -685,6 +688,8 @@ export default class Universe extends View {
 		this.selected = selected;
 		this.aboard.selected = selectionKey(selected);
 		if (!same) this.paintFocus();
+		// Kept for a reload, once whatever it was opened to has been gone to
+		if (!same && this.focusedOpen) remember(FOCUS_KEPT, selectionKey(selected) ?? '');
 	}
 
 	// After each answer: a selected worker that's gone is let go, and one still aboard has its card say how it is now
@@ -888,7 +893,8 @@ export default class Universe extends View {
 	focusOpened() {
 		const { session, project } = this.options ?? {};
 
-		if (this.focusedOpen || (!session && !project)) return;
+		if (this.focusedOpen) return;
+		if (!session && !project) return this.focusKept();
 		// On whichever ship has it, that ship then the one played
 		for (const ship of this.ships.values()) {
 			if (project) {
@@ -911,6 +917,34 @@ export default class Universe extends View {
 			this.aboard = ship;
 			this.select(selectionOf({ kind: 'worker', worker }, this));
 			ship.lookAt(worker.seat);
+
+			return;
+		}
+	}
+
+	// Opened to nothing in particular, what was focused before the page was last left, once the first answer is in: a
+	// session's grey, a project, the bridge, the lounge or an engine; gone since, nothing
+	focusKept() {
+		this.focusedOpen = true;
+
+		const [kind, ...rest] = recall(FOCUS_KEPT).split(':');
+		const name = rest.join(':');
+
+		for (const ship of this.ships.values()) {
+			const worker = kind === 'worker' && ship.workers.get(name);
+			const bay = kind === 'bay' && ship.bays.find(bayOf => bayOf.name === name);
+			const engine = kind === 'engine' && ship.engines?.find(({ key }) => key === name);
+			const target =
+				(worker && { kind: 'worker', worker }) ||
+				(bay && { kind: 'bay', bay }) ||
+				(engine && { kind: 'engine', engine }) ||
+				(kind === 'room' && ['bridge', 'lounge'].includes(name) && ship === this.aboard && { kind: name });
+
+			if (!target) continue;
+			this.aboard = ship;
+			this.select(selectionOf(target, this));
+			if (worker?.seat) ship.lookAt(worker.seat);
+			else ship.look({ bay: bay?.name, engine: engine?.key, room: { bridge: BRIDGE, lounge: LOUNGE }[name] }[kind]);
 
 			return;
 		}
