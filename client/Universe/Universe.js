@@ -313,6 +313,26 @@ export default class Universe extends View {
 		return found && { ...found[1], key: found[0] };
 	}
 
+	// The transporter's: once a ship is picked, beaming to it, or picking again
+	beamCommands() {
+		const chosen = this.aboard.fleet?.find(({ key }) => key === this.chosenShip);
+
+		if (!chosen) return [];
+
+		return [
+			{ label: `Beam to ${chosen.name}'s ship`, hotkey: 'b', run: () => this.travel(chosen.key) },
+			{
+				label: 'Cancel',
+				hotkey: 'c',
+				run: () => {
+					this.chosenShip = null;
+					this.focusPainted = null;
+					this.paintFocus();
+				},
+			},
+		];
+	}
+
 	// Beamed over to another ship: walking onto this one's transporter pad and beaming out, then beaming in on that
 	// one's and walking to their place there; straight over when they aren't aboard to walk
 	travel(key) {
@@ -333,14 +353,27 @@ export default class Universe extends View {
 			this.closeDock();
 			this.select(null);
 			this.aboard = ship;
+			this.chosenShip = null;
 			ship.viewer = me?.key;
 			ship.beamAt = ship.time;
 			if (me) ship.beamIn(me);
-			// The bridge selected, the view panning to it as the spaceman walks there off the pad
-			this.select(selectionOf({ kind: 'bridge' }, this));
-			ship.look(BRIDGE);
+
+			// Seen first on its transporter's pad as they beam in, and once they have, the bridge selected and the view
+			// panning to it as they walk there
+			const toBridge = () => {
+				if (this.aboard !== ship) return;
+				this.select(selectionOf({ kind: 'bridge' }, this));
+				ship.look(BRIDGE);
+				this.focusPainted = null;
+				this.paintFocus();
+			};
+
+			if (!ship.layout?.transporter) return toBridge();
+			ship.look('transporter');
+			Object.assign(ship.camera, ship.goal() ?? {});
 			this.focusPainted = null;
 			this.paintFocus();
+			this.beaming = setTimeout(toBridge, BEAM_SECONDS * 1000 + 400);
 		};
 
 		clearTimeout(this.beaming);
@@ -1401,10 +1434,15 @@ export default class Universe extends View {
 			items:
 				(kind === 'transporter' &&
 					aboard.fleet.map(ship => ({
-						label: `${ship.name}'s ship`,
+						label: `${ship.key === this.chosenShip ? '✓ ' : ''}${ship.name}'s ship`,
 						detail: shipWords(ship),
-						tone: (ship.needs && 'warn') || (ship.working && 'busy') || '',
-						run: () => this.travel(ship.key),
+						tone: (ship.key === this.chosenShip && 'busy') || (ship.needs && 'warn') || '',
+						// Picked, then confirmed: a slip of the hand doesn't beam anyone away
+						run: () => {
+							this.chosenShip = ship.key;
+							this.focusPainted = null;
+							this.paintFocus();
+						},
 					}))) ||
 				(kind === 'hold'
 					? aboard.cargo.map(checkout => ({
@@ -1417,7 +1455,7 @@ export default class Universe extends View {
 							},
 						}))
 					: []),
-			commands: kind === 'materializer' ? this.placeCommands('new') : [],
+			commands: (kind === 'materializer' && this.placeCommands('new')) || (kind === 'transporter' && this.beamCommands()) || [],
 		};
 	}
 

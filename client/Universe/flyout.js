@@ -107,7 +107,7 @@ const FLYOUTS = {
 	transporter: (target, ship) => ({
 		title: 'Transporter',
 		rows: ship.fleet.map(other => [other.name, shipWords(other)]),
-		hint: 'Hears from the other ships; press to beam over to one',
+		hint: 'Hears from the other ships; pick one, then beam over to it',
 	}),
 
 	worker: (target, ship) => {
