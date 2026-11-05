@@ -50,6 +50,7 @@ import {
 	loungeSeatAt,
 	rect,
 	seeded,
+	SCREEN_RISE,
 	cableStep,
 	cableWeight,
 } from './station';
@@ -622,6 +623,8 @@ export const runsFor = ends => {
 
 // The clear gap between neighbouring risers, outlines apart, when there's room
 const RISER_GAP = 2;
+// How far into the lounge, from its back wall, its couches start, in world units: a droid by the wall is clear of them
+const LOUNGE_FURNISHED = 0.6;
 // How many times the risers of a bridge with too many to try every order are gone over, pairs swapped
 const SWAP_PASSES = 4;
 
@@ -4068,10 +4071,12 @@ export default class Ship {
 		if (!engineering) return [];
 
 		const bots = this.bots.size ? [...this.bots.values()] : [{ ...this.berthOf(0), index: 0, docked: true, path: [] }];
+		const furniture = this.furniture();
 
-		// Over the conduits they drive across, which lie over everything
+		// Over the conduits they drive across, which lie over everything; but behind what stands in front of them (an
+		// island, a ship's terminal, the lounge's couches and screen), sorted in among it by depth, so it hides them
 		return bots.map(bot => ({
-			y: TUBE_FRONT - 0.001,
+			y: this.behindFurniture(bot, furniture) ? bot.y : TUBE_FRONT - 0.001,
 			draw: () => {
 				const at = this.art(bot);
 				const working = !bot.docked && !bot.back && !bot.path.length;
@@ -4086,6 +4091,44 @@ export default class Ship {
 				});
 			},
 		}));
+	}
+
+	// What stands on the bridge that something on the floor can pass behind, in art pixels, its foot the front of it:
+	// the islands with their screens, the other ships' terminals, and the lounge's couches and screen
+	furniture() {
+		const { lounge } = this;
+		const box = (from, to, rise) => {
+			const [a, b] = [this.art(from), this.art(to)];
+
+			return { left: a.x, right: b.x, top: a.y - rise, bottom: b.y };
+		};
+
+		return [
+			...(this.bridge?.islands ?? []).map(island =>
+				box({ x: island.x, y: island.y }, { x: island.x + island.w, y: island.y + 0.25 }, SCREEN_RISE),
+			),
+			...(this.bridge ? this.fleetSpots() : []).map(({ x, y }) => {
+				const at = this.art({ x, y });
+
+				return { left: at.x - 18, right: at.x + 15, top: at.y - SCREEN_RISE, bottom: at.y + 1 };
+			}),
+			...(lounge?.count
+				? [box({ x: lounge.x, y: lounge.y + LOUNGE_FURNISHED }, { x: lounge.x + lounge.w, y: lounge.y + lounge.d }, 0)]
+				: []),
+		];
+	}
+
+	// Whether something on the floor at `at` (a droid, as big as one) stands behind any of `furniture`, overlapping it
+	behindFurniture(at, furniture) {
+		const foot = this.art(at);
+		const { left, right, top, bottom } = { left: foot.x - 5, right: foot.x + 5, top: foot.y - 7, bottom: foot.y };
+
+		return furniture.some(
+			thing =>
+				bottom < thing.bottom &&
+				Math.min(right, thing.right) - Math.max(left, thing.left) > 0 &&
+				Math.min(bottom, thing.bottom) - Math.max(top, thing.top) > 0,
+		);
 	}
 
 	// A little droid of the crew, `at` its foot: a low black box on wheels scooting about, its front sloped toward where

@@ -1301,3 +1301,33 @@ test("a row's conduits fit the aisle under it, clear of the next row's screens, 
 		}
 	}
 });
+
+test('the lounge, selected, is bracketed round it', () => {
+	const made = shipWith([answer('here', [session(), session({ id: 'b', status: 'stopped' })], { projects: ['paude'] })]);
+
+	run(made, 4);
+	made.selected = 'room:lounge';
+
+	const [box] = made.selectionBoxes();
+	const { lounge } = made;
+
+	expect(box.from).toEqual(made.art(lounge));
+	expect(box.to).toEqual(made.art({ x: lounge.x + lounge.w, y: lounge.y + lounge.d }));
+});
+
+test('a droid passing behind an island or the couches is hidden by them, and drawn over the floor and its cables anywhere else', () => {
+	const made = shipWith([answer('here', [session(), session({ id: 'b', status: 'stopped' })], { projects: ['paude'] })]);
+
+	run(made, 4);
+
+	const furniture = made.furniture();
+	const [island] = made.bridge.islands;
+	const { lounge } = made;
+
+	// Just behind an island's console, among its screens; just behind a couch
+	expect(made.behindFurniture({ x: island.x + island.w / 2, y: island.y - 0.2 }, furniture)).toBe(true);
+	expect(made.behindFurniture({ x: lounge.x + lounge.w / 2, y: lounge.y + lounge.d / 2 }, furniture)).toBe(true);
+	// In front of the island, in the aisle; out on the open floor
+	expect(made.behindFurniture({ x: island.x + island.w / 2, y: island.y + 1 }, furniture)).toBe(false);
+	expect(made.behindFurniture({ x: made.bridge.x + 0.3, y: made.bridge.y + made.bridge.d - 0.1 }, furniture)).toBe(false);
+});
