@@ -106,6 +106,8 @@ const selectionOf = (target, view) => {
 // The width the docks were last dragged to, kept for this browser (where it can be: storage can be off)
 const DOCK_WIDTH = 'paude-universe-dock-width';
 const DOCK_LEAST = 360;
+// How long a session just placed is waited for to come aboard, to open its side panel on it
+const ARRIVING_MS = 60_000;
 
 const savedDockWidth = () => {
 	try {
@@ -298,6 +300,7 @@ export default class Universe extends View {
 		hear();
 		for (const [key, ship] of this.ships) ship.update(groups.get(key));
 		hear();
+		this.dockArrived();
 		this.aboard.viewer = this.me()?.key;
 	}
 
@@ -652,8 +655,9 @@ export default class Universe extends View {
 			},
 			...(live(session) ? [{ label: 'Live terminal', onPress: () => this.dockOrReply(worker, 'terminal') }] : []),
 			{
-				label: (stopped ? 'Wake and open' : 'Open session') + (remote ? ` on ${remote.name}` : ''),
-				onPress: () => this.open(session),
+				label: stopped ? 'Wake' : `Open session${remote ? ` on ${remote.name}` : ''}`,
+				detail: stopped ? 'In its side panel, on its terminal' : '',
+				onPress: () => (stopped ? this.wake(worker) : this.open(session)),
 			},
 			...(remote
 				? [{ label: session.watching ? 'Stop watching' : 'Watch', onPress: () => this.watch(worker, !session.watching) }]
@@ -710,7 +714,7 @@ export default class Universe extends View {
 		const stopped = session.status === 'stopped';
 
 		return [
-			{ label: stopped ? 'Wake' : 'Reply', hotkey: 'r', run: () => this.openReply(worker) },
+			{ label: stopped ? 'Wake' : 'Reply', hotkey: 'r', run: () => (stopped ? this.wake(worker) : this.openReply(worker)) },
 			...(live(session) ? [{ label: 'Terminal', hotkey: 't', run: () => this.dockOrReply(worker, 'terminal') }] : []),
 			...(remote
 				? []
@@ -1050,7 +1054,7 @@ export default class Universe extends View {
 	}
 
 	// A session's panels docked at the side, opened on `key`; the same session's dock switches to it
-	openDock(worker, key) {
+	openDock(worker, key, { wake = false } = {}) {
 		const { session } = worker;
 
 		if (this.dock?.key !== `session:${session.key}`) {
@@ -1059,7 +1063,8 @@ export default class Universe extends View {
 
 			const card = dockCard({
 				session,
-				live: live(session),
+				// Waking it: its terminal attached is what wakes it
+				live: wake || live(session),
 				open: key,
 				onOpen: () => this.open(session),
 				onClose: () => this.closeDock(),
@@ -1073,6 +1078,34 @@ export default class Universe extends View {
 		}
 
 		return this.dock.card.show(key);
+	}
+
+	// Woken in its side panel, on its terminal: attaching it wakes it, here or on another paude
+	wake(worker) {
+		this.select(selectionOf({ kind: 'worker', worker }, this));
+		this.seen(worker.session);
+
+		return this.openDock(worker, 'terminal', { wake: true });
+	}
+
+	// A session just placed (`id`, on `remote` or here): its side panel opens on its terminal once it's aboard, which
+	// may be a few answers away for a new one
+	dockWhenAboard({ id, remote }) {
+		this.arriving = { key: sessionKey(remote ? remote.url : LOCAL, id), until: Date.now() + ARRIVING_MS };
+		this.poll();
+	}
+
+	dockArrived() {
+		const { arriving } = this;
+
+		if (!arriving) return;
+		if (Date.now() > arriving.until) return (this.arriving = null);
+
+		const worker = this.aboard.workers.get(arriving.key);
+
+		if (!worker) return;
+		this.arriving = null;
+		this.wake(worker);
 	}
 
 	// A panel of a session on this paude; another paude's session docks its terminal alone, or opens its reply stopped
@@ -1117,7 +1150,12 @@ export default class Universe extends View {
 	// A prompt placed as from home: anywhere, or in `project`
 	newPrompt(project, anchor) {
 		this.openCard(
-			promptCard({ project, onSent: () => this.aboard.charge(), onClose: () => this.closeCard() }),
+			promptCard({
+				project,
+				onSent: () => this.aboard.charge(),
+				onArrive: place => this.dockWhenAboard(place),
+				onClose: () => this.closeCard(),
+			}),
 			anchor ?? this.aboard.screen(this.bridgeDoor()),
 		);
 	}
@@ -1196,6 +1234,8 @@ export default class Universe extends View {
 			replyCard({
 				session,
 				onOpen: () => this.open(session),
+				// Answered stopped, it wakes: its side panel opens on it
+				onSent: () => this.wake(worker),
 				onClose: () => this.closeCard(),
 			}),
 			worker.screen,

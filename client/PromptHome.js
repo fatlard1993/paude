@@ -292,7 +292,7 @@ const looking = text => {
 
 // Each place a prompt can go, as { heading, lines, accent, go }: the sessions it carries on, then a new session in the
 // project that fits, here or on another server. go() takes it there and resolves true once it's on its way.
-const placesFor = ({ matches, fresh }, { prompt, project, startFresh }) => {
+const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive }) => {
 	const sessions = matches.map(({ session, remote, why, meter }) => ({
 		heading: 'Carries on',
 		lines: [
@@ -308,6 +308,7 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh }) => {
 				: await sendPrompt(session.id, prompt);
 
 			if (!response?.ok) return failed('Could not send it there');
+			if (onArrive) return onArrive({ id: session.id, remote }) ?? true;
 			if (remote) return await openThere(remote.url, { sessionId: session.id });
 			window.location.hash = `#/sessions/${session.id}`;
 
@@ -334,6 +335,7 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh }) => {
 					const { body, response } = await startRemoteSession(fresh.remote.url, where, prompt, mode);
 
 					if (!response?.ok) return failed(`Could not start it on ${fresh.remote.name}`);
+					if (onArrive) return onArrive({ id: body.id, remote: fresh.remote }) ?? true;
 
 					return await openThere(fresh.remote.url, { sessionId: body.id });
 				}
@@ -342,6 +344,7 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh }) => {
 				const { body, response } = await createSession(where, prompt, undefined, mode);
 
 				if (!response?.ok) return failed(`Could not start it in ${where}`);
+				if (onArrive) return onArrive({ id: body.id }) ?? true;
 				window.location.hash = `#/sessions/${body.id}`;
 
 				return true;
@@ -351,9 +354,10 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh }) => {
 };
 
 // Finds where `prompt` belongs, in a dialog that shows it looking, then offers each place it could go; each goes
-// straight into its session, and a single place is gone to without asking. A new session here starts in the project's
+// straight into its session (or to `onArrive({ id, remote })` when given, to open it elsewhere), and a single place is
+// gone to without asking. A new session here starts in the project's
 // own folder, or with startFresh(project, lifetime) when given (resolving true once started). onSent once it's gone.
-export const placePrompt = async ({ prompt, project, startFresh, onSent }) => {
+export const placePrompt = async ({ prompt, project, startFresh, onArrive, onSent }) => {
 	if (!prompt) return new Notify({ intent: 'warning', content: 'Say what Claude should do first' });
 
 	const body = new Placing({});
@@ -379,7 +383,7 @@ export const placePrompt = async ({ prompt, project, startFresh, onSent }) => {
 		return new Notify({ intent: 'warning', content: "Couldn't place it just now" });
 	}
 
-	const places = placesFor(found, { prompt, project, startFresh });
+	const places = placesFor(found, { prompt, project, startFresh, onArrive });
 	const go = async (place, pressed) => {
 		const buttons = [...body.elem.querySelectorAll('button.place')];
 

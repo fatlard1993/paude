@@ -79,7 +79,7 @@ const composer = ({ placeholder, send, actions }) => {
 };
 
 // One session's reply, beside its worker. `session` is as the last answer had it.
-export const replyCard = ({ session, onOpen, onClose, note }) => {
+export const replyCard = ({ session, onOpen, onSent, onClose, note }) => {
 	const { reply, engine } = session;
 	const card = element('div', 'reply-card');
 
@@ -126,6 +126,7 @@ export const replyCard = ({ session, onOpen, onClose, note }) => {
 
 				new Notify({ intent: 'success', content: 'Sent', timeout: 2000 });
 				onClose();
+				if (session.status === 'stopped') onSent?.();
 			},
 			actions: [
 				button('Open session', onOpen, { icon: 'up-right-from-square', className: 'variant-flat' }),
@@ -137,8 +138,8 @@ export const replyCard = ({ session, onOpen, onClose, note }) => {
 };
 
 // A prompt placed as from home: paude finds the session it carries on or the project to start one in (`project`'s
-// when given), and goes straight there
-export const promptCard = ({ project, onSent, onClose }) => {
+// when given), and goes there: to `onArrive({ id, remote })` when given, else straight to its page
+export const promptCard = ({ project, onSent, onArrive, onClose }) => {
 	const card = element('div', 'reply-card');
 
 	card.append(
@@ -153,6 +154,7 @@ export const promptCard = ({ project, onSent, onClose }) => {
 				placePrompt({
 					prompt: text,
 					project,
+					onArrive,
 					onSent: () => {
 						onSent?.();
 						onClose();
