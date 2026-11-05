@@ -135,7 +135,7 @@ export default class DecisionsPanel extends Panel {
 		head.append(icon(KIND_ICONS[decision.kind]), element('span', 'name', decision.chose));
 		// One from an earlier session is answered here, and nothing more: it isn't this session's Claude's to record
 		if (!decision.place && !decision.earlier && identity()?.owner) {
-			const write = button('', () => this.writeDown(decision, write), {
+			const write = button('', () => this.fileDecision(decision, write), {
 				icon: 'pen-to-square',
 				title:
 					(decision.overrules && `Ask Claude to change the claim in ${decision.overrules.file}`) ||
@@ -148,7 +148,7 @@ export default class DecisionsPanel extends Panel {
 		}
 		if (canNote() && !decision.earlier)
 			head.append(
-				button('', () => this.dismiss(decision), {
+				button('', () => this.dismissDecision(decision), {
 					icon: 'eye-slash',
 					title: 'Set it aside: not worth writing down',
 					className: 'icon-only',
@@ -224,13 +224,13 @@ export default class DecisionsPanel extends Panel {
 		return form;
 	}
 
-	async writeDown(decision, write) {
+	async fileDecision(decision, write) {
 		write.disabled = true;
 		await this.options.writeDown(decision.id);
 		write.title = 'Asked: Claude records it when its prompt box is free';
 	}
 
-	async dismiss(decision) {
+	async dismissDecision(decision) {
 		await this.options.dismiss(decision.id);
 		await this.refresh();
 	}

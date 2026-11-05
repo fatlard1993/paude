@@ -149,12 +149,12 @@ export default class LinksPanel extends Panel {
 		);
 		if (canNote())
 			head.append(
-				button('', () => this.mark(link, { pinned: !link.pinned }), {
+				button('', () => this.markLink(link, { pinned: !link.pinned }), {
 					icon: 'thumbtack',
 					title: link.pinned ? 'Unpin it' : 'Pin it to the top',
 					className: `icon-only${link.pinned ? ' on' : ''}`,
 				}),
-				button('', () => this.mark(link, { hidden: true }), {
+				button('', () => this.markLink(link, { hidden: true }), {
 					icon: 'eye-slash',
 					title: 'Hide it: noise',
 					className: 'icon-only',
@@ -210,7 +210,7 @@ export default class LinksPanel extends Panel {
 		return line;
 	}
 
-	async mark(link, change) {
+	async markLink(link, change) {
 		await this.options.mark(link.url, change);
 		await this.refresh();
 	}
