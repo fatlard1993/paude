@@ -300,7 +300,13 @@ export const drawExterior = (
 		const inset = step * 2;
 
 		skin(left - 4 + inset, step, right - left + 8 - inset * 2, 1, plating.outline);
-		skin(left - 3 + inset, step, right - left + 6 - inset * 2, 1, step === FAIRING - 1 ? plating.lit : plating.plate);
+		skin(
+			left - 3 + inset,
+			step,
+			right - left + 6 - inset * 2,
+			1,
+			out < 0 && step === FAIRING - 1 ? plating.lit : plating.plate,
+		);
 	}
 	for (let seam = left + 8; seam < right - 2; seam += 20) skin(seam, 0, 1, FAIRING, plating.seam);
 	for (let rivet = left + 2; rivet < right - 2; rivet += 6) skin(rivet, 1, 1, 1, plating.rivet);

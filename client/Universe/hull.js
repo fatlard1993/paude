@@ -110,9 +110,12 @@ const hullImage = building => {
 	return lastHull.image;
 };
 
+// How deep the keel's strip runs under the hull's belly, in art pixels, its outline the row past it
+const KEEL = 9;
+
 const paintHull = building => {
 	const shape = outline(building);
-	const below = 9;
+	const below = KEEL;
 	const canvas = document.createElement('canvas');
 
 	canvas.width = shape.tip - shape.left + 2;
@@ -696,7 +699,7 @@ export const drawHull = (
 				drawExterior(ctx, {
 					left: Math.round((housing.part.x + 0.12) * UNIT.x),
 					right: Math.round((housing.part.x + housing.part.w - 0.12) * UNIT.x),
-					base: housing.top ? shape.top : shape.bottom + 2,
+					base: housing.top ? shape.top : shape.bottom + KEEL + 1,
 					out: housing.top ? -1 : 1,
 					folders: section.folders,
 					fallback: section.form,
