@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import { attachDiffText } from './attachText';
-import { diffAnchor, diffLines, parseDiff, remapLines, sideBySide } from './diff';
+import { diffAnchor, diffLines, loneSide, parseDiff, remapLines, sideBySide } from './diff';
 
 const DIFF = `diff --git a/src/math.js b/src/math.js
 index 1111111..2222222 100644
@@ -59,6 +59,14 @@ test('side by side, a removed run sits beside the added run that replaced it', (
 
 	expect(shape(sideBySide(parseDiff(DIFF).hunks[0].lines))).toEqual(['c0 c0', 'r1 a2', '- a3', 'c4 c4', 'r5 -']);
 	expect(shape(sideBySide(parseDiff(DIFF).hunks[1].lines))).toEqual(['r0 a1', 'note:2']);
+});
+
+test('a change that only adds lines is on the right alone, one that only removes them on the left', () => {
+	expect(loneSide(parseDiff('@@ -0,0 +1,2 @@\n+one\n+two\n').hunks)).toBe('right');
+	expect(loneSide(parseDiff('@@ -1,3 +1,4 @@\n a\n+b\n c\n\\ No newline at end of file\n').hunks)).toBe('right');
+	expect(loneSide(parseDiff('@@ -1,2 +0,0 @@\n-one\n-two\n').hunks)).toBe('left');
+	expect(loneSide(parseDiff(DIFF).hunks)).toBe(null);
+	expect(loneSide([])).toBe(null);
 });
 
 test('a comment on picked diff lines is on the lines after the change, or before it for removals alone', () => {

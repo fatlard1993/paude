@@ -58,6 +58,16 @@ export const sideBySide = lines => {
 	return rows;
 };
 
+// The one side a file's change is on, when it only adds lines ('right') or only removes them ('left'); null when it
+// does both
+export const loneSide = hunks => {
+	const kinds = new Set(hunks.flatMap(hunk => hunk.lines.map(line => line.kind)));
+
+	if (kinds.has('added') === kinds.has('removed')) return null;
+
+	return kinds.has('added') ? 'right' : 'left';
+};
+
 const MARK = { added: '+', removed: '-', context: ' ' };
 
 // Lines of a diff back as diff text, the way an attachment quotes them

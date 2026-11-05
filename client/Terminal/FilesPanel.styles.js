@@ -521,6 +521,10 @@ const Panel = styled(
 			grid-template-columns: 1fr 1fr;
 		}
 
+		.diff.split .split-row.lone {
+			grid-template-columns: 1fr;
+		}
+
 		.diff.split .side {
 			display: flex;
 			min-width: 0;
@@ -528,7 +532,7 @@ const Panel = styled(
 			overflow-wrap: anywhere;
 		}
 
-		.diff.split .side.left {
+		.diff.split .split-row:not(.lone) .side.left {
 			border-right: 1px solid ${colors.alpha(colors.white, 0.08)};
 		}
 

@@ -1,4 +1,4 @@
-import { parseDiff, sideBySide } from '../../shared/diff';
+import { loneSide, parseDiff, sideBySide } from '../../shared/diff';
 import { describeFiles, fileLabel, folds } from '../../shared/reviewOrder';
 import { button, element } from '../dom';
 
@@ -41,11 +41,12 @@ const unifiedRows = ({ lines, offset, language, picked, pick, marks }) =>
 		return row;
 	});
 
-const splitRows = ({ lines, offset, language, picked, pick, marks }) =>
+// A file changed on one side alone (`lone`) shows only that side, across the full width
+const splitRows = ({ lines, offset, language, picked, pick, marks, lone }) =>
 	sideBySide(lines).map(({ left, right, note }) => {
 		if (note) return element('div', 'line note split-note', note.line.text);
 
-		const row = element('div', 'split-row');
+		const row = element('div', lone ? 'split-row lone' : 'split-row');
 		const side = (half, which) => {
 			const cell = element('div', `side ${which} ${half ? half.line.kind : 'empty'}`);
 
@@ -60,7 +61,8 @@ const splitRows = ({ lines, offset, language, picked, pick, marks }) =>
 			return cell;
 		};
 
-		row.append(side(left, 'left'), side(right, 'right'));
+		if (lone) row.append(side(lone === 'left' ? left : right, lone));
+		else row.append(side(left, 'left'), side(right, 'right'));
 
 		return row;
 	});
@@ -95,6 +97,7 @@ const renderDiffSet = ({
 	set.files.forEach((file, fileIndex) => {
 		const { binary, hunks } = parseDiff(file.diff ?? '');
 		const language = languageOf(file.path);
+		const lone = loneSide(hunks);
 		const head = element('div', 'file-head');
 		const lines = [];
 		const picked = index => selection?.file === fileIndex && index >= selection.from && index <= selection.to;
@@ -137,7 +140,15 @@ const renderDiffSet = ({
 			lines.push(...hunk.lines);
 			container.append(
 				hunkHead,
-				...(layout === 'split' ? splitRows : unifiedRows)({ lines: hunk.lines, offset, language, picked, pick, marks }),
+				...(layout === 'split' ? splitRows : unifiedRows)({
+					lines: hunk.lines,
+					offset,
+					language,
+					picked,
+					pick,
+					marks,
+					lone,
+				}),
 			);
 		}
 
