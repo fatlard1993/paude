@@ -12,7 +12,7 @@ const FOLDER = /"cwd":"((?:[^"\\]|\\.)*)"/;
 export const claudeHome = () => process.env.CLAUDE_CONFIG_DIR ?? join(os.homedir(), '.claude');
 
 // Claude Code keeps a session's transcript in a folder named after the directory it started in
-export const transcriptFile = async (id, cwd) => {
+const ownFile = async (id, cwd) => {
 	const projects = join(claudeHome(), 'projects');
 	const named = Bun.file(join(projects, (cwd ?? '').replace(/[^a-zA-Z0-9]/g, '-'), `${id}.jsonl`));
 
@@ -24,6 +24,49 @@ export const transcriptFile = async (id, cwd) => {
 
 	return index === -1 ? null : Bun.file(join(projects, folders[index], `${id}.jsonl`));
 };
+
+const CONTINUED_TAIL_BYTES = 256 * 1024;
+// { [id]: { size, next } }: where each transcript said its session went on, as of the size it was read at
+const continuations = new Map();
+// { [id carried on in]: the id it was carried on from }
+const continuedFrom = new Map();
+
+// The session Claude carried this one on in, as when it moves a session to the background: a resume that forks it, so
+// the new transcript holds the whole conversation, and the old one ends saying where it went
+const continuedIn = async (id, file) => {
+	const known = continuations.get(id);
+
+	if (known?.next || known?.size === file.size) return known.next;
+
+	const tail = await file.slice(Math.max(0, file.size - CONTINUED_TAIL_BYTES)).text();
+	const next =
+		parsed(tail).findLast(line => line.type === 'continued-in' && line.sessionId === id)?.continuedInSessionId ?? null;
+
+	continuations.set(id, { size: file.size, next });
+
+	return next;
+};
+
+// A session's transcript, wherever Claude has carried it on to since: paude keeps the id it started the session as
+export const transcriptFile = async (id, cwd) => {
+	const seen = new Set([id]);
+	let file = await ownFile(id, cwd);
+
+	for (let at = id; file; ) {
+		const next = await continuedIn(at, file);
+		const onward = next && !seen.has(next) && (await ownFile(next, cwd));
+
+		if (!onward) break;
+		seen.add(next);
+		continuedFrom.set(next, id);
+		[at, file] = [next, onward];
+	}
+
+	return file;
+};
+
+// The session a transcript carries on, of those whose transcripts have been read; undefined for none
+export const carriesOn = id => continuedFrom.get(id);
 
 const parsed = text =>
 	text

@@ -4,6 +4,7 @@ import path from 'path';
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 
 import { initLookBack, lookBack } from './lookBack';
+import { transcriptFile } from './sessions/transcript';
 
 let dir;
 let repo;
@@ -62,4 +63,19 @@ test('outside a repository, nothing is looked back on', async () => {
 
 	await lookBack(dir, { follow: async id => followed.push(id) });
 	expect(followed).toEqual([]);
+});
+
+test('a session a running one was carried on in is followed with it, not looked back on as well', async () => {
+	await writeFile(
+		path.join(transcripts, 'live.jsonl'),
+		`${JSON.stringify({ type: 'continued-in', sessionId: 'live', continuedInSessionId: 'onward' })}\n`,
+	);
+	await writeFile(path.join(transcripts, 'onward.jsonl'), '{}\n');
+	await writeFile(path.join(transcripts, 'other.jsonl'), '{}\n');
+	await transcriptFile('live', repo);
+
+	const followed = [];
+
+	await lookBack(repo, { follow: async id => followed.push(id), running: id => id === 'live' });
+	expect(followed).toEqual(['other']);
 });

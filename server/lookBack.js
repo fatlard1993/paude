@@ -6,7 +6,7 @@ import writeJsonFile from '../shared/writeJsonFile';
 import { followDecisions, sessionDecisions } from './decisions';
 import { repoRoot } from './git';
 import { runningSession } from './sessions/running';
-import { claudeHome } from './sessions/transcript';
+import { carriesOn, claudeHome } from './sessions/transcript';
 
 // Looking back over a project's sessions: those from before paude followed sessions as they went, and those it only
 // read the end of, each read whole and what it settled filed as a live session's is, into the commits of its day. Begun
@@ -32,14 +32,17 @@ const sessionsIn = async root => {
 	return names.map(name => ({ id: name.slice(0, -'.jsonl'.length), size: Bun.file(path.join(folder, name)).size }));
 };
 
-// Not one running: a live session is followed as it goes
-export const lookBack = async (cwd, { follow = followDecisions } = {}) => {
+// Not one running, nor one a running session was carried on in: those are followed as they go
+export const lookBack = async (cwd, { follow = followDecisions, running = runningSession } = {}) => {
 	const root = readFile && (await repoRoot(cwd));
 
 	if (!root || under.has(root)) return;
 
 	const toRead = (await sessionsIn(root)).filter(
-		session => !runningSession(session.id) && (read[root]?.[session.id] ?? -1) < session.size,
+		session =>
+			!running(session.id) &&
+			!(carriesOn(session.id) && running(carriesOn(session.id))) &&
+			(read[root]?.[session.id] ?? -1) < session.size,
 	);
 
 	if (!toRead.length) return;
