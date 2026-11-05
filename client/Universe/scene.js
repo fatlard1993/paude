@@ -2083,7 +2083,6 @@ export default class Ship {
 				...this.deliveryParts(ctx),
 			);
 		standing.push(...this.crewParts(ctx));
-		standing.push(...this.coreLineParts(ctx));
 		standing.push(...this.rackParts(ctx));
 		for (const bay of this.bays) {
 			// Drawn where it's shown, gliding along its deck to where the layout puts it
@@ -2145,6 +2144,7 @@ export default class Ship {
 
 		for (const thing of standing.sort((a, b) => a.y - b.y)) thing.draw();
 		this.light(ctx, working, running);
+		this.drawCoreCharge(ctx);
 		// Lit, so laid over the light
 		this.drawPathways(ctx);
 		// Whoever's aboard over everything, as a game draws its people over the scenery: the bridge's aisles are too narrow
@@ -2651,60 +2651,49 @@ export default class Ship {
 		];
 	}
 
-	// The ship's core wired into the rest of it: from its machine to the hall it opens on, and along the middle of the
-	// hall's far wall, clear of the other conduits low along it, aft to the engines and forward to the bridge. A heavy
-	// channel lit in its color always, breathing slowly at rest with a slow pulse running out now and then, and pulses
-	// running out fast along it while it's worked on.
-	coreLineParts(ctx) {
+	// The ship's core alive through its whole frame: the hull's inner rim, back and belly, lit softly in its color,
+	// breathing, brighter while it's worked on; and while it is, now and then a small crackle on the rim
+	drawCoreCharge(ctx) {
 		const bay = this.bays.find(({ own }) => own);
-		const part = bay?.parts?.[0];
-		const hall = part && this.layout.halls.find(({ lane }) => lane === part.lane);
-		const { engineering } = this.layout;
+		const { building } = this.layout;
 
-		if (!hall || !engineering || !this.bridge) return [];
+		if (!bay || !building) return;
 
 		const sessions = bay.sessions.map(key => this.workers.get(key)?.session).filter(Boolean);
-		const working = sessions.some(({ status }) => status === 'working');
-		const breath = 0.75 + 0.25 * Math.sin(this.time * 1.6);
-		const color = (light, alpha = 1) => `hsla(${bay.hue ?? 200} 85% ${light}% / ${working ? alpha : alpha * breath})`;
+		const state =
+			(sessions.some(({ status }) => status === 'working') && 'working') || (sessions.length ? 'ready' : 'idle');
+		const hue = bay.hue ?? 200;
+		const [left, right] = [this.art({ x: building.left, y: 0 }).x + 2, this.art({ x: building.right, y: 0 }).x - 2];
+		const [top, bottom] = [this.art({ x: 0, y: building.top }).y + 1, this.art({ x: 0, y: building.bottom }).y - 1];
+		const strength = { working: 0.22, ready: 0.13, idle: 0.07 }[state] * (0.8 + 0.2 * Math.sin(this.time * 1.4));
 
-		return [
-			{
-				y: hall.y + 0.002,
-				draw: () => {
-					const wall = this.art({ x: 0, y: hall.y }).y;
-					const run = wall + Math.round(((hall.face ?? FACE) * UNIT.y) / 2) - 1;
-					const [aft, fore] = [
-						this.art({ x: engineering.x + engineering.w, y: 0 }).x,
-						this.art({ x: this.bridge.x, y: 0 }).x,
-					];
-					const core = this.art({ x: part.x + part.w / 2, y: 0 }).x;
-					const above = part.y < hall.y;
-					const edge = this.art({ x: 0, y: above ? part.y + part.d : part.y }).y;
-					const [riserTop, riserBottom] = [Math.min(edge, run), Math.max(edge, run + 3)];
+		// Its glow off the rim, fading inward
+		for (let depth = 0; depth < 4; depth++) {
+			ctx.globalAlpha = strength * (1 - depth / 4);
+			rect(ctx, left, top + depth, right - left, 1, `hsl(${hue} 85% 60%)`);
+			rect(ctx, left, bottom - depth, right - left, 1, `hsl(${hue} 85% 60%)`);
+		}
+		ctx.globalAlpha = 1;
+		if (state !== 'working') return;
 
-					// Its riser from the machine to the hall, then its channel along the wall both ways
-					rect(ctx, core - 3, riserTop, 7, riserBottom - riserTop, PALETTE.k);
-					rect(ctx, core - 2, riserTop, 5, riserBottom - riserTop, color(30));
-					rect(ctx, core, riserTop, 1, riserBottom - riserTop, color(72));
-					rect(ctx, aft, run - 2, fore - aft, 7, PALETTE.k);
-					rect(ctx, aft, run - 1, fore - aft, 5, color(28));
-					rect(ctx, aft, run + 1, fore - aft, 1, color(70));
-					for (const end of [aft, fore - 3]) rect(ctx, end, run - 2, 3, 7, color(60));
+		// A crackle, now and then: a few pixels flickering either side of the rim, where picked from the moment
+		const moment = Math.floor(this.time * 10);
+		const pick = what => seeded(`crackle|${moment}|${what}`);
 
-					// Pulses running out from it: fast and many at work, one slow one now and then at rest
-					const reach = Math.max(core - aft, fore - core);
-					const [speed, gap] = working ? [40, 12] : [14, reach + 60];
+		if (pick('on') > 0.08) return;
 
-					for (let along = (this.time * speed) % gap; along < reach; along += gap)
-						for (const side of [-1, 1]) {
-							const x = Math.round(core + side * along);
+		const x = left + Math.round(pick('x') * (right - left));
+		const rim = pick('rim') < 0.5 ? top : bottom;
+		const inward = rim === top ? 1 : -1;
 
-							if (x > aft && x < fore) rect(ctx, x - 1, run, 3, 3, working ? '#ffffff' : color(85));
-						}
-				},
-			},
-		];
+		for (let step = 0; step < 4; step++) {
+			const y = rim + inward * (step % 2 ? 2 : 0);
+
+			ctx.globalAlpha = 0.45;
+			rect(ctx, x + step * 2 - 1, y - 1, 3, 3, `hsl(${hue} 90% 62%)`);
+			ctx.globalAlpha = 1;
+			rect(ctx, x + step * 2, y, 1, 1, '#ffffff');
+		}
 	}
 
 	// A grey at its terminal on the bridge, so wired into its project's machine
