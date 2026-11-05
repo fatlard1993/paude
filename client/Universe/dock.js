@@ -50,10 +50,11 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose,
 	const tabs = element('div', 'tabs');
 	const body = element('div', 'body');
 	const panels = new Map();
-	// Another paude's session docks its terminal alone: the other panels read this server's own sessions
-	const verbs = session.engine.remote
-		? VERBS.filter(({ key }) => key === 'terminal')
-		: VERBS.filter(({ key, allowed }) => allowed() && (key !== 'terminal' || live));
+	// Another paude's session's panels reach it through this paude, all but its side shell, whose socket isn't relayed
+	const { remote } = session.engine;
+	const verbs = VERBS.filter(
+		({ key, allowed }) => allowed() && (key !== 'terminal' || live) && !(remote && key === 'shell'),
+	);
 	let connection;
 	let showing;
 
@@ -94,6 +95,7 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose,
 
 	const connected = () => {
 		connection ??= attach(session.id, {
+			...(remote && { url: `${window.location.origin}/api/remotes/at/${encodeURIComponent(remote.url)}` }),
 			hello: () => ({ kind: 'web', label: 'universe' }),
 			onOutput: () => {},
 			onMessage: message => {

@@ -11,8 +11,7 @@ import {
 	openRemote,
 	setLifetime,
 	setRemoteWatching,
-	setWatching,
-} from '../api';
+	setWatching, sessionElsewhere } from '../api';
 import { Bar } from '../Bar';
 import { breadcrumbs } from '../Breadcrumbs';
 import { button, element } from '../dom';
@@ -719,25 +718,20 @@ export default class Universe extends View {
 		return [
 			{ label: stopped ? 'Wake' : 'Reply', hotkey: 'r', run: () => (stopped ? this.wake(worker) : this.openReply(worker)) },
 			...(live(session) ? [{ label: 'Terminal', hotkey: 't', run: () => this.dockOrReply(worker, 'terminal') }] : []),
-			...(remote
-				? []
-				: VERBS.filter(({ key, allowed }) => key !== 'terminal' && allowed()).map(({ key, label, hotkey }) => ({
-						label,
-						hotkey,
-						run: () => this.openDock(worker, key),
-					}))),
+			// Another paude's session's panels are relayed through this one, all but its side shell
+			...VERBS.filter(({ key, allowed }) => key !== 'terminal' && allowed() && !(remote && key === 'shell')).map(
+				({ key, label, hotkey }) => ({ label, hotkey, run: () => this.openDock(worker, key) }),
+			),
 			{
 				label: session.watching ? 'Unwatch' : 'Watch',
 				hotkey: 'u',
 				run: () => this.watch(worker, !session.watching),
 			},
-			...(remote || !identity()?.owner || !session.lifetime
+			...(!identity()?.owner || !session.lifetime
 				? []
 				: [{ label: 'Lifetime', hotkey: 'i', run: event => this.lifetimeMenu(worker, event) }]),
 			{ label: remote ? `Open on ${remote.name}` : 'Open', hotkey: 'o', run: () => this.open(session) },
-			...(remote || !identity()?.owner
-				? []
-				: [{ label: 'Delete', hotkey: 'x', run: () => this.remove(worker) }]),
+			...(!identity()?.owner ? [] : [{ label: 'Delete', hotkey: 'x', run: () => this.remove(worker) }]),
 		];
 	}
 
@@ -1107,14 +1101,15 @@ export default class Universe extends View {
 		if (worker) this.wake(worker);
 	}
 
-	// A panel of a session on this paude; another paude's session docks its terminal alone, or opens its reply stopped
+	// A panel of a session, here or on another paude (relayed through this one, all but its side shell); another paude's
+	// stopped session opens its reply for its terminal
 	dockOrReply(worker, key) {
 		this.select(selectionOf({ kind: 'worker', worker }, this));
 		if (worker.session.engine.remote) {
-			if (!live(worker.session)) return this.openReply(worker);
+			if (key === 'terminal' && !live(worker.session)) return this.openReply(worker);
 			this.seen(worker.session);
 
-			return this.openDock(worker, 'terminal');
+			return this.openDock(worker, key === 'shell' ? 'terminal' : key);
 		}
 		// Its terminal attached marks it seen on its engine; here at once
 		if (key === 'terminal' && this.aboard.needs(worker.session) === 'unread') {
@@ -1763,6 +1758,8 @@ export default class Universe extends View {
 
 					if (answered) this.sealed.delete(remote.url);
 					else if (asked) this.sealed.set(remote.url, Date.now() + REMOTES_MS);
+					// Its sessions' panels and actions reach it through this paude
+					for (const { id } of answered?.sessions ?? []) sessionElsewhere(id, remote.url);
 
 					return {
 						...(answered ?? (remote.error ? {} : olderPaude(remote))),

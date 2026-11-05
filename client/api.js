@@ -1,6 +1,25 @@
-import { DELETE, GET, PATCH, POST, PUT } from '@vanilla-bean/components';
+import * as requests from '@vanilla-bean/components';
 
 import { searchParameters } from '../shared/searchQuery';
+
+// Sessions on another paude, by id, and its address: their routes go through this one's relay to it, on this
+// machine's login there, so their panels work as this server's own sessions' do
+const elsewhere = new Map();
+
+export const sessionElsewhere = (id, url) => (url ? elsewhere.set(id, url) : elsewhere.delete(id));
+
+const sessionBase = id => (elsewhere.has(id) ? `/api/remotes/at/${encodeURIComponent(elsewhere.get(id))}` : '');
+
+const routed =
+	method =>
+	(path, options = {}) =>
+		method(
+			path.startsWith('/api/sessions/:id') && options.urlParameters?.id
+				? `${sessionBase(options.urlParameters.id)}${path}`
+				: path,
+			options,
+		);
+const [GET, POST, PUT, PATCH, DELETE] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map(name => routed(requests[name]));
 
 // { authenticated, passwordSet, identity, name }
 export const getAuth = async () => await GET('/api/auth', { invalidateAfter: 0 });
@@ -174,7 +193,7 @@ export const manageFiles = async (sessionId, action, body) =>
 // A file from this computer into the project at `path`; a 409 means something is there, which `replace` writes over
 export const uploadFile = async (sessionId, path, file, { replace = false } = {}) => {
 	const response = await fetch(
-		`/api/sessions/${encodeURIComponent(sessionId)}/files/upload?path=${encodeURIComponent(path)}${replace ? '&replace=1' : ''}`,
+		`${sessionBase(sessionId)}/api/sessions/${encodeURIComponent(sessionId)}/files/upload?path=${encodeURIComponent(path)}${replace ? '&replace=1' : ''}`,
 		{ method: 'PUT', body: file },
 	).catch(() => null);
 
@@ -317,7 +336,7 @@ export const openRemote = async (url, to) => await POST('/api/remotes/open', { b
 
 // A dropped or pasted file, saved where Claude can read it: { path }
 // `base` reaches another paude's session through this one
-export const attachFile = async (sessionId, file, base = '') => {
+export const attachFile = async (sessionId, file, base = sessionBase(sessionId)) => {
 	const response = await fetch(
 		`${base}/api/sessions/${encodeURIComponent(sessionId)}/attachments?name=${encodeURIComponent(file.name)}`,
 		{ method: 'POST', body: file },

@@ -61,6 +61,9 @@ import { markProjectLink, projectLinks } from '../links';
 import { projectArtifacts } from '../artifacts';
 import { universe } from '../universe';
 
+// How long a request relayed to another paude's session may take: a file dropped on its terminal goes this way too
+const RELAY_MS = 60_000;
+
 const isFolder = async path =>
 	Boolean(
 		path &&
@@ -306,45 +309,38 @@ const sessionsRoutes = async (request, server) => {
 		return upgraded ? undefined : new Response('WebSocket upgrade failed', { status: 400 });
 	}
 
-	// A file dropped on its terminal here, saved there for it
-	match = requestMatch('POST', '/api/remotes/at/:url/api/sessions/:id/attachments', request);
-	if (match) {
-		const remote = /^[\w-]+$/.test(match.id) && (await remoteServer(match.url));
+	// A session there, asked of as one here: any of its routes, by any method, relayed on this machine's login there, so
+	// its panels work in the universe as this server's own sessions' do. Never a way out of that session's routes: a dot
+	// segment, spelled out or escaped, is refused before the far end could resolve it.
+	const relayed = /^\/api\/remotes\/at\/([^/]+)(\/api\/sessions\/([\w-]+)(?:\/.*)?)$/.exec(pathname);
+
+	if (relayed) {
+		const [, url, route] = relayed;
+
+		if (/(^|\/)(\.|%2e){2}(\/|$)/i.test(route)) return new Response('No such route', { status: 400 });
+
+		const remote = await remoteServer(decodeURIComponent(url));
 
 		if (!remote) return new Response('Not one of your servers', { status: 404 });
 
+		const { method } = request;
+
 		try {
-			const there = await fetch(
-				`${remote.url}/api/sessions/${match.id}/attachments?name=${encodeURIComponent(match.name ?? '')}`,
-				{
-					method: 'POST',
-					body: request.body,
-					headers: { authorization: `Bearer ${remote.token}` },
-					tls: trustedCertificates(),
-					signal: AbortSignal.timeout(60_000),
+			const there = await fetch(`${remote.url}${route}${new URL(request.url).search}`, {
+				method,
+				headers: {
+					authorization: `Bearer ${remote.token}`,
+					...(request.headers.get('content-type') && { 'content-type': request.headers.get('content-type') }),
 				},
-			);
-
-			return new Response(there.body, { status: there.status, headers: { 'content-type': there.headers.get('content-type') ?? 'text/plain' } });
-		} catch (error) {
-			return new Response(error.message, { status: 502 });
-		}
-	}
-
-	match = requestMatch('GET', '/api/remotes/at/:url/api/sessions/:id', request);
-	if (match) {
-		const remote = /^[\w-]+$/.test(match.id) && (await remoteServer(match.url));
-
-		if (!remote) return new Response('Not one of your servers', { status: 404 });
-
-		try {
-			const there = await fetch(`${remote.url}/api/sessions/${match.id}`, {
-				headers: { authorization: `Bearer ${remote.token}` },
+				...(method !== 'GET' && method !== 'HEAD' && { body: request.body }),
 				tls: trustedCertificates(),
-				signal: AbortSignal.timeout(8000),
+				signal: AbortSignal.timeout(RELAY_MS),
 			});
 
-			return new Response(there.body, { status: there.status, headers: { 'content-type': 'application/json' } });
+			return new Response(there.body, {
+				status: there.status,
+				headers: { 'content-type': there.headers.get('content-type') ?? 'application/json' },
+			});
 		} catch (error) {
 			return new Response(error.message, { status: 502 });
 		}
