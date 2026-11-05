@@ -2629,39 +2629,47 @@ export default class Ship {
 
 		if (!building) return;
 
-		const w = 26;
+		const w = 30;
 		const h = Math.max(
-			6,
-			Math.min(11, Math.round((w * (building.bottom - building.top)) / (building.right - building.left)) + 2),
+			7,
+			Math.min(11, Math.round((w * (building.bottom - building.top)) / (building.right - building.left)) + 3),
 		);
 		const left = at.x - Math.round(w / 2);
-		const top = at.y + 6;
-		const color = `hsl(${hue ?? 200} 85% 70%)`;
-		const flicker = Math.sin(this.time * 23) * Math.sin(this.time * 7) > 0.85 ? 0.25 : 0.55;
-		const nose = Math.round(h / 2);
+		const top = at.y + 5;
+		const middle = (h - 1) / 2;
+		const nose = Math.ceil(h / 2) + 1;
+		const color = `hsl(${hue ?? 200} 90% 72%)`;
+		const flicker = Math.sin(this.time * 23) * Math.sin(this.time * 7) > 0.85 ? 0.5 : 1;
+		const glow = alpha => (ctx.globalAlpha = alpha * flicker);
 
-		ctx.globalAlpha = 0.12;
-		for (let row = 0; row < 8; row++)
-			rect(ctx, at.x - 1 - Math.floor(row / 2), top + h + row, 3 + Math.floor(row / 2) * 2, 1, color);
-		ctx.globalAlpha = flicker;
+		// Its beam up from the machine
+		glow(0.1);
+		for (let row = 0; row < 7; row++) rect(ctx, at.x - 1 - row, top + h + row, 3 + row * 2, 1, color);
 		for (let row = 0; row < h; row++) {
-			// Its hull, tapering to the nose forward; its fins aft
-			const taper = Math.max(0, Math.abs(row - (h - 1) / 2) - (h / 2 - nose));
-			const body = w - 4 - Math.round(taper * 2);
+			// Its hull, a pointed nose forward and filled faintly, outlined bright, every other row dimmer as scanlines
+			const reach = w - nose + Math.round((nose - 1) * (1 - Math.abs(row - middle) / (middle + 0.5)));
+			const dim = row % 2 ? 0.7 : 1;
 
-			if (row % 2) ctx.globalAlpha = flicker * 0.6;
-			rect(ctx, left + 2, top + row, 1, 1, color);
-			rect(ctx, left + 2 + body, top + row, 1, 1, color);
-			if (row === 0 || row === h - 1) rect(ctx, left + 2, top + row, body, 1, color);
-			ctx.globalAlpha = flicker;
+			glow(0.18 * dim);
+			rect(ctx, left + 1, top + row, reach - 1, 1, color);
+			glow(0.75 * dim);
+			rect(ctx, left, top + row, 1, 1, color);
+			rect(ctx, left + reach, top + row, 1, 1, color);
+			if (row === 0 || row === h - 1) rect(ctx, left, top + row, reach, 1, color);
 		}
-		for (const fin of [top - 2, top + h + 1]) rect(ctx, left, fin, 4, 1, color);
-		rect(ctx, left - 1, top + nose - 1, 2, 2, color);
+		// Its fins swept back off its back and belly, and its engine's glow aft
+		glow(0.75);
+		for (let step = 0; step < 3; step++) {
+			rect(ctx, left + 2 + step, top - 1 - step, 3, 1, color);
+			rect(ctx, left + 2 + step, top + h + step, 3, 1, color);
+		}
+		glow(0.6 + 0.3 * Math.sin(this.time * 9));
+		rect(ctx, left - 3, top + Math.round(middle) - 1, 3, 2, color);
 		if (working) {
-			const sweep = left + 2 + (Math.floor(this.time * 18) % (w - 3));
+			const sweep = left + 1 + (Math.floor(this.time * 18) % (w - 2));
 
-			ctx.globalAlpha = 0.8;
-			rect(ctx, sweep, top, 1, h, PALETTE.W);
+			glow(0.9);
+			rect(ctx, sweep, top + 1, 1, h - 2, PALETTE.W);
 		}
 		ctx.globalAlpha = 1;
 	}
