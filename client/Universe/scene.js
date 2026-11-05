@@ -213,7 +213,17 @@ const DUST_SECONDS = 6;
 const DUST = { light: '#a7adb6', dark: '#6f7680' };
 
 // The giant cup's colors, its zap the dot on its band
-const CUP = { red: '#d63a3a', lit: '#ef7a6a', shade: '#9e2626', band: '#f2eee6', zap: '#ffe14a', lid: '#b8c4d4' };
+const CUP = {
+	red: '#d63a3a',
+	lit: '#ef7a6a',
+	shade: '#9e2626',
+	white: '#f2eee6',
+	whiteShade: '#c4bdb0',
+	zap: '#ffe14a',
+	lid: '#b8c4d4',
+	straw: '#ff8a1c',
+	strawLit: '#ffc27a',
+};
 // A context this much emptier than last seen was compacted (or cleared)
 const COMPACTED = 0.2;
 // Whether what changed was tested since, worst first, and how inspection shows each
@@ -3940,14 +3950,16 @@ export default class Ship {
 
 		this.drawCup(ctx, cup, { straw: lift < 1 });
 		if (lift < 1) return;
-		// The straw out of its lid and across to its lips; its hand round the cup
-		for (let step = 0; step <= cup.x - at.x - 4; step++)
-			rect(ctx, cup.x - step, cup.y - 10 + Math.min(step, 6), 1, 1, step % 2 ? CUP.red : CUP.band);
+		// The straw straight out of its lid down to its lips; its hand round the cup
+		const reach = cup.x - at.x - 4;
+
+		for (let step = 0; step <= reach; step++)
+			rect(ctx, cup.x - step, cup.y - 10 + Math.round((step * 6) / Math.max(1, reach)), 1, 1, CUP.straw);
 		rect(ctx, cup.x - 4, cup.y - 5, 2, 3, PALETTE.a);
 	}
 
-	// A giant fountain cup of something caffeinated, `spot` its foot: red, wider at the rim, a white band round it, a
-	// domed lid and a bent straw
+	// A giant fountain cup of something caffeinated, `spot` its foot: wider at the rim, white at its top and its foot and
+	// red between with a white and yellow mark on it, a domed lid and a straight orange straw
 	drawCup(ctx, spot, { straw = true } = {}) {
 		const { x, y } = spot;
 		// Its body from the rim down, narrowing toward its foot
@@ -3964,30 +3976,31 @@ export default class Ship {
 
 		rows.forEach(([from, w], row) => {
 			const at = y - rows.length + 1 + row;
-			const band = row === 2 || row === 3;
+			const red = row >= 2 && row <= 5;
 
 			rect(ctx, x + from - 1, at, w + 2, 1, PALETTE.k);
-			rect(ctx, x + from, at, w, 1, band ? CUP.band : CUP.red);
-			if (!band) {
-				rect(ctx, x + from, at, 1, 1, CUP.lit);
-				rect(ctx, x + from + w - 1, at, 1, 1, CUP.shade);
-			}
+			rect(ctx, x + from, at, w, 1, red ? CUP.red : CUP.white);
+			rect(ctx, x + from, at, 1, 1, red ? CUP.lit : CUP.white);
+			rect(ctx, x + from + w - 1, at, 1, 1, red ? CUP.shade : CUP.whiteShade);
 		});
 		rect(ctx, x - 2, y + 1, 4, 1, PALETTE.k);
-		// Its label on the band, a red mark in the middle of the white
-		rect(ctx, x - 1, y - 5, 3, 2, CUP.red);
+		// Its mark on the red: a yellow bolt with a white flash beside it
 		rect(ctx, x, y - 5, 1, 1, CUP.zap);
-		// The lid, clear plastic domed over the rim and wider than it, and the straw high out of it
+		rect(ctx, x - 1, y - 4, 2, 1, CUP.zap);
+		rect(ctx, x - 1, y - 3, 1, 1, CUP.zap);
+		rect(ctx, x + 1, y - 5, 1, 2, CUP.white);
+		rect(ctx, x - 2, y - 2, 1, 1, CUP.white);
+		// The lid, clear plastic domed over the rim and wider than it, and the straw straight up out of it
 		const lid = y - rows.length;
 
 		rect(ctx, x - 5, lid - 1, 11, 2, PALETTE.k);
 		rect(ctx, x - 4, lid, 9, 1, CUP.lid);
 		rect(ctx, x - 3, lid - 2, 7, 1, PALETTE.k);
 		rect(ctx, x - 2, lid - 1, 5, 1, CUP.lid);
-		rect(ctx, x - 1, lid - 1, 1, 1, CUP.band);
+		rect(ctx, x - 1, lid - 1, 1, 1, CUP.white);
 		if (!straw) return;
-		for (let up = 0; up < 5; up++) rect(ctx, x + 1, lid - 2 - up, 1, 1, up % 2 ? CUP.red : CUP.band);
-		rect(ctx, x + 2, lid - 7, 1, 1, CUP.band);
+		rect(ctx, x + 1, lid - 5, 1, 4, CUP.straw);
+		rect(ctx, x + 1, lid - 5, 1, 1, CUP.strawLit);
 	}
 
 	// Its coffee or giant cup on its way down the tube to it, or back up, while that's going on
