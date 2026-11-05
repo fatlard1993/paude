@@ -186,6 +186,8 @@ const MOST = { papers: 8, crates: 6, canisters: 6, cans: 12, smallGreys: 4, bots
 // A lounger's empties pile up, one more every half hour since its session's prompt cache went cold
 const CAN_MS = 30 * 60_000;
 const HAUL_SECONDS = 6;
+// How fast the bay doors in the belly slide, as a part of their way a second
+const BAY_DOOR_RATE = 2.5;
 // How long a refuel ship's visit takes, and how much fuller a tank must read than it did to have been refuelled (a
 // usage limit's window rolling over)
 const REFUEL_SECONDS = 9;
@@ -1777,6 +1779,7 @@ export default class Ship {
 		}
 		this.parcels = this.parcels.filter(({ path, tube }) => tube || path.length);
 		for (const hauler of this.haulers) hauler.time += seconds / HAUL_SECONDS;
+		this.tendBayDoors(calm ? Infinity : seconds);
 		for (const refuel of this.refuels) refuel.time += seconds / REFUEL_SECONDS;
 		this.refuels = this.refuels.filter(({ time }) => time < 1);
 		this.haulers = this.haulers.filter(({ time }) => time < 1);
@@ -1961,7 +1964,7 @@ export default class Ship {
 				hue: `hsl(${accentOf('dish')} 75% 64%)`,
 				masts,
 			},
-			hangarOpen: this.haulers.length > 0,
+			bayDoors: this.bayDoors,
 			sections: this.sectionsOfHull(),
 			// The plumes as long as the stars are fast
 			pace: 1 + ((this.pace - 1) * 3) / (STAR_PACE.most - 1),
@@ -5284,6 +5287,27 @@ export default class Ship {
 		// Come in with the ship, it holds its place on screen as the ship slides in under it
 		if (shuttle.join) dock.x -= this.entryShift() / this.camera.zoom;
 		drawShuttle(ctx, dock, { ...state, hue: shuttle.hue, time: this.time });
+	}
+
+	// The bay doors in the belly, each eased open while something's passing through it and shut again after: the
+	// hold's while a pod drops out of it, the hangar's while the tug dives out through it or climbs back in
+	tendBayDoors(seconds) {
+		const tug = this.haulers[0] && this.tugFlight(this.haulers[0]);
+		const time = this.haulers[0]?.time ?? 0;
+		const wanted = {
+			hold: this.haulers.some(hauler => hauler.time > HAUL_LIFT * 0.5 && hauler.time < 0.45) ? 1 : 0,
+			hangar:
+				tug && ((time > TUG_FLIGHT.lifted * 0.6 && time < TUG_FLIGHT.below + 0.05) || time > TUG_FLIGHT.gone + 0.03)
+					? 1
+					: 0,
+		};
+
+		this.bayDoors ??= { hold: 0, hangar: 0 };
+		for (const door of ['hold', 'hangar']) {
+			const step = Math.min(1, seconds * BAY_DOOR_RATE);
+
+			this.bayDoors[door] += Math.max(-step, Math.min(step, wanted[door] - this.bayDoors[door]));
+		}
 	}
 
 	// Where the tanks stand in the engine bay, in world units: against its back wall, over the reactors' column

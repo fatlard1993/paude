@@ -697,12 +697,56 @@ export const drawTanker = (ctx, at, t, { color = FUEL, time }) => {
 	rect(ctx, x - 2, y - 6, 2, 1, Math.floor(time * 2) % 2 ? '#ff4a3a' : '#5a1a16');
 };
 
+// A bay door through the keel, `left` to `right` from the hull's belly (`top`) down through the keel's strip, `open`
+// 0 shut to 1 wide: a frame round the opening, its two plated leaves meeting in the middle with hazard bands on their
+// meeting edges, sliding apart into the keel; while they move or stand open, the opening glows red within and lamps
+// at the frame's ends blink
+const drawBayDoor = (ctx, { left, right, top, open, time }) => {
+	const deep = KEEL + 1;
+	const width = right - left;
+	const half = Math.floor(width / 2);
+	const parted = Math.round(half * Math.min(1, open));
+	const active = open > 0.01;
+
+	// Its frame and the opening behind the leaves, dark and lit red from within while it's open
+	rect(ctx, left - 2, top, width + 4, deep + 1, PALETTE.k);
+	rect(ctx, left, top + 1, width, deep - 1, '#05070a');
+	if (active) {
+		ctx.globalAlpha = 0.35 * Math.min(1, open * 2);
+		rect(ctx, left + half - parted, top + 1, parted * 2, 1, '#ff4a3a');
+		rect(ctx, left + half - parted, top + deep - 2, parted * 2, 1, '#ff4a3a');
+		ctx.globalAlpha = 1;
+	}
+	// Its leaves, each drawn back toward its end as it opens
+	for (const side of [-1, 1]) {
+		const w = half - parted;
+
+		if (w <= 0) continue;
+
+		const x = side < 0 ? left : right - w;
+
+		rect(ctx, x, top + 1, w, deep - 1, '#2c3547');
+		rect(ctx, x, top + 1, w, 1, '#4a5878');
+		rect(ctx, x, top + deep - 2, w, 1, '#1c2330');
+		for (let seam = x + 6; seam < x + w - 2; seam += 8) rect(ctx, seam, top + 2, 1, deep - 4, '#141a26');
+		// The hazard band down its meeting edge
+		const edge = side < 0 ? x + w - 3 : x;
+
+		for (let row = 0; row < deep - 1; row++)
+			rect(ctx, edge, top + 1 + row, 3, 1, Math.floor((row + (side < 0 ? 0 : 1)) / 2) % 2 ? PALETTE.y : PALETTE.k);
+	}
+	// Its lamps at the frame's ends
+	const lamp = active && Math.floor(time * 4) % 2 ? '#ff4a3a' : '#5a1a16';
+
+	for (const x of [left - 2, right]) rect(ctx, x, top + Math.floor(deep / 2) - 1, 2, 2, lamp);
+};
+
 // The hull and what's on it: the engines, a fuel tank for each account, each project's section, the comms dish and
 // masts, the hangar's doors, running lights
 export const drawHull = (
 	ctx,
 	layout,
-	{ time, engines = [], comms, hangarOpen, sections = [], pace = 1, drift = 0 },
+	{ time, engines = [], comms, bayDoors = {}, sections = [], pace = 1, drift = 0 },
 ) => {
 	const image = hullImage(layout.building);
 	const { shape } = image;
@@ -710,18 +754,20 @@ export const drawHull = (
 	drawFins(ctx, image, layout.engineering, { time });
 	for (const engine of engines) drawEngine(ctx, shape, { ...engine, time });
 	ctx.drawImage(image.canvas, image.x, image.y);
-	// The hatches in the belly under the hold and the hangar, hazard-banded, open while a pod drops out through the one
-	// and the tug flies out after it through the other
-	for (const room of [layout.hold, layout.hangar].filter(Boolean)) {
-		const [left, right] = [Math.round(room.x * UNIT.x) + 4, Math.round((room.x + room.w) * UNIT.x) - 4];
-
-		for (let x = left; x < right; x++) {
-			const gap = hangarOpen && Math.abs(x - (left + right) / 2) < (right - left) * 0.42;
-			const stripe = Math.floor(x / 3) % 2 ? PALETTE.y : PALETTE.k;
-
-			rect(ctx, x, shape.bottom - 1, 1, 3, gap ? '#05070a' : stripe);
-		}
-	}
+	// The bay doors in the belly under the hold and the hangar, as open as `bayDoors` says (0 to 1): a pod drops out
+	// through the one, the tug flies out and back through the other
+	for (const [room, open] of [
+		[layout.hold, bayDoors.hold ?? 0],
+		[layout.hangar, bayDoors.hangar ?? 0],
+	])
+		if (room)
+			drawBayDoor(ctx, {
+				left: Math.round(room.x * UNIT.x) + 4,
+				right: Math.round((room.x + room.w) * UNIT.x) - 4,
+				top: shape.bottom - 1,
+				open,
+				time,
+			});
 	drawCanopy(ctx, image, { time, pace, drift });
 	// Each project's section: seams at its ends where it has no machine, and its machine's machinery outside
 	for (const section of sections) {

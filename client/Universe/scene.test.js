@@ -1900,3 +1900,28 @@ test('rooms laid out anew while the one looking comes aboard keep them at the ai
 	expect(Math.hypot(walker.x - made.airlock.x, walker.y - made.airlock.y)).toBeGreaterThan(0.1);
 	expect(walker.path.length).toBeGreaterThan(0);
 });
+
+test('the bay doors in the belly slide open while a push goes out through them and shut again after', () => {
+	const checkout = unpushed => ({ root: '/work/paude', changed: 0, unpushed });
+	const working = checkouts => [
+		{ ...answer('here', [session({ checkout: '/work/paude' })], { projects: ['paude'] }), checkouts },
+	];
+	const made = new Ship();
+
+	made.resize(800, 600);
+	made.update(working([checkout(2)]));
+	run(made, 1);
+	expect(made.bayDoors).toEqual({ hold: 0, hangar: 0 });
+	made.update(working([checkout(0)]));
+	// The pod lifting off and dropping, the tug diving after it: both doors opening, then wide
+	run(made, 1.2);
+	expect(made.bayDoors.hold).toBe(1);
+	expect(made.bayDoors.hangar).toBe(1);
+	// The pod and the tug gone through, the doors shut; the tug back in, the hangar's shut behind it
+	run(made, 2.5);
+	expect(made.bayDoors.hold).toBe(0);
+	expect(made.bayDoors.hangar).toBe(0);
+	run(made, 4);
+	expect(made.haulers).toHaveLength(0);
+	expect(made.bayDoors).toEqual({ hold: 0, hangar: 0 });
+});
