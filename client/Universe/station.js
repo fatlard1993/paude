@@ -135,6 +135,8 @@ export const cableStep = (above, below) => Math.ceil(above / 2) + Math.floor(bel
 // How far a seat's screen stands above its desk's line, in art pixels: the top of the next row's screens bounds the
 // aisle under a row
 export const SCREEN_RISE = 31;
+// How far in from a hall's top and floor the conduits along it run, in art pixels
+export const HALL_TRAY_IN = 3;
 
 const rect = (ctx, x, y, w, h, color) => {
 	ctx.fillStyle = color;

@@ -48,6 +48,7 @@ import {
 	loungeSeatAt,
 	rect,
 	seeded,
+	HALL_TRAY_IN,
 	SCREEN_RISE,
 	cableStep,
 	cableWeight,
@@ -2426,9 +2427,33 @@ export default class Ship {
 			under.forEach(({ bay }, index) => lanes.set(bay.name, inHall.length - 1 - index));
 		}
 
+		// Each lane's height along its hall, in art pixels: from the hall's top down, a cable's width apart by their
+		// thicknesses, and pressed closer when there are more than the hall is tall for, never out into the rooms either
+		// side of it
+		const trays = new Map();
+
+		for (const room of this.layout.halls ?? []) {
+			const inHall = wired
+				.filter(({ bay }) => Math.abs(bay.lane - room.lane) < 1e-6)
+				.sort((a, b) => lanes.get(a.bay.name) - lanes.get(b.bay.name));
+			const weights = inHall.map(({ workers }) => cableWeight(workers.length));
+			const steps = weights.slice(1).map((weight, index) => cableStep(weights[index], weight));
+			const [top, bottom] = [this.art({ x: 0, y: room.y }).y + HALL_TRAY_IN, this.art({ x: 0, y: room.y + room.d }).y - HALL_TRAY_IN];
+			const first = top + Math.ceil((weights[0] ?? 1) / 2);
+			const fits = Math.max(0, bottom - Math.floor((weights.at(-1) ?? 1) / 2) - first);
+			const total = steps.reduce((sum, step) => sum + step, 0);
+			const squeeze = total > fits ? fits / total : 1;
+			let at = first;
+
+			inHall.forEach(({ bay }, index) => {
+				if (index) at += steps[index - 1] * squeeze;
+				trays.set(bay.name, Math.round(at));
+			});
+		}
+
 		const routes = wired.map(({ bay, machine, workers }) => {
 			const lane = lanes.get(bay.name);
-			const tray = this.art({ x: 0, y: bay.lane }).y - 9 + lane * 8;
+			const tray = trays.get(bay.name) ?? this.art({ x: 0, y: bay.lane }).y - 9 + lane * 8;
 			// Into its sides at the end nearer the spine: by its foot when the spine runs under it, by its top socket
 			// when over it, so nothing climbs the machine's whole height to reach it
 			const height = tray > (machine.top + machine.floor) / 2 ? machine.floor - 3 : machine.socket(1, 0).y;

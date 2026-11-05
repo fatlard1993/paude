@@ -3,6 +3,7 @@ import {
 	HALL_FACE,
 	HALL_LANE,
 	SCREEN_RISE,
+	HALL_TRAY_IN,
 	UNIT,
 	cableStep,
 	cableWeight,
@@ -337,7 +338,25 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 
 		return { bay, machine, w: footprintOf(machine) };
 	});
-	const hall = HALL_FACE + HALL_LANE;
+	// The halls' height, tall enough for the conduits along the busiest to run inside it, one for each project on its
+	// level's decks (`placed`, each with its deck), as thick as every seat at it wired up would make it; never less
+	// than a hall's own height
+	const hallFor = placed => {
+		const levels = new Map();
+
+		for (const { bay, deck } of placed)
+			levels.set(Math.floor(deck / 2), [...(levels.get(Math.floor(deck / 2)) ?? []), cableWeight(bay.seated ?? 0)]);
+
+		const tallest = Math.max(
+			0,
+			...[...levels.values()].map(
+				along =>
+					along.slice(1).reduce((sum, weight, index) => sum + cableStep(along[index], weight), 0) + along[0],
+			),
+		);
+
+		return Math.max(HALL_FACE + HALL_LANE, (tallest + HALL_TRAY_IN * 2 + 1) / UNIT.y);
+	};
 	// Decks only as deep as a machine needs; the whole hull deep enough for the engine bay's reactors and the systems
 	// stacked beside them, any more it needs shared out among its levels
 	const depth = { top: DECK_TOP, bottom: DECK_BOTTOM };
@@ -350,8 +369,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		FACE + 0.6 + engineCount * PER_REACTOR,
 		Math.max(SYSTEMS.length * SYSTEM.d, ((engineCount * SYSTEMS.length) / across) * unit.d) + 0.4,
 	);
-	const base = depth.top + hall + depth.bottom;
-	const extraDepthOf = levels => Math.max(0, need - levels * base) / levels;
+	const extraDepthOf = (levels, hall) => Math.max(0, need - levels * (depth.top + hall + depth.bottom)) / levels;
 	const working = bays.filter(bay => bay.seated);
 	// The projects at work in the order their conduits come along the spines to the bridge, top to bottom: a level's
 	// at a time from the top, those over its spine first, the one nearest the bridge topmost, then those under it, the
@@ -392,7 +410,8 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 			return { ...item, deck, at };
 		});
 		const width = Math.max(0, ...reach.map((_, deck) => reaching(deck)));
-		const total = levels * (base + extraDepthOf(levels));
+		const hall = hallFor(placed);
+		const total = levels * (depth.top + hall + depth.bottom + extraDepthOf(levels, hall));
 		// The rows as far apart as their conduits need, worked out again while spreading them changes how many fit
 		const rowsAt = pitch => Math.max(1, Math.floor((total - BRIDGE_ROW_TOP - 0.4) / pitch + 1e-9) + 1);
 		const islandsAt = pitch =>
@@ -416,7 +435,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 			MATERIALIZER_W +
 			transporter;
 
-		return { levels, placed, width, total, rows, pitch, bridgeW };
+		return { levels, placed, width, total, rows, pitch, bridgeW, hall };
 	};
 	// Another level only while it shortens the ship: one that only adds empty decks under the core and the bridge isn't
 	// worth its depth
@@ -430,10 +449,12 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		layout = deeper;
 	}
 
-	const { levels, placed: packed, width, total, rows: bridgeRows, pitch: rowsApart, bridgeW } = layout;
+	const { levels, placed: packed, width, total, rows: bridgeRows, pitch: rowsApart, bridgeW, hall } = layout;
 
-	depth.top += extraDepthOf(levels) / 2;
-	depth.bottom += extraDepthOf(levels) / 2;
+	const extra = extraDepthOf(levels, hall);
+
+	depth.top += extra / 2;
+	depth.bottom += extra / 2;
 
 	const level = depth.top + hall + depth.bottom;
 	const left = -(bayW + width + bridgeW) / 2;
