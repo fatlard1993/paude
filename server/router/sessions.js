@@ -318,9 +318,18 @@ const sessionsRoutes = async (request, server) => {
 	if (relayed) {
 		const [, url, route] = relayed;
 
-		if (/(^|\/)(\.|%2e){2}(\/|$)/i.test(route)) return new Response('No such route', { status: 400 });
+		// Nor an escaped separator, which the far end has no business being handed
+		if (/(^|\/)(\.|%2e){2}(\/|$)|%2f|%5c|\\/i.test(route)) return new Response('No such route', { status: 400 });
 
-		const remote = await remoteServer(decodeURIComponent(url));
+		let address;
+
+		try {
+			address = decodeURIComponent(url);
+		} catch {
+			return new Response('Not one of your servers', { status: 404 });
+		}
+
+		const remote = await remoteServer(address);
 
 		if (!remote) return new Response('Not one of your servers', { status: 404 });
 

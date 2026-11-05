@@ -282,6 +282,23 @@ test("other servers are listed only for this machine's own logins", async () => 
 	expect((await call('/api/remotes', { token: tokens.local })).status).toBe(200);
 });
 
+test("another paude's sessions and projects are relayed only for this machine's own logins, and never past their routes", async () => {
+	const there = encodeURIComponent('https://example.invalid');
+
+	// Not this machine's login: refused before anything is relayed
+	expect((await call(`/api/remotes/at/${there}/api/sessions/a/links`, { token: tokens.owner })).status).toBe(403);
+	expect((await call(`/api/remotes/at/${there}/api/projects`, { token: tokens.comment })).status).toBe(403);
+	// Dot segments, escaped or not, are resolved away before routing, leaving no relayed route; an escaped separator is
+	// refused outright
+	for (const route of ['/api/sessions/a/%2e%2e/%2e%2e/auth', '/api/sessions/a/%2E%2e/%2e%2E/x'])
+		expect((await call(`/api/remotes/at/${there}${route}`, { token: tokens.local })).status).toBe(404);
+	for (const route of ['/api/sessions/a/x%2fy', '/api/sessions/a/x%5cy'])
+		expect((await call(`/api/remotes/at/${there}${route}`, { token: tokens.local })).status).toBe(400);
+	// Not one of its servers, or no address at all
+	expect((await call(`/api/remotes/at/${there}/api/sessions/a/links`, { token: tokens.local })).status).toBe(404);
+	expect((await call('/api/remotes/at/%E0%A4%A/api/sessions/a', { token: tokens.local })).status).toBe(404);
+});
+
 test('a machine that shares its servers lists them for the owner password too, never for an invite', async () => {
 	await Bun.write(path.join(process.env.XDG_CONFIG_HOME, 'paude', 'server.json'), '{ "shareRemotes": true }');
 
