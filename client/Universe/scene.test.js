@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test';
 
-import Ship, { appliancesOf, countdown, resting, tanksOf, triage } from './scene';
+import Ship, { appliancesOf, bendAround, countdown, resting, risersFor, runsFor, tanksOf, triage } from './scene';
 import { clonerAt, holdSpotAt, layOut, shortest } from './plan';
+import { UNIT } from './station';
 
 const session = changes => ({
 	id: 'a',
@@ -1096,4 +1097,124 @@ test('a session deleted from here crumbles to a heap of dust, which stays a whil
 	expect(made.dust).toHaveLength(1);
 	run(made, 7);
 	expect(made.dust).toHaveLength(0);
+});
+
+test("however many projects have islands, their conduits' risers stand side by side on the bridge's aft wall, apart, before the lounge", () => {
+	for (const count of [1, 5, 14, 30])
+		for (const busy of [0, 4]) {
+			const bays = Array.from({ length: count }, (_, index) => ({
+				name: `p${index}`,
+				hue: index * 12,
+				sessions: Array.from({ length: 1 + busy }, (_, seat) => `p${index}-${seat}`),
+			}));
+			const { bridge, lounge } = layOut({
+				bays: bays.map(bay => ({ ...bay, seated: bay.sessions.length })),
+				lounge: { count: 8, sessions: Array.from({ length: 8 }, (_, index) => `s${index}`) },
+			});
+			const [wall, stern] = [Math.round(bridge.x * UNIT.x), Math.round(lounge.x * UNIT.x)];
+			// As thick as each gets with all its sessions at their desks
+			const weights = bays.map(({ sessions }) => Math.min(5, 1 + sessions.length));
+			const risers = risersFor(wall, stern, weights);
+			const edges = risers.map((x, index) => {
+				const from = x - Math.floor(weights[index] / 2) - 1;
+
+				return [from, from + weights[index] + 1];
+			});
+
+			expect(edges[0][0]).toBeGreaterThan(wall);
+			// None touching the next, outlines and all, and the last clear of the lounge
+			for (const [index, [, right]] of edges.slice(0, -1).entries()) expect(right).toBeLessThan(edges[index + 1][0]);
+			expect(edges.at(-1)[1]).toBeLessThan(stern);
+		}
+	expect(risersFor(0, null, [1, 1])).toEqual([5, 10]);
+});
+
+test("islands sharing a row each have their cable along it at its own height, none on another, a busy row's bundle clear of the next row", () => {
+	for (const count of [5, 30]) {
+		const bays = Array.from({ length: count }, (_, index) => ({
+			name: `p${index}`,
+			hue: index * 12,
+			sessions: Array.from({ length: 4 }, (_, seat) => `p${index}-${seat}`),
+		}));
+		const { bridge } = layOut({ bays: bays.map(bay => ({ ...bay, seated: bay.sessions.length })) });
+		// Every cable as thick as it gets
+		const ends = bridge.islands.map(island => ({
+			x: Math.round((island.x + 0.15) * UNIT.x),
+			y: Math.round((island.y + 0.2) * UNIT.y),
+			weight: 5,
+		}));
+		const runs = runsFor(ends);
+		const band = index => [runs[index] - 3, runs[index] + 3];
+		const rows = [...new Set(ends.map(({ y }) => y))].sort((a, b) => a - b);
+
+		for (const [index, end] of ends.entries())
+			for (const [other, also] of ends.entries())
+				if (other > index && also.y === end.y)
+					expect(band(index)[1] < band(other)[0] || band(other)[1] < band(index)[0]).toBe(true);
+		for (const [row, y] of rows.slice(0, -1).entries()) {
+			const lowest = Math.max(...runs.filter((_, index) => ends[index].y === y)) + 3;
+
+			expect(lowest).toBeLessThan(rows[row + 1] - 3);
+		}
+	}
+});
+
+test('runs bent round the lounge with their risers apart stay apart over it and down its sides', () => {
+	const box = { left: 0, right: 100, top: 0, bottom: 50 };
+	const run = [
+		{ x: 140, y: 15 },
+		{ x: -30, y: 15 },
+	];
+	const [near, far] = [bendAround(run, box, { apart: 0 }), bendAround(run, box, { apart: 7 })];
+	const sides = path => path.filter(({ y }) => y !== 15).map(({ x }) => x);
+
+	expect(Math.min(...far.map(({ y }) => y))).toBe(Math.min(...near.map(({ y }) => y)) - 7);
+	expect(Math.max(...sides(far))).toBe(Math.max(...sides(near)) + 7);
+	expect(Math.min(...sides(far))).toBe(Math.min(...sides(near)) - 7);
+});
+
+test("the order of the conduits' risers is worked out again when a cable's thickness changes, and crosses none it needn't", () => {
+	const ship = new Ship();
+	const route = (name, weight, y) => ({
+		bay: { name },
+		weight,
+		tray: 100 + y,
+		out: { x: -40, y: 100 + y },
+		exit: { x: -40, y: 110 + y },
+		plates: [{ at: { x: 200, y } }],
+	});
+	const routes = [route('a', 1, 20), route('b', 1, 40), route('c', 1, 60)];
+
+	ship.riserOrder(routes, 0);
+
+	const first = ship.risers.key;
+
+	// The same routes, one busier: its riser's place and its neighbours' move, so the order is weighed again
+	ship.riserOrder([route('a', 1, 20), route('b', 5, 40), route('c', 1, 60)], 0);
+	expect(ship.risers.key).not.toBe(first);
+	// Nested so none of their runs crosses another's riser: the topmost island's riser nearest the wall
+	expect(ship.riserOrder(routes, 0).map(({ bay }) => bay.name)).toEqual(['a', 'b', 'c']);
+});
+
+test("the risers' order is weighed at the places their thicknesses put them, not as if evenly spaced", () => {
+	const route = (name, weight, tray, out, plate) => ({
+		bay: { name },
+		weight,
+		tray,
+		out: { x: out, y: tray },
+		exit: { x: -10, y: tray + 5 },
+		plates: [{ at: plate }],
+	});
+	// Evenly spaced, r0 r1 r2 looks best; where their thicknesses really put them, it crosses twice and r0 r2 r1 once
+	const routes = [
+		route('r0', 4, 44, -39, { x: 39, y: 18 }),
+		route('r1', 2, 18, -25, { x: 27, y: 67 }),
+		route('r2', 5, 24, -18, { x: 20, y: 42 }),
+	];
+
+	expect(
+		new Ship()
+			.riserOrder(routes, 0)
+			.map(({ bay }) => bay.name),
+	).toEqual(['r0', 'r2', 'r1']);
 });

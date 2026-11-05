@@ -30,6 +30,11 @@ const TRANSPORTER_W = 2.2;
 // whoever watches walking among them; the nav table, the ship's log and the scanner forward of them, by the nose
 const BRIDGE_NAV_W = 1.2;
 const BRIDGE_MARGIN = 0.8;
+// The room left along the bridge's aft wall, before its islands and lounge, for a conduit's riser for each project with
+// an island, side by side as thick as each can get (a pixel more for each of its sessions at its desk, to five) with
+// their outlines and a gap between, and the walk along it
+const sternRoom = islands =>
+	Math.max(BRIDGE_MARGIN, (9 + islands.reduce((sum, { sessions = [] }) => sum + Math.min(5, 1 + sessions.length) + 4, 0)) / 20);
 // How long to deep the hull may get before it takes another level, and how many it takes at most; an idle machine's
 // size against a working one's
 const ASPECT = 3;
@@ -289,7 +294,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 			lounge: loungeBlock,
 			agents,
 		});
-		const bridgeW = BRIDGE_MARGIN * 2 + Math.max(2 * SEAT_W, islandsReach) + BRIDGE_NAV_W;
+		const bridgeW = sternRoom(inLine(placed)) + BRIDGE_MARGIN + Math.max(2 * SEAT_W, islandsReach) + BRIDGE_NAV_W;
 
 		return { levels, placed, width, total, rows, bridgeW };
 	};
@@ -431,8 +436,9 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		hull: { top: true, bottom: true, right: true },
 		props: [],
 	};
+	const stern = sternRoom(inLine(layout.placed));
 	const { islands } = islandsOf(inLine(layout.placed), {
-		from: bridge.x + BRIDGE_MARGIN,
+		from: bridge.x + stern,
 		top,
 		rows: bridgeRows,
 		lounge: loungeBlock,
@@ -455,7 +461,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		// At the back of the bridge's bottom rows, its foot on the bridge's floor
 		const placed = aboard(
 			{ ...lounge, kind: 'lounge', name: 'resting' },
-			bridge.x + BRIDGE_MARGIN,
+			bridge.x + stern,
 			loungeBlock.w,
 			loungeBlock.d,
 			top + total - Math.min(loungeBlock.d, total),

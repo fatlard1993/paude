@@ -483,12 +483,14 @@ export const bendAround = (points, box, { walled = false, apart = 0, step = 1, o
 
 		if (across && Math.min(at.x, to.x) < box.left && Math.max(at.x, to.x) > box.right) {
 			const edge = walled || at.y - box.top < box.bottom - at.y ? (over ?? box.top) - apart : box.bottom + apart;
-			const [enter, leave] = to.x > at.x ? [box.left - step, box.right + step] : [box.right + step, box.left - step];
+			const [near, far] = [box.left - step - apart, box.right + step + apart];
+			const [enter, leave] = to.x > at.x ? [near, far] : [far, near];
 
 			bent.push({ x: enter, y: at.y }, { x: enter, y: edge }, { x: leave, y: edge }, { x: leave, y: at.y });
 		} else if (down && Math.min(at.y, to.y) < box.top && Math.max(at.y, to.y) > box.bottom) {
 			const edge = at.x - box.left < box.right - at.x ? box.left - apart : box.right + apart;
-			const [enter, leave] = to.y > at.y ? [box.top - step, box.bottom + step] : [box.bottom + step, box.top - step];
+			const [near, far] = [box.top - step - apart, box.bottom + step + apart];
+			const [enter, leave] = to.y > at.y ? [near, far] : [far, near];
 
 			bent.push({ x: at.x, y: enter }, { x: edge, y: enter }, { x: edge, y: leave }, { x: at.x, y: leave });
 		}
@@ -499,6 +501,8 @@ export const bendAround = (points, box, { walled = false, apart = 0, step = 1, o
 };
 
 const within = (value, a, b) => value >= Math.min(a, b) && value <= Math.max(a, b);
+// The most a step across can be and still be a jog to straighten, in art pixels
+const JOG = 6;
 
 // Whether an axis-aligned run from `a` to `b` passes through the inside of `box`
 const through = (a, b, box) =>
@@ -507,8 +511,9 @@ const through = (a, b, box) =>
 	Math.max(a.y, b.y) > box.top &&
 	Math.min(a.y, b.y) < box.bottom;
 
-// Axis-aligned points without a U: a run out, across, and straight back toward where it came from is cut short at the
-// turn it needed, so long as the shorter way stays out of `box`
+// Axis-aligned points without a U or a jog: a run out, across, and straight back toward where it came from is cut short
+// at the turn it needed, and one that steps across on its way goes across first, so long as the shorter way stays out
+// of `box`
 const withoutDoublingBack = (points, box) => {
 	const out = [...points];
 
@@ -520,11 +525,14 @@ const withoutDoublingBack = (points, box) => {
 			['x', 'y'],
 		]) {
 			if (a[cross] !== b[cross] || b[main] !== c[main] || c[cross] !== d[cross]) continue;
-			if ((b[main] - a[main]) * (d[main] - c[main]) >= 0) continue;
 
+			// Out, across and back: cut short at the turn it needed. Out and on the same way, a jog across between: across
+			// at the start instead
 			const turn =
-				(within(d[main], a[main], b[main]) && { [cross]: a[cross], [main]: d[main] }) ||
-				(within(a[main], c[main], d[main]) && { [cross]: c[cross], [main]: a[main] });
+				(b[main] - a[main]) * (d[main] - c[main]) < 0
+					? (within(d[main], a[main], b[main]) && { [cross]: a[cross], [main]: d[main] }) ||
+						(within(a[main], c[main], d[main]) && { [cross]: c[cross], [main]: a[main] })
+					: Math.abs(c[cross] - b[cross]) <= JOG && { [cross]: c[cross], [main]: a[main] };
 
 			if (turn && !through(a, turn, box) && !through(turn, d, box)) {
 				out.splice(index + 1, 2, turn);
@@ -554,6 +562,55 @@ const pointAlong = (points, along) => {
 	}
 
 	return points.at(-1);
+};
+
+// Where risers as thick as `weights` stand along the bridge's aft wall at `wall`, in art pixels across, the first 4 in:
+// side by side with a clear gap between each (their outlines included), as wide as RISER_GAP, narrower where that
+// would bring the last within a few pixels of the lounge's stern edge at `lounge` (null for none)
+export const risersFor = (wall, lounge, weights) => {
+	const thick = weights.reduce((sum, weight) => sum + weight + 2, 0);
+	const room = lounge === null ? Infinity : lounge - 5 - (wall + 4);
+	const gap =
+		weights.length < 2 ? RISER_GAP : Math.max(0, Math.min(RISER_GAP, Math.floor((room - thick) / (weights.length - 1))));
+	let x = wall + 4;
+
+	return weights.map(weight => {
+		const at = x + 1 + Math.floor(weight / 2);
+
+		x += weight + 2 + gap;
+
+		return at;
+	});
+};
+// The height each island's cable runs along its row at, in art pixels, for cables as thick as their `weight` ending at
+// `x`, `y`: islands sharing a row each at their own, the nearest the wall at the row's own height and each further one a
+// cable's width below the last, their outlines meeting, so none lies on another and a crowded row's bundle stays clear
+// of the next row
+export const runsFor = ends => {
+	const runs = [];
+	const rows = new Map();
+
+	ends.forEach((end, index) => rows.set(end.y, [...(rows.get(end.y) ?? []), { ...end, index }]));
+	for (const row of rows.values()) {
+		let below = 0;
+
+		for (const { y, weight, index } of row.sort((a, b) => a.x - b.x)) {
+			runs[index] = y + below;
+			below += weight + 2;
+		}
+	}
+
+	return runs;
+};
+
+// The clear gap between neighbouring risers, outlines apart, when there's room
+const RISER_GAP = 2;
+
+// A project's conduit: in its color while any of its sessions is at an island, dark with all of them away
+const wireColor = (hue, manned) => {
+	if (!manned) return hue === null || hue === undefined ? PALETTE.d : `hsl(${hue} 25% 24%)`;
+
+	return hue === null || hue === undefined ? PALETTE.l : `hsl(${hue} 60% 52%)`;
 };
 
 export const sessionKey = (engineKey, id) => `${engineKey}/${id}`;
@@ -2079,7 +2136,8 @@ export default class Ship {
 	}
 
 	// Where each project's conduit runs, in art pixels: from its islands on the bridge out through the bridge's aft wall,
-	// along its own lane under the spine to its machine, thicker the more of its sessions are wired in; lanes far enough
+	// along its own lane under the spine to its machine, thicker the more of its sessions are at their desks (dark, and
+	// as thin as it goes, with none); lanes far enough
 	// apart that the heaviest don't touch, each with its own riser up the bridge's aft wall, so no two run over each
 	// other
 	conduitsOf() {
@@ -2094,7 +2152,8 @@ export default class Ship {
 				machine: bay.built?.[0],
 				workers: bay.sessions.map(key => this.workers.get(key)).filter(worker => this.wired(worker)),
 			}))
-			.filter(({ machine, workers }) => machine && workers.length);
+			// Every island stays wired to its project's machine, whether anyone's at it now or not
+			.filter(({ bay, machine }) => machine && (this.bridge.islands ?? []).some(({ name }) => name === bay.name));
 		// The same as last frame's while the layout, the machines' places and who's wired in stand
 		const key = wired
 			.map(({ bay, machine: { from, to, top, floor, socket }, workers }) =>
@@ -2128,7 +2187,7 @@ export default class Ship {
 
 			return {
 				bay,
-				color: bay.hue === null || bay.hue === undefined ? PALETTE.l : `hsl(${bay.hue} 60% 52%)`,
+				color: wireColor(bay.hue, workers.length > 0),
 				working: workers.some(({ session }) => session.status === 'working'),
 				weight: Math.min(5, 1 + workers.length),
 				seed: seeded(bay.name) * TAU,
@@ -2142,8 +2201,18 @@ export default class Ship {
 			};
 		});
 		const order = this.riserOrder(routes, wall);
+		const { lounge } = this;
+		const risers = risersFor(
+			wall,
+			lounge?.count ? this.art({ x: lounge.x, y: 0 }).x : null,
+			order.map(({ weight }) => weight),
+		);
 
-		for (const route of routes) conduits.set(route.bay.name, { ...route, riser: wall + 4 + order.indexOf(route) * 6 });
+		order.forEach((route, index) => conduits.set(route.bay.name, { ...route, riser: risers[index] }));
+		const plates = [...conduits.values()].flatMap(({ plates: own, weight }) => own.map(plate => ({ plate, weight })));
+		const runs = runsFor(plates.map(({ plate, weight }) => ({ ...plate.at, weight })));
+
+		plates.forEach(({ plate }, index) => (plate.run = runs[index]));
 		this.conduits = { layout: this.layout, key, map: conduits };
 
 		return conduits;
@@ -2153,8 +2222,8 @@ export default class Ship {
 	// while there are few, worked out again only when the conduits or where they go change
 	riserOrder(routes, wall) {
 		const key = routes
-			.map(({ bay, tray, out, plates }) =>
-				[bay.name, tray, out.x, out.y, ...plates.map(({ at }) => `${at.x},${at.y}`)].join(':'),
+			.map(({ bay, weight, tray, out, plates }) =>
+				[bay.name, weight, tray, out.x, out.y, ...plates.map(({ at }) => `${at.x},${at.y}`)].join(':'),
 			)
 			.join('|');
 
@@ -2172,7 +2241,8 @@ export default class Ship {
 			],
 		});
 		const crossings = ordered => {
-			const laid = ordered.map((route, index) => runs(route, wall + 4 + index * 6));
+			const at = risersFor(wall, null, ordered.map(({ weight }) => weight));
+			const laid = ordered.map((route, index) => runs(route, at[index]));
 			let count = 0;
 
 			for (const [one, a] of laid.entries())
@@ -2228,10 +2298,13 @@ export default class Ship {
 					);
 				continue;
 			}
-			for (const { at } of plates)
+			for (const { at, run = at.y } of plates)
 				this.drawWire(
 					ctx,
-					this.clearOfLounge([at, { x: riser, y: at.y }, { x: riser, y: tray }], this.besideOf(riser)),
+					this.clearOfLounge(
+						[at, ...(run === at.y ? [] : [{ x: at.x, y: run }]), { x: riser, y: run }, { x: riser, y: tray }],
+						this.besideOf(riser),
+					),
 					style,
 				);
 			this.drawWire(ctx, [{ x: riser, y: tray }, { x: out.x, y: tray }, out, exit], style);
@@ -2657,7 +2730,7 @@ export default class Ship {
 		const seat = this.art({ x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 });
 		// The island it's at: the one of its project's whose plate is nearest
 		const plate = plates
-			.map(({ at }) => at)
+			.map(({ at, run = at.y }) => ({ ...at, run }))
 			.sort((a, b) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(b.x - seat.x, b.y - seat.y))[0];
 
 		return [
@@ -2674,7 +2747,15 @@ export default class Ship {
 				out,
 				{ x: out.x, y: tray },
 				{ x: riser, y: tray },
-				...(plate ? [{ x: riser, y: plate.y }, plate, { x: seat.x, y: plate.y }, seat] : []),
+				...(plate
+					? [
+							{ x: riser, y: plate.run },
+							...(plate.run === plate.y ? [] : [{ x: plate.x, y: plate.run }]),
+							{ x: plate.x, y: plate.y },
+							{ x: seat.x, y: plate.y },
+							seat,
+						]
+					: []),
 			],
 		];
 	}
