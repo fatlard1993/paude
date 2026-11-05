@@ -109,7 +109,13 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose,
 		return connection;
 	};
 
-	const common = key => ({ appendTo: body, sessionId: session.id, close: onClose, addClass: ['docked', key] });
+	const common = key => ({
+		appendTo: body,
+		sessionId: session.id,
+		place: session.id,
+		close: onClose,
+		addClass: ['docked', key],
+	});
 	const make = {
 		git: () =>
 			new GitPanel({
