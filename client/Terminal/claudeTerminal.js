@@ -1,4 +1,5 @@
 import { Notify } from '@vanilla-bean/components';
+import { WebglAddon } from '@xterm/addon-webgl';
 
 import { forkSession, getTurns } from '../api';
 import confirmDialog from '../confirmDialog';
@@ -120,9 +121,10 @@ export const forkButtons = ({ terminal, screen, onFork }) => {
 		let used = 0;
 
 		for (let row = 0; row < rows; row++) {
-			const { text, columns } = bufferCells(terminal, buffer.viewportY + row);
+			// Its plain text first, cheaply: a row's cells only worked out for the rare one with a done line on it
+			if (!DONE_MARKER.test(bufferLine(terminal, buffer.viewportY + row))) continue;
 
-			if (!DONE_MARKER.exec(text)) continue;
+			const { text, columns } = bufferCells(terminal, buffer.viewportY + row);
 
 			const fork = spare[used++] ?? forkButton();
 			// After all of the line, not only its "done" time: Claude goes on after it (· 1 shell still running), onto
@@ -206,4 +208,36 @@ export const forkFromMarker = async ({ terminal, sessionId, line, go }) => {
 	if (!forked.response?.ok) return new Notify({ intent: 'danger', content: 'Could not start the new session.' });
 
 	go(forked.body.id);
+};
+
+const SOFTWARE_GL = /swiftshader|llvmpipe|softpipe|software/i;
+
+// Whether there's a real GPU to draw on: software WebGL (llvmpipe and the like) is slower than the DOM renderer
+export const hardwareWebgl = () => {
+	const context = document.createElement('canvas').getContext('webgl2');
+
+	if (!context) return false;
+
+	const info = context.getExtension('WEBGL_debug_renderer_info');
+	const renderer = info ? context.getParameter(info.UNMASKED_RENDERER_WEBGL) : context.getParameter(context.RENDERER);
+
+	context.getExtension('WEBGL_lose_context')?.loseContext();
+
+	return !SOFTWARE_GL.test(String(renderer));
+};
+
+// The terminal drawn on the GPU where there's one. The default renderer builds every cell as page elements, so each of
+// Claude's redraws costs a layout and paint, and makes and drops rows of elements as fast as it prints; WebGL draws the
+// whole grid at once. Losing its context, it goes back to the DOM renderer it was created with.
+export const gpuRenderer = terminal => {
+	if (!hardwareWebgl()) return;
+
+	try {
+		const gpu = new WebglAddon();
+
+		gpu.onContextLoss(() => gpu.dispose());
+		terminal.loadAddon(gpu);
+	} catch {
+		// No WebGL here after all; the DOM renderer stays in use
+	}
 };

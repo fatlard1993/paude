@@ -59,6 +59,8 @@ const REMOTES_MS = 60_000;
 const REMOTES_RETRY_MS = 5000;
 // A frame after a long pause (a hidden tab) moves things on by this much at most
 const LONGEST_FRAME_S = 0.1;
+// The least time between frames, in ms: pixel art this size gains nothing past about thirty a second
+const FRAME_MS = 1000 / 30;
 const DRAG_PX = 5;
 const WHEEL_ZOOM = 0.0015;
 
@@ -427,6 +429,13 @@ export default class Universe extends View {
 		let last = performance.now();
 		let frame;
 		const tick = now => {
+			// No more often than FRAME_MS: drawn each refresh, a 120Hz screen drew it four times as often as it needs
+			if (now - last < FRAME_MS - 1) {
+				frame = requestAnimationFrame(tick);
+
+				return;
+			}
+
 			const ratio = Math.max(1, Math.round(window.devicePixelRatio || 1));
 
 			// Every ship going on, the one aboard drawn

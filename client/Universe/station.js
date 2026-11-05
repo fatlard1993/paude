@@ -18,6 +18,10 @@ const DOOR = 0.8;
 // Kept once worked out, as the same few are asked for every frame; started over past a few thousand
 const seeds = new Map();
 
+// The same, not kept: for what's asked once and never again, like a light's flicker at a moment, which would only churn
+// what's kept
+export const noise = text => (cksum(text) % 1000) / 1000;
+
 export const seeded = text => {
 	if (!seeds.has(text)) {
 		if (seeds.size > 5000) seeds.clear();
@@ -171,6 +175,8 @@ export const floor = (ctx, art, room, colors = BARE_FLOOR) => {
 
 	if (w <= 0 || h <= 0) return;
 	if (!floors.has(key)) {
+		// Rooms change size as the ship's laid out anew; started over past a few dozen kept
+		if (floors.size > 60) floors.clear();
 		const canvas = document.createElement('canvas');
 		const paint = canvas.getContext('2d');
 		const wrap = value => ((value % 840) + 840) % 840;

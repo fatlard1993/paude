@@ -47,6 +47,7 @@ import {
 	couchEndOf,
 	loungeSeatAt,
 	rect,
+	noise,
 	seeded,
 	HALL_TRAY_IN,
 	SCREEN_RISE,
@@ -357,6 +358,7 @@ const tapeOf = (from, to) => {
 	const key = `${w},${h},${phase}`;
 
 	if (tapes.has(key)) return tapes.get(key);
+	if (tapes.size > 60) tapes.clear();
 
 	const canvas = document.createElement('canvas');
 	const ctx = canvas.getContext('2d');
@@ -1966,22 +1968,25 @@ export default class Ship {
 			}
 
 		// Each project's machine along its deck, where it was shown; a new one is at its place at once
-		const placed = new Map((this.layout?.bays ?? []).map(bay => [bay.name, bay.x]));
+		if (this.bayGoalsFor !== this.layout) {
+			this.bayGoalsFor = this.layout;
+			this.bayGoals = new Map((this.layout?.bays ?? []).map(bay => [bay.name, bay.x]));
+		}
+
+		const placed = this.bayGoals;
 
 		this.baysShown ??= new Map();
 		for (const [name, x] of placed) this.baysShown.set(name, toward(this.baysShown.get(name) ?? x, x));
 		for (const name of this.baysShown.keys()) if (!placed.has(name)) this.baysShown.delete(name);
 
-		// Islands by project and which of its it is: a new one grows out from its end, one gone shrinks away
-		const goals = new Map();
-		const counts = new Map();
-
-		for (const island of this.bridge?.islands ?? []) {
-			const nth = counts.get(island.name) ?? 0;
-
-			counts.set(island.name, nth + 1);
-			goals.set(`${island.name}#${nth}`, island);
+		// Islands by their key: a new one grows out from its end, one gone shrinks away; looked up afresh only when the
+		// layout changes
+		if (this.islandGoalsFor !== this.layout) {
+			this.islandGoalsFor = this.layout;
+			this.islandGoals = new Map((this.bridge?.islands ?? []).map(island => [island.key, island]));
 		}
+
+		const goals = this.islandGoals;
 
 		const first = !this.islandsShown;
 
@@ -3573,7 +3578,7 @@ export default class Ship {
 
 				rect(
 					ctx,
-					monitor.x + Math.round((seeded(`${spark}|${Math.floor(time * 3)}`) - 0.5) * 12),
+					monitor.x + Math.round((noise(`${spark}|${Math.floor(time * 3)}`) - 0.5) * 12),
 					monitor.y - Math.round(along * 6),
 					1,
 					1,

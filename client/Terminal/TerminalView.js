@@ -1,6 +1,5 @@
 import { Button, Elem, Notify, View, delay, styled, theme } from '@vanilla-bean/components';
 import { FitAddon } from '@xterm/addon-fit';
-import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 
@@ -30,7 +29,14 @@ import tokens from '../../shared/tokenCount';
 import withoutPointerReporting from '../../shared/pointerReporting';
 import { claudePointer, wheelToClaude } from './claudePointer';
 import claudeKeys from './claudeKeys';
-import { besideSelection, clickToClaude, forkButtons, forkFromMarker, touchToClaude } from './claudeTerminal';
+import {
+	besideSelection,
+	clickToClaude,
+	forkButtons,
+	forkFromMarker,
+	gpuRenderer,
+	touchToClaude,
+} from './claudeTerminal';
 import { NOTE_TYPES } from '../../shared/protocol';
 import { showNotification } from '../notify';
 import { recall, remember } from '../storage';
@@ -100,20 +106,6 @@ const Screen = styled.Component`
 `;
 
 const ICONS = { web: 'globe', terminal: 'terminal', feed: 'tower-broadcast' };
-const SOFTWARE_GL = /swiftshader|llvmpipe|softpipe|software/i;
-
-const hardwareWebgl = () => {
-	const context = document.createElement('canvas').getContext('webgl2');
-
-	if (!context) return false;
-
-	const info = context.getExtension('WEBGL_debug_renderer_info');
-	const renderer = info ? context.getParameter(info.UNMASKED_RENDERER_WEBGL) : context.getParameter(context.RENDERER);
-
-	context.getExtension('WEBGL_lose_context')?.loseContext();
-
-	return !SOFTWARE_GL.test(String(renderer));
-};
 const NOTES_OPEN_KEY = 'paude.notesOpen';
 const ROLE_LABELS = { owner: 'owner', drive: 'can type', comment: 'can chat and comment', watch: 'viewing' };
 
@@ -587,7 +579,7 @@ export default class TerminalView extends View {
 		this.terminal.loadAddon(this.fitter);
 		this.decoder = new TextDecoder();
 		this.terminal.open(this.screen.elem);
-		this.useGpuRenderer();
+		gpuRenderer(this.terminal);
 		redrawWhenSymbolsLoad(this.terminal);
 		if (identity()?.owner)
 			forkButtons({
@@ -645,22 +637,6 @@ export default class TerminalView extends View {
 		this.resizeObserver.observe(this.screen.elem);
 
 		this.terminal.focus();
-	}
-
-	// The default renderer builds every cell as page elements, so a large session (scaled to fit, at that) costs a
-	// full layout and paint on each of Claude's redraws. WebGL draws the whole grid on the GPU, but only on a real
-	// one: software WebGL (llvmpipe and the like) is slower than the DOM renderer it would replace.
-	useGpuRenderer() {
-		if (!hardwareWebgl()) return;
-
-		try {
-			const gpu = new WebglAddon();
-
-			gpu.onContextLoss(() => gpu.dispose());
-			this.terminal.loadAddon(gpu);
-		} catch {
-			// No WebGL here after all; the DOM renderer it was created with stays in use
-		}
 	}
 
 	sendInput(data) {

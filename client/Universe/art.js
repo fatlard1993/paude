@@ -404,7 +404,11 @@ const cache = new Map();
 
 // A sprite as an image, its runtime colors filled in, made once for each set of them
 const imageOf = (name, colors) => {
-	const key = `${name}|${colors.c ?? ''}|${colors.s ?? ''}`;
+	// By every color it's given: a skull flushed red ('r') is another image from the same one pale
+	const key = `${name}|${Object.entries(colors)
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([letter, color]) => `${letter}:${color}`)
+		.join(',')}`;
 	const known = cache.get(key);
 
 	if (known) return known;

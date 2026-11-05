@@ -24,6 +24,7 @@ import {
 	pixelEllipse,
 	propParts,
 	rect,
+	noise,
 	seeded,
 	walls,
 } from './station';
@@ -248,7 +249,10 @@ export const drawHullCover = (ctx, layout, cover, { time, name = '', hue = 200 }
 
 // The nose: a cockpit window in an armored rim, space streaming past in it as the sky's does: `drift` how far the sky
 // has streamed, in art pixels, so its stars keep the sky's speed at any zoom; `pace` how fast the ship is going
-const drawCanopy = (ctx, image, { time, pace, drift }) => {
+// The window's rows and its stars' places, worked out once for each hull: they turn on its shape alone
+const canopyOf = image => {
+	if (image.canopyShape) return image.canopyShape;
+
 	const { shape } = image;
 	const half = (shape.bottom - shape.top) / 2 - 7;
 	const from = shape.right + 2;
@@ -263,9 +267,25 @@ const drawCanopy = (ctx, image, { time, pace, drift }) => {
 		rows.push({ y, to });
 		if (Math.abs(y - shape.middle) <= window) glass.push({ y, to });
 	}
+
+	const stars = Array.from({ length: 12 }, (_, star) => ({
+		at: seeded(`canopy${star}`),
+		depth: 0.4 + seeded(`canopyDepth${star}`) * 0.6,
+		x: seeded(`canopyX${star}`),
+	}));
+
+	image.canopyShape = { half, from, window, rows, glass, stars };
+
+	return image.canopyShape;
+};
+
+const drawCanopy = (ctx, image, { time, pace, drift }) => {
+	const { shape } = image;
+	const { from, window, rows, glass, stars } = canopyOf(image);
+
 	if (!rows.length) return;
 
-	const width = glass.length ? Math.max(...glass.map(({ to }) => to)) - from : 0;
+	const width = (image.canopyShape.width ??= glass.length ? Math.max(...glass.map(({ to }) => to)) - from : 0);
 	const tip = Math.round(shape.middle);
 	// Painted once: what lies under the stars streaming past in the glass, and what over them
 	const area = { left: from - 1, top: rows[0].y - 1, w: shape.tip + 9 - from, h: rows.length + 2 };
@@ -302,11 +322,10 @@ const drawCanopy = (ctx, image, { time, pace, drift }) => {
 		}),
 	];
 	ctx.drawImage(image.canopy[0], area.left, area.top);
-	for (let star = 0; star < 12 && glass.length; star++) {
-		const y = Math.round(glass[0].y + seeded(`canopy${star}`) * (glass.length - 1));
+	for (const { at, depth, x: across } of glass.length ? stars : []) {
+		const y = Math.round(glass[0].y + at * (glass.length - 1));
 		const row = glass[y - glass[0].y];
-		const depth = 0.4 + seeded(`canopyDepth${star}`) * 0.6;
-		const x = from + ((((seeded(`canopyX${star}`) * width - drift * depth) % width) + width) % width);
+		const x = from + ((((across * width - drift * depth) % width) + width) % width);
 
 		if (row && x < row.to)
 			rect(ctx, Math.round(x), y, depth > 0.75 && pace > 1.5 ? 2 : 1, 1, depth > 0.7 ? PALETTE.W : PALETTE.l);
@@ -991,7 +1010,7 @@ const SYSTEM_ART = {
 						at.y - 27 + row * 4,
 						2,
 						1,
-						active && seeded(`${side}|${row}|${led}|${Math.floor(time * 6)}`) > 0.45 ? accent : PALETTE.m,
+						active && noise(`${side}|${row}|${led}|${Math.floor(time * 6)}`) > 0.45 ? accent : PALETTE.m,
 					);
 		}
 		box(ctx, at.x - 11, at.y - 42, 23, 42, PALETTE.m);
@@ -1078,7 +1097,7 @@ const SYSTEM_ART = {
 						ctx,
 						x + 2,
 						at.y - 24 + row * 2,
-						2 + Math.floor(seeded(`${terminal}|${row + Math.floor(time * 6)}`) * 9),
+						2 + Math.floor(noise(`${terminal}|${row + Math.floor(time * 6)}`) * 9),
 						1,
 						PALETTE.t,
 					);
