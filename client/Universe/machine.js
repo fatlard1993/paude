@@ -1,5 +1,5 @@
 import { PALETTE } from './art';
-import { pixelEllipse, rect } from './station';
+import { noise, pixelEllipse, rect } from './station';
 
 // A project's machine: modules for its folders on a plinth, ports down each side for the workers jacked into it. It
 // runs while worked on, idles lit low while its sessions wait, is dark while nobody is at it, and flashes amber along
@@ -163,6 +163,149 @@ const window = (ctx, { x, y, w, h }, { form, hue, state, time, seed }) => {
 		}
 		rect(ctx, Math.round(middle.x) - 1, Math.round(middle.y) - 1, 3, 3, PALETTE.l);
 	}
+};
+
+// The machinery a project's machine shows outside the hull, grown from what its modules are: one structure for each,
+// as wide as its share and standing as far out as its module stands tall, its form from its language (a tower with a
+// glowing cap for a core, a bank of radiator fins for coils, a truss mast for a lattice, a fan in its ring for a
+// turbine), banded in its language's color, riveted when the project is old, fresh-sheened when it's new, lit as the
+// machine runs and flashing amber at its tips while one of its sessions asks you something. `left` to `right` along the
+// hull, from `base`, `out` from it: -1 up off its back, 1 down under its belly.
+const EXTERIOR_TALL = 18;
+
+const drawStructure = (ctx, { x, w, h, form, accent, glow, tip, lit, time, seed, years }, row) => {
+	// `rows` rows from `from` out from the hull, as a rect
+	const at = (left, from, width, rows, fill) => row(left, from, width, rows, fill);
+
+	// Each thing about it picked from its seed, so two of a form never look alike
+	const pick = (what, from, to) => from + Math.floor(noise(`${seed}|${what}`) * (to - from + 1));
+
+	if (form === 'core') {
+		// A cluster of towers on a shared collar, each its own height, rather than one block across it all
+		const towers = Math.max(1, Math.round(w / pick('pitch', 6, 9)));
+		const each = Math.floor((w - 2) / towers);
+
+		at(x, 0, w, 2, PALETTE.k);
+		at(x + 1, 0, w - 2, 1, PALETTE.l);
+		for (let tower = 0; tower < towers; tower++) {
+			const left = x + 1 + tower * each;
+			const tw = each - (towers > 1 ? 1 : 0);
+			const th = Math.max(6, Math.round(h * (0.55 + 0.45 * noise(`${seed}|tower${tower}`))));
+			const core = left + Math.floor(tw / 2);
+
+			at(left, 2, tw, th - 4, PALETTE.k);
+			at(left + 1, 2, tw - 2, th - 4, PALETTE.m);
+			at(left + 1, 2, 1, th - 4, PALETTE.l);
+			at(core, 3, 1, th - 6, glow);
+			if (lit) at(core, 3 + (Math.floor(time * 10 + tower * 3) % Math.max(1, th - 6)), 1, 1, PALETTE.W);
+			at(left, th - 4, tw, 1, accent);
+			at(left + 1, th - 3, Math.max(1, tw - 2), 2, PALETTE.k);
+			at(left + 2, th - 3, Math.max(1, tw - 4), 1, tip);
+		}
+	} else if (form === 'coils') {
+		// A bank of fins, every so many of them standing proud
+		const gap = pick('gap', 2, 3);
+		const proud = pick('proud', 2, 4);
+
+		at(x, 0, w, 2, PALETTE.k);
+		at(x + 1, 0, w - 2, 1, PALETTE.d);
+		for (let fin = x + 1, index = 0; fin < x + w - 1; fin += gap, index++) {
+			const reach = h - (index % proud === 0 ? 0 : 3);
+
+			at(fin, 2, 1, reach - 2, PALETTE.l);
+			at(fin, reach - 1, 1, 1, tip);
+		}
+		at(x, pick('band', 3, Math.max(3, h - 4)), w, 1, accent);
+	} else if (form === 'lattice') {
+		const rails = [x + 1, x + w - 2];
+		const pitch = pick('braces', 2, 4);
+
+		at(x, 0, w, 2, PALETTE.k);
+		for (const rail of rails) at(rail, 2, 1, h - 3, PALETTE.l);
+		for (let brace = 2; brace < h - 2; brace += pitch)
+			for (let step = 0; step < w - 2; step++)
+				at(x + 1 + step, brace + Math.round((step / Math.max(1, w - 3)) * 2), 1, 1, PALETTE.d);
+		at(x + 1, 3, w - 2, 1, accent);
+		for (const rail of rails) {
+			const on = lit ? Math.sin(time * 4 + rail + seed * 9) > 0 : true;
+
+			at(rail, h - 1, 1, 1, on ? tip : PALETTE.d);
+		}
+	} else {
+		const r = Math.max(2, Math.floor(Math.min(w, h) / 2) - 1);
+		const middle = { x: x + Math.floor(w / 2), along: h - r - 1 };
+
+		at(middle.x - 1, 0, 3, middle.along, PALETTE.k);
+		at(middle.x, 0, 1, middle.along, PALETTE.l);
+		for (let a = 0; a < 24; a++) {
+			const angle = (a / 24) * Math.PI * 2;
+
+			at(
+				Math.round(middle.x + Math.cos(angle) * r),
+				Math.round(middle.along + Math.sin(angle) * r),
+				1,
+				1,
+				a % 6 ? PALETTE.l : accent,
+			);
+		}
+		const turn = lit ? time * 6 : seed;
+
+		for (let blade = 0; blade < 3; blade++) {
+			const angle = turn + (blade * Math.PI * 2) / 3;
+
+			for (let along = 1; along < r; along++)
+				at(
+					Math.round(middle.x + Math.cos(angle) * along),
+					Math.round(middle.along + Math.sin(angle) * along),
+					1,
+					1,
+					glow,
+				);
+		}
+		at(middle.x, middle.along, 1, 1, tip);
+	}
+	if (years >= 2) for (let rivet = x + 1; rivet < x + w - 1; rivet += 3) at(rivet, 1, 1, 1, PALETTE.l);
+	else if (years < 0.5) {
+		ctx.globalAlpha = 0.45;
+		at(x + 1, 2, 1, Math.max(1, h - 4), PALETTE.W);
+		ctx.globalAlpha = 1;
+	}
+};
+
+export const drawExterior = (
+	ctx,
+	{ left, right, base, out, folders = [], fallback = 'core', hue, state, asking, time, seed = 0, history },
+) => {
+	const glow = glowOf(hue, state, time);
+	const trim = hue === null || hue === undefined ? PALETTE.l : `hsl(${hue} 45% 52%)`;
+	const tip = (asking && (Math.floor(time * 3) % 2 ? PALETTE.y : PALETTE.Y)) || (state === 'idle' ? PALETTE.d : glow);
+	const years = history?.since ? (Date.now() - history.since) / (365 * DAY_MS) : 1;
+	const row = (x, from, width, rows, fill) =>
+		width > 0 && rows > 0 && rect(ctx, x, out < 0 ? base - from - rows : base + from, width, rows, fill);
+	let x = left;
+
+	modulesOf(folders, right - left, fallback).forEach(({ w, scale, form, language }, index) => {
+		const width = w - (index ? 1 : 0);
+
+		drawStructure(
+			ctx,
+			{
+				x: x + (index ? 1 : 0),
+				w: width,
+				h: Math.max(7, Math.round(EXTERIOR_TALL * scale)),
+				form,
+				accent: LANGUAGE_COLORS[language] ?? trim,
+				glow,
+				tip,
+				lit: state === 'working',
+				time,
+				seed: seed + index,
+				years,
+			},
+			row,
+		);
+		x += w;
+	});
 };
 
 // A project's machine on its deck: `housing` from housingOf, `top` the art pixel row of the deck's ceiling. A pylon

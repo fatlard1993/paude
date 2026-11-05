@@ -2382,6 +2382,7 @@ export default class Ship {
 			const sessions = (bay?.sessions ?? []).map(key => this.workers.get(key)?.session).filter(Boolean);
 
 			const housings = room.parts.map(part => ({ ...housingOf(part), top: part.hull.top, bottom: part.hull.bottom }));
+			const character = bay?.character ?? room.character ?? {};
 
 			return {
 				name: room.name,
@@ -2394,6 +2395,11 @@ export default class Ship {
 				idle: !sessions.length,
 				working: sessions.some(({ status }) => status === 'working'),
 				asking: sessions.some(session => this.needs(session) === 'asking'),
+				// What its machine is made of, for the machinery it shows outside
+				folders: character.folders,
+				form: FORMS[cksum(`form|${room.name}`) % FORMS.length],
+				history: character,
+				seed: seeded(room.name),
 			};
 		});
 	}
