@@ -238,7 +238,10 @@ const ISLAND_HIT = 1e6;
 const STREAM_LANES = ['library', 'forge', 'reactor', 'dish', 'tower', 'outpost'];
 // How long a deleted session takes to crumble to dust, and how long its heap stays after
 const VAPOR_SECONDS = 1.6;
-const DUST_SECONDS = 6;
+// A heap of ash where a deleted session crumbled: how long it lies before the tube's nozzle comes down for it, takes
+// coming down, takes sucking it up, and takes going back up, in seconds
+const ASH = { lies: 2.5, down: 0.6, sucks: 1.4, up: 0.6 };
+const DUST_SECONDS = ASH.lies + ASH.down + ASH.sucks + ASH.up;
 const DUST = { light: '#a7adb6', dark: '#6f7680' };
 
 // The giant cup's colors, its zap the dot on its band
@@ -2138,15 +2141,7 @@ export default class Ship {
 		for (const worker of this.workers.values())
 			if (worker.crumble && worker.vaporizedAt !== undefined)
 				standing.push({ y: worker.dustAt.depth, draw: () => this.drawCrumbling(ctx, worker) });
-		for (const heap of this.dust)
-			standing.push({
-				y: heap.depth,
-				draw: () => {
-					ctx.globalAlpha = Math.min(1, (DUST_SECONDS - (this.time - heap.at)) / 2);
-					this.drawDustHeap(ctx, heap, 1);
-					ctx.globalAlpha = 1;
-				},
-			});
+		for (const heap of this.dust) standing.push({ y: heap.depth, draw: () => this.drawAshSucked(ctx, heap) });
 		for (const parcel of this.parcels)
 			standing.push({
 				// On the crane's hook, over the pods it's carried above
@@ -4456,6 +4451,46 @@ export default class Ship {
 	}
 
 	// A heap of dust, `size` 0 to 1 of its full size
+	// A heap of ash, lying a moment, then sucked up into the tube: its nozzle let down from the ceiling of the room it
+	// lies in to just over it, the heap dwindling as flecks of it rise into the nozzle, and the nozzle drawn back up
+	drawAshSucked(ctx, heap) {
+		const since = this.time - heap.at;
+		const room = this.roomAt({ x: heap.x / UNIT.x, y: heap.depth });
+		const ceiling = room ? this.art({ x: 0, y: room.y }).y + 2 : heap.y - 40;
+		const over = heap.y - 6;
+		const { lies, down, sucks, up } = ASH;
+		const sucked = Math.max(0, Math.min(1, (since - lies - down) / sucks));
+		// How far down its nozzle reaches, 0 to 1
+		const reach = (() => {
+			if (since < lies) return 0;
+			if (since < lies + down) return (since - lies) / down;
+			if (since < lies + down + sucks) return 1;
+
+			return Math.max(0, 1 - (since - lies - down - sucks) / up);
+		})();
+
+		if (sucked < 1) this.drawDustHeap(ctx, heap, 1 - sucked);
+		if (reach <= 0) return;
+
+		const mouth = Math.round(ceiling + (over - ceiling) * reach);
+
+		// Flecks of it rising into the nozzle while it sucks
+		if (sucked > 0 && sucked < 1)
+			for (let fleck = 0; fleck < 4; fleck++) {
+				const rise = (this.time * 2.2 + fleck / 4) % 1;
+
+				rect(
+					ctx,
+					heap.x + Math.round((1 - rise) * (fleck - 1.5) * 3),
+					Math.round(heap.y - 1 + (mouth + 1 - heap.y) * rise),
+					1,
+					1,
+					fleck % 2 ? DUST.light : DUST.dark,
+				);
+			}
+		this.drawNozzle(ctx, heap.x, ceiling, mouth);
+	}
+
 	drawDustHeap(ctx, { x, y }, size) {
 		const w = Math.round(2 + size * 10);
 		const h = Math.max(1, Math.round(size * 3));
