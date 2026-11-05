@@ -117,3 +117,64 @@ test('a socket that answers is kept', async () => {
 		server.stop(true);
 	}
 });
+
+test('a socket slow to open is left to open, not given up on and started over while it connects', async () => {
+	const opened = [];
+	const upgrades = [];
+	const server = Bun.serve({
+		port: 0,
+		// Each upgrade answered only after a while, slower than the socket's quiet
+		fetch: async (request, bun) => {
+			upgrades.push(Date.now());
+			await Bun.sleep(250);
+
+			return bun.upgrade(request) ? undefined : new Response('no', { status: 400 });
+		},
+		websocket: { open: socket => opened.push(socket), message: () => {} },
+	});
+	const { connection } = attachTo(server, { quietMs: 100, answerMs: 1000 });
+
+	try {
+		await until(() => opened.length === 1);
+		expect(opened.length).toBe(1);
+		expect(upgrades.length).toBe(1);
+	} finally {
+		connection.close();
+		server.stop(true);
+	}
+});
+
+test('a socket that never finishes connecting is given up on in the end, and one refused outright is tried again', async () => {
+	// Accepted but never answered: neither open nor closed
+	const hung = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data: () => {} } });
+	const { states, connection } = attachTo({ port: hung.port }, { quietMs: 100, answerMs: 100 });
+
+	try {
+		await until(() => states.includes('reconnecting'));
+		expect(states).toContain('reconnecting');
+	} finally {
+		connection.close();
+		hung.stop(true);
+	}
+
+	const opened = [];
+	let refusals = 1;
+	const server = Bun.serve({
+		port: 0,
+		fetch: (request, bun) => {
+			if (refusals-- > 0) return new Response('not yet', { status: 503 });
+
+			return bun.upgrade(request) ? undefined : new Response('no', { status: 400 });
+		},
+		websocket: { open: socket => opened.push(socket), message: () => {} },
+	});
+	const again = attachTo(server, {});
+
+	try {
+		await until(() => opened.length === 1);
+		expect(opened.length).toBe(1);
+	} finally {
+		again.connection.close();
+		server.stop(true);
+	}
+});

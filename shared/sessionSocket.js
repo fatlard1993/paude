@@ -79,6 +79,8 @@ const sessionSocket = ({
 		const own = new WebSocket(`${url.replace(/^http/, 'ws')}/api/sessions/${sessionId}/attach`, headers && { headers });
 
 		socket = own;
+		// A new socket starts its own quiet from now, so a slow one isn't given up on before it's had its chance
+		heardAt = Date.now();
 		own.binaryType = 'arraybuffer';
 
 		// A socket given up on can still say something later; only the current one is listened to
@@ -138,6 +140,8 @@ const sessionSocket = ({
 	// Asks for a word back; a socket that stays silent is dead though it still looks open
 	const check = () => {
 		if (finished || answerWait) return;
+		// Still connecting: its own open or close says how it went, unless it's been as long as a quiet socket gets to answer
+		if (socket?.readyState === WebSocket.CONNECTING && Date.now() - heardAt < quietMs + answerMs) return;
 		if (socket?.readyState !== WebSocket.OPEN) return reconnectNow();
 
 		send({ type: 'ping' });
