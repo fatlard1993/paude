@@ -864,8 +864,7 @@ test("through the transporter: onto its pad and away from one ship, in on the ot
 	to.beamIn(me);
 
 	const arrived = to.walkers.get('me');
-	const { padAt } = await import('./plan');
-	const pad = padAt(to.layout.transporter);
+	const pad = clonerAt(to.layout.transporter);
 
 	expect([arrived.x, arrived.y]).toEqual([pad.x, pad.y]);
 	run(to, 1);
@@ -897,11 +896,10 @@ test('one held up on the way to the transporter beams out from wherever they got
 	expect(ship.walkers.has('me')).toBe(false);
 });
 
-test('looking at the transporter, whoever looks walks onto its pad, so beaming away is at once; looking off, they walk back', async () => {
+test('looking at the transporter, whoever looks walks to beside its pad, onto the middle of it only once beaming away; looking off, they walk back', async () => {
 	const me = { key: 'me', name: 'chase', role: 'owner', sessions: [] };
 	const looks = [{ ...answer('here', [session({ id: 'a', project: 'paude' })], { projects: ['paude'] }), people: [me] }];
 	const ship = shipWith(looks);
-	const { padAt } = await import('./plan');
 	let gone = false;
 
 	ship.fleet = [{ key: 'b', name: 'vps' }];
@@ -912,12 +910,17 @@ test('looking at the transporter, whoever looks walks onto its pad, so beaming a
 	run(ship, 4);
 
 	const walker = ship.walkers.get('me');
-	const pad = padAt(ship.layout.transporter);
+	const pad = clonerAt(ship.layout.transporter);
 
-	expect(Math.hypot(walker.x - pad.x, walker.y - pad.y)).toBeLessThan(0.05);
+	// Beside it, not on it; on its middle once going
+	expect(Math.hypot(walker.x - pad.x, walker.y - pad.y)).toBeGreaterThan(0.5);
+	expect(Math.hypot(walker.x - pad.x, walker.y - pad.y)).toBeLessThan(1.5);
 	ship.beamOut('me', () => (gone = true));
-	run(ship, 1.2);
+	run(ship, 0.3);
+	expect(gone).toBe(false);
+	run(ship, 2);
 	expect(gone).toBe(true);
+	expect(Math.hypot(walker.x - pad.x, walker.y - pad.y)).toBeLessThan(0.05);
 
 	const stays = shipWith(looks);
 

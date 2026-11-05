@@ -69,6 +69,8 @@ const ABOARD_SECONDS = 6;
 const TOSS_SECONDS = 0.7;
 // How far apart the crew's bots wait in line below engineering's door, and the first of them below it
 const BERTH_GAP = 0.55;
+// How far aft of the transporter's pad the viewer waits while looking at it, in world units
+const BESIDE_PAD = 1.1;
 // A grey on its feet, half its width and its height, in art pixels, for what it passes behind
 const GREY_SIZE = { half: 6, tall: 26 };
 // How long a commit's press takes over its pod, and how much of a push the pod spends lifting off its cradle before it
@@ -1341,9 +1343,26 @@ export default class Ship {
 
 		return new Map(
 			names.map(name => {
-				// Off to the transporter, or ready by it: its pad
-				if ((this.departing?.key === name || (this.readying && this.viewer === name)) && this.layout.transporter)
-					return [name, { pose: 'traveler', spot: padAt(this.layout.transporter), room: this.layout.transporter }];
+				// Off to another ship: onto the middle of the transporter's pad, only once beaming there is chosen
+				if (this.departing?.key === name && this.layout.transporter)
+					return [name, { pose: 'traveler', spot: clonerAt(this.layout.transporter), room: this.layout.transporter }];
+
+				// The viewer goes to whatever they've looked at closely: the transporter's side, by its pad but not on it,
+				// or the room's floor, just in from its front; the bridge, or the whole ship, as a pilot does
+				const focus = this.viewer === name && this.looking !== 'all' && this.looking !== BRIDGE && this.roomOf(this.looking);
+
+				if (focus && focus !== this.bridge) {
+					const pad = focus.kind === 'transporter' && clonerAt(focus);
+
+					return [
+						name,
+						{
+							pose: 'overseer',
+							spot: pad ? { x: pad.x - BESIDE_PAD, y: pad.y + 0.1 } : { x: focus.x + focus.w / 2, y: focus.y + focus.d - 0.35 },
+							room: focus,
+						},
+					];
+				}
 
 				const person = this.people.get(name);
 				const worker = seatedHostOf(person);
@@ -1475,7 +1494,7 @@ export default class Ship {
 			this.people = new Map([...this.people, [person.key, { ...person, sessions: [] }]]);
 		}
 		if (transporter) {
-			const pad = padAt(transporter);
+			const pad = clonerAt(transporter);
 			const walker = this.walkers.get(person.key) ?? { name: person.name, person, step: 0, facing: 1 };
 
 			this.walkers.set(person.key, Object.assign(walker, pad, { path: [], spot: null, room: transporter }));
