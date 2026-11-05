@@ -20,7 +20,7 @@ import { hueOf, onServersChange, setServers } from '../servers';
 import { openMenu } from '../menu';
 import { LIFETIMES, WARM_LIFETIMES } from '../../shared/lifetimes';
 import tokenCount from '../../shared/tokenCount';
-import { confirmDeleteSession } from '../confirmDialog';
+import confirmDialog, { confirmDeleteSession } from '../confirmDialog';
 import { sessionMenu } from '../sessionActions';
 import { LOCAL, shipsOf } from './shown';
 import olderPaude from './olderPaude';
@@ -43,7 +43,7 @@ import refusal from './reason';
 import { logCard, manifestCard, promptCard, replyCard } from './replyCard';
 import { arrivalOf } from './sidePanel';
 import { recall, remember } from '../storage';
-import Ship, { BEAM_SECONDS, BRIDGE, LOUNGE, sessionKey, triage } from './scene';
+import Ship, { BEAM_SECONDS, BRIDGE, LOUNGE, sessionKey, triage, GROUP_SEPARATOR } from './scene';
 import { UNIT } from './station';
 import { FOCUS_WIDTH, Stage } from './universeStyle';
 
@@ -106,6 +106,13 @@ const selectionOf = (target, view) => {
 	return null;
 };
 
+// Several sessions picked together
+const groupOf = group => ({
+	group,
+	title: `${group.length} sessions`,
+	about: 'Shift-click to add or take one away',
+});
+
 // What was last focused, kept for this browser so a reload comes back to it
 const FOCUS_KEPT = 'paude-universe-focus';
 // The width the docks were last dragged to, kept for this browser (where it can be: storage can be off)
@@ -162,6 +169,7 @@ const resizable = card => {
 
 // What a selection is, to tell one from another
 const selectionKey = selected =>
+	(selected?.group && `group:${selected.group.map(({ session }) => session.key).join(GROUP_SEPARATOR)}`) ||
 	(selected?.worker && `worker:${selected.worker.session.key}`) ||
 	(selected?.bay && `bay:${selected.bay.name}`) ||
 	(selected?.engine && `engine:${selected.engine.key}`) ||
@@ -480,7 +488,11 @@ export default class Universe extends View {
 			press = null;
 			if (ordered) return;
 			this.canvas.classList.remove('dragging');
-			if (!dragged) this.press(at(event), event.pointerType === 'mouse');
+			// Shift, Ctrl or Cmd held adds a session to those picked, or takes it away
+			if (!dragged)
+				this.press(at(event), event.pointerType === 'mouse', {
+					adding: event.shiftKey || event.ctrlKey || event.metaKey,
+				});
 		});
 		this.canvas.addEventListener('pointercancel', () => {
 			press = null;
@@ -574,11 +586,12 @@ export default class Universe extends View {
 	// A worker opens its reply, its monitor its terminal; the materializer opens a new
 	// prompt; a room is looked
 	// at closely, and again to look at it all. Anywhere else closes what's open, then looks at it all.
-	press(point, mouse) {
+	press(point, mouse, { adding = false } = {}) {
 		const target = this.aboard.hit(point.x, point.y);
 		const { looking } = this.aboard;
 
 		this.showTip(null);
+		if (adding && (target?.kind === 'worker' || target?.kind === 'monitor')) return this.pickAlso(target.worker);
 		this.select(selectionOf(target, this));
 		// Its terminal opens it; the grey itself only says what it is
 		if (target?.kind === 'monitor') return this.openWorker(target.worker);
@@ -692,8 +705,66 @@ export default class Universe extends View {
 		if (!same && this.focusedOpen) remember(FOCUS_KEPT, selectionKey(selected) ?? '');
 	}
 
+	// Several sessions picked together, for doing the same to all: `worker` added, or taken away when already picked; down
+	// to one, that one selected alone
+	pickAlso(worker) {
+		const picked = this.selected?.group ?? (this.selected?.worker ? [this.selected.worker] : []);
+		const key = worker.session.key;
+		const group = picked.some(({ session }) => session.key === key)
+			? picked.filter(({ session }) => session.key !== key)
+			: [...picked, worker];
+
+		this.select(this.pickedAs(group));
+	}
+
+	// Sessions picked, selected as they are: several a group, one alone, none nothing
+	pickedAs(group) {
+		if (group.length > 1) return groupOf(group);
+
+		return group[0] ? selectionOf({ kind: 'worker', worker: group[0] }, this) : null;
+	}
+
+	// What's done to each of a group picked together: unwatched, so the stopped ones leave the ship
+	async unwatchAll(group) {
+		await Promise.all(group.map(worker => this.watch(worker, false)));
+		this.select(null);
+	}
+
+	// Each of a group picked together deleted, asked once for all of them
+	async removeAll(group) {
+		const confirmed = await confirmDialog({
+			header: `Delete ${group.length} sessions?`,
+			body: `${group.map(({ session }) => `"${session.title || session.project || 'A new session'}"`).join(', ')}: their conversations, chats and comments are removed, and anyone invited to them loses access. This cannot be undone.`,
+			confirmLabel: `Delete ${group.length}`,
+			intent: 'danger',
+		});
+
+		if (!confirmed) return;
+
+		const done = await Promise.all(
+			group.map(async worker => ((await deleteSession(worker.session.id)).response?.ok ? worker : null)),
+		);
+		const failed = done.filter(worker => !worker).length;
+
+		for (const worker of done.filter(Boolean)) this.aboard.vaporize(worker.session.key);
+		if (failed) new Notify({ intent: 'danger', content: `Could not delete ${plural(failed, 'session')}.` });
+		this.select(null);
+		this.poll();
+	}
+
 	// After each answer: a selected worker that's gone is let go, and one still aboard has its card say how it is now
 	refreshSelection() {
+		const { group } = this.selected ?? {};
+
+		if (group) {
+			const now = group.map(({ session }) => this.aboard.workers.get(session.key)).filter(Boolean);
+
+			if (now.length !== group.length || now.some((worker, index) => worker !== group[index]))
+				this.select(this.pickedAs(now));
+
+			return;
+		}
+
 		const worker = this.selected?.worker;
 
 		if (!worker) return;
@@ -1326,7 +1397,9 @@ export default class Universe extends View {
 		const { aboard, selected } = this;
 		const { looking } = aboard;
 
-		// What's selected first: a session, or an engine
+		// What's selected first: several sessions picked together, a session, or an engine
+		if (selected?.group)
+			return { key: selectionKey(selected), kind: 'group', group: selected.group, room: aboard.bridge };
 		if (selected?.worker) {
 			const { worker } = selected;
 			const seat = worker.homeSeat ?? worker.seat;
@@ -1393,6 +1466,27 @@ export default class Universe extends View {
 			return { ...flyoutOf({ kind: 'worker', worker }, aboard), commands: this.workerCommands(worker) };
 		if (kind === 'engine')
 			return { ...flyoutOf({ kind: 'engine', engine }, aboard), commands: this.engineCommands(engine) };
+		if (kind === 'group') {
+			const { group } = focus;
+
+			return {
+				title: `${group.length} sessions picked`,
+				rows: [
+					['on', [...new Set(group.map(({ session }) => session.engine.name))].join(', ')],
+					['stopped', String(group.filter(({ session }) => session.status === 'stopped').length)],
+				],
+				items: group.map(worker => ({
+					label: worker.session.title || worker.session.project || 'A new session',
+					detail: worker.session.project,
+					run: () => this.select(selectionOf({ kind: 'worker', worker }, this)),
+				})),
+				commands: [
+					{ label: 'Unwatch all', hotkey: 'u', run: () => this.unwatchAll(group) },
+					...(identity()?.owner ? [{ label: 'Delete all', hotkey: 'x', run: () => this.removeAll(group) }] : []),
+					{ label: 'Clear', hotkey: 'c', run: () => this.select(null) },
+				],
+			};
+		}
 
 		const workerItem = worker => {
 			const { session } = worker;

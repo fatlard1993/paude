@@ -1382,3 +1382,18 @@ test("the crew's droids wait in line in engineering's trunk and leave up it, cle
 	}
 	expect(new Set([0, 1, 2, 3].map(index => made.berthOf(index).y)).size).toBe(4);
 });
+
+test('several sessions picked together are each bracketed', () => {
+	const made = shipWith([answer('here', [session(), session({ id: 'b' })], { projects: ['paude'] })]);
+
+	run(made, 4);
+	made.selected = 'group:here/a|here/b';
+
+	const boxes = made.selectionBoxes();
+	const at = key => made.art({ x: made.workers.get(key).seat.x, y: made.workers.get(key).seat.y + 0.2 });
+	const around = point => ({ from, to }) => from.x < point.x && to.x > point.x && from.y < point.y && to.y >= point.y;
+
+	expect(boxes).toHaveLength(2);
+	expect(boxes.filter(around(at('here/a')))).toHaveLength(1);
+	expect(boxes.filter(around(at('here/b')))).toHaveLength(1);
+});

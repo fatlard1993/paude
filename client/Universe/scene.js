@@ -78,6 +78,8 @@ const EYES_UP = 6;
 const DRINK_LIFT = 0.15;
 // How long a beam off a transporter, or onto one, lasts
 export const BEAM_SECONDS = 0.9;
+// Between the sessions' keys of a group picked together, in its selection's key: a session's key holds ':' and '/'
+export const GROUP_SEPARATOR = '|';
 // Someone off to the transporter walks this many times as fast, and beams out after this long however far they got
 const HURRY = 5;
 const TRAVEL_MOST = 3;
@@ -2014,16 +2016,19 @@ export default class Ship {
 			boxes.push(
 				around({ bridge: this.bridge, lounge: this.lounge?.count ? this.lounge : null }[name] ?? this.layout.materializer),
 			);
-		else if (kind === 'worker') {
-			const worker = this.workers.get(name);
+		else if (kind === 'worker' || kind === 'group') {
+			// A group, picked together: each of them bracketed
+			for (const key of kind === 'group' ? name.split(GROUP_SEPARATOR) : [name]) {
+				const worker = this.workers.get(key);
 
-			if (worker?.seat && !worker.lounging)
-				boxes.push(atSeat(this.walking(worker) ? worker : { x: worker.seat.x, y: worker.seat.y + 0.2 }));
-			else if (worker?.lounging) {
-				const at = this.art(this.placeOf(worker));
+				if (worker?.seat && !worker.lounging)
+					boxes.push(atSeat(this.walking(worker) ? worker : { x: worker.seat.x, y: worker.seat.y + 0.2 }));
+				else if (worker?.lounging) {
+					const at = this.art(this.placeOf(worker));
 
-				boxes.push({ from: { x: at.x - 9, y: at.y - 24 }, to: { x: at.x + 9, y: at.y + 2 }, inset: 0 });
-				if (worker.homeSeat) boxes.push(atSeat({ x: worker.homeSeat.x, y: worker.homeSeat.y + 0.2 }));
+					boxes.push({ from: { x: at.x - 9, y: at.y - 24 }, to: { x: at.x + 9, y: at.y + 2 }, inset: 0 });
+					if (worker.homeSeat) boxes.push(atSeat({ x: worker.homeSeat.x, y: worker.homeSeat.y + 0.2 }));
+				}
 			}
 		}
 		return boxes.filter(Boolean);
