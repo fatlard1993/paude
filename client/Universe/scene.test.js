@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import Ship, { appliancesOf, bendAround, countdown, resting, risersFor, runsFor, tanksOf, triage } from './scene';
-import { clonerAt, holdSpotAt, layOut, rowPitch, shortest } from './plan';
+import { clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats } from './plan';
 import { SCREEN_RISE, UNIT, cableWeight } from './station';
 
 const session = changes => ({
@@ -606,7 +606,7 @@ test('the ship at its edges: none, one or two projects on one level, a level mor
 	}
 });
 
-test("a project's sessions all sit at one island, however many there are and however many projects share the bridge", () => {
+test("a project's sessions sit at its islands in order, split so none runs on past six seats, however many projects share the bridge", () => {
 	const bays = [
 		{ name: 'big', hue: 10, sessions: Array.from({ length: 14 }, (_, index) => `big${index}`) },
 		...Array.from({ length: 6 }, (_, project) => ({
@@ -624,8 +624,9 @@ test("a project's sessions all sit at one island, however many there are and how
 	for (const { name, sessions } of bays) {
 		const islands = bridge.islands.filter(island => island.name === name);
 
-		expect(islands.length).toBe(1);
-		expect(islands[0].seats.map(({ key }) => key)).toEqual(sessions);
+		expect(islands.length).toBe(Math.ceil(sessions.length / 6));
+		expect(islands.flatMap(({ seats }) => seats.map(({ key }) => key))).toEqual(sessions);
+		for (const island of islands) expect(island.seats.length).toBeLessThanOrEqual(6);
 	}
 });
 
@@ -1330,4 +1331,33 @@ test('a droid passing behind an island or the couches is hidden by them, and dra
 	// In front of the island, in the aisle; out on the open floor
 	expect(made.behindFurniture({ x: island.x + island.w / 2, y: island.y + 1 }, furniture)).toBe(false);
 	expect(made.behindFurniture({ x: made.bridge.x + 0.3, y: made.bridge.y + made.bridge.d - 0.1 }, furniture)).toBe(false);
+});
+
+test("a project seating more than an island holds is split into as few islands as hold it, its seats shared out evenly", () => {
+	const plain = () => 1.5;
+	const keys = count => Array.from({ length: count }, (_, index) => `k${index}`);
+
+	expect(splitSeats(keys(6), plain).map(run => run.length)).toEqual([6]);
+	expect(splitSeats(keys(7), plain).map(run => run.length)).toEqual([4, 3]);
+	for (const count of [13, 14, 19, 25]) {
+		const sizes = splitSeats(keys(count), plain).map(run => run.length);
+
+		expect(sizes).toHaveLength(Math.ceil(count / 6));
+		expect(Math.max(...sizes)).toBeLessThanOrEqual(6);
+		expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThanOrEqual(1);
+	}
+	expect(splitSeats([], plain)).toEqual([[]]);
+	expect(splitSeats(['only'], plain)).toEqual([['only']]);
+	// Wider seats (subagents' terminals beside them) split sooner
+	expect(splitSeats(keys(6), key => (key === 'k0' ? 4 : 1.5)).length).toBe(2);
+	// Every seat once, in order
+	expect(splitSeats(keys(14), plain).flat()).toEqual(keys(14));
+
+	const bays = [{ name: 'big', hue: 10, sessions: keys(14) }, { name: 'small', hue: 50, sessions: ['s0'] }];
+	const { bridge } = layOut({ bays: bays.map(bay => ({ ...bay, seated: bay.sessions.length })) });
+	const big = bridge.islands.filter(({ name }) => name === 'big');
+
+	expect(big).toHaveLength(3);
+	expect(big.flatMap(({ keys: seated }) => seated)).toEqual(keys(14));
+	expect(Object.keys(bridge.seats)).toHaveLength(15);
 });

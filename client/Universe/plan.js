@@ -65,18 +65,48 @@ const BRIDGE_ROW = 2.8;
 // How many times the rows are spread out further, at most, as spreading them puts more islands in each
 const PITCH_TRIES = 8;
 const SEAT_W = 1.5;
+// The most an island's seats run across before it's split, in world units: six plain seats
+const ISLAND_SEATS_W = 6 * SEAT_W;
 // A subagent's small terminal beside its grey's seat, as many as are shown
 const SMALL_W = 0.8;
 const MOST_SMALL = 4;
 const ISLAND_END = 0.3;
 const ISLAND_GAP = 0.6;
 
+// `keys` (seats as wide as `widthOf` says) in runs of at most ISLAND_SEATS_W across, as few runs as that takes and as
+// even as they can be, in order
+export const splitSeats = (keys, widthOf) => {
+	const total = keys.reduce((sum, key) => sum + widthOf(key), 0);
+	const parts = Math.max(1, Math.ceil(total / ISLAND_SEATS_W - 1e-9));
+	const runs = [];
+	let run = [];
+	let filled = 0;
+
+	for (const key of keys) {
+		// Past its even share, the next run starts, while there are runs left to start
+		if (run.length && filled + widthOf(key) / 2 > (total / parts) * (runs.length + 1) && runs.length < parts - 1) {
+			runs.push(run);
+			run = [];
+		}
+		run.push(key);
+		filled += widthOf(key);
+	}
+
+	return [...runs, run];
+};
+
 // The islands of the bridge `from` its stern edge down `rows`, for the bays at work: [{ name, hue, keys, x, y, w,
 // seats: [{ key, x, y }] }], and how far forward they reach
 const islandsOf = (bays, { from, top, rows, lounge, agents = {}, pitch = BRIDGE_ROW }) => {
-	// One island for each project however many it seats, never split, in the order given: the order their conduits come
-	// to the bridge
-	const runs = bays.map(({ name, hue, sessions = [] }) => ({ name, hue, keys: sessions }));
+	// One island for each project, in the order given (the order their conduits come to the bridge); one seating more
+	// than an island holds split into as few as hold it, its seats shared out evenly, so no row runs on for one project
+	const runs = bays.flatMap(({ name, hue, sessions = [] }) =>
+		splitSeats(sessions, key => SEAT_W + Math.min(MOST_SMALL, agents[key] ?? 0) * SMALL_W).map(keys => ({
+			name,
+			hue,
+			keys,
+		})),
+	);
 	// The lounge's room first, in the bottom rows it covers, so the islands pack round it; then each island into whichever
 	// row reaches least far yet, so short ones fill in beside long ones
 	const reach = Array(rows).fill(0);

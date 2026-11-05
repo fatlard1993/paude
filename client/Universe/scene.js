@@ -2847,8 +2847,9 @@ export default class Ship {
 		const { tray, entry, exit, out, riser, plates } = conduit;
 		const into = { x: entry.x - 4, y: entry.y };
 		const seat = this.art({ x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 });
-		// The island it's at: the one of its project's whose plate is nearest
-		const plate = plates
+		// The island it's at, of its project's: the one seating it, else (on the floor, say) the one whose plate is nearest
+		const seating = plates.find(({ island }) => island?.keys?.includes(worker.session.key));
+		const plate = (seating ? [seating] : plates)
 			.map(({ at, run = at.y }) => ({ ...at, run }))
 			.sort((a, b) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(b.x - seat.x, b.y - seat.y))[0];
 
