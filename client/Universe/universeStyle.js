@@ -293,12 +293,14 @@ export const Stage = styled(
 			display: none;
 		}
 
-		/* As wide as the session's columns draw, in the flow of the screen that scrolls it */
+		/* As wide as the session's columns draw, as tall as its rows; pulled up by however much they overflow the screen
+		   (the panel's fit sets it), so its oldest rows are cut off at the top and never its prompt at the bottom */
 		.dock .docked-terminal .screen > .xterm {
 			position: relative;
 			display: block;
 			width: max-content;
 			height: max-content;
+			overflow: visible;
 		}
 
 		.reply-card .log {
