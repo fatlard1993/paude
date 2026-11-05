@@ -1761,11 +1761,8 @@ export default class Ship {
 		this.drawConduits(ctx, this.layout.halls[0]);
 		this.cables = this.conduitsOf();
 		this.fed = this.feedsOf();
-		this.drawTerminalCables(ctx);
-		for (const { lane } of this.layout.halls)
-			standing.push({ y: lane - 0.24, draw: () => this.drawTerminalCables(ctx, { trays: lane }) });
-		// Their runs about the bridge to its islands, over everything, so none is ever hidden under an island
-		standing.push({ y: TUBE_FRONT - 0.002, draw: () => this.drawTerminalCables(ctx, { islands: true }) });
+		// Each whole, machine to island, over everything, so none is ever hidden or broken where two layers would meet
+		standing.push({ y: TUBE_FRONT - 0.002, draw: () => this.drawTerminalCables(ctx) });
 		standing.push(...this.inspectionParts(ctx));
 		this.drawMats(ctx);
 		standing.push(...this.cargoParts(ctx));
@@ -2357,36 +2354,25 @@ export default class Ship {
 		return best;
 	}
 
-	// The projects' conduits, a pulse riding each while any of its sessions works: drawn under everything, as they run
-	// along the floor and behind the hull's frames; again (`trays`) their runs over the bridge's wall and the spine's
-	// catwalk, laid over what's there; and (`islands`) their runs about the bridge to its islands, over everything
-	drawTerminalCables(ctx, { trays, islands = false } = {}) {
-		for (const { bay, color, weight, working, seed, tray, riser, exit, out, plates } of this.cables.values()) {
+	// The projects' conduits, a pulse riding each while any of its sessions works: each drawn as one line from its
+	// project's machine, along its lane, up its riser and along its row to its island, so its corners join and its color
+	// holds the whole way
+	drawTerminalCables(ctx) {
+		for (const { color, weight, working, seed, tray, riser, exit, out, plates } of this.cables.values()) {
 			const style = { color, weight, working, seed };
+			const machine = () => [{ x: out.x, y: tray }, out, exit];
 
-			if (trays !== undefined) {
-				if (bay.lane === trays)
-					this.drawWire(
-						ctx,
-						[
-							{ x: riser, y: tray },
-							{ x: out.x, y: tray },
-						],
-						style,
-					);
-				continue;
-			}
-			if (!islands) {
-				this.drawWire(ctx, [{ x: riser, y: tray }, { x: out.x, y: tray }, out, exit], style);
-				continue;
-			}
 			for (const { at, run = at.y } of plates)
+				// From the island, so its pulse runs toward the machine as it always has
 				this.drawWire(
 					ctx,
-					this.clearOfLounge(
-						[at, ...(run === at.y ? [] : [{ x: at.x, y: run }]), { x: riser, y: run }, { x: riser, y: tray }],
-						this.besideOf(riser),
-					),
+					[
+						...this.clearOfLounge(
+							[at, ...(run === at.y ? [] : [{ x: at.x, y: run }]), { x: riser, y: run }, { x: riser, y: tray }],
+							this.besideOf(riser),
+						),
+						...machine(),
+					],
 					style,
 				);
 		}
