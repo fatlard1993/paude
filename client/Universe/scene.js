@@ -18,6 +18,7 @@ import {
 	drawSystem,
 	drawTransporter,
 	drawHullCover,
+	drawShuttle,
 	drawTanker,
 	drawTank,
 	hullEdges,
@@ -73,6 +74,11 @@ const STAR_PACE = { most: 8, easing: 0.6 };
 const WALK_SPEED = 1.2;
 // Anyone seen this soon after the view opens was already aboard
 const ABOARD_SECONDS = 6;
+// A shuttle bringing someone aboard or taking them off: how long it takes to fly in, its tube to reach the hull, them
+// to walk its length, its tube to draw back up, and it to fly off, in seconds; and how long one come to take someone
+// off waits for them before going anyway
+const SHUTTLE = { fly: 1.6, tube: 0.5, walk: 1, retract: 0.5 };
+const SHUTTLE_WAITS = 20;
 // How long a can's toss onto its pile takes, and a drink of a grey's coffee or energy drink
 const TOSS_SECONDS = 0.7;
 // How far apart the crew's bots wait in line below engineering's door, and the first of them below it
@@ -777,6 +783,9 @@ export default class Ship {
 	walkers = new Map();
 	haulers = [];
 	refuels = [];
+	// The shuttles on their way to or from the airlock: [{ key, hue, kind: 'in' | 'out', at, climbAt }]; `at` not yet
+	// set for one that waits for the ship to come in out of warp
+	shuttles = [];
 	// The shared systems, each from every engine's appliances, and the hold's cargo
 	systems = new Map();
 	engineSystems = new Map();
@@ -1536,7 +1545,11 @@ export default class Ship {
 		for (const [name, walker] of this.walkers) {
 			if (spots.has(name) || walker.leaving) continue;
 			if (!airlock || walker.x === undefined) this.walkers.delete(name);
-			else Object.assign(walker, { leaving: true, path: this.route(walker, walker.room, airlock, this.bridge) });
+			else {
+				Object.assign(walker, { leaving: true, path: this.route(walker, walker.room, airlock, this.bridge) });
+				// A shuttle comes for them while they walk to the airlock
+				this.shuttles.push({ key: name, hue: walker.person?.hue, kind: 'out', at: this.time });
+			}
 		}
 
 		for (const [name, { pose, spot, room, facing }] of spots) {
@@ -1547,11 +1560,19 @@ export default class Ship {
 			walker.leaving = false;
 			this.walkers.set(name, walker);
 
-			const placed = walker.x === undefined && (!airlock || !this.answered.size || this.time < ABOARD_SECONDS);
+			// Whoever was aboard before anyone looked is found there; the one looking, opening it, comes aboard by shuttle
+			// as it comes in, its plating held shut until they're in
+			const joining = walker.x === undefined && airlock && name === this.viewer && this.sealed;
+			const placed =
+				walker.x === undefined && !joining && (!airlock || !this.answered.size || this.time < ABOARD_SECONDS);
 
 			if (placed || (this.moved && walker.spot)) Object.assign(walker, spot, { path: [] });
-			else if (walker.x === undefined)
+			else if (walker.x === undefined) {
 				Object.assign(walker, airlock, { path: this.route(airlock, this.bridge, spot, room), room: this.bridge });
+				// Brought by shuttle, held at the airlock till they've come down its tube
+				walker.shuttle = { key: name, hue: walker.person?.hue, kind: 'in', at: joining ? undefined : this.time };
+				this.shuttles.push(walker.shuttle);
+			}
 			// Beamed in on the transporter's pad: from there to where they belong
 			else if (!walker.spot) walker.path = this.route(walker, walker.room, spot, room);
 			// Along the console to a new seat as others come and go; across the ship to a new place
@@ -1617,7 +1638,7 @@ export default class Ship {
 		this.tendLayoutEase(seconds);
 		// Sealed, it comes in out of warp once there's a ship to show, and is opened only once it's arrived
 		if (this.sealed && this.enteredAt === undefined && this.answered.size) this.enteredAt = this.time;
-		if (this.openWanted && this.arrived()) this.open();
+		if (this.openWanted && this.arrived() && !this.joining()) this.open();
 		// The ship under way: space streams past astern, faster the more was delivered in the last hour
 		const burning = flowOf(this.tanks.reduce((sum, { rate }) => sum + rate, 0));
 
@@ -1647,20 +1668,21 @@ export default class Ship {
 		this.tendCrew(seconds);
 		this.tendCrane(seconds);
 		for (const [name, walker] of this.walkers)
-			walk(
-				walker,
-				calm
-					? Infinity
-					: WALK_SPEED *
-							seconds *
-							(this.departing?.key === name || (this.readying && this.viewer === name) ? HURRY : 1),
-				seconds,
-			);
+			if (!this.boarding(walker))
+				walk(
+					walker,
+					calm
+						? Infinity
+						: WALK_SPEED *
+								seconds *
+								(this.departing?.key === name || (this.readying && this.viewer === name) ? HURRY : 1),
+					seconds,
+				);
 		this.tendTravel();
 		for (const worker of this.workers.values())
 			if (worker.path?.length && (calm || this.time - (worker.madeAt ?? -Infinity) >= MAKE_SECONDS))
 				walk(worker, calm ? Infinity : WORKER_SPEED * seconds, seconds);
-		for (const [name, walker] of this.walkers) if (walker.leaving && !walker.path.length) this.walkers.delete(name);
+		this.tendShuttles();
 
 		for (const parcel of this.parcels) {
 			parcel.step += seconds * 9;
@@ -2048,7 +2070,8 @@ export default class Ship {
 		this.drawPathways(ctx);
 		// Whoever's aboard over everything, as a game draws its people over the scenery: the bridge's aisles are too narrow
 		// to clear the consoles and screens about them
-		for (const walker of this.walkers.values()) if (walker.x !== undefined) this.drawWalker(ctx, walker);
+		for (const walker of this.walkers.values())
+			if (walker.x !== undefined && !this.boarding(walker)) this.drawWalker(ctx, walker);
 
 		const cover = this.coverOf();
 
@@ -2058,11 +2081,18 @@ export default class Ship {
 			name: this.own?.name ?? '',
 			hue: this.own?.hue ?? 200,
 		});
-		if (cover >= 1) return ctx.restore();
+		// Sealed, only the shuttles flying up to it show over its plating, someone coming aboard as it opens
+		if (cover >= 1) {
+			ctx.restore();
+			for (const shuttle of this.shuttles) this.drawShuttleOf(ctx, shuttle);
+
+			return;
+		}
 		this.drawSelection(ctx);
 		ctx.restore();
 		for (const hauler of this.haulers) this.drawHauler(ctx, hauler);
 		for (const refuel of this.refuels) this.drawRefuel(ctx, refuel);
+		for (const shuttle of this.shuttles) this.drawShuttleOf(ctx, shuttle);
 		this.drawTugFlight(ctx);
 		for (const worker of this.workers.values()) if (worker.seat) this.drawMarker(ctx, worker);
 		this.drawLabels(ctx, ratio);
@@ -2166,7 +2196,7 @@ export default class Ship {
 	// Its plating opened, showing what's aboard; asked before it's arrived, once it has
 	open() {
 		if (!this.sealed) return;
-		if (!this.arrived()) {
+		if (!this.arrived() || this.joining()) {
 			this.openWanted = true;
 
 			return;
@@ -4888,6 +4918,117 @@ export default class Ship {
 		ctx.translate(-at.x, -at.y);
 		draw();
 		ctx.restore();
+	}
+
+	// Who's looking, their key aboard. Told only once the ship has heard who's aboard, by which time they've been found
+	// in place with the rest: while it's still sealed, they're taken back out to come aboard by shuttle as it opens.
+	get viewer() {
+		return this.viewing;
+	}
+
+	set viewer(key) {
+		const was = this.viewing;
+
+		this.viewing = key;
+		if (key && key !== was) this.comeAboard(key);
+	}
+
+	comeAboard(key) {
+		const walker = this.walkers.get(key);
+		const { airlock } = this;
+
+		if (!this.sealed || !walker || walker.shuttle || !airlock) return;
+		Object.assign(walker, airlock, {
+			path: walker.spot ? this.route(airlock, this.bridge, walker.spot, walker.room) : [],
+			room: this.bridge,
+		});
+		walker.shuttle = { key, hue: walker.person?.hue, kind: 'in', at: this.arrived() ? this.time : undefined };
+		this.shuttles.push(walker.shuttle);
+	}
+
+	// How long into its visit a shuttle is, in seconds; null while it waits for the ship to come in
+	shuttleAge(shuttle) {
+		return shuttle.at === undefined ? null : this.time - shuttle.at;
+	}
+
+	// Whether someone is still on their way aboard by shuttle, held at the airlock out of sight
+	boarding(walker) {
+		const { shuttle } = walker;
+		const age = shuttle && this.shuttleAge(shuttle);
+
+		return Boolean(shuttle) && (age === null || age < SHUTTLE.fly + SHUTTLE.tube + SHUTTLE.walk);
+	}
+
+	// Whether the one looking is still coming aboard as the ship opens, its plating held shut till they're in
+	joining() {
+		const walker = this.viewer && this.walkers.get(this.viewer);
+
+		return Boolean(walker && this.boarding(walker));
+	}
+
+	// Shuttles on their way: one waiting on the ship sets off once it's come in out of warp; one come to take someone
+	// off takes them once they're at the airlock and its tube is down (or once it's waited long enough), and each goes
+	// once it's flown off again
+	tendShuttles() {
+		const { fly, tube, walk: down, retract } = SHUTTLE;
+
+		for (const shuttle of this.shuttles) if (shuttle.at === undefined && this.arrived()) shuttle.at = this.time;
+		for (const [name, walker] of this.walkers) {
+			if (!walker.leaving || walker.path.length) continue;
+
+			const shuttle = this.shuttles.find(
+				({ key, kind, climbAt }) => key === name && kind === 'out' && climbAt === undefined,
+			);
+			const age = shuttle ? this.shuttleAge(shuttle) : Infinity;
+
+			if (age < fly + tube && age < SHUTTLE_WAITS) continue;
+			if (shuttle) shuttle.climbAt = this.time;
+			this.walkers.delete(name);
+		}
+		for (const shuttle of this.shuttles)
+			if (shuttle.kind === 'out' && shuttle.climbAt === undefined && this.shuttleAge(shuttle) > SHUTTLE_WAITS)
+				shuttle.climbAt = this.time;
+		this.shuttles = this.shuttles.filter(shuttle => {
+			const age = this.shuttleAge(shuttle);
+
+			if (age === null) return true;
+			if (shuttle.kind === 'in') return age < fly + tube + down + retract + fly;
+
+			return shuttle.climbAt === undefined || this.time - shuttle.climbAt < down + retract + fly;
+		});
+	}
+
+	// A shuttle as it is at this point of its visit, docked over the airlock on the hull's back
+	drawShuttleOf(ctx, shuttle) {
+		const age = this.shuttleAge(shuttle);
+
+		if (age === null || !this.layout.building || !this.airlock) return;
+
+		const { fly, tube, walk: down, retract } = SHUTTLE;
+		const ease = u => Math.max(0, Math.min(1, u)) ** 2 * (3 - 2 * Math.max(0, Math.min(1, u)));
+		const dock = { x: this.art(this.airlock).x, y: hullEdges(this.layout.building).top };
+		// Through its visit: where it's flown in, its tube let down, someone walking it, drawn back, flown off
+		let state;
+
+		if (shuttle.kind === 'in') {
+			const left = age - fly - tube - down;
+
+			state = {
+				away: 1 - ease(age / fly) + ease((left - retract) / fly),
+				tube: Math.min(ease((age - fly) / tube), 1 - ease(left / retract)),
+				walker: age >= fly + tube && left < 0 ? (age - fly - tube) / down : null,
+			};
+		} else {
+			const climbed = shuttle.climbAt === undefined ? -Infinity : this.time - shuttle.climbAt;
+			const after = climbed - down;
+
+			state = {
+				away: 1 - ease(age / fly) + ease((after - retract) / fly),
+				tube: Math.min(ease((age - fly) / tube), climbed === -Infinity ? 1 : 1 - ease(after / retract)),
+				walker: climbed >= 0 && climbed < down ? 1 - climbed / down : null,
+			};
+		}
+		drawShuttle(ctx, dock, { ...state, hue: shuttle.hue, time: this.time });
 	}
 
 	// Where the tanks stand in the engine bay, in world units: against its back wall, over the reactors' column

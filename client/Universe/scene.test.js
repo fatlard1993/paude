@@ -1775,3 +1775,54 @@ test('a tank that reads fuller than it did is sent a refuel ship, its gauge risi
 	made.refuels[0].time = 0.75;
 	expect(made.tankShown(tank).gauges.session).toBeCloseTo(1);
 });
+
+test('the one opening the view comes aboard by shuttle once the ship is in, and its plating stays shut till they have walked in', () => {
+	const me = { key: 'me', name: 'chase', role: 'owner', sessions: [] };
+	const looks = [{ ...answer('here', [session()], { projects: ['paude'] }), people: [me] }];
+	const made = new Ship();
+
+	made.resize(1600, 900);
+	made.sealed = true;
+	// Told who's looking only once it's heard who's aboard, as the view tells it
+	made.update(looks);
+	made.viewer = 'me';
+	made.open();
+	// In out of warp: their shuttle sets off only now, and the plating holds while it flies in and they walk its tube
+	run(made, 4);
+	expect(made.arrived()).toBe(true);
+	expect(made.shuttles).toMatchObject([{ key: 'me', kind: 'in' }]);
+	expect(made.joining()).toBe(true);
+	expect(made.coverOf()).toBe(1);
+	run(made, 3);
+	expect(made.joining()).toBe(false);
+	expect(made.sealed).toBe(false);
+});
+
+test('someone coming aboard waits at the airlock till they are down its shuttle tube; going, the shuttle takes them once its tube is down', () => {
+	const sam = { key: 'sam', name: 'Sam', role: 'comment', sessions: ['b'] };
+	const looks = people => [
+		answer('here', [session(), session({ id: 'b', project: 'site' })], { projects: ['paude', 'site'], people }),
+	];
+	const made = shipWith(looks([]));
+
+	run(made, 10);
+	made.update(looks([sam]));
+
+	const walker = walkerNamed(made, 'Sam');
+	const { airlock } = made;
+
+	expect(made.shuttles).toMatchObject([{ key: 'sam', kind: 'in' }]);
+	run(made, 2.5);
+	expect([walker.x, walker.y]).toEqual([airlock.x, airlock.y]);
+	expect(made.boarding(walker)).toBe(true);
+	run(made, 30);
+	expect(made.boarding(walker)).toBe(false);
+	expect(Math.hypot(walker.x - airlock.x, walker.y - airlock.y)).toBeGreaterThan(0.5);
+	expect(made.shuttles).toEqual([]);
+
+	made.update(looks([]));
+	expect(made.shuttles).toMatchObject([{ key: 'sam', kind: 'out' }]);
+	run(made, 30);
+	expect(walkerNamed(made, 'Sam')).toBeUndefined();
+	expect(made.shuttles).toEqual([]);
+});

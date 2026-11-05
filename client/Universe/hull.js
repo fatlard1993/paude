@@ -596,6 +596,60 @@ export const hullEdges = building => {
 	return { top: shape.top, bottom: shape.bottom };
 };
 
+// A shuttle bringing someone aboard or taking them off, docked over the airlock: `dock` the hull's top over it, `away`
+// how far off it still is (0 docked, 1 out of sight ahead and above), `tube` how far its boarding tube reaches down to
+// the hull (0 to 1), `walker` how far down it someone is (0 at the shuttle, 1 at the hull; null for nobody), `hue`
+// theirs. A small white craft striped in their color, its cockpit forward.
+export const SHUTTLE_HOVER = 14;
+
+export const drawShuttle = (ctx, dock, { away, tube, walker, hue, time }) => {
+	const x = Math.round(dock.x + away * 240);
+	const y = Math.round(dock.y - SHUTTLE_HOVER - away * 90);
+	const stripe = `hsl(${hue ?? 200} 60% 55%)`;
+
+	// Its tube down to the hull: glass in a frame, someone in it on their way through
+	if (tube > 0) {
+		const reach = Math.round(SHUTTLE_HOVER * tube);
+
+		rect(ctx, x - 3, y, 7, reach, PALETTE.k);
+		rect(ctx, x - 2, y, 5, reach, 'rgba(120, 190, 230, 0.35)');
+		rect(ctx, x - 2, y, 1, reach, 'rgba(220, 245, 255, 0.5)');
+		for (let rib = y + 3; rib < y + reach; rib += 4) rect(ctx, x - 3, rib, 7, 1, PALETTE.m);
+		if (tube >= 1) {
+			rect(ctx, x - 4, dock.y - 1, 9, 2, PALETTE.k);
+			rect(ctx, x - 3, dock.y - 1, 7, 1, PALETTE.l);
+		}
+		if (walker !== null) {
+			const at = Math.round(y + 1 + (reach - 7) * walker);
+
+			rect(ctx, x - 1, at, 3, 3, '#e8eef6');
+			rect(ctx, x, at + 1, 1, 1, '#f0c040');
+			rect(ctx, x - 1, at + 3, 3, 2, stripe);
+			rect(ctx, x - 1, at + 5, 1, 2, '#e8eef6');
+			rect(ctx, x + 1, at + 5 - (Math.floor(time * 6) % 2), 1, 2, '#e8eef6');
+		}
+	}
+	// Its engine aft, flaring while it moves
+	const flare = away > 0.01 ? 3 + (Math.floor(time * 20) % 3) : 1;
+
+	rect(ctx, x - 12 - flare, y - 5, flare, 2, PALETTE.Y);
+	// Its hull: white, outlined, its stripe in their color, rounded at the nose, its cockpit forward
+	rect(ctx, x - 12, y - 8, 22, 8, PALETTE.k);
+	rect(ctx, x + 10, y - 7, 2, 6, PALETTE.k);
+	rect(ctx, x - 11, y - 7, 21, 6, '#d8dee8');
+	rect(ctx, x + 10, y - 6, 1, 4, '#d8dee8');
+	rect(ctx, x - 11, y - 7, 21, 1, '#f4f7fb');
+	rect(ctx, x - 11, y - 3, 21, 1, '#a8b2c2');
+	rect(ctx, x - 11, y - 5, 18, 1, stripe);
+	rect(ctx, x + 5, y - 7, 5, 3, PALETTE.k);
+	rect(ctx, x + 6, y - 7, 4, 2, '#7fd6ff');
+	rect(ctx, x + 6, y - 7, 1, 1, '#e0f6ff');
+	// Its belly hatch, open while its tube is out
+	rect(ctx, x - 2, y - 1, 5, 1, tube > 0 ? '#05070a' : '#8a94a6');
+	// Its beacon
+	rect(ctx, x - 8, y - 9, 2, 1, Math.floor(time * 2) % 2 ? '#ff4a3a' : '#5a1a16');
+};
+
 // The refuel ship, `at` the hull over a tank it fills, `t` through its visit: in from astern and above, settled on the
 // hull with its hose let down into it while it pumps, and away astern again. A stubby tanker, its fuel drum banded
 // in the tank's color, its cockpit forward, its engine aft.
