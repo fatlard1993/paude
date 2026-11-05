@@ -256,6 +256,7 @@ const Placing = styled(
 			display: flex;
 			align-items: center;
 			gap: ${space.sm};
+			white-space: nowrap;
 		}
 
 		.model select {

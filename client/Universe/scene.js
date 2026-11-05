@@ -168,6 +168,8 @@ const HAUL_SECONDS = 6;
 // usage limit's window rolling over)
 const REFUEL_SECONDS = 9;
 const REFUELLED = 0.04;
+// How far forward of its tank a refuel ship settles, clear of the stern's fin, in art pixels
+const REFUEL_FORWARD = 16;
 // How far above the last a tank stands on the rack over the reactors, in art pixels
 const TANK_RACK = 17;
 // Something said in a session's chat shows over its speaker this long
@@ -4939,13 +4941,13 @@ export default class Ship {
 		};
 	}
 
-	// A refuel ship on its visit, settled on the hull over the tank it fills
+	// A refuel ship on its visit, settled on the hull over the tank it fills, forward of the stern's fin
 	drawRefuel(ctx, { index, time }) {
 		if (!this.layout.building) return;
 
 		const { top } = hullEdges(this.layout.building);
 
-		drawTanker(ctx, { x: this.tankAt(index).x, y: top }, time, {
+		drawTanker(ctx, { x: this.tankAt(index).x + REFUEL_FORWARD, y: top }, time, {
 			color: TANK_COLORS[index % TANK_COLORS.length],
 			time: this.time,
 		});
