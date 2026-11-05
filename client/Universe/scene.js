@@ -1020,10 +1020,7 @@ export default class Ship {
 		if (!lounge?.count) return path;
 
 		const box = { left: lounge.x - 0.1, right: lounge.x + lounge.w + 0.2, top: lounge.y + 0.2, bottom: lounge.y + lounge.d };
-		// Over it along the aisle before the row of consoles above it, clear of its couches' backs
-		const over = lounge.y > this.bridge.y + 0.5 ? standingOf(this.bridge, lounge.y - 0.3) : lounge.y - 0.15;
-
-		return bendAround([from, ...path], box, { walled: this.loungeWalled(), step: 0.1, over }).slice(1);
+		return bendAround([from, ...path], box, { walled: this.loungeWalled(), step: 0.1, over: this.loungeOver() }).slice(1);
 	}
 
 	// Workers set off: one new from the materializer, one stopped or woken from where it was; and one already on its way
@@ -1765,6 +1762,8 @@ export default class Ship {
 		this.drawTerminalCables(ctx);
 		for (const { lane } of this.layout.halls)
 			standing.push({ y: lane - 0.24, draw: () => this.drawTerminalCables(ctx, { trays: lane }) });
+		// Their runs about the bridge to its islands, over everything, so none is ever hidden under an island
+		standing.push({ y: TUBE_FRONT - 0.002, draw: () => this.drawTerminalCables(ctx, { islands: true }) });
 		standing.push(...this.inspectionParts(ctx));
 		this.drawMats(ctx);
 		standing.push(...this.cargoParts(ctx));
@@ -2280,9 +2279,9 @@ export default class Ship {
 	}
 
 	// The projects' conduits, a pulse riding each while any of its sessions works: drawn under everything, as they run
-	// along the floor and behind the hull's frames; and again (`trays`) their runs over the bridge's wall and the spine's
-	// catwalk, laid over what's there
-	drawTerminalCables(ctx, { trays } = {}) {
+	// along the floor and behind the hull's frames; again (`trays`) their runs over the bridge's wall and the spine's
+	// catwalk, laid over what's there; and (`islands`) their runs about the bridge to its islands, over everything
+	drawTerminalCables(ctx, { trays, islands = false } = {}) {
 		for (const { bay, color, weight, working, seed, tray, riser, exit, out, plates } of this.cables.values()) {
 			const style = { color, weight, working, seed };
 
@@ -2298,6 +2297,10 @@ export default class Ship {
 					);
 				continue;
 			}
+			if (!islands) {
+				this.drawWire(ctx, [{ x: riser, y: tray }, { x: out.x, y: tray }, out, exit], style);
+				continue;
+			}
 			for (const { at, run = at.y } of plates)
 				this.drawWire(
 					ctx,
@@ -2307,7 +2310,6 @@ export default class Ship {
 					),
 					style,
 				);
-			this.drawWire(ctx, [{ x: riser, y: tray }, { x: out.x, y: tray }, out, exit], style);
 		}
 	}
 
@@ -2780,7 +2782,17 @@ export default class Ship {
 			walled: this.loungeWalled(),
 			apart,
 			step: 1,
+			// Over it along the aisle before the islands above, clear of their consoles as of its couches
+			over: this.art({ x: 0, y: this.loungeOver() }).y + 6,
 		});
+	}
+
+	// The way over the lounge: the aisle before the row of consoles above it, clear of its couches' backs
+	loungeOver() {
+		const { lounge, bridge } = this;
+		const above = (bridge.islands ?? []).filter(({ y }) => y < lounge.y).map(({ y }) => y);
+
+		return above.length ? standingOf(bridge, Math.max(...above)) : lounge.y - 0.15;
 	}
 
 	// Against the hull, the lounge's near side has no room to run along
