@@ -1256,12 +1256,39 @@ export const drawSystem = (ctx, art, label, room, { time, system }) => {
 	];
 };
 
-// The transporter: a pad beaming someone to or from another ship (`beaming`, 0 to 1), and a console with a light for
-// each other ship (`ships`)
+// A notice from the other ships on the transporter console's screen, `at` the screen's foot: an amber mark while one of
+// theirs asks something, an envelope while there's news, flashing, and how many on the console under it
+const drawNotice = (ctx, at, { count, color, mark }, label) => {
+	const { x, y, blink } = at;
+
+	rect(ctx, x - 5, y - 10, 10, 10, blink ? color : PALETTE.k);
+	rect(ctx, x - 4, y - 9, 8, 8, blink ? PALETTE.k : color);
+	if (!blink) {
+		label(String(count), { x, y: y + 6 }, { color, size: 1, align: 'center' });
+
+		return;
+	}
+	if (mark === 'ask') {
+		rect(ctx, x - 1, y - 8, 1, 4, color);
+		rect(ctx, x - 1, y - 3, 1, 1, color);
+	} else
+		for (let step = 0; step < 3; step++) {
+			rect(ctx, x - 4 + step, y - 8 + step, 1, 1, color);
+			rect(ctx, x + 2 - step, y - 8 + step, 1, 1, color);
+		}
+	label(String(count), { x, y: y + 6 }, { color, size: 1, align: 'center' });
+};
+
+// The transporter: a pad beaming someone to or from another ship (`beaming`, 0 to 1), a console with a light for each
+// other ship (`ships`), and over it a notice while any of them has something for you
 export const drawTransporter = (ctx, art, label, room, { time, ships = [], beaming = null }) => {
 	floor(ctx, art, room);
 
 	const pad = clonerAt(room);
+	// What the other ships have for you: those asking something first, then news
+	const needs = ships.reduce((sum, { needs: count = 0 }) => sum + count, 0);
+	const news = ships.reduce((sum, { news: count = 0 }) => sum + count, 0);
+	const notice = (needs && { count: needs, color: PALETTE.y, mark: 'ask' }) || (news && { count: news, color: PALETTE.b, mark: 'news' });
 
 	return [
 		...walls(ctx, art, label, room, { name: room.name, color: PALETTE.p }),
@@ -1285,7 +1312,7 @@ export const drawTransporter = (ctx, art, label, room, { time, ships = [], beami
 						Math.round(at.y + Math.sin(angle) * 3),
 						1,
 						1,
-						on ? PALETTE.W : PALETTE.p,
+						(on && PALETTE.W) || (notice && Math.floor(time * 2) % 2 && notice.color) || PALETTE.p,
 					);
 				}
 				for (const side of [-1, 1]) {
@@ -1328,6 +1355,7 @@ export const drawTransporter = (ctx, art, label, room, { time, ships = [], beami
 					rect(ctx, at.x + 12 + (index % 3) * 3, at.y - 18 + Math.floor(index / 3) * 3, 2, 2, color);
 				});
 				rect(ctx, at.x + 12, at.y - 8, 8, 2, PALETTE.d);
+				if (notice) drawNotice(ctx, { x: at.x + 16, y: at.y - 11, blink: Math.floor(time * 2) % 2 }, notice, label);
 			},
 		},
 	];
