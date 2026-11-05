@@ -4304,7 +4304,8 @@ export default class Ship {
 	}
 
 	// What stands that something on the floor can pass behind, in art pixels, its foot the front of it: the bridge's
-	// islands with their screens, the other ships' terminals, and the lounge's couches and screen; the gondola's tubes
+	// islands with their screens, the other ships' terminals, the lounge's couches and screen, and the materializer's
+	// and transporter's tubes
 	furniture() {
 		const { lounge } = this;
 		const box = (from, to, rise) => {
@@ -4325,7 +4326,7 @@ export default class Ship {
 			...(lounge?.count
 				? [box({ x: lounge.x, y: lounge.y + LOUNGE_FURNISHED }, { x: lounge.x + lounge.w, y: lounge.y + lounge.d }, 0)]
 				: []),
-			// The materializer's cloner and the transporter's pad, tall tubes standing on the gondola's floor
+			// The materializer's cloner and the transporter's pad, tall tubes standing at the bridge's foot
 			...[this.layout.materializer, this.layout.transporter].filter(Boolean).map(room => {
 				const at = this.art(clonerAt(room));
 
@@ -4517,6 +4518,10 @@ export default class Ship {
 		const half = FLEET_PITCH / 2;
 		const blocked = [
 			...(lounge?.count ? [{ from: lounge.x - 0.3, to: lounge.x + lounge.w + 0.3 }] : []),
+			// The materializer and transporter standing on the bridge
+			...[this.layout.materializer, this.layout.transporter]
+				.filter(room => room?.within)
+				.map(room => ({ from: room.x - 0.3, to: room.x + room.w + 0.3 })),
 			...(bridge.islands ?? [])
 				.filter(island => island.y > y - FLEET_TALL)
 				.map(island => ({ from: island.x - 0.3, to: island.x + island.w + 0.3 })),

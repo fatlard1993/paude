@@ -1352,7 +1352,7 @@ const drawNotice = (ctx, at, { count, color, mark }, label) => {
 // The transporter: a pad beaming someone to or from another ship (`beaming`, 0 to 1), a console with a light for each
 // other ship (`ships`), and over it a notice while any of them has something for you
 export const drawTransporter = (ctx, art, label, room, { time, ships = [], beaming = null }) => {
-	floor(ctx, art, room);
+	if (!room.within) floor(ctx, art, room);
 
 	const pad = clonerAt(room);
 	// What the other ships have for you: those asking something first, then news
@@ -1361,7 +1361,9 @@ export const drawTransporter = (ctx, art, label, room, { time, ships = [], beami
 	const notice = (needs && { count: needs, color: PALETTE.y, mark: 'ask' }) || (news && { count: news, color: PALETTE.b, mark: 'news' });
 
 	return [
-		...walls(ctx, art, label, room, { name: room.name, color: PALETTE.p }),
+		...(room.within
+			? stationName(art, label, room, PALETTE.p)
+			: walls(ctx, art, label, room, { name: room.name, color: PALETTE.p })),
 		{
 			y: pad.y,
 			draw: () => {
@@ -1432,11 +1434,20 @@ export const drawTransporter = (ctx, art, label, room, { time, ships = [], beami
 };
 
 // The materializer's room, the materializer in its middle
+// Standing on the bridge (`room.within`), no floor or walls of its own: its hardware on the bridge's floor, named
+const stationName = (art, label, room, color) => {
+	label(room.name, art({ x: room.x + room.w / 2, y: room.y + 0.3 }), { color, align: 'center', size: 1 });
+
+	return [];
+};
+
 export const drawMaterializer = (ctx, art, label, room, { time, charge }) => {
-	floor(ctx, art, room);
+	if (!room.within) floor(ctx, art, room);
 
 	return [
-		...walls(ctx, art, label, room, { name: room.name, color: PALETTE.t }),
+		...(room.within
+			? stationName(art, label, room, PALETTE.t)
+			: walls(ctx, art, label, room, { name: room.name, color: PALETTE.t })),
 		{ y: clonerAt(room).y, draw: () => drawCloner(ctx, art(clonerAt(room)), { time, charge }) },
 	];
 };

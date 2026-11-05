@@ -37,6 +37,8 @@ const POD_PITCH = 1.7;
 // The staged part of the shipping bay, long enough for each checkout's pod
 const holdWidth = checkouts => Math.max(2.4, checkouts * POD_PITCH + 0.6);
 const MATERIALIZER_W = 1.8;
+// How deep the materializer and transporter stand on the bridge, from its foot
+const STATION_D = 2.4;
 // The transporter, on a ship of a fleet: its pad, and the console that hears from the other ships
 const TRANSPORTER_W = 2.2;
 // The bridge at the bow: every session's grey at a terminal in rows up its depth, wired to its project's machine aft,
@@ -395,7 +397,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 
 			return { ...item, deck, at };
 		});
-		const width = Math.max(Math.max(0, ...reach), holdWidth(checkouts) + HANGAR_W + transporter);
+		const width = Math.max(Math.max(0, ...reach), holdWidth(checkouts) + HANGAR_W);
 		const total = levels * (base + extraDepthOf(levels));
 		// The rows as far apart as their conduits need, worked out again while spreading them changes how many fit
 		const rowsAt = pitch => Math.max(1, Math.floor((total - BRIDGE_ROW_TOP - 0.4) / pitch + 1e-9) + 1);
@@ -412,7 +414,13 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		const rows = rowsAt(pitch);
 		const { reach: islandsReach } = laid;
 		const bridgeW =
-			sternRoom(inLine(placed)) + BRIDGE_MARGIN + Math.max(2 * SEAT_W, islandsReach) + BRIDGE_NAV_W + fleetRoom(fleet);
+			sternRoom(inLine(placed)) +
+			BRIDGE_MARGIN +
+			Math.max(2 * SEAT_W, islandsReach) +
+			BRIDGE_NAV_W +
+			fleetRoom(fleet) +
+			MATERIALIZER_W +
+			transporter;
 
 		return { levels, placed, width, total, rows, pitch, bridgeW };
 	};
@@ -484,9 +492,9 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 	// end, the doors in its floor under both
 	const staged = holdWidth(checkouts);
 	const gondola = {
-		x: middle + width - staged - HANGAR_W - MATERIALIZER_W - transporter - 0.4,
+		x: middle + width - staged - HANGAR_W - 0.4,
 		y: top + total,
-		w: staged + HANGAR_W + MATERIALIZER_W + transporter,
+		w: staged + HANGAR_W,
 		d: GONDOLA_D,
 	};
 	const docked = [
@@ -496,28 +504,8 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 			name: 'shipping',
 			x: gondola.x + staged,
 			w: HANGAR_W,
-			joined: { left: true, right: true },
+			joined: { left: true },
 		},
-		// Where new sessions are made, a room of its own beside where the work ships out
-		{
-			kind: 'materializer',
-			name: 'new sessions',
-			x: gondola.x + staged + HANGAR_W,
-			w: MATERIALIZER_W,
-			joined: { left: true, ...(transporter && { right: true }) },
-		},
-		// Where you beam over to another ship, beside where the work ships out
-		...(transporter
-			? [
-					{
-						kind: 'transporter',
-						name: 'transporter',
-						x: gondola.x + staged + HANGAR_W + MATERIALIZER_W,
-						w: transporter,
-						joined: { left: true },
-					},
-				]
-			: []),
 	].map(room => ({
 		...room,
 		y: gondola.y,
@@ -596,6 +584,24 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 
 		rooms.push({ ...placed, props: furnish(placed) });
 	}
+	// Where new sessions are made, and on a ship of a fleet the transporter's pad, stand on the bridge at its foot just
+	// aft of the nav table, by the terminals that keep an eye on the other ships
+	const stations = bridge.x + bridge.w - BRIDGE_NAV_W - MATERIALIZER_W - transporter;
+
+	rooms.push(
+		aboard({ kind: 'materializer', name: 'new sessions', props: [] }, stations, MATERIALIZER_W, STATION_D, top + total - STATION_D),
+		...(transporter
+			? [
+					aboard(
+						{ kind: 'transporter', name: 'transporter', props: [] },
+						stations + MATERIALIZER_W,
+						transporter,
+						STATION_D,
+						top + total - STATION_D,
+					),
+				]
+			: []),
+	);
 	// Each engine's reading, editing, commands and web in its share of the engine bay beside its reactor, each with a main of its own from that reactor. Named for their engine where there's more than one, as rooms are
 	// found by name.
 	const slot = (total - 0.4) / engineCount;
