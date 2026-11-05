@@ -574,6 +574,80 @@ const drawTank = (ctx, at, { level, flow, empty, color = FUEL }, { time, below }
 	}
 };
 
+// What a project's name reads as on its module, in `width` art pixels: the whole of it if it fits, else its sign's
+// short start, or its initials
+const moduleName = (section, width) => {
+	const words = section.name.toUpperCase();
+	const initials = section.name
+		.split(/[-_ .]+/)
+		.filter(Boolean)
+		.map(word => word[0])
+		.join('');
+
+	return textWidth(words, 1) <= width ? words : (section.short ?? initials).toUpperCase();
+};
+
+// A project's machine's module outside the hull, `left` to `right` along it, mounted at `base` and standing `out` from
+// it (-1 up off its back, 1 down under its belly): an armored casing on struts with fins at its ends, a band in its
+// color (its name on it, under the belly), a row of lights that runs while it works, blinks amber while it asks you
+// something and goes dark while idle, and its lamp (`lamp`) out at the end of an antenna or under it
+const drawModule = (ctx, { left, right, base, out, section, color, lamp, time }) => {
+	const belly = out > 0;
+	// `h` rows from `from` rows out from the hull, as a rect's top and height
+	const band = (x, from, w, h, fill) => rect(ctx, x, out < 0 ? base - from - h : base + from, w, h, fill);
+	const name = belly ? 7 : 2;
+	const tall = name + 7;
+	const width = right - left;
+
+	// Its struts to the hull, and its casing: outlined, its outermost row narrower for a bevel
+	for (const x of [left + 4, right - 6]) {
+		band(x, 0, 2, 2, PALETTE.k);
+		band(x, 0, 1, 2, PALETTE.l);
+	}
+	band(left, 2, width, tall - 1, PALETTE.k);
+	band(left + 1, tall + 1, width - 2, 1, PALETTE.k);
+	band(left + 1, 3, width - 2, tall - 2, PALETTE.m);
+	band(left + 1, 3, width - 2, 1, belly ? PALETTE.l : PALETTE.d);
+	band(left + 1, tall, width - 2, 1, belly ? PALETTE.d : PALETTE.l);
+	// Its band in its color, its name on it under the belly
+	band(left + 1, 4, width - 2, name, color);
+	if (belly)
+		pixelText(ctx, moduleName(section, width - 4), (left + right) / 2, base + 4 + name, {
+			color: section.idle ? PALETTE.m : PALETTE.k,
+			align: 'center',
+			max: width - 4,
+		});
+	// Its lights: a light running along them while it works, blinking amber while it asks, dark while idle
+	const cells = Math.max(1, Math.floor((width - 4) / 3));
+	const run = Math.floor(time * 8) % (cells + 3);
+
+	for (let cell = 0; cell < cells; cell++) {
+		const lit =
+			(section.idle && PALETTE.d) ||
+			(section.asking && (Math.floor(time * 3 + cell) % 2 ? PALETTE.y : PALETTE.Y)) ||
+			(section.working && Math.abs(cell - run) <= 1 && `hsl(${section.hue ?? 200} 85% 72%)`) ||
+			`hsl(${section.hue ?? 200} 40% 34%)`;
+
+		band(left + 3 + cell * 3, name + 5, 2, 2, lit);
+	}
+	// Its fins, at its ends
+	for (const x of [left - 3, right]) {
+		band(x, 4, 3, tall - 4, PALETTE.k);
+		band(x + 1, 5, 1, tall - 6, PALETTE.l);
+	}
+	// Its lamp: atop an antenna off its back, or in a housing under its belly
+	if (!lamp) return;
+	if (belly) {
+		band(Math.round((left + right) / 2) - 2, tall + 2, 5, 2, PALETTE.k);
+		band(Math.round((left + right) / 2) - 1, tall + 2, 3, 1, lamp);
+
+		return;
+	}
+	band(right - 4, tall + 2, 1, 4, PALETTE.k);
+	band(right - 5, tall + 6, 3, 2, PALETTE.k);
+	band(right - 4, tall + 6, 1, 1, lamp);
+};
+
 // The hull and what's on it: the engines, a fuel tank for each account, each project's section, the comms dish and
 // masts, the hangar's doors, running lights
 export const drawHull = (
@@ -610,41 +684,6 @@ export const drawHull = (
 		const back = section.side === 'top' || section.side === 'both';
 		const belly = section.side === 'bottom' || section.side === 'both';
 
-		// Its machine showing through the hull
-		for (const housing of section.housings ?? []) {
-			const [left, right] = [
-				Math.round((housing.x + 0.25) * UNIT.x),
-				Math.round((housing.x + housing.w - 0.25) * UNIT.x),
-			];
-			const glow =
-				(section.working && `hsl(${section.hue ?? 200} 75% ${60 + Math.round(Math.sin(time * 4) * 8)}%)`) ||
-				(section.idle ? PALETTE.d : `hsl(${section.hue ?? 200} 35% 36%)`);
-
-			if (housing.top && section.idle) {
-				rect(ctx, left + 2, shape.top - 2, right - left - 4, 2, PALETTE.k);
-				rect(ctx, left + 3, shape.top - 1, right - left - 6, 1, PALETTE.m);
-			} else if (housing.top) {
-				const base = shape.top;
-
-				rect(ctx, left, base - 5, right - left, 5, PALETTE.k);
-				rect(ctx, left + 1, base - 4, right - left - 2, 4, PALETTE.m);
-				rect(ctx, left + 1, base - 4, right - left - 2, 1, PALETTE.l);
-				for (let x = left + 3; x < right - 3; x += 3) rect(ctx, x, base - 3, 2, 2, glow);
-				for (const x of [left - 3, right + 1]) {
-					rect(ctx, x, base - 8, 2, 8, PALETTE.k);
-					rect(ctx, x + (x < left ? 1 : 0), base - 7, 1, 7, PALETTE.l);
-				}
-			} else if (housing.bottom) {
-				const base = shape.bottom + 9;
-
-				for (let x = left + 1; x < right - 1; x += 3) {
-					rect(ctx, x, base, 2, 4, PALETTE.k);
-					rect(ctx, x, base, 1, 3, PALETTE.m);
-				}
-				rect(ctx, left, base, right - left, 1, glow);
-			}
-		}
-
 		// A machine is marked only as far as it reaches, so the hull runs on unbroken between machines
 		const reach = section.housings?.length
 			? [
@@ -655,35 +694,26 @@ export const drawHull = (
 		const [left, right] = reach;
 
 		if (back) rect(ctx, left, shape.top + 2, right - left, 3, color);
-		if (belly) rect(ctx, left, shape.bottom + 2, right - left, 6, section.idle ? PALETTE.d : color);
 		if (!section.housings?.length)
 			for (const x of [from, to - 1])
 				rect(ctx, x, back ? shape.top : shape.bottom, 1, back && belly ? shape.bottom - shape.top + 9 : 9, PALETTE.k);
-		if (!belly) continue;
-
-		const width = right - left - 4;
-		const words = section.name.toUpperCase();
-		const fits = textWidth(words, 1) <= width;
-		const initials = section.name
-			.split(/[-_ .]+/)
-			.filter(Boolean)
-			.map(word => word[0])
-			.join('')
-			.toUpperCase();
-
-		pixelText(ctx, fits ? words : (section.short ?? initials).toUpperCase(), (left + right) / 2, shape.bottom + 8, {
-			color: section.idle ? PALETTE.m : PALETTE.k,
-			align: 'center',
-			max: width,
-		});
 
 		const lamp =
 			(section.asking && (Math.floor(time * 3) % 2 ? PALETTE.y : PALETTE.Y)) || (section.working && PALETTE.t) || null;
 
-		if (lamp) {
-			rect(ctx, Math.round((left + right) / 2) - 2, shape.top - 2, 5, 3, PALETTE.k);
-			rect(ctx, Math.round((left + right) / 2) - 1, shape.top - 1, 3, 1, lamp);
-		}
+		// Its machine's module outside the hull, on its back or under its belly, the one under it named
+		for (const housing of section.housings ?? [])
+			if (housing.top || housing.bottom)
+				drawModule(ctx, {
+					left: Math.round((housing.part.x + 0.3) * UNIT.x),
+					right: Math.round((housing.part.x + housing.part.w - 0.3) * UNIT.x),
+					base: housing.top ? shape.top : shape.bottom + 1,
+					out: housing.top ? -1 : 1,
+					section,
+					color,
+					lamp,
+					time,
+				});
 	}
 	// A tank for each account the engines draw on, over engineering, on its back and under its belly by turns
 	tanks.forEach((tank, index) => {

@@ -481,19 +481,21 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 	const deckPart = (bay, x, w, deck, machine) => {
 		const above = deck % 2 === 0;
 		const spine = spines[Math.floor(deck / 2)];
+		const y = above ? spine.hallTop - depth.top : spine.hallTop + hall;
+		const d = above ? depth.top : depth.bottom;
 
 		return {
 			name: bay.name,
 			x,
-			y: above ? spine.hallTop - depth.top : spine.hallTop + hall,
+			y,
 			w,
-			d: above ? depth.top : depth.bottom,
+			d,
 			face: above ? FACE : 0,
 			lane: spine.lane,
 			door: above
 				? { x: x + w / 2, y: spine.hallTop, side: 'bottom', lane: spine.lane }
 				: { x: x + w - 0.75, y: spine.hallTop + hall, side: 'top', lane: spine.lane },
-			hull: { top: deck === 0, bottom: false },
+			hull: { top: deck === 0, bottom: y + d >= top + total - 1e-9 },
 			machine,
 		};
 	};
