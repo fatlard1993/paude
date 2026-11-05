@@ -13,6 +13,7 @@ import { isArchived } from './archive';
 import { ownerName } from './serverSettings';
 import { sessionArtifacts } from './artifacts';
 import { meterOf } from './cacheMeter';
+import { modelFor, windowFor } from './contextWindow';
 import { boostOf, keptOf } from './keepWarm';
 import { lifetimeOf } from './lifetime';
 import { crewOf } from './crew';
@@ -50,8 +51,6 @@ const TALK_MS = 15 * 60_000;
 const CHARACTER_MS = 10 * 60_000;
 // When a stopped session's cache went, which doesn't change until it's resumed (when it's no longer stopped)
 const COLD_MS = 60 * 60_000;
-// A context past Claude's usual window is on the larger one
-const WINDOWS = [200_000, 1_000_000];
 const UNPUSHED_LIMIT = 50;
 // The changed files and commits not pushed a checkout's cargo names, as many as the hold shows
 const CARGO_SHOWN = { files: 8, commits: 6 };
@@ -403,7 +402,7 @@ const contextOf = session =>
 
 		if (!meter) return null;
 
-		const window = WINDOWS.find(size => meter.context <= size) ?? WINDOWS.at(-1);
+		const window = windowFor(await modelFor(session.cwd), meter.context);
 
 		return {
 			tokens: meter.context,
