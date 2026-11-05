@@ -476,6 +476,7 @@ const FLYOUTS = {
 			title: bay.name,
 			hue: bay.hue,
 			rows: [
+				bay.own && ['this ship', 'the paude flying it runs from here: working on it is working on the ship'],
 				['sessions', plural(bay.sessions.length, 'session')],
 				[
 					'on',

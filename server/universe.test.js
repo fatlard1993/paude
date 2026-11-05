@@ -146,3 +146,13 @@ test('whoever looks at the universe is aboard, once, attached to a session or no
 	expect(await withViewer([{ ...alone[0], sessions: ['one'] }], watcher)).toHaveLength(1);
 	expect(await withViewer([], null)).toEqual([]);
 });
+
+test("the project this paude runs from is told apart as the ship's own, by its folder's real path", async () => {
+	const { isOwnProject } = await import('./universe');
+	const path = await import('path');
+
+	expect(isOwnProject(path.resolve(import.meta.dir, '..'))).toBe(true);
+	expect(isOwnProject(path.resolve(import.meta.dir, '..', 'client'))).toBe(false);
+	expect(isOwnProject('/no/such/folder')).toBe(false);
+	expect(isOwnProject(null)).toBe(false);
+});

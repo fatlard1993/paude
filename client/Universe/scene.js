@@ -1351,6 +1351,8 @@ export default class Ship {
 				bay.active ||= has;
 
 				bay.watching ||= project.watching;
+				// The ship's own works: the project the paude showing it runs from (not another engine's own)
+				bay.own ||= Boolean(project.own) && !answer.remote;
 				bay.character ??= project.character;
 				bay.engines.push({ key: answer.key, name: answer.name, remote: answer.remote, hue: answer.hue });
 			}
@@ -2495,6 +2497,7 @@ export default class Ship {
 		const changed = checkouts.reduce((sum, { changed: count = 0 }) => sum + count, 0);
 		const pullRequest = checkouts.find(({ pullRequest: pr }) => pr?.state === 'OPEN')?.pullRequest;
 		const character = this.bays.find(({ name }) => name === bay.name)?.character ?? bay.character ?? {};
+		const own = this.bays.find(({ name }) => name === bay.name)?.own ?? bay.own;
 		// A socket for each of its sessions, alternately down its left and its right, lit while that one's grey is at
 		// its terminal on the bridge, wired in
 		const count = bay.sessions.length;
@@ -2548,6 +2551,12 @@ export default class Ship {
 						pressure,
 						fed: this.fed?.get(bay.name) ?? [],
 					});
+					// The ship's own works: a hologram of the ship itself over its machine, a scan sweeping it while it's worked on
+					if (deck === 0 && own)
+						this.drawShipHologram(ctx, this.art({ x: housing.middle, y: part.y + 0.3 }), {
+							hue: bay.hue,
+							working: state === 'working',
+						});
 					// On more than one engine, a light in each one's color by its name
 					if (deck === 0 && bay.engines.length > 1) {
 						const top = this.art({ x: housing.middle, y: part.y + 0.3 });
@@ -2562,6 +2571,51 @@ export default class Ship {
 				},
 			})),
 		];
+	}
+
+	// A hologram of this very ship, `at` the middle of the ceiling over the machine of the project it's built from: its
+	// hull's outline in the project's color, as long against its height as the ship is, flickering, scanlined, a beam
+	// up to it from the machine; a scan sweeping it while the project is worked on, the ship being rewritten in flight
+	drawShipHologram(ctx, at, { hue, working }) {
+		const { building } = this.layout;
+
+		if (!building) return;
+
+		const w = 26;
+		const h = Math.max(
+			6,
+			Math.min(11, Math.round((w * (building.bottom - building.top)) / (building.right - building.left)) + 2),
+		);
+		const left = at.x - Math.round(w / 2);
+		const top = at.y + 6;
+		const color = `hsl(${hue ?? 200} 85% 70%)`;
+		const flicker = Math.sin(this.time * 23) * Math.sin(this.time * 7) > 0.85 ? 0.25 : 0.55;
+		const nose = Math.round(h / 2);
+
+		ctx.globalAlpha = 0.12;
+		for (let row = 0; row < 8; row++)
+			rect(ctx, at.x - 1 - Math.floor(row / 2), top + h + row, 3 + Math.floor(row / 2) * 2, 1, color);
+		ctx.globalAlpha = flicker;
+		for (let row = 0; row < h; row++) {
+			// Its hull, tapering to the nose forward; its fins aft
+			const taper = Math.max(0, Math.abs(row - (h - 1) / 2) - (h / 2 - nose));
+			const body = w - 4 - Math.round(taper * 2);
+
+			if (row % 2) ctx.globalAlpha = flicker * 0.6;
+			rect(ctx, left + 2, top + row, 1, 1, color);
+			rect(ctx, left + 2 + body, top + row, 1, 1, color);
+			if (row === 0 || row === h - 1) rect(ctx, left + 2, top + row, body, 1, color);
+			ctx.globalAlpha = flicker;
+		}
+		for (const fin of [top - 2, top + h + 1]) rect(ctx, left, fin, 4, 1, color);
+		rect(ctx, left - 1, top + nose - 1, 2, 2, color);
+		if (working) {
+			const sweep = left + 2 + (Math.floor(this.time * 18) % (w - 3));
+
+			ctx.globalAlpha = 0.8;
+			rect(ctx, sweep, top, 1, h, PALETTE.W);
+		}
+		ctx.globalAlpha = 1;
 	}
 
 	// A grey at its terminal on the bridge, so wired into its project's machine

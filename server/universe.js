@@ -1,5 +1,5 @@
 import os from 'os';
-import { existsSync } from 'fs';
+import { existsSync, realpathSync } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -537,6 +537,26 @@ const forgetStale = (now = Date.now()) => {
 // running on it (each with how full its context is, how long it's run, how much it has made, any usage limit it's
 // waiting out, what its hooks said lately, and its screen) and the stopped ones they watch,
 // the cargo of each checkout they work in, and who's here to see
+// The folder this paude runs from, as its real path, to tell which project is its own
+const OWN_FOLDER = (() => {
+	const root = path.resolve(import.meta.dir, '..');
+
+	try {
+		return realpathSync(root);
+	} catch {
+		return root;
+	}
+})();
+
+export const isOwnProject = folder => {
+	if (!folder) return false;
+	try {
+		return realpathSync(folder) === OWN_FOLDER;
+	} catch {
+		return false;
+	}
+};
+
 export const universe = async identity => {
 	forgetStale();
 	const running = [...allRunning()].filter(session => !session.ended);
@@ -613,6 +633,8 @@ export const universe = async identity => {
 					name,
 					hue: folderHue(projectPath(name), os.homedir()),
 					watching,
+					// The project this paude runs from: the ship's own works, as it flies
+					...(isOwnProject(projectPath(name)) && { own: true }),
 					// Every project is a machine aboard, at work or not, so every one is looked into
 					character: (await characterOf(name)) || undefined,
 				};
