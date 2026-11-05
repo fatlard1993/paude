@@ -591,9 +591,9 @@ export const drawTank = (ctx, at, { level, gauges, flow, empty, color = FUEL }, 
 
 // Where the hull's back and belly run, in art pixels
 export const hullEdges = building => {
-	const { shape } = hullImage(building);
+	const { top, bottom } = outline(building);
 
-	return { top: shape.top, bottom: shape.bottom };
+	return { top, bottom };
 };
 
 // A shuttle bringing someone aboard or taking them off, docked over the airlock: `dock` the hull's top over it, `away`

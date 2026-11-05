@@ -1787,10 +1787,16 @@ test('the one opening the view comes aboard by shuttle once the ship is in, and 
 	made.update(looks);
 	made.viewer = 'me';
 	made.open();
-	// In out of warp: their shuttle sets off only now, and the plating holds while it flies in and they walk its tube
+	// Still in warp: just their shuttle, the ship held off, the view close on it
+	run(made, 1);
+	expect(made.entering()).toBe(0);
+	expect(made.shuttles).toMatchObject([{ key: 'me', kind: 'in', join: true }]);
+	expect(made.joinGoal()).not.toBeNull();
+	// The ship pulled in under it, the view drawn back to all of it, its plating held shut while the shuttle settles and
+	// they walk its tube
 	run(made, 4);
 	expect(made.arrived()).toBe(true);
-	expect(made.shuttles).toMatchObject([{ key: 'me', kind: 'in' }]);
+	expect(made.joinGoal()).toBeNull();
 	expect(made.joining()).toBe(true);
 	expect(made.coverOf()).toBe(1);
 	run(made, 3);
