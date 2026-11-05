@@ -83,7 +83,7 @@ const SHUTTLE_WAITS = 20;
 const TOSS_SECONDS = 0.7;
 // How far apart the crew's bots wait in line below engineering's door, and the first of them below it
 const BERTH_GAP = 0.55;
-// The most sleds a session's rack of processes shows
+// The most sleds a project's rack of processes shows
 const RACK_SLEDS = 4;
 // How far aft of the transporter's pad the viewer waits while looking at it, in world units
 const BESIDE_PAD = 1.1;
@@ -2006,6 +2006,7 @@ export default class Ship {
 				...this.deliveryParts(ctx),
 			);
 		standing.push(...this.crewParts(ctx));
+		standing.push(...this.rackParts(ctx));
 		for (const bay of this.bays) {
 			// Drawn where it's shown, gliding along its deck to where the layout puts it
 			const shift = this.bayShift(bay);
@@ -3011,7 +3012,6 @@ export default class Ship {
 					]
 				: []),
 			...this.smallGreyParts(ctx, worker),
-			{ y: seat.y - 0.35, draw: () => this.drawProcesses(ctx, worker) },
 			...((keepingOf(session) || this.serving(worker)) && !walker.length
 				? [{ y: seat.y + 0.2, draw: () => this.drawPick(ctx, worker, at) }]
 				: []),
@@ -4367,18 +4367,36 @@ export default class Ship {
 
 	// What a session runs beside Claude, as units humming behind its seat, one for each process, their lights as busy as
 	// its CPU has been; a shared port puts an antenna on them, its beacon lit
-	drawProcesses(ctx, worker) {
-		const { processes = [], services = [] } = worker.session;
+	// A rack for each project's island (or its machine, for those jacked into it), out at its forward end where nobody
+	// stands in front of it: a sled in it for each process its sessions run beside Claude, as many as it holds, and a
+	// beacon atop it while any of them serves something. Pressed, it opens the processes of one of them that runs some.
+	rackParts(ctx) {
+		const racks = new Map();
 
-		if (worker.lounging || (!processes.length && !services.length)) return;
+		for (const worker of this.workers.values()) {
+			const { seat, session, lounging, leaving } = worker;
+			const { processes = [], services = [] } = session;
 
-		const outward = -1;
-		const at = this.art(
-			worker.seat.housing
-				? { x: worker.seat.x + outward * 0.65, y: worker.seat.y + 0.05 }
-				: { x: worker.seat.x - 1.1, y: worker.seat.y - 0.15 },
-		);
-		// One rack beside its seat, a sled in it for each process, stacked up rather than spread along the floor
+			if (!seat || lounging || leaving || (!processes.length && !services.length)) continue;
+
+			const key = seat.island?.key ?? `${session.project}|${seat.housing ? 'machine' : seat.y}`;
+			const rack = racks.get(key) ?? { seat, island: seat.island, processes: [], services: [], worker };
+
+			rack.processes.push(...processes);
+			rack.services.push(...services);
+			racks.set(key, rack);
+		}
+
+		return [...racks.values()].map(rack => {
+			const { island, seat } = rack;
+			const spot = (island && { x: island.x + island.w + 0.3, y: island.y - 0.15 }) ||
+				(seat.housing && { x: seat.x - 0.65, y: seat.y + 0.05 }) || { x: seat.x - 1.1, y: seat.y - 0.15 };
+
+			return { y: spot.y, draw: () => this.drawRack(ctx, this.art(spot), rack) };
+		});
+	}
+
+	drawRack(ctx, at, { processes, services, worker }) {
 		const count = Math.max(1, Math.min(RACK_SLEDS, processes.length));
 		const tall = count * 3 + 2;
 

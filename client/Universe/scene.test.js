@@ -1826,3 +1826,24 @@ test('someone coming aboard waits at the airlock till they are down its shuttle 
 	expect(walkerNamed(made, 'Sam')).toBeUndefined();
 	expect(made.shuttles).toEqual([]);
 });
+
+test("a project's sessions share one rack for what they run beside Claude, at its island's end, rather than one behind each grey", () => {
+	const running = [{ pid: 1, cpuSeconds: 3 }];
+	const made = shipWith([
+		answer(
+			'here',
+			[
+				session({ processes: running }),
+				session({ id: 'b', processes: running }),
+				session({ id: 'c', project: 'site', services: [{ port: 3000 }] }),
+				session({ id: 'd', project: 'site' }),
+			],
+			{ projects: ['paude', 'site'] },
+		),
+	]);
+	const racks = made.rackParts(null);
+	const island = made.bridge.islands.find(({ name }) => name === 'paude');
+
+	expect(racks).toHaveLength(2);
+	expect(racks.some(({ y }) => Math.abs(y - (island.y - 0.15)) < 1e-9)).toBe(true);
+});
