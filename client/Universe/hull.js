@@ -763,6 +763,7 @@ export const drawHull = (
 					time,
 					seed: section.seed,
 					history: section.history,
+					own: section.own,
 				});
 	}
 

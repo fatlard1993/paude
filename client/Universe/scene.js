@@ -2,7 +2,7 @@ import { facilitiesFor, facilityOf } from '../../shared/facilities';
 import { cksum } from '../../shared/hues';
 import { PALETTE, drawSprite, spriteSize } from './art';
 import { drawLighting, lightOf } from './lighting';
-import { FORMS, drawHousing } from './machine';
+import { FORMS, drawCore, drawHousing } from './machine';
 import { pixelText, textWidth } from './retro';
 import {
 	TANK_COLORS,
@@ -2051,6 +2051,7 @@ export default class Ship {
 				...this.deliveryParts(ctx),
 			);
 		standing.push(...this.crewParts(ctx));
+		standing.push(...this.coreLineParts(ctx));
 		standing.push(...this.rackParts(ctx));
 		for (const bay of this.bays) {
 			// Drawn where it's shown, gliding along its deck to where the layout puts it
@@ -2505,6 +2506,7 @@ export default class Ship {
 				// What its machine is made of, for the machinery it shows outside
 				folders: character.folders,
 				form: FORMS[cksum(`form|${room.name}`) % FORMS.length],
+				own: Boolean(bay?.own),
 				history: character,
 				seed: seeded(room.name),
 			};
@@ -2573,7 +2575,7 @@ export default class Ship {
 				draw: () => {
 					if (deck === 0)
 						this.labels.push({
-							text: bay.name,
+							text: own ? `${bay.name} core` : bay.name,
 							at: this.art({ x: housing.middle, y: part.y + 0.3 }),
 							color: bay.hue === null ? PALETTE.w : `hsl(${bay.hue} 60% 74%)`,
 							align: 'center',
@@ -2581,7 +2583,8 @@ export default class Ship {
 							lift: 4,
 							width: housing.w * UNIT.x + 8,
 						});
-					bay.built[deck] = drawHousing(ctx, point => this.art(point), housing, {
+					// The ship's own works its core, unlike any project's machine
+					bay.built[deck] = (own ? drawCore : drawHousing)(ctx, point => this.art(point), housing, {
 						top: this.art({ x: 0, y: part.y + 0.3 }).y,
 						form,
 						hue: bay.hue,
@@ -2600,12 +2603,6 @@ export default class Ship {
 						pressure,
 						fed: this.fed?.get(bay.name) ?? [],
 					});
-					// The ship's own works: a hologram of the ship itself over its machine, a scan sweeping it while it's worked on
-					if (deck === 0 && own)
-						this.drawShipHologram(ctx, this.art({ x: housing.middle, y: part.y + 0.3 }), {
-							hue: bay.hue,
-							working: state === 'working',
-						});
 					// On more than one engine, a light in each one's color by its name
 					if (deck === 0 && bay.engines.length > 1) {
 						const top = this.art({ x: housing.middle, y: part.y + 0.3 });
@@ -2622,57 +2619,50 @@ export default class Ship {
 		];
 	}
 
-	// A hologram of this very ship, `at` the middle of the ceiling over the machine of the project it's built from: its
-	// hull's outline in the project's color, as long against its height as the ship is, flickering, scanlined, a beam
-	// up to it from the machine; a scan sweeping it while the project is worked on, the ship being rewritten in flight
-	drawShipHologram(ctx, at, { hue, working }) {
-		const { building } = this.layout;
+	// The ship's core wired into the rest of it: from its machine to the hall it opens on, and along the hall's far wall
+	// aft to the engines and forward to the bridge, a pair of lines lit in its color, pulses running out along them from
+	// it while it's worked on
+	coreLineParts(ctx) {
+		const bay = this.bays.find(({ own }) => own);
+		const part = bay?.parts?.[0];
+		const hall = part && this.layout.halls.find(({ lane }) => lane === part.lane);
+		const { engineering } = this.layout;
 
-		if (!building) return;
+		if (!hall || !engineering || !this.bridge) return [];
 
-		const w = 30;
-		const h = Math.max(
-			7,
-			Math.min(11, Math.round((w * (building.bottom - building.top)) / (building.right - building.left)) + 3),
-		);
-		const left = at.x - Math.round(w / 2);
-		const top = at.y + 5;
-		const middle = (h - 1) / 2;
-		const nose = Math.ceil(h / 2) + 1;
-		const color = `hsl(${hue ?? 200} 90% 72%)`;
-		const flicker = Math.sin(this.time * 23) * Math.sin(this.time * 7) > 0.85 ? 0.5 : 1;
-		const glow = alpha => (ctx.globalAlpha = alpha * flicker);
+		const sessions = bay.sessions.map(key => this.workers.get(key)?.session).filter(Boolean);
+		const working = sessions.some(({ status }) => status === 'working');
+		const lit = sessions.length > 0;
+		const color = (light, alpha = 1) => `hsla(${bay.hue ?? 200} 85% ${light}% / ${lit ? alpha : alpha * 0.35})`;
 
-		// Its beam up from the machine
-		glow(0.1);
-		for (let row = 0; row < 7; row++) rect(ctx, at.x - 1 - row, top + h + row, 3 + row * 2, 1, color);
-		for (let row = 0; row < h; row++) {
-			// Its hull, a pointed nose forward and filled faintly, outlined bright, every other row dimmer as scanlines
-			const reach = w - nose + Math.round((nose - 1) * (1 - Math.abs(row - middle) / (middle + 0.5)));
-			const dim = row % 2 ? 0.7 : 1;
+		return [
+			{
+				y: hall.y + 0.002,
+				draw: () => {
+					const run = this.art({ x: 0, y: hall.y + (hall.face ?? FACE) }).y - 3;
+					const [aft, fore] = [
+						this.art({ x: engineering.x + engineering.w, y: 0 }).x,
+						this.art({ x: this.bridge.x, y: 0 }).x,
+					];
+					const core = this.art({ x: part.x + part.w / 2, y: 0 }).x;
+					const above = part.y < hall.y;
+					const edge = this.art({ x: 0, y: above ? part.y + part.d : part.y }).y;
 
-			glow(0.18 * dim);
-			rect(ctx, left + 1, top + row, reach - 1, 1, color);
-			glow(0.75 * dim);
-			rect(ctx, left, top + row, 1, 1, color);
-			rect(ctx, left + reach, top + row, 1, 1, color);
-			if (row === 0 || row === h - 1) rect(ctx, left, top + row, reach, 1, color);
-		}
-		// Its fins swept back off its back and belly, and its engine's glow aft
-		glow(0.75);
-		for (let step = 0; step < 3; step++) {
-			rect(ctx, left + 2 + step, top - 1 - step, 3, 1, color);
-			rect(ctx, left + 2 + step, top + h + step, 3, 1, color);
-		}
-		glow(0.6 + 0.3 * Math.sin(this.time * 9));
-		rect(ctx, left - 3, top + Math.round(middle) - 1, 3, 2, color);
-		if (working) {
-			const sweep = left + 1 + (Math.floor(this.time * 18) % (w - 2));
-
-			glow(0.9);
-			rect(ctx, sweep, top + 1, 1, h - 2, PALETTE.W);
-		}
-		ctx.globalAlpha = 1;
+					// Its riser from the machine to the hall, then along it both ways
+					rect(ctx, core - 2, Math.min(edge, run), 5, Math.abs(run - edge) + 2, PALETTE.k);
+					for (const offset of [-1, 1])
+						rect(ctx, core + offset, Math.min(edge, run), 1, Math.abs(run - edge) + 2, color(60));
+					rect(ctx, aft, run - 1, fore - aft, 4, PALETTE.k);
+					rect(ctx, aft, run, fore - aft, 1, color(60));
+					rect(ctx, aft, run + 2, fore - aft, 1, color(45, 0.8));
+					if (!working) return;
+					for (let along = Math.floor(this.time * 40) % 12; along < Math.max(core - aft, fore - core); along += 12) {
+						if (core - along > aft) rect(ctx, core - along - 1, run, 3, 1, '#ffffff');
+						if (core + along < fore) rect(ctx, core + along - 1, run + 2, 3, 1, '#ffffff');
+					}
+				},
+			},
+		];
 	}
 
 	// A grey at its terminal on the bridge, so wired into its project's machine

@@ -165,6 +165,98 @@ const window = (ctx, { x, y, w, h }, { form, hue, state, time, seed }) => {
 	}
 };
 
+// The ship's core: the machine of the project the paude flying it runs from, unlike any other project's. A column of
+// light in a heavy containment frame from deck to ceiling, rings turning round it (fast while it's worked on, slow
+// while its sessions wait, still and dark while nobody's at it), sparks leaping to it at work, its frame's pylons
+// carrying the sockets its greys plug into as any machine's do. Answers as drawHousing does.
+const CORE_RINGS = 3;
+
+export const drawCore = (
+	ctx,
+	art,
+	housing,
+	{ top: ceiling, hue, state, asking, time, sockets = { left: [], right: [] } },
+) => {
+	const from = art({ x: housing.x, y: 0 }).x;
+	const to = art({ x: housing.x + housing.w, y: 0 }).x;
+	const floor = art({ x: 0, y: housing.floor }).y;
+	const middle = Math.round((from + to) / 2);
+	const color = hue ?? 200;
+	const lit = state !== 'idle';
+	const speed = (state === 'working' && 5) || (state === 'ready' && 1.2) || 0;
+	const bright = (light, alpha = 1) => `hsla(${color} 90% ${light}% / ${lit ? alpha : alpha * 0.3})`;
+	const top = ceiling + 2;
+
+	// Its frame: a heavy pylon each side, deck to ceiling, hazard-banded at foot and head, lit up its inner edge
+	for (const x of [from, to - PYLON]) {
+		rect(ctx, x, top, PYLON, floor - top, PALETTE.k);
+		rect(ctx, x + 1, top + 1, PYLON - 2, floor - top - 2, '#2c3547');
+		rect(ctx, x === from ? x + PYLON - 2 : x + 1, top + 4, 1, floor - top - 8, bright(62, 0.9));
+		for (const band of [top + 1, floor - 5])
+			for (let step = 0; step < PYLON - 2; step++)
+				rect(ctx, x + 1 + step, band, 1, 3, step % 2 ? PALETTE.y : PALETTE.k);
+	}
+	// Its mounts: a cap bolted to the ceiling and a plinth on the deck, each spanning the frame
+	rect(ctx, from, top, to - from, 4, PALETTE.k);
+	rect(ctx, from + 1, top + 1, to - from - 2, 2, '#4a5878');
+	rect(ctx, from, floor - 5, to - from, 5, PALETTE.k);
+	rect(ctx, from + 1, floor - 4, to - from - 2, 3, '#2c3547');
+	for (let vent = from + 3; vent < to - 3; vent += 3)
+		rect(ctx, vent, floor - 3, 2, 1, lit ? bright(55, 0.8) : '#141a26');
+
+	// Its column: glass round a core of light, brightest at its heart, light running up it while it works
+	const column = { left: middle - 5, top: top + 4, w: 11, h: floor - 5 - (top + 4) };
+
+	rect(ctx, column.left, column.top, column.w, column.h, '#0b1018');
+	rect(ctx, column.left + 2, column.top, column.w - 4, column.h, bright(30, 0.9));
+	rect(ctx, column.left + 3, column.top, column.w - 6, column.h, bright(55));
+	rect(ctx, middle - 1, column.top, 3, column.h, bright(82));
+	rect(ctx, middle, column.top, 1, column.h, lit ? '#f4fbff' : bright(70));
+	rect(ctx, column.left, column.top, 1, column.h, 'rgba(220, 240, 255, 0.25)');
+	if (state === 'working')
+		for (let rise = column.top + column.h - 1 - (Math.floor(time * 30) % 7); rise > column.top; rise -= 7)
+			rect(ctx, column.left + 3, rise, column.w - 6, 1, '#ffffff');
+
+	// Its rings, turning round it: a band across it, the near half bright and the far half dim, a node riding round
+	for (let ring = 0; ring < CORE_RINGS; ring++) {
+		const y = Math.round(column.top + ((ring + 1) * column.h) / (CORE_RINGS + 1));
+		const reach = Math.round((to - from) / 2 - PYLON - 1);
+		const turn = time * speed * (ring % 2 ? -1 : 1) + ring * 2.1;
+		const node = Math.round(middle + Math.cos(turn) * reach);
+		const near = Math.sin(turn) > 0;
+
+		rect(ctx, middle - reach, y - 1, reach * 2 + 1, 1, '#1c2330');
+		rect(ctx, middle - reach, y, reach * 2 + 1, 1, '#4a5878');
+		rect(ctx, middle - reach, y + 1, reach * 2 + 1, 1, '#2c3547');
+		if (near || !lit) rect(ctx, node - 1, y - 1, 3, 3, lit ? bright(78) : '#3a4762');
+		else rect(ctx, node, y, 1, 1, bright(60, 0.6));
+	}
+	// Sparks leaping to it while it's at work
+	if (state === 'working' && Math.floor(time * 9) % 3 === 0) {
+		const side = Math.floor(time * 5) % 2 ? 1 : -1;
+		const y = column.top + Math.floor((time * 37) % column.h);
+
+		for (let step = 0; step < 4; step++) rect(ctx, middle + side * (6 + step), y + (step % 2), 1, 1, '#ffffff');
+	}
+	if (asking) rect(ctx, from + 1, top + 1, to - from - 2, 2, Math.floor(time * 3) % 2 ? PALETTE.y : PALETTE.Y);
+
+	// Its sockets, on its pylons as any machine's
+	const socketAt = (side, index) => ({ x: side < 0 ? from - 1 : to, y: top + 16 + index * 11 });
+
+	for (const [side, taken] of [
+		[-1, sockets.left],
+		[1, sockets.right],
+	])
+		taken.forEach((on, index) => {
+			const { x, y } = socketAt(side, index);
+
+			rect(ctx, x - (side < 0 ? 1 : 0), y - 1, 2, 3, PALETTE.k);
+			rect(ctx, x, y, 1, 1, on ? bright(70) : PALETTE.d);
+		});
+
+	return { from, to, top, floor, socket: socketAt };
+};
+
 // The machinery a project's machine shows outside the hull, grown from what its modules are: one structure for each,
 // as wide as its share and standing as far out as its module stands tall, its form from its language (a tower with a
 // glowing cap for a core, a bank of radiator fins for coils, a truss mast for a lattice, a fan in its ring for a
@@ -281,9 +373,52 @@ const drawStructure = (ctx, { x, w, h, form, accent, glow, tip, lit, time, seed,
 	}
 };
 
+// The ship's command spire, over its core: the tallest thing on its hull, tiered in its plating, a band of light in
+// its core's color that runs while it's worked on, a dish atop it turning, and a beacon at its tip
+const SPIRE_TALL = 34;
+
+const drawSpire = (ctx, { left, right, row, plating, hue, state, asking, time }) => {
+	const middle = Math.round((left + right) / 2);
+	const lit = state !== 'idle';
+	const light = (l, alpha = 1) => `hsla(${hue ?? 200} 90% ${l}% / ${lit ? alpha : alpha * 0.35})`;
+	const { outline, plate, lit: edge, dark } = plating;
+	// Tiers narrowing as it rises: [half width, from, rows]
+	const tiers = [
+		[Math.round((right - left) / 2) - 2, 0, 6],
+		[9, 6, 8],
+		[6, 14, 10],
+		[3, 24, 6],
+	];
+
+	for (const [half, from, rows] of tiers) {
+		row(middle - half, from, half * 2 + 1, rows, outline);
+		row(middle - half + 1, from, half * 2 - 1, rows, plate);
+		row(middle - half + 1, from, 1, rows, edge);
+		row(middle + half - 1, from, 1, rows, dark);
+	}
+	// Its band of light round its middle tier, running while it's worked on
+	row(middle - 8, 9, 17, 2, light(58));
+	if (state === 'working') row(middle - 8 + (Math.floor(time * 14) % 17), 9, 2, 2, '#ffffff');
+	for (let port = middle - 4; port <= middle + 4; port += 4) row(port, 18, 1, 2, light(70, 0.9));
+	// Its mast, dish and beacon
+	row(middle, 30, 1, SPIRE_TALL - 30, edge);
+	const tilt = Math.round(Math.sin(time * (state === 'working' ? 1.5 : 0.4)) * 3);
+
+	row(middle - 4 + tilt, 30, 9, 1, edge);
+	row(middle - 3 + tilt, 31, 7, 1, plate);
+	row(
+		middle - 1,
+		SPIRE_TALL,
+		3,
+		2,
+		(asking && (Math.floor(time * 3) % 2 ? PALETTE.y : PALETTE.Y)) ||
+			(Math.floor(time * 1.5) % 2 ? light(70) : '#5a1a16'),
+	);
+};
+
 export const drawExterior = (
 	ctx,
-	{ left, right, base, out, folders = [], fallback = 'core', hue, state, asking, time, seed = 0, history },
+	{ left, right, base, out, folders = [], fallback = 'core', hue, state, asking, time, seed = 0, history, own = false },
 ) => {
 	const glow = glowOf(hue, state, time);
 	const trim = hue === null || hue === undefined ? PALETTE.l : `hsl(${hue} 45% 52%)`;
@@ -310,6 +445,7 @@ export const drawExterior = (
 	}
 	for (let seam = left + 8; seam < right - 2; seam += 20) skin(seam, 0, 1, FAIRING, plating.seam);
 	for (let rivet = left + 2; rivet < right - 2; rivet += 6) skin(rivet, 1, 1, 1, plating.rivet);
+	if (own) return drawSpire(ctx, { left, right, row, plating, hue, state, asking, time });
 
 	modulesOf(folders, right - left, fallback).forEach(({ w, scale, form, language }, index) => {
 		const width = w - (index ? 1 : 0);
