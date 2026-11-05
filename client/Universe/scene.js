@@ -345,6 +345,8 @@ const flowOf = rate => Math.min(1, Math.log10(1 + rate) / 5);
 // burned this window, how fast, and its size as measured when a limit last stopped one of them (each engine measures
 // only its own burn, so the largest is the closest); empty while any is limited
 const EMPTY_TANK = { burned: 0, rate: 0, capacity: null, capacityAgo: null };
+// What's left of a limit, 0 to 1; one not told of has all of it left
+const leftOf = limit => Math.max(0, Math.min(1, 1 - (limit?.percent ?? 0) / 100));
 
 export const tanksOf = engines => {
 	const tanks = new Map();
@@ -372,15 +374,27 @@ export const tanksOf = engines => {
 		tank.rate += engine.fuel.rate ?? 0;
 		if ((engine.fuel.capacity ?? 0) > (tank.capacity ?? 0))
 			Object.assign(tank, { capacity: engine.fuel.capacity, capacityAgo: engine.fuel.capacityAgo });
+		// The account's own limits, as the machine that asked them latest heard
+		if (engine.fuel.usage && (!tank.usage || engine.fuel.usage.ago < tank.usage.ago)) tank.usage = engine.fuel.usage;
 		tanks.set(key, tank);
 	}
 
-	return [...tanks.values()].map(tank => ({
-		...tank,
-		empty: tank.engines.some(({ limit }) => limit),
-		level: tank.capacity ? Math.max(0, Math.min(1, 1 - tank.burned / tank.capacity)) : null,
-		flow: flowOf(tank.rate),
-	}));
+	return [...tanks.values()].map(tank => {
+		// What's left of each limit, 0 to 1; the tank as full as the one nearest running out
+		const gauges = tank.usage && {
+			session: leftOf(tank.usage.session),
+			week: leftOf(tank.usage.week),
+		};
+		const estimate = tank.capacity ? Math.max(0, Math.min(1, 1 - tank.burned / tank.capacity)) : null;
+
+		return {
+			...tank,
+			empty: tank.engines.some(({ limit }) => limit),
+			gauges,
+			level: gauges ? Math.min(gauges.session, gauges.week) : estimate,
+			flow: flowOf(tank.rate),
+		};
+	});
 };
 
 // Hazard tape from `from` to `to` (art pixels), painted once for its size and where its stripes fall

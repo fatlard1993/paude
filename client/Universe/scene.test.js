@@ -1728,3 +1728,24 @@ test('a coffee given to a grey comes down the tube to its desk, and taken away g
 	run(made, 2);
 	expect(made.serving(worker)).toBeNull();
 });
+
+test("a tank with the account's limits known gauges what's left of each, and is as full as the one nearest running out", () => {
+	const usage = ago => ({
+		session: { percent: 60, resetsAt: 'soon' },
+		week: { percent: 28, resetsAt: 'later' },
+		models: [],
+		ago,
+	});
+	const [tank] = tanksOf([
+		{ key: 'here', fuel: { account: 'a', burned: 10, rate: 1, usage: usage(5000) } },
+		{ key: 'vps', fuel: { account: 'a', burned: 5, rate: 0, usage: { ...usage(100), week: { percent: 30 } } } },
+	]);
+
+	expect(tank.gauges.session).toBeCloseTo(0.4);
+	expect(tank.gauges.week).toBeCloseTo(0.7);
+	expect(tank.level).toBeCloseTo(0.4);
+	expect(tanksOf([{ key: 'here', fuel: { account: 'a', burned: 10, rate: 1 } }])[0]).toMatchObject({
+		gauges: undefined,
+		level: null,
+	});
+});

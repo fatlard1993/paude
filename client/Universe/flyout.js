@@ -47,6 +47,18 @@ const clock = time => new Date(time).toLocaleTimeString([], { hour: 'numeric', m
 
 export const limitWords = resetAt => (resetAt ? `resets at ${clock(resetAt)}` : "Claude didn't say when it resets");
 
+// How much of a limit is used and when it resets: the time today, else the day and time
+const usedWords = ({ percent, resetsAt }) => {
+	if (!resetsAt) return `${Math.round(percent)}% used`;
+
+	// To the minute: a reset a moment before the hour is told as the hour
+	const at = new Date(Math.round(new Date(resetsAt).getTime() / 60_000) * 60_000);
+	const today = at.toDateString() === new Date().toDateString();
+	const when = today ? clock(at) : at.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+
+	return `${Math.round(percent)}% used, resets ${when}`;
+};
+
 const lasted = age => {
 	const minutes = Math.round(age / 60_000);
 
@@ -284,6 +296,25 @@ const FLYOUTS = {
 					['account', 'not said: older paudes; update them there to see which account each runs on'],
 				],
 				hint: "One tank for every machine that doesn't say which account it runs on",
+			};
+
+		if (tank.usage)
+			return {
+				title: tank.plan ? `Fuel: ${tank.plan}` : 'Fuel',
+				rows: [
+					['feeds', tank.engines.map(({ name }) => name).join(', ')],
+					[
+						'5 hours',
+						tank.usage.session.resetsAt
+							? usedWords(tank.usage.session)
+							: 'none used: the window opens with the next prompt',
+					],
+					tank.usage.week && ['week', usedWords(tank.usage.week)],
+					...tank.usage.models.map(model => [`${model.name} week`, usedWords(model)]),
+					tank.empty && ['now', 'a usage limit is in force'],
+					['burning', `${tokenCount(tank.rate)} a minute`],
+				],
+				hint: `The account's limits, as /usage shows them, ${lasted(tank.usage.ago)} ago`,
 			};
 
 		return {

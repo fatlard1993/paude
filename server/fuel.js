@@ -5,6 +5,7 @@ import path from 'path';
 import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
 import { burnOf } from './cacheMeter';
+import { usageOf } from './usage';
 
 // The fuel this machine's Claude runs on: the Claude account it's logged into, which every machine logged into it
 // draws from, and what its sessions have burned of it. The tank's size isn't told, so it's measured: what had been
@@ -57,7 +58,8 @@ export const noteEmpty = async (now = Date.now()) => {
 	if (file) await writeJsonFile(file, () => tanks);
 };
 
-// { account, plan, burned, rate, capacity, capacityAgo }: capacity only once a limit has measured it
+// { account, plan, burned, rate, capacity, capacityAgo, usage }: capacity only once a limit has measured it; usage as
+// the account's own limits say, when they can be asked
 export const fuelOf = async (now = Date.now()) => {
 	const known = await accountOf(now);
 	const tank = known && tanks[known.id];
@@ -68,5 +70,6 @@ export const fuelOf = async (now = Date.now()) => {
 		...burnOf(now),
 		capacity: tank?.capacity ?? null,
 		capacityAgo: tank ? now - tank.at : null,
+		usage: await usageOf(now),
 	};
 };

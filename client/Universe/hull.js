@@ -510,7 +510,10 @@ const TANK_PITCH = 64;
 // A fuel tank on the hull, `at` where it meets it: fuel running down its line as fast as it's burned (`flow`, 0 to
 // 1), its sight glass filled to `level` (0 to 1), striped where that's not known, flashing red once empty
 
-const drawTank = (ctx, at, { level, flow, empty, color = FUEL }, { time, below }) => {
+// The color of what's left of a limit: the tank's own while there's plenty, amber getting low, red nearly out
+const leftColor = (left, color) => (left < 0.2 && PALETTE.r) || (left < 0.5 && PALETTE.y) || color;
+
+const drawTank = (ctx, at, { level, gauges, flow, empty, color = FUEL }, { time, below }) => {
 	const cradle = 4;
 	const tall = 12;
 	const half = 28;
@@ -558,18 +561,29 @@ const drawTank = (ctx, at, { level, flow, empty, color = FUEL }, { time, below }
 		rect(ctx, at.x + band, top, 2, tall, '#1b2130');
 		rect(ctx, at.x + band, top + 1, 1, 1, '#b5bfd2');
 	}
-	const glass = { x: at.x - 13, y: top + 4, w: 27, h: 4 };
+	// Its gauge: with the account's limits known, what's left of the five hours over what's left of the week, each with
+	// its quarters marked; else one bar, the estimate, or dim while nothing's known
+	const glass = { x: at.x - 13, y: top + 3, w: 27, h: 6 };
+	const bar = (y, h, left) => rect(ctx, glass.x, y, Math.round(glass.w * left), h, leftColor(left, color));
 
 	rect(ctx, glass.x - 1, glass.y - 1, glass.w + 2, glass.h + 2, PALETTE.k);
 	rect(ctx, glass.x, glass.y, glass.w, glass.h, '#0b0e13');
 	if (empty) rect(ctx, glass.x, glass.y, glass.w, glass.h, Math.floor(time * 3) % 2 ? PALETTE.r : '#0b0e13');
-	else if (level === null) {
+	else if (gauges) {
+		bar(glass.y, 2, gauges.session);
+		rect(ctx, glass.x, glass.y + 2, glass.w, 1, PALETTE.k);
+		bar(glass.y + 3, 3, gauges.week);
+		for (let quarter = 1; quarter < 4; quarter++)
+			rect(ctx, glass.x + Math.round((glass.w * quarter) / 4), glass.y, 1, glass.h, 'rgba(0, 0, 0, 0.5)');
+	} else if (level === null) {
+		ctx.globalAlpha = 0.3;
 		rect(ctx, glass.x, glass.y, glass.w, glass.h, color);
-		for (let x = 2; x < glass.w; x += 5) rect(ctx, glass.x + x, glass.y, 1, glass.h, 'rgba(0, 0, 0, 0.45)');
-	} else rect(ctx, glass.x, glass.y, Math.round(glass.w * level), glass.h, level < 0.15 ? PALETTE.r : color);
+		ctx.globalAlpha = 1;
+	} else bar(glass.y, glass.h, level);
 	rect(ctx, glass.x, glass.y, glass.w, 1, 'rgba(255, 255, 255, 0.25)');
+	// Its end caps lit as what's left of the limit nearest running out
 	for (const end of [-half + 3, half - 4]) {
-		rect(ctx, at.x + end, top + 2, 2, tall - 4, color);
+		rect(ctx, at.x + end, top + 2, 2, tall - 4, level === null ? PALETTE.d : leftColor(level, color));
 		rect(ctx, at.x + end, top + 2, 2, 1, 'rgba(255, 255, 255, 0.35)');
 	}
 };
