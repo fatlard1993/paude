@@ -1,6 +1,10 @@
-import { expect, test } from 'bun:test';
+import { afterAll, beforeAll, expect, setSystemTime, test } from 'bun:test';
 
 import { browserRows } from './sessionRows';
+
+// Midday, so hours ago lands on the day these expect whatever the clock says when they run
+beforeAll(() => setSystemTime(new Date(2026, 5, 15, 12)));
+afterAll(() => setSystemTime());
 
 const server = { label: 'This machine' };
 const hoursAgo = hours => Date.now() - hours * 60 * 60 * 1000;
