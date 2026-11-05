@@ -6,11 +6,9 @@ import '@xterm/xterm/css/xterm.css';
 
 import {
 	deleteSession,
-	forkSession,
 	getGit,
 	getSession,
 	getLinks,
-	getTurns,
 	logout,
 	markLink,
 	nameSession,
@@ -25,13 +23,14 @@ import {
 	setWatching,
 	findToOpen,
 } from '../api';
-import confirmDialog, { confirmDeleteSession, nameDialog } from '../confirmDialog';
+import { confirmDeleteSession, nameDialog } from '../confirmDialog';
 import { canBrowse, canNote, canType, identity } from '../identity';
-import DONE_MARKER from '../../shared/doneMarker';
 import { tintsOf } from '../../shared/hues';
 import tokens from '../../shared/tokenCount';
 import withoutPointerReporting from '../../shared/pointerReporting';
 import { claudePointer, wheelToClaude } from './claudePointer';
+import claudeKeys from './claudeKeys';
+import { besideSelection, clickToClaude, forkButtons, forkFromMarker, touchToClaude } from './claudeTerminal';
 import { NOTE_TYPES } from '../../shared/protocol';
 import { showNotification } from '../notify';
 import { recall, remember } from '../storage';
@@ -43,11 +42,11 @@ import { ghostButton } from '../Bar';
 import { LIFETIMES, WARM_LIFETIMES, clockTime } from '../../shared/lifetimes';
 import { updateTabTitle } from '../tabTitle';
 import { acceptFiles } from './fileDrop';
-import { bufferCells, linkFilePaths, linkUrls } from './linkProviders';
+import { linkFilePaths, linkUrls } from './linkProviders';
 import attach from './attach';
 import { startCatchUp, trackLastSeen } from './catchUp';
 import KeyBar from './KeyBar';
-import { copySelection, isCopyKey } from './copySelection';
+import { copySelection } from './copySelection';
 import selectLinesByTap from './lineSelect';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from './xtermOptions';
 import FilesPanel from './FilesPanel';
@@ -71,21 +70,10 @@ const isAskToOpenKey = event =>
 const SCREEN_ROWS = 60;
 // The page's own, for xterm, which takes a color string
 const BACKGROUND = theme.colors.black.toHexString();
-// How far a finger can wander and still be tapping rather than scrolling
-const TAP_SLOP = 8;
 // How far above and below a row to look for the rest of a URL Claude broke across rows
 // How long after finding no pull request to look again, in ms
 const PULL_REQUEST_RECHECK = 60_000;
 // Room kept for the new-session button after a done line, in cells
-// Between the selection and its buttons, and the buttons and the edges
-const GAP = 6;
-// Command with these does what a Mac terminal makes it do: clears the line back to its start, or goes to either end.
-// Option with these deletes a word or jumps one, sent here rather than left to the browser, which may take them for
-// its own editing.
-const MAC_LINE_KEYS = { Backspace: '\x15', ArrowLeft: '\x01', ArrowRight: '\x05' };
-const MAC_WORD_KEYS = { Backspace: '\x1b\x7f', ArrowLeft: '\x1bb', ArrowRight: '\x1bf' };
-// xterm sends Shift+Enter as a bare Enter, which submits; Claude Code takes Escape then Enter as a new line
-const NEWLINE = '\x1b\r';
 
 const Screen = styled.Component`
 	flex: 1;
@@ -597,42 +585,37 @@ export default class TerminalView extends View {
 		this.terminal.open(this.screen.elem);
 		this.useGpuRenderer();
 		redrawWhenSymbolsLoad(this.terminal);
-		if (identity()?.owner) this.markDoneLines();
+		if (identity()?.owner)
+			forkButtons({
+				terminal: this.terminal,
+				screen: this.screen.elem,
+				onFork: line =>
+					forkFromMarker({
+						terminal: this.terminal,
+						sessionId: this.options.id,
+						line,
+						go: id => (window.location.hash = `#/sessions/${id}`),
+					}),
+			});
 		this.linkUrls();
 		if (canType()) acceptFiles(this.screen.elem, this.options.id, text => this.attachToPrompt(text));
 		if (canBrowse()) this.linkFilePaths();
 		this.terminal.onData(data => this.sendInput(data));
 		this.scrollClaudeWithWheel();
-		this.terminal.onSelectionChange(() => this.placeSelectionActions());
+		this.terminal.onSelectionChange(() => besideSelection(this.terminal, this.selectionActions.elem));
 		// Output scrolls the selection, and the buttons with it, except from under a pointer reaching for them
 		this.terminal.onScroll(() => {
-			if (!this.selectionActions.elem.matches(':hover')) this.placeSelectionActions();
+			if (!this.selectionActions.elem.matches(':hover')) besideSelection(this.terminal, this.selectionActions.elem);
 		});
-		this.terminal.attachCustomKeyEventHandler(event => {
-			const lineKey =
-				(event.metaKey && !event.ctrlKey && !event.altKey && MAC_LINE_KEYS[event.key]) ||
-				(event.altKey && !event.ctrlKey && !event.metaKey && MAC_WORD_KEYS[event.key]) ||
-				(event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && event.key === 'Enter' && NEWLINE);
-
-			if (lineKey) {
-				event.preventDefault();
-				if (event.type === 'keydown' && canType()) this.sendInput(lineKey);
-
-				return false;
-			}
-
-			// Left to the page, which asks what to open
-			if (canBrowse() && isAskToOpenKey(event)) return false;
-
-			const copy = isCopyKey(event, this.terminal);
-
-			if (copy) {
-				event.preventDefault();
-				copySelection(this.terminal);
-			}
-
-			return !copy;
-		});
+		// Left to the page, which asks what to open
+		this.terminal.attachCustomKeyEventHandler(
+			claudeKeys({
+				terminal: this.terminal,
+				send: data => this.sendInput(data),
+				canType,
+				leave: event => canBrowse() && isAskToOpenKey(event),
+			}),
+		);
 
 		this.connection = attach(this.options.id, {
 			hello: () => ({
@@ -1165,156 +1148,18 @@ export default class TerminalView extends View {
 		this.pointer = claudePointer(this.terminal);
 		this.trackPointerMode = this.pointer.track;
 
-		const { tracking } = this.pointer;
-
 		wheelToClaude(this.terminal, this.pointer, data => this.sendInput(data), { allowed: canType });
 
-		this.scrollClaudeWithTouch(tracking);
-		this.clickClaude(tracking);
-	}
-
-	// xterm would scroll its own empty scrollback under the finger; every two rows dragged is a notch of the wheel
-	// instead, down to see earlier. Taps pass through, so a tap still brings up the keyboard.
-	scrollClaudeWithTouch(tracking) {
-		const screen = this.screen.elem;
-		let start = null;
-		let last = null;
-
-		screen.addEventListener('touchstart', event => {
-			start = last = event.touches.length === 1 ? event.touches[0].clientY : null;
-		});
-		screen.addEventListener(
-			'touchmove',
-			event => {
-				if (last === null || this.endLineSelect) return;
-
-				const touch = event.touches[0];
-
-				if (Math.abs(touch.clientY - start) < TAP_SLOP) return;
-
-				const step = (this.terminal.element.getBoundingClientRect().height / this.terminal.rows) * 2;
-				const notches = Math.trunc((touch.clientY - last) / step);
-
-				event.preventDefault();
-				event.stopPropagation();
-				if (!notches) return;
-
-				last += notches * step;
-				if (!tracking()) {
-					if (this.terminal.buffer.active.type !== 'alternate') this.terminal.scrollLines(-notches * 2);
-				} else if (canType()) this.sendWheel(notches > 0, touch, Math.abs(notches));
-			},
-			{ capture: true, passive: false },
-		);
-		screen.addEventListener('touchend', () => {
-			last = null;
-		});
-	}
-
-	// Wheel notches up or down at a point on the terminal
-	sendWheel(up, point, notches) {
-		this.sendInput(this.pointer.wheel(up, point, notches));
-	}
-
-	// A click or tap that selected nothing goes to Claude, which moves its cursor there; a drag still selects
-	clickClaude(tracking) {
-		this.screen.elem.addEventListener('click', event => {
-			if (
-				event.button !== 0 ||
-				!tracking() ||
-				!canType() ||
-				this.endLineSelect ||
-				this.overLink ||
-				this.terminal.hasSelection()
-			)
-				return;
-
-			this.sendInput(this.pointer.report(0, event) + this.pointer.report(0, event, { release: true }));
-		});
-	}
-
-	// Every "done" line Claude prints after a turn gets a button after it that starts a new session from that point.
-	// Drawn by paude over the rows on screen, redrawn with them: xterm's own decorations hide on the alternate screen,
-	// which Claude draws on.
-	markDoneLines() {
-		let pending = false;
-		const queue = () => {
-			if (pending) return;
-			pending = true;
-			requestAnimationFrame(() => {
-				pending = false;
-				this.placeForkButtons();
-			});
+		const shared = {
+			terminal: this.terminal,
+			screen: this.screen.elem,
+			pointer: this.pointer,
+			send: data => this.sendInput(data),
+			canType,
 		};
 
-		this.forkLayer = element('div', 'fork-layer');
-		this.screen.elem.after(this.forkLayer);
-		this.terminal.onRender(queue);
-		this.terminal.onScroll(queue);
-	}
-
-	placeForkButtons() {
-		const { rows, cols } = this.terminal;
-		const buffer = this.terminal.buffer.active;
-		const screen = this.terminal.element.querySelector('.xterm-screen').getBoundingClientRect();
-		const column = this.forkLayer.parentElement.getBoundingClientRect();
-		const cellWidth = screen.width / cols;
-		const cellHeight = screen.height / rows;
-		const spare = [...this.forkLayer.children];
-		let used = 0;
-
-		for (let row = 0; row < rows; row++) {
-			const { text, columns } = this.bufferCells(buffer.viewportY + row);
-			const found = DONE_MARKER.exec(text);
-
-			if (!found) continue;
-
-			const fork = spare[used++] ?? this.forkButton();
-			// After all of the line, not only its "done" time: Claude goes on after it (· 1 shell still running),
-			// onto more rows when the terminal is narrow
-			let end = row;
-
-			while (buffer.getLine(buffer.viewportY + end + 1)?.isWrapped) end++;
-
-			const last = end === row ? { text, columns } : this.bufferCells(buffer.viewportY + end);
-			let after = last.text ? last.columns[last.text.length - 1] + 1 : 0;
-
-			fork.dataset.line = buffer.viewportY + row;
-			Object.assign(fork.style, { height: `${cellHeight}px`, fontSize: `${cellHeight * 0.65}px` });
-			// Its words when they fit after the line, its icon alone when they'd cover it (a phone's narrow rows)
-			fork.classList.remove('compact');
-			fork.classList.toggle('compact', fork.offsetWidth > (cols - after) * cellWidth);
-
-			// A line that fills its last row leaves no room even for the icon, so the button takes the row below
-			if (fork.offsetWidth > (cols - after) * cellWidth) {
-				const below = this.bufferCells(buffer.viewportY + ++end);
-
-				after = below.text ? below.columns[below.text.length - 1] + 1 : 0;
-			}
-
-			const x = Math.min(after, cols - Math.ceil(fork.offsetWidth / cellWidth));
-
-			Object.assign(fork.style, {
-				left: `${screen.left - column.left + x * cellWidth}px`,
-				top: `${screen.top - column.top + end * cellHeight}px`,
-			});
-		}
-
-		spare.slice(used).forEach(fork => fork.remove());
-	}
-
-	forkButton() {
-		const fork = button('', () => this.forkFromMarker(Number(fork.dataset.line)), {
-			icon: 'code-branch',
-			title: 'Start a new session holding the conversation up to this turn',
-			className: 'fork-here',
-		});
-
-		fork.append(element('span', 'words', 'New session from here'));
-		fork.setAttribute('aria-label', 'New session from here');
-		this.forkLayer.append(fork);
-
-		return fork;
+		touchToClaude({ ...shared, paused: () => Boolean(this.endLineSelect) });
+		clickToClaude({ ...shared, paused: () => Boolean(this.endLineSelect || this.overLink) });
 	}
 
 	// Its URLs and the project's file paths in it pressable: a URL opens in a new tab, a file in the files panel
@@ -1330,73 +1175,6 @@ export default class TerminalView extends View {
 				this.files.open(path, line, lastLine);
 			},
 		});
-	}
-
-	// Beside the selection rather than in a corner, which a panel can cover: above its first row, clear of the text,
-	// or below its last when there's no room above
-	placeSelectionActions() {
-		const actions = this.selectionActions.elem;
-		const position = this.terminal.hasSelection() && this.terminal.getSelectionPosition();
-
-		actions.style.display = position ? '' : 'none';
-		if (!position) return;
-
-		const screen = this.terminal.element.querySelector('.xterm-screen').getBoundingClientRect();
-		const column = actions.parentElement.getBoundingClientRect();
-		const cellWidth = screen.width / this.terminal.cols;
-		const cellHeight = screen.height / this.terminal.rows;
-		const rowTop = row => screen.top - column.top + (row - this.terminal.buffer.active.viewportY) * cellHeight;
-		const clamp = (value, room) => Math.min(Math.max(value, GAP), room - GAP);
-		let top = rowTop(position.start.y) - actions.offsetHeight - GAP;
-
-		if (top < GAP) top = rowTop(position.end.y + 1) + GAP;
-
-		actions.style.top = `${clamp(top, column.height - actions.offsetHeight)}px`;
-		actions.style.left = `${clamp(screen.left - column.left + position.start.x * cellWidth, column.width - actions.offsetWidth)}px`;
-	}
-
-	// A row's text and, for each character of it, the 1-based column it's drawn in (a wide character takes two)
-	bufferCells(index) {
-		return bufferCells(this.terminal, index);
-	}
-
-	bufferLine(index) {
-		return this.terminal.buffer.active.getLine(index)?.translateToString(true) ?? '';
-	}
-
-	// The screen only shows text, so the marker is matched to a turn by position: the nth marker from the bottom
-	// is the nth completed turn from the end, which holds even when older scrollback is gone. The confirmation
-	// shows that turn's prompt, so a mismatch is visible before anything is created.
-	async forkFromMarker(markerLine) {
-		let markersBelow = 0;
-
-		for (let index = markerLine + 1; index < this.terminal.buffer.active.length; index++) {
-			if (DONE_MARKER.test(this.bufferLine(index))) markersBelow += 1;
-		}
-
-		const { body, response } = await getTurns(this.options.id);
-
-		if (!response?.ok) return new Notify({ intent: 'danger', content: "Could not read this session's history." });
-
-		// A turn still in progress has replies but no marker yet
-		const turns = body.busy && body.turns.at(-1)?.last ? body.turns.slice(0, -1) : body.turns;
-		const turn = turns[turns.length - 1 - markersBelow];
-
-		if (!turn) return new Notify({ intent: 'warning', content: 'Could not match that line to a turn in the history.' });
-
-		const confirmed = await confirmDialog({
-			header: 'New session from here?',
-			body: `It will hold this conversation up to and including the turn that began: "${turn.prompt}"`,
-			confirmLabel: 'Start it',
-		});
-
-		if (!confirmed) return;
-
-		const forked = await forkSession(this.options.id, turn.endUuid);
-
-		if (!forked.response?.ok) return new Notify({ intent: 'danger', content: 'Could not start the new session.' });
-
-		window.location.hash = `#/sessions/${forked.body.id}`;
 	}
 
 	showWatching(watching) {

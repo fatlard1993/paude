@@ -45,7 +45,7 @@ export const VERBS = [
 
 // A session's panels docked beside the universe, one showing at a time, each built when first wanted and wired to the
 // others as on the session page; the chat on a connection of its own
-export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose }) => {
+export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose, onForked }) => {
 	const card = element('div', 'dock');
 	const tabs = element('div', 'tabs');
 	const body = element('div', 'body');
@@ -177,6 +177,8 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose 
 				session,
 				openFile: (path, line, lastLine) => card.show('files').open(path, line, lastLine),
 				comment: quote => card.show('notes').startComment(quote),
+				...(verbs.some(({ key }) => key === 'shell') && { toShell: text => card.show('shell').paste(text) }),
+				onForked,
 			}),
 		shares: () => new SharesPanel({ ...common('shares') }),
 		shell: () =>

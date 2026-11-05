@@ -5,7 +5,7 @@ export const FOCUS_WIDTH = 320;
 
 export const Stage = styled(
 	Elem,
-	({ colors, space, radius }) => `
+	({ colors, space, radius, media }) => `
 		position: relative;
 		flex: 1;
 		min-height: 0;
@@ -153,18 +153,81 @@ export const Stage = styled(
 			gap: ${space.xs};
 		}
 
-		/* What can be done with a selection, over the terminal's top corner */
+		/* What can be done with a selection, beside it */
 		.docked-terminal .selected {
 			position: absolute;
 			z-index: 2;
-			top: 4px;
-			right: 4px;
 			display: flex;
 			gap: ${space.xs};
 			padding: 2px;
 			border: 1px solid ${colors.border};
 			border-radius: ${radius.md};
 			background: ${colors.alpha(colors.black, 0.85)};
+		}
+
+		/* As on the session's page: the buttons beside Claude's done lines, the hint while lines are picked, and what
+		   Claude asks as buttons on a touch screen */
+		.docked-terminal .fork-layer {
+			position: absolute;
+			inset: 0;
+			z-index: 1;
+			overflow: hidden;
+			pointer-events: none;
+		}
+
+		.docked-terminal .fork-here {
+			position: absolute;
+			display: flex;
+			align-items: center;
+			gap: ${space.sm};
+			box-sizing: border-box;
+			padding: 0 ${space.sm};
+			border: 1px solid ${colors.alpha(colors.light(colors.blue), 0.6)};
+			border-radius: ${radius.sm};
+			background: ${colors.alpha(colors.blue, 0.25)};
+			color: ${colors.lightest(colors.blue)};
+			font-family: inherit;
+			white-space: nowrap;
+			cursor: pointer;
+			pointer-events: auto;
+		}
+
+		.docked-terminal .fork-here.compact .words {
+			display: none;
+		}
+
+		.docked-terminal .fork-here:hover {
+			background: ${colors.alpha(colors.blue, 0.45)};
+		}
+
+		.docked-terminal .select-hint {
+			position: absolute;
+			left: 50%;
+			top: 28px;
+			transform: translateX(-50%);
+			z-index: 2;
+			padding: ${space.sm} ${space.md};
+			border-radius: ${radius.pill};
+			background: ${colors.alpha(colors.black, 0.75)};
+			color: ${colors.light(colors.orange)};
+			pointer-events: none;
+		}
+
+		.docked-terminal .asking-overlay {
+			position: absolute;
+			left: 8px;
+			right: 8px;
+			bottom: 60px;
+			z-index: 2;
+			max-height: 70%;
+			overflow: auto;
+			display: none;
+		}
+
+		@media ${media.touch}, ${media.phone} {
+			.docked-terminal .asking-overlay.shown {
+				display: flex;
+			}
 		}
 
 		.docked-terminal .about {

@@ -1071,6 +1071,8 @@ export default class Universe extends View {
 				open: key,
 				onOpen: () => this.open(session),
 				onClose: () => this.closeDock(),
+				// Started from one of its past turns: opened here once it's aboard, as a new session is
+				onForked: id => this.dockWhenAboard({ id }),
 			});
 
 			resizable(card);

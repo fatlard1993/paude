@@ -2,11 +2,23 @@ import { Notify } from '@vanilla-bean/components';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 
-import { canBrowse, canNote, canType } from '../identity';
+import { getAsking } from '../api';
+import { AskingCard, showAsking } from '../Asking';
+import { canBrowse, canNote, canType, identity } from '../identity';
 import attach from '../Terminal/attach';
 import { claudePointer, wheelToClaude } from '../Terminal/claudePointer';
+import claudeKeys from '../Terminal/claudeKeys';
+import {
+	besideSelection,
+	clickToClaude,
+	forkButtons,
+	forkFromMarker,
+	touchToClaude,
+} from '../Terminal/claudeTerminal';
 import { acceptFiles } from '../Terminal/fileDrop';
-import { copySelection, isCopyKey } from '../Terminal/copySelection';
+import { copySelection } from '../Terminal/copySelection';
+import KeyBar from '../Terminal/KeyBar';
+import selectLinesByTap from '../Terminal/lineSelect';
 import { linkFilePaths, linkUrls } from '../Terminal/linkProviders';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from '../Terminal/xtermOptions';
 import { button, element } from '../dom';
@@ -18,29 +30,97 @@ const DOCK_LEAST = 620;
 
 // A session's terminal in its dock, at the session's own size so opening it here resizes nothing for anyone, its font
 // as large as lets that size fit (smaller than the least, it scrolls across). Sized by its font, never a CSS transform:
-// a transform blurs the text and puts clicks where they aren't.
+// a transform blurs the text and puts clicks where they aren't. It works as the session's own page's does: the same
+// keys, clicks, wheel and touch, selection, links, and new sessions from a past turn.
 export default class TerminalPanel {
-	// `openFile(path, line, lastLine)` opens a file path Claude names; `comment(quote)` starts a comment on a selection
-	constructor({ appendTo, session, addClass = [], openFile, comment }) {
+	// `openFile(path, line, lastLine)` opens a file path Claude names; `comment(quote)` starts a comment on a selection;
+	// `toShell(text)` puts it on the side shell's command line; `onForked(id)` goes to a session started from a past turn
+	constructor({ appendTo, session, addClass = [], openFile, comment, toShell, onForked }) {
 		this.session = session;
 		this.openFile = openFile;
 		this.comment = comment;
+		this.onForked = onForked;
 		this.elem = element('div', ['docked-terminal', ...addClass].join(' '));
 		this.state = element('div', 'about', 'connecting…');
 		this.screen = element('div', 'screen');
-		// What can be done with what's selected, as on the session's own page
+
+		const here = !session.engine.remote;
+
+		// What can be done with what's selected, as on the session's own page, beside it
 		this.selected = element('div', 'selected');
-		this.selected.hidden = true;
+		this.selected.style.display = 'none';
 		this.selected.append(
 			button('Copy', () => copySelection(this.terminal), { icon: 'copy', className: 'variant-flat' }),
-			...(canNote() && comment && !session.engine.remote
+			...(canType() && toShell && here
+				? [
+						button('Terminal', () => this.toShell(toShell), {
+							icon: 'terminal',
+							className: 'variant-flat',
+							title: "Put it on the terminal's command line",
+						}),
+					]
+				: []),
+			...(canNote() && comment && here
 				? [button('Comment', () => this.commentOnSelection(), { icon: 'comment', className: 'variant-flat' })]
 				: []),
 		);
 		// Pressed without taking the focus, so the selection is still there to act on
+		this.selected.addEventListener('pointerdown', event => event.preventDefault());
 		this.selected.addEventListener('mousedown', event => event.preventDefault());
-		this.elem.append(this.state, this.selected, this.screen);
+		this.hint = element('div', 'select-hint');
+		this.hint.style.display = 'none';
+		// What Claude asks, as buttons over the terminal's foot, on a touch screen where its own dialog is hard to work
+		this.asking = new AskingCard({ addClass: 'asking-overlay' });
+		this.elem.append(this.state, this.selected, this.hint, this.screen, this.asking.elem);
 		appendTo.append(this.elem);
+	}
+
+	toShell(send) {
+		const text = this.terminal?.getSelection().replace(/\s+$/, '');
+
+		if (!text) return;
+		send(text);
+		this.terminal.clearSelection();
+	}
+
+	startLineSelect() {
+		if (this.endLineSelect) return this.endLineSelect();
+
+		this.endLineSelect = selectLinesByTap({
+			terminal: this.terminal,
+			screen: this.screen,
+			hint: text => {
+				this.hint.textContent = text ?? '';
+				this.hint.style.display = text ? '' : 'none';
+			},
+			purpose: 'copy or comment on',
+			onEnd: () => {
+				this.endLineSelect = null;
+			},
+		});
+	}
+
+	// Asked again shortly after Claude starts waiting, as the question may not be written down yet
+	async showAsking(waiting) {
+		const shown = this.asking.elem.classList;
+
+		shown.remove('shown');
+		for (const wait of waiting && !this.session.engine.remote ? [0, 400, 1500] : []) {
+			await new Promise(resolve => setTimeout(resolve, wait));
+			if (!this.waiting) return;
+
+			const { body } = await getAsking(this.session.id);
+
+			if (body?.asking) {
+				showAsking(this.asking, this.session.id, body.asking, {
+					canAnswer: canType(),
+					onAnswered: () => shown.remove('shown'),
+				});
+				shown.add('shown');
+
+				return;
+			}
+		}
 	}
 
 	commentOnSelection() {
@@ -96,7 +176,7 @@ export default class TerminalPanel {
 		const terminal = new Terminal({
 			...xtermOptions,
 			fontSize: FONT.most,
-			scrollback: 1000,
+			scrollback: 5000,
 			disableStdin: !canType(),
 			allowTransparency: true,
 			theme: { ...xtermOptions.theme, background: 'rgba(0, 0, 0, 0)' },
@@ -108,21 +188,34 @@ export default class TerminalPanel {
 		this.terminal = terminal;
 		terminal.open(this.screen);
 		terminal.resize(cols, rows);
-		// Its URLs open in a new tab and the project's files it names in the dock's files; Ctrl+C with something selected
-		// copies it rather than interrupting Claude
-		linkUrls(terminal);
-		if (canBrowse() && this.openFile && !remote) linkFilePaths(terminal, session.id, { open: this.openFile });
-		terminal.attachCustomKeyEventHandler(event => {
-			if (!isCopyKey(event, terminal)) return true;
-			event.preventDefault();
-			copySelection(terminal);
+		const send = data => Boolean(this.connection?.send({ type: 'input', data }));
+		const over = on => (this.overLink = on);
+		const shared = { terminal, screen: this.screen, pointer, send, canType };
 
-			return false;
+		// Its URLs open in a new tab and the project's files it names in the dock's files
+		linkUrls(terminal, { over });
+		if (canBrowse() && this.openFile && !remote) linkFilePaths(terminal, session.id, { over, open: this.openFile });
+		terminal.attachCustomKeyEventHandler(claudeKeys({ terminal, send, canType }));
+		terminal.onSelectionChange(() => besideSelection(terminal, this.selected));
+		// Output scrolls the selection, and the buttons with it, except from under a pointer reaching for them
+		terminal.onScroll(() => {
+			if (!this.selected.matches(':hover')) besideSelection(terminal, this.selected);
 		});
-		terminal.onSelectionChange(() => (this.selected.hidden = !terminal.hasSelection()));
 		redrawWhenSymbolsLoad(terminal);
-		terminal.onData(data => this.connection?.send({ type: 'input', data }));
-		wheelToClaude(terminal, pointer, data => this.connection?.send({ type: 'input', data }), { allowed: canType });
+		terminal.onData(send);
+		wheelToClaude(terminal, pointer, send, { allowed: canType });
+		touchToClaude({ ...shared, paused: () => Boolean(this.endLineSelect) });
+		clickToClaude({ ...shared, paused: () => Boolean(this.endLineSelect || this.overLink) });
+		if (identity()?.owner && !remote && this.onForked)
+			forkButtons({
+				terminal,
+				screen: this.screen,
+				onFork: line => forkFromMarker({ terminal, sessionId: session.id, line, go: this.onForked }),
+			});
+		if (canNote())
+			this.elem.append(
+				new KeyBar({ ...(canType() && { sendKey: send }), selectLines: () => this.startLineSelect() }).elem,
+			);
 		if (canType()) acceptFiles(this.screen, session.id, text => this.paste(text), through);
 		this.connection = attach(session.id, {
 			...(remote && { url: `${window.location.origin}${through}` }),
@@ -151,6 +244,11 @@ export default class TerminalPanel {
 				} else if (message.type === 'size') {
 					terminal.resize(message.cols, message.rows);
 					this.fit();
+				} else if (message.type === 'presence') {
+					if (Boolean(message.waiting) !== Boolean(this.waiting)) {
+						this.waiting = message.waiting;
+						this.showAsking(message.waiting);
+					}
 				} else if (message.type === 'notice') new Notify({ intent: 'warning', content: message.text });
 			},
 			onState: value => {
