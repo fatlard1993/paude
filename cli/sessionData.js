@@ -58,6 +58,14 @@ const sessionData = ({ url, token }, id) => {
 			return { ...openFile(path, await response.text()), outside: true };
 		},
 
+		// A file from this machine, saved where Claude can read it: { path }
+		attachFile: (name, bytes) =>
+			call(`/attachments?name=${encodeURIComponent(name)}`, {
+				method: 'POST',
+				body: bytes,
+				headers: { 'content-type': 'application/octet-stream' },
+			}),
+
 		// An artifact's bytes, to save on this machine
 		artifactBytes: async path => {
 			const response = await artifact(path, '&download=1');

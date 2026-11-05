@@ -9,6 +9,7 @@ import notifier from './notify';
 import outputFilter, { filterText } from './outputFilter';
 import { composeFrame, createMirror } from './compositor';
 import editCommand from './editCommand';
+import { allFiles, droppedPaths, pastedPaths } from './droppedFiles';
 import { createBrowser, openDiffSet } from './fileBrowser';
 import { place, removeImage, transmit } from './graphics';
 import { overlayKey, overlayBox } from './overlay';
@@ -622,18 +623,59 @@ const attachSession = (server, id, { canSwitch = true, role = 'owner', showKeyHi
 			},
 		};
 
+		const typeInput = key => {
+			if (!send({ type: 'input', data: key }) && !warnedOffline) {
+				warnedOffline = true;
+				notify('paude', 'Reconnecting: what you type is lost until it is back');
+			}
+		};
+
+		// Claude on another machine can't read a file dropped onto this terminal, so it's saved on the server, as the web
+		// does, and that path pasted instead
+		const uploadDropped = async (key, paths) => {
+			if (!(await allFiles(paths))) return typeInput(key);
+
+			const attached = [];
+
+			for (const path of paths) {
+				const name = path.split('/').at(-1);
+				const saved = await data.attachFile(name, Bun.file(path));
+
+				if (saved.error) notify('paude', `${name} wasn't attached: ${saved.error}`);
+				else attached.push(saved.path);
+			}
+			if (attached.length) typeInput(pastedPaths(attached));
+		};
+
+		// What's typed while a drop uploads waits for it, so it lands after the drop as it was typed
+		let uploading = null;
+
+		const forward = key => {
+			const paths = droppedPaths(key);
+
+			// On this machine Claude reads a dropped path itself, and attaches an image from it, but not from a file:// URI or
+			// from several paths quoted
+			if (server.local || (!paths && !uploading))
+				return typeInput(paths && (paths.length > 1 || key.includes('file://')) ? pastedPaths(paths) : key);
+
+			const step = (uploading ?? Promise.resolve())
+				.then(() => (paths ? uploadDropped(key, paths) : typeInput(key)))
+				.catch(error => notify('paude', `That drop wasn't attached: ${error.message}`));
+
+			uploading = step;
+			step.finally(() => {
+				if (uploading === step) uploading = null;
+			});
+		};
+
 		const stopInput = rawInput(key => {
 			if (!overlay) {
 				// The key itself, not a paste that happens to contain its byte
 				if (OVERLAY_KEYS.includes(key)) return openOverlay();
 				if (state.shell) return state.shell.input(key);
 				ownInputAt = Date.now();
-				if (!send({ type: 'input', data: key }) && !warnedOffline) {
-					warnedOffline = true;
-					notify('paude', 'Reconnecting: what you type is lost until it is back');
-				}
 
-				return;
+				return forward(key);
 			}
 
 			let action;

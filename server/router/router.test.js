@@ -133,6 +133,19 @@ test('a dropped file is saved outside the project for Claude to read, by whoever
 	expect(path.basename(saved)).toMatch(/^\w+-Screen-Shot\.png$/);
 	expect(saved).not.toContain(path.join('projects', 'app'));
 	expect(await Bun.file(saved).text()).toBe('png bytes');
+
+	// As the terminal sends a file dropped onto it: read from disk, as bytes
+	const local = path.join(process.env.CLAUDE_CONFIG_DIR, 'dropped.png');
+
+	await Bun.write(local, 'local png');
+
+	const fromTerminal = await fetch(`${server.url}${route.slice(1)}`, {
+		method: 'POST',
+		headers: { authorization: `Bearer ${tokens.owner}`, 'content-type': 'application/octet-stream' },
+		body: Bun.file(local),
+	});
+
+	expect(await Bun.file((await fromTerminal.json()).path).text()).toBe('local png');
 });
 
 test("a session that won't start says why, rather than leaving its client to retry", async () => {
