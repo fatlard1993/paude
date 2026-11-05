@@ -1462,3 +1462,23 @@ test("a ship that's never sealed never comes in, nor is covered", () => {
 	made.open();
 	expect(made.coverOf()).toBe(0);
 });
+
+test('an island gaining a seat grows to its new length over a moment rather than jumping, and a new project\'s island grows in from nothing', () => {
+	const made = shipWith([answer('here', [session()], { projects: ['paude', 'other'] })]);
+
+	run(made, 1);
+
+	const was = made.islandsShown.get('paude#0').w;
+
+	made.update([answer('here', [session(), session({ id: 'b' }), session({ id: 'c', project: 'other' })], { projects: ['paude', 'other'] })]);
+
+	const goal = made.bridge.islands.find(({ name }) => name === 'paude').w;
+
+	expect(goal).toBeGreaterThan(was);
+	run(made, 0.05);
+	expect(made.islandsShown.get('paude#0').w).toBeGreaterThan(was);
+	expect(made.islandsShown.get('paude#0').w).toBeLessThan(goal);
+	expect(made.islandsShown.get('other#0').w).toBeLessThan(made.bridge.islands.find(({ name }) => name === 'other').w);
+	run(made, 2);
+	expect(made.islandsShown.get('paude#0').w).toBeCloseTo(goal);
+});

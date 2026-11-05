@@ -79,6 +79,9 @@ const DRINK_LIFT = 0.15;
 export const BEAM_SECONDS = 0.9;
 // How long the ship takes coming in out of warp, opened no sooner however fast what's aboard comes in
 const ENTER_SECONDS = 3.5;
+// How quickly islands and seats glide to where a changed layout puts them: the share of the way left gone each second,
+// as a rate (about a third of a second to get most of the way)
+const LAYOUT_EASE = 7;
 // How long the stars' streaks are at the start of it, in screen pixels for the nearest
 const WARP_STREAK = 160;
 // How long the outer plating takes to fade once what's aboard has come in
@@ -1008,6 +1011,7 @@ export default class Ship {
 				room: this.lounge,
 			}),
 		);
+		for (const worker of this.workers.values()) this.easeSeats(worker);
 		this.send();
 		this.board();
 		this.launch();
@@ -1476,6 +1480,7 @@ export default class Ship {
 
 	step(seconds, calm) {
 		this.time += seconds;
+		this.tendLayoutEase(seconds);
 		// Sealed, it comes in out of warp once there's a ship to show, and is opened only once it's arrived
 		if (this.sealed && this.enteredAt === undefined && this.answered.size) this.enteredAt = this.time;
 		if (this.openWanted && this.arrived()) this.open();
@@ -1891,6 +1896,76 @@ export default class Ship {
 		for (const hauler of this.haulers) this.drawHauler(ctx, hauler);
 		for (const worker of this.workers.values()) if (worker.seat) this.drawMarker(ctx, worker);
 		this.drawLabels(ctx, ratio);
+	}
+
+	// A worker's seat and the console it left, moved by the layout, shown gliding there from where they were rather than
+	// jumping: each kept as the layout's, its place where it was shown, eased toward the layout's own each step. On the
+	// bridge only, and only from a place it was shown at; anywhere else, or new, it's there at once.
+	easeSeats(worker) {
+		for (const [key, goalKey, shownKey] of [
+			['seat', 'seatGoal', 'seatShown'],
+			['homeSeat', 'homeGoal', 'homeShown'],
+		]) {
+			const goal = worker[key];
+			const shown = worker[shownKey];
+			// The console it left is always the bridge's; its seat only while it sits there, and sat there before
+			const glides = key === 'homeSeat' || (worker.room === this.bridge && shown?.bridge);
+
+			worker[goalKey] = goal && shown && glides ? goal : null;
+			if (worker[goalKey]) worker[key] = { ...goal, x: shown.x, y: shown.y };
+		}
+	}
+
+	// Each step: seats and islands a little nearer where the layout puts them
+	tendLayoutEase(seconds) {
+		const near = 1 - Math.exp(-seconds * LAYOUT_EASE);
+		const toward = (from, to) => (Math.abs(to - from) < 0.002 ? to : from + (to - from) * near);
+
+		for (const worker of this.workers.values())
+			for (const [key, goalKey, shownKey] of [
+				['seat', 'seatGoal', 'seatShown'],
+				['homeSeat', 'homeGoal', 'homeShown'],
+			]) {
+				const goal = worker[goalKey];
+
+				if (goal && worker[key]) Object.assign(worker[key], { x: toward(worker[key].x, goal.x), y: toward(worker[key].y, goal.y) });
+				worker[shownKey] = worker[key]
+					? { x: worker[key].x, y: worker[key].y, bridge: worker.room === this.bridge }
+					: null;
+			}
+
+		// Islands by project and which of its it is: a new one grows out from its end, one gone shrinks away
+		const goals = new Map();
+		const counts = new Map();
+
+		for (const island of this.bridge?.islands ?? []) {
+			const nth = counts.get(island.name) ?? 0;
+
+			counts.set(island.name, nth + 1);
+			goals.set(`${island.name}#${nth}`, island);
+		}
+
+		const first = !this.islandsShown;
+
+		this.islandsShown ??= new Map();
+		for (const [key, island] of goals) {
+			const shown = this.islandsShown.get(key) ?? { x: island.x, y: island.y, w: first ? island.w : 0 };
+
+			this.islandsShown.set(
+				key,
+				Object.assign(shown, {
+					x: toward(shown.x, island.x),
+					y: toward(shown.y, island.y),
+					w: toward(shown.w, island.w),
+					island,
+				}),
+			);
+		}
+		for (const [key, shown] of this.islandsShown) {
+			if (goals.has(key)) continue;
+			shown.w = toward(shown.w, 0);
+			if (shown.w < 0.05) this.islandsShown.delete(key);
+		}
 	}
 
 	// How much of the ship its outer plating still covers: all of it while sealed, fading once opened
@@ -2677,7 +2752,11 @@ export default class Ship {
 	// shipping bay's log and the materializer pressable
 	bridgeParts(ctx, art, label) {
 		const bridge = this.bridge;
-		const islands = (bridge.islands ?? []).map(island => ({
+		// As shown, gliding to where the layout puts them; before the first step, where it puts them
+		const shownIslands = this.islandsShown?.size
+			? [...this.islandsShown.values()].map(({ x, y, w, island }) => ({ ...island, x, y, w }))
+			: (bridge.islands ?? []);
+		const islands = shownIslands.map(island => ({
 			y: island.y + 0.139,
 			draw: () => {
 				const from = this.art({ x: island.x, y: island.y + 0.2 });
