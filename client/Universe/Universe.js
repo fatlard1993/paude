@@ -96,6 +96,8 @@ const selectionOf = (target, view) => {
 		};
 	if (target?.kind === 'bridge')
 		return { place: 'bridge', title: 'Bridge', about: 'every session aboard, and the projects they work in' };
+	if (target?.kind === 'lounge')
+		return { place: 'lounge', title: 'Lounge', about: 'the stopped sessions you watch, resting' };
 	if (target?.kind === 'cloner' || target?.kind === 'materializer')
 		return { place: 'new', title: 'New sessions', about: 'a prompt, or a new project to start in' };
 	if (target?.kind === 'engine')

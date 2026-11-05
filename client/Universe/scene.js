@@ -1975,7 +1975,10 @@ export default class Ship {
 
 		if (kind === 'bay') boxes.push(around(this.bays.find(bay => bay.name === name)));
 		else if (kind === 'engine') boxes.push(around(this.layout.engineering));
-		else if (kind === 'room') boxes.push(around(name === 'bridge' ? this.bridge : this.layout.materializer));
+		else if (kind === 'room')
+			boxes.push(
+				around({ bridge: this.bridge, lounge: this.lounge?.count ? this.lounge : null }[name] ?? this.layout.materializer),
+			);
 		else if (kind === 'worker') {
 			const worker = this.workers.get(name);
 
@@ -4582,12 +4585,15 @@ export default class Ship {
 
 	// The smallest thing under the point, a room only when nothing in it is; figures drawn later sit on top of those
 	// before them
+	// The nearest thing under the point; among areas, the smallest, so a room within another (the lounge on the bridge)
+	// is its own; else the last drawn
 	hit(x, y) {
 		const inside = ({ left, top, right, bottom }) => x >= left && x <= right && y >= top && y <= bottom;
+		const size = ({ area }) => (area ? (area.right - area.left) * (area.bottom - area.top) : 0);
 
 		return this.hits
 			.map((target, order) => ({ ...target, order, distance: Math.hypot(target.x - x, target.y - y) }))
 			.filter(({ distance, r, area }) => (area ? inside(area) : distance <= r))
-			.sort((a, b) => (a.r ?? Infinity) - (b.r ?? Infinity) || b.order - a.order)[0];
+			.sort((a, b) => (a.r ?? Infinity) - (b.r ?? Infinity) || size(a) - size(b) || b.order - a.order)[0];
 	}
 }
