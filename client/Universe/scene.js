@@ -1654,7 +1654,8 @@ export default class Ship {
 						? {
 								path: [],
 								tube: { pipe, desk: this.art({ x: worker.seat.x + 0.55, y: worker.seat.y + 0.2 }), along: 0 },
-								legs: [{ x: tube.drop, y: tube.hopper, path: [to] }],
+								// Out of the hopper on the crane's hook, along the rail to over its pod, and let down onto it
+								legs: [{ x: tube.drop, y: tube.hopper, path: [{ x: to.x, y: tube.hopper }, to], craned: true }],
 							}
 						: { path: this.route(from, worker.room, to, kind === 'reply' ? consoleRoom : hold), legs: [] }),
 					step: -index * 4,
@@ -4626,14 +4627,16 @@ export default class Ship {
 		if (!hold) return;
 
 		const { left, right } = this.gantryOf(hold);
+		// Carrying a part out of the hopper to its pod, over it; else pressing a commit, over that pod; else wandering
+		const carrying = this.parcels.find(({ craned, path }) => craned && path.length);
 		const pressing = this.cargo.findIndex(({ key }) => this.time - (this.packings.get(key) ?? -Infinity) < PACK_SECONDS);
 		const goal =
-			pressing >= 0
-				? this.art(holdSpotAt(hold, pressing)).x + 3
-				: left + 8 + (right - left - 16) * (0.5 + 0.5 * Math.sin(this.time * CRANE_WANDER));
+			(carrying && this.art(carrying).x) ||
+			(pressing >= 0 && this.art(holdSpotAt(hold, pressing)).x + 3) ||
+			left + 8 + (right - left - 16) * (0.5 + 0.5 * Math.sin(this.time * CRANE_WANDER));
 
 		this.craneX ??= goal;
-		this.craneX += (goal - this.craneX) * Math.min(1, seconds * (pressing >= 0 ? 10 : 2));
+		this.craneX += (goal - this.craneX) * Math.min(1, seconds * (carrying || pressing >= 0 ? 12 : 2));
 	}
 
 	// A commit made: over its pod, a press coming down on the sheets of changes, which flash as they're pressed, and the
@@ -4994,6 +4997,14 @@ export default class Ship {
 
 	drawParcel(ctx, parcel) {
 		const color = `hsl(${parcel.hue ?? 200} 75% 66%)`;
+
+		// On the crane's hook: its line down from the trolley
+		if (parcel.craned && this.layout.hold) {
+			const { rail } = this.gantryOf(this.layout.hold);
+			const at = this.art(parcel);
+
+			rect(ctx, Math.round(at.x), rail + 6, 1, Math.max(0, Math.round(at.y) - rail - 9), PALETTE.l);
+		}
 
 		// Drawn up from its desk, then a capsule shooting through the tube, its band in its session's color
 		if (parcel.tube) {

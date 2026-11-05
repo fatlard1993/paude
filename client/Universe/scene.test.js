@@ -441,7 +441,13 @@ test("what the work makes leaves its grey's desk: a reply for the bridge, a part
 	expect(pipe[0].y).toBe(net.rows.get(made.workers.get('here/a').seat.island.y).y);
 	expect(pipe.at(-1)).toEqual({ x: net.drop, y: net.hopper });
 	expect(pipe.some(({ x, y }) => x === net.trunk && y === net.rail)).toBe(true);
-	expect(part.legs[0]).toEqual({ x: made.layout.tube.drop, y: made.layout.tube.hopper, path: [hold] });
+	// Out of the hopper on the crane's hook: along the rail to over its pod, then down onto it
+	expect(part.legs[0]).toEqual({
+		x: made.layout.tube.drop,
+		y: made.layout.tube.hopper,
+		path: [{ x: hold.x, y: made.layout.tube.hopper }, hold],
+		craned: true,
+	});
 
 	run(made, 12);
 	expect(made.parcels.filter(({ kind }) => kind === 'part')).toEqual([]);
