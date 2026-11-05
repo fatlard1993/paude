@@ -600,7 +600,7 @@ export const hullEdges = building => {
 // how far off it still is (0 docked, 1 out of sight ahead and above), `tube` how far its boarding tube reaches down to
 // the hull (0 to 1), `walker` how far down it someone is (0 at the shuttle, 1 at the hull; null for nobody), `hue`
 // theirs. A small white craft striped in their color, its cockpit forward.
-export const SHUTTLE_HOVER = 14;
+export const SHUTTLE_HOVER = 20;
 
 export const drawShuttle = (ctx, dock, { away, tube, walker, hue, time }) => {
 	const x = Math.round(dock.x + away * 240);

@@ -446,6 +446,13 @@ export default class Universe extends View {
 				ship.step(Math.min(LONGEST_FRAME_S, (now - last) / 1000), this.calm.matches);
 			this.aboard.draw(ctx, ratio);
 			last = now;
+			// Walked aboard as it opens: what's to be focused is, then and there rather than at the next answer
+			if (!this.focusedOpen && !this.settledSeen && this.answers && this.aboard.settled()) {
+				this.settledSeen = true;
+				this.focusOpened();
+				this.refreshSelection();
+				this.paintFocus();
+			}
 			// Everything measured, then everything moved
 			for (const spot of [this.cardSpot(), this.focusSpot()]) place(spot);
 			frame = requestAnimationFrame(tick);
@@ -1008,11 +1015,12 @@ export default class Universe extends View {
 	}
 
 	// Opened from a session's page or a project's, the first answer that has it goes to it: the session's grey, flown to
-	// and picked, or the project's machine, looked at with its panel
+	// and picked, or the project's machine, looked at with its panel; only once the ship has come in and opened with
+	// the one looking walked aboard, so nothing is picked or flown to under their arrival
 	focusOpened() {
 		const { session, project } = this.options ?? {};
 
-		if (this.focusedOpen) return;
+		if (this.focusedOpen || !this.aboard?.settled()) return;
 		if (!session && !project) return this.focusKept();
 		// On whichever ship has it, that ship then the one played
 		for (const ship of this.ships.values()) {

@@ -1796,12 +1796,23 @@ test('the one opening the view comes aboard by shuttle once the ship is in, and 
 	// they walk its tube
 	run(made, 4);
 	expect(made.arrived()).toBe(true);
-	expect(made.joinGoal()).toBeNull();
+	// The view still on their coming aboard: over the shuttle's tube while they walk it, then out to the whole ship
+	expect(made.joinGoal()).not.toBeNull();
 	expect(made.joining()).toBe(true);
 	expect(made.coverOf()).toBe(1);
-	run(made, 3);
+	expect(made.settled()).toBe(false);
+	run(made, 4);
 	expect(made.joining()).toBe(false);
 	expect(made.sealed).toBe(false);
+	// Settled once its plating is gone and they've walked from the airlock to where they belong: what's to be focused
+	// on opening is, only now
+	run(made, 1);
+	expect(made.walkingIn() || made.settled()).toBe(true);
+	run(made, 7);
+	expect(made.walkingIn()).toBe(false);
+	expect(made.settled()).toBe(true);
+	expect(made.joinGoal()).toBeNull();
+	expect(shipWith([answer('here', [session()], { projects: ['paude'] })]).settled()).toBe(true);
 });
 
 test('someone coming aboard waits at the airlock till they are down its shuttle tube; going, the shuttle takes them once its tube is down', () => {
