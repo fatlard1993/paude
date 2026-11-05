@@ -343,6 +343,18 @@ const FLYOUTS = {
 			],
 		};
 	},
+	airlock: (target, ship) => {
+		const guests = [...ship.people.values()].filter(({ role }) => role !== 'owner').map(({ name }) => name);
+
+		return {
+			title: 'Airlock',
+			rows: [
+				['for', 'inviting someone into one session, and seeing them off'],
+				['invited aboard', guests.join(', ') || 'nobody'],
+			],
+			hint: 'Press to make or revoke invites',
+		};
+	},
 	cloner: (target, ship) => ({
 		title: 'New sessions',
 		rows: [

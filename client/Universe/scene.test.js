@@ -162,7 +162,7 @@ test('a guest comes aboard by the airlock to where their role puts them by their
 		answer('here', [session(), session({ id: 'b', project: 'site' })], { projects: ['paude', 'site'], people }),
 	];
 	const made = shipWith(answers([]));
-	const { airlock } = made.layout.halls[0];
+	const { airlock } = made;
 
 	// Some while after the view opened, so they come aboard rather than being found there
 	run(made, 10);
@@ -1132,14 +1132,16 @@ test('walking about the bridge, off it to the spine, or onto it from where new s
 	const to = { x: lounge.x + lounge.w + 1.5, y: middle };
 	const there = [from, ...made.acrossBridge(from, to)];
 	const back = [to, ...made.acrossBridge(to, from)];
-	const out = [to, ...made.viaSpine(to, made.bridge, made.layout.halls[0].airlock, null)];
+	const { hold } = made.layout;
+	const out = [to, ...made.route(to, made.bridge, holdSpotAt(hold, 0), hold)];
+	const leaving = [to, ...made.route(to, made.bridge, made.airlock, made.bridge)];
 	const tour = [to, ...made.walkTo({ ...to, room: made.bridge }, from, made.bridge)];
 	const { materializer } = made.layout;
 	const fresh = { x: materializer.x + materializer.w / 2, y: materializer.y + 1 };
 	const arriving = [fresh, ...made.route(fresh, materializer, to, made.bridge)];
 	const inside = { left: lounge.x, right: lounge.x + lounge.w, top: lounge.y + 0.3, bottom: lounge.y + lounge.d };
 
-	for (const path of [there, back, out, tour, arriving])
+	for (const path of [there, back, out, leaving, tour, arriving])
 		for (const [index, point] of path.slice(1).entries()) {
 			const at = path[index];
 			const crosses =

@@ -23,6 +23,7 @@ import {
 import {
 	standingOf,
 	walkwayOf,
+	airlockAt,
 	clonerAt,
 	holdSpotAt,
 	layOut,
@@ -1131,7 +1132,7 @@ export default class Ship {
 	// From where a walker is to a new spot: across the ship by the spine; within the bridge along its aisles; within
 	// any other room straight there
 	walkTo(walker, spot, room) {
-		if (room !== walker.room) return this.viaSpine(walker, walker.room, spot, room);
+		if (room !== walker.room) return this.route(walker, walker.room, spot, room);
 
 		return room?.kind === 'bridge' ? this.acrossBridge(walker, spot) : [spot];
 	}
@@ -1484,27 +1485,22 @@ export default class Ship {
 			.find(worker => worker && !worker.lounging && !worker.leaving);
 	}
 
-	// From where a person is to the airlock, or from the airlock to where they belong, by the spine
-	viaSpine(from, fromRoom, to, toRoom) {
-		const airlock = this.layout.halls[0]?.airlock;
-		const lane = this.layout.halls[0]?.lane;
-		const out = fromRoom ? exitOf(fromRoom, from, lane) : [{ x: airlock.x, y: lane }];
-		const into = toRoom ? [...exitOf(toRoom, to, lane).reverse(), to] : [{ x: airlock.x, y: lane }, airlock];
-
-		return this.walkAround(from, [...out, ...into]);
+	// The airlock in the bridge's far wall, where those who come aboard come in and go out
+	get airlock() {
+		return this.bridge && airlockAt(this.bridge);
 	}
 
 	// Each person comes aboard by the airlock and walks to where they belong, and walks back out when they go; one
 	// whose place moved walks there. Whoever was aboard when the ship was first seen, or when the rooms moved round,
 	// is put straight in place.
 	board() {
-		const airlock = this.layout.halls[0]?.airlock;
+		const { airlock } = this;
 		const spots = this.spotsOfPeople();
 
 		for (const [name, walker] of this.walkers) {
 			if (spots.has(name) || walker.leaving) continue;
 			if (!airlock || walker.x === undefined) this.walkers.delete(name);
-			else Object.assign(walker, { leaving: true, path: this.viaSpine(walker, walker.room, airlock, null) });
+			else Object.assign(walker, { leaving: true, path: this.route(walker, walker.room, airlock, this.bridge) });
 		}
 
 		for (const [name, { pose, spot, room, facing }] of spots) {
@@ -1519,9 +1515,9 @@ export default class Ship {
 
 			if (placed || (this.moved && walker.spot)) Object.assign(walker, spot, { path: [] });
 			else if (walker.x === undefined)
-				Object.assign(walker, airlock, { path: this.viaSpine(airlock, null, spot, room) });
+				Object.assign(walker, airlock, { path: this.route(airlock, this.bridge, spot, room), room: this.bridge });
 			// Beamed in on the transporter's pad: from there to where they belong
-			else if (!walker.spot) walker.path = this.viaSpine(walker, walker.room, spot, room);
+			else if (!walker.spot) walker.path = this.route(walker, walker.room, spot, room);
 			// Along the console to a new seat as others come and go; across the ship to a new place
 			else if (moved) walker.path = this.walkTo(walker, spot, room);
 			Object.assign(walker, { spot, pose, room, stand: facing ?? 1 });
@@ -1823,17 +1819,18 @@ export default class Ship {
 
 		clipToShip(ctx, this.layout);
 		const movers = [...this.walkers.values(), ...[...this.workers.values()].filter(worker => this.walking(worker))];
-		const near = door => movers.some(mover => Math.hypot(mover.x - door.x, mover.y - door.y) < 0.9);
 
+		this.airlockOpen = Boolean(
+			this.airlock && movers.some(mover => Math.hypot(mover.x - this.airlock.x, mover.y - this.airlock.y) < 0.9),
+		);
 		for (const hall of this.layout.halls) {
-			const doors = hall.airlock ? [{ ...hall.airlock, open: near(hall.airlock), lamp: PALETTE.r }] : [];
 			// Through the rooms, no walls
 			const gaps = this.layout.rooms.map(room => ({
 				from: art({ x: room.x, y: 0 }).x,
 				to: art({ x: room.x + room.w, y: 0 }).x,
 			}));
 
-			standing.push(...drawHall(ctx, art, hall, { doors, time: this.time, running, gaps }));
+			standing.push(...drawHall(ctx, art, hall, { time: this.time, running, gaps }));
 		}
 		standing.push(
 			// The streams' trunk in the bay's inner wall, behind its units
@@ -3010,12 +3007,19 @@ export default class Ship {
 		const log = this.layout.hangar?.log;
 
 		if (log) this.hits.push({ ...this.toScreen(log), r: 8 * this.camera.zoom, kind: 'journey', journey: this.journey });
+		// The airlock, where invites are made and revoked
+		this.hits.push({
+			...this.toScreen(this.art({ x: this.airlock.x, y: bridge.y + (bridge.face ?? FACE) / 2 })),
+			r: 9 * this.camera.zoom,
+			kind: 'airlock',
+		});
 
 		return [
 			...islands,
 			...drawBridge(ctx, art, label, bridge, {
 				time: this.time,
 				plans: Boolean(this.systems.get('tower')?.active),
+				airlockOpen: this.airlockOpen,
 			}),
 		];
 	}

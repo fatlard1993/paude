@@ -14,7 +14,7 @@ export const HALL_FACE = 0.7;
 // The hull's inner wall, where it's a room's far wall, stands taller
 export const HULL_FACE = 1.5;
 export const HALL_LANE = 1.1;
-const DOOR = 0.8;
+export const DOOR = 0.8;
 // Kept once worked out, as the same few are asked for every frame; started over past a few thousand
 const seeds = new Map();
 
@@ -225,25 +225,29 @@ const faceImage = (left, w, height, gaps) => {
 };
 
 // A room's far wall as it faces the viewer: lit along its top, panels down it, a skirting where it meets the floor and
-// its shadow on the floor below, and its doorways open in it
-const face = (ctx, art, room, { deep, doors = [], gaps = [] }) => {
+// its shadow on the floor below
+const face = (ctx, art, room, { deep, gaps = [] }) => {
 	const [from, to] = corners(art, room);
 	const height = Math.round(deep * UNIT.y);
 
 	if (to.x > from.x) ctx.drawImage(faceImage(from.x, to.x - from.x, height, gaps), from.x, from.y);
+};
 
-	for (const door of doors) {
-		const at = art({ x: door.x - DOOR / 2, y: room.y });
-		const across = Math.round(DOOR * UNIT.x);
+// A doorway in a room's far wall `deep` world units tall, `door` its middle: its frame, its two leaves (parted while
+// `door.open`), a lamp over it (`door.lamp`) and a hazard strip along its sill
+export const drawDoor = (ctx, art, room, door, deep) => {
+	const top = art({ x: 0, y: room.y }).y;
+	const height = Math.round(deep * UNIT.y);
+	const at = art({ x: door.x - DOOR / 2, y: room.y });
+	const across = Math.round(DOOR * UNIT.x);
 
-		rect(ctx, at.x - 1, from.y + 2, across + 2, height - 2, PALETTE.l);
-		rect(ctx, at.x, from.y + 3, across, height - 3, door.open ? '#0e1219' : PALETTE.d);
-		if (!door.open) rect(ctx, at.x + Math.floor(across / 2), from.y + 3, 1, height - 3, PALETTE.k);
-		rect(ctx, at.x + Math.floor(across / 2) - 2, from.y, 5, 3, PALETTE.k);
-		rect(ctx, at.x + Math.floor(across / 2) - 1, from.y + 1, 3, 1, door.lamp ?? PALETTE.d);
-		for (let x = 0; x < across; x++)
-			rect(ctx, at.x + x, from.y + height, 1, 1, Math.floor((x + 1) / 2) % 2 ? PALETTE.y : PALETTE.k);
-	}
+	rect(ctx, at.x - 1, top + 2, across + 2, height - 2, PALETTE.l);
+	rect(ctx, at.x, top + 3, across, height - 3, door.open ? '#0e1219' : PALETTE.d);
+	if (!door.open) rect(ctx, at.x + Math.floor(across / 2), top + 3, 1, height - 3, PALETTE.k);
+	rect(ctx, at.x + Math.floor(across / 2) - 2, top, 5, 3, PALETTE.k);
+	rect(ctx, at.x + Math.floor(across / 2) - 1, top + 1, 3, 1, door.lamp ?? PALETTE.d);
+	for (let x = 0; x < across; x++)
+		rect(ctx, at.x + x, top + height, 1, 1, Math.floor((x + 1) / 2) % 2 ? PALETTE.y : PALETTE.k);
 };
 
 // The top of a wall seen from above: a dark band with its lit edge; walls between rooms side by side, and the near
@@ -259,9 +263,9 @@ const wallTop = (ctx, from, to) => {
 	rect(ctx, from.x, from.y, 1, to.y - from.y, PALETTE.l);
 };
 
-// A hall: its grated floor, the far wall's face with the doors above it, and down its middle lights that run while
+// A hall: its grated floor, the far wall's face, and down its middle lights that run while
 // anything aboard is working. Through a room (`gaps`, spans of art pixels across) it has no wall behind it or before it.
-export const drawHall = (ctx, art, hall, { doors, time, running, gaps = [] }) => {
+export const drawHall = (ctx, art, hall, { time, running, gaps = [] }) => {
 	floor(ctx, art, hall, HALL_FLOOR);
 
 	const [from, to] = corners(art, hall);
@@ -275,7 +279,7 @@ export const drawHall = (ctx, art, hall, { doors, time, running, gaps = [] }) =>
 	}
 
 	return [
-		{ y: hall.y, draw: () => face(ctx, art, hall, { deep: hall.face, doors, gaps }) },
+		{ y: hall.y, draw: () => face(ctx, art, hall, { deep: hall.face, gaps }) },
 		{
 			y: hall.y + hall.d,
 			draw: () => {

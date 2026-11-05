@@ -3,6 +3,7 @@ import {
 	NACELLE,
 	NOSE,
 	RIM,
+	airlockAt,
 	clonerAt,
 	padAt,
 	panelAt,
@@ -15,10 +16,12 @@ import {
 import { pixelText, textWidth } from './retro';
 import {
 	COUCH_SEAT,
+	DOOR,
 	FACE,
 	UNIT,
 	box,
 	corners,
+	drawDoor,
 	floor,
 	loungeSeatAt,
 	pixelEllipse,
@@ -441,12 +444,28 @@ const drawEngine = (ctx, shape, { y, hue, thrust, limited, time }) => {
 		rect(ctx, x, y - half, 1, 1, '#8994aa');
 	}
 	rect(ctx, front - 6, y - 4, 1, 9, '#1b2130');
-	rect(ctx, back + fairing + 3, y - chamber - 1, front - back - fairing - 9, 1, `hsl(${hue} 55% ${limited ? 30 : 45}%)`);
+	rect(
+		ctx,
+		back + fairing + 3,
+		y - chamber - 1,
+		front - back - fairing - 9,
+		1,
+		`hsl(${hue} 55% ${limited ? 30 : 45}%)`,
+	);
 	// The chamber, a round tube shaded top to bottom, and the pump on its back with its feed line down into it
 	const shades = ['#8994aa', PALETTE.l, PALETTE.m, PALETTE.m, '#3a4357', '#343c4e', '#2b3242', PALETTE.d, '#1f2533'];
 
 	for (let row = -chamber; row <= chamber; row++)
-		rect(ctx, back + 2, y + row, fairing - 2, 1, Math.abs(row) === chamber ? PALETTE.k : shades[Math.round(((row + chamber) / (chamber * 2)) * (shades.length - 1))]);
+		rect(
+			ctx,
+			back + 2,
+			y + row,
+			fairing - 2,
+			1,
+			Math.abs(row) === chamber
+				? PALETTE.k
+				: shades[Math.round(((row + chamber) / (chamber * 2)) * (shades.length - 1))],
+		);
 	box(ctx, back + 3, y - chamber - 4, 5, 4, PALETTE.l);
 	rect(ctx, back + 4, y - chamber - 3, 1, 1, burning && Math.floor(time * 6) % 2 ? `hsl(${hue} 90% 72%)` : PALETTE.d);
 	rect(ctx, back + 8, y - chamber - 2, 3, 1, PALETTE.k);
@@ -730,7 +749,6 @@ export const drawHull = (
 			mast.at = { x, y: base - tall - 2 };
 		});
 	}
-
 
 	for (let x = shape.left + 14; x < shape.right; x += 26) {
 		const on = (Math.floor(time * 2) + x / 26) % 4 < 1;
@@ -1340,7 +1358,9 @@ export const drawTransporter = (ctx, art, label, room, { time, ships = [], beami
 	// What the other ships have for you: those asking something first, then news
 	const needs = ships.reduce((sum, { needs: count = 0 }) => sum + count, 0);
 	const news = ships.reduce((sum, { news: count = 0 }) => sum + count, 0);
-	const notice = (needs && { count: needs, color: PALETTE.y, mark: 'ask' }) || (news && { count: news, color: PALETTE.b, mark: 'news' });
+	const notice =
+		(needs && { count: needs, color: PALETTE.y, mark: 'ask' }) ||
+		(news && { count: news, color: PALETTE.b, mark: 'news' });
 
 	return [
 		...(room.within
@@ -1547,7 +1567,14 @@ export const drawHangar = (ctx, art, label, room, { time, journey, launching = f
 				for (const side of [-22, 21]) {
 					rect(ctx, pad.x + side, pad.y - ARCH_TALL, 2, ARCH_TALL, PALETTE.k);
 					rect(ctx, pad.x + side, pad.y - ARCH_TALL + 1, 1, ARCH_TALL - 2, PALETTE.l);
-					rect(ctx, pad.x + side, pad.y - ARCH_TALL - 2, 2, 2, launching && Math.floor(time * 6) % 2 ? '#ff4a3a' : '#5a1a16');
+					rect(
+						ctx,
+						pad.x + side,
+						pad.y - ARCH_TALL - 2,
+						2,
+						2,
+						launching && Math.floor(time * 6) % 2 ? '#ff4a3a' : '#5a1a16',
+					);
 				}
 				rect(ctx, pad.x - 22, pad.y - ARCH_TALL, 45, 2, PALETTE.k);
 				rect(ctx, pad.x - 21, pad.y - ARCH_TALL, 43, 1, PALETTE.m);
@@ -1669,9 +1696,12 @@ export const drawLounge = (ctx, art, label, lounge, { time }) => {
 	];
 };
 
-// The bridge: its floor and name, and consoles along its back wall, one lit blue while a session plans
-export const drawBridge = (ctx, art, label, bridge, { time, plans }) => {
+// The bridge: its floor and name, consoles along its back wall, one lit blue while a session plans, and in the wall at
+// its forward end the airlock, open while someone's at it (`airlockOpen`), its lamp red
+export const drawBridge = (ctx, art, label, bridge, { time, plans, airlockOpen = false }) => {
 	floor(ctx, art, bridge);
+
+	const airlock = airlockAt(bridge);
 
 	return [
 		...walls(ctx, art, label, bridge, { name: bridge.name, color: PALETTE.w }),
@@ -1680,7 +1710,7 @@ export const drawBridge = (ctx, art, label, bridge, { time, plans }) => {
 			draw: () => {
 				const [from, to] = [
 					art({ x: bridge.x + 0.5, y: bridge.y + 0.25 }),
-					art({ x: bridge.x + bridge.w - 0.5, y: 0 }),
+					art({ x: airlock.x - DOOR / 2 - 0.3, y: 0 }),
 				];
 				const panels = Math.max(1, Math.floor((to.x - from.x) / 26));
 				const pitch = (to.x - from.x) / panels;
@@ -1704,6 +1734,7 @@ export const drawBridge = (ctx, art, label, bridge, { time, plans }) => {
 						);
 					rect(ctx, x + 3, from.y + 6, Math.round(pitch) - 10, 1, '#202838');
 				}
+				drawDoor(ctx, art, bridge, { x: airlock.x, open: airlockOpen, lamp: PALETTE.r }, bridge.face ?? FACE);
 			},
 		},
 	];

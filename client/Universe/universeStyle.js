@@ -303,6 +303,54 @@ export const Stage = styled(
 			overflow: visible;
 		}
 
+		.airlock-card .people,
+		.airlock-card .invites {
+			display: grid;
+			gap: ${space.sm};
+		}
+
+		.airlock-card .people {
+			min-height: 0;
+			overflow-y: auto;
+		}
+
+		.airlock-card .invite-form,
+		.airlock-card .invite-result {
+			display: flex;
+			flex-wrap: wrap;
+			gap: ${space.xs};
+		}
+
+		.airlock-card .invite-form input,
+		.airlock-card .invite-result input {
+			flex: 1 1 10em;
+			min-width: 0;
+		}
+
+		.airlock-card .comment {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) auto;
+			align-items: center;
+			column-gap: ${space.sm};
+			padding: ${space.xs} ${space.sm};
+			border-left: 2px solid ${colors.teal};
+		}
+
+		.airlock-card .comment .meta {
+			grid-column: 1;
+		}
+
+		.airlock-card .comment button {
+			grid-column: 2;
+			grid-row: 1 / span 2;
+		}
+
+		.airlock-card .meta,
+		.airlock-card .empty {
+			color: ${colors.muted};
+			font-size: 0.85em;
+		}
+
 		.reply-card .log {
 			display: grid;
 			gap: 2px;

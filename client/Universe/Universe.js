@@ -11,7 +11,9 @@ import {
 	openRemote,
 	setLifetime,
 	setRemoteWatching,
-	setWatching, sessionElsewhere } from '../api';
+	setWatching,
+	sessionElsewhere,
+} from '../api';
 import { Bar } from '../Bar';
 import { breadcrumbs } from '../Breadcrumbs';
 import { button, element } from '../dom';
@@ -40,6 +42,7 @@ import {
 } from './flyout';
 import { enginesPane, foldersPane, listDock, projectPanes, projectsPane, sessionsPane } from './shipDock';
 import refusal from './reason';
+import { airlockCard } from './airlockCard';
 import { logCard, manifestCard, promptCard, replyCard } from './replyCard';
 import { arrivalOf } from './sidePanel';
 import { recall, remember } from '../storage';
@@ -623,6 +626,7 @@ export default class Universe extends View {
 			return this.paintFocus();
 		}
 		if (target?.kind === 'log') return this.openLog(target, point);
+		if (target?.kind === 'airlock') return this.openAirlock(point);
 		// The work itself opens where it's worked on: a checkout's cargo or pull request in its git, a chat in the chat, a
 		// small grey in the tasks, what runs behind a seat in its ports
 		if (target?.kind === 'delivery' || target?.kind === 'cargo' || target?.kind === 'commit') {
@@ -695,7 +699,12 @@ export default class Universe extends View {
 				onPress: () => (stopped ? this.wake(worker) : this.open(session)),
 			},
 			...(remote
-				? [{ label: session.watching ? 'Stop watching' : 'Watch', onPress: () => this.watch(worker, !session.watching) }]
+				? [
+						{
+							label: session.watching ? 'Stop watching' : 'Watch',
+							onPress: () => this.watch(worker, !session.watching),
+						},
+					]
 				: sessionMenu({ ...session, live: session.status !== 'stopped' }, () => this.poll())),
 		];
 	}
@@ -707,7 +716,8 @@ export default class Universe extends View {
 			? await setRemoteWatching(session.engine.remote.url, session.id, watching)
 			: await setWatching(session.id, watching);
 
-		if (!response?.ok) return new Notify({ intent: 'warning', content: `Couldn't ${watching ? 'watch' : 'unwatch'} it.` });
+		if (!response?.ok)
+			return new Notify({ intent: 'warning', content: `Couldn't ${watching ? 'watch' : 'unwatch'} it.` });
 		this.poll();
 	}
 
@@ -809,7 +819,11 @@ export default class Universe extends View {
 		const stopped = session.status === 'stopped';
 
 		return [
-			{ label: stopped ? 'Wake' : 'Reply', hotkey: 'r', run: () => (stopped ? this.wake(worker) : this.openReply(worker)) },
+			{
+				label: stopped ? 'Wake' : 'Reply',
+				hotkey: 'r',
+				run: () => (stopped ? this.wake(worker) : this.openReply(worker)),
+			},
 			...(live(session) ? [{ label: 'Terminal', hotkey: 't', run: () => this.dockOrReply(worker, 'terminal') }] : []),
 			// Another paude's session's panels are relayed through this one, all but its side shell
 			...VERBS.filter(({ key, allowed }) => key !== 'terminal' && allowed() && !(remote && key === 'shell')).map(
@@ -853,7 +867,8 @@ export default class Universe extends View {
 
 		const { response, body } = await setLifetime(worker.session.id, lifetime);
 
-		if (!response?.ok) return new Notify({ intent: 'warning', content: refusal("Couldn't change how long it lasts", body) });
+		if (!response?.ok)
+			return new Notify({ intent: 'warning', content: refusal("Couldn't change how long it lasts", body) });
 		this.poll();
 	}
 
@@ -1334,6 +1349,19 @@ export default class Universe extends View {
 		);
 	}
 
+	// The airlock's invites, for a session of this machine aboard: the one picked, else the first
+	openAirlock(point) {
+		const sessions = [...this.aboard.workers.values()]
+			.filter(({ leaving, session }) => !leaving && !session.engine.remote)
+			.map(({ session }) => session);
+
+		this.openCard(
+			airlockCard({ sessions, chosen: this.selected?.worker?.session, onClose: () => this.closeCard() }),
+			point,
+			{ focus: false },
+		);
+	}
+
 	// A system's log beside its console, each use in it opening its session's reply
 	openLog({ room, system }, point) {
 		this.openCard(
@@ -1656,7 +1684,8 @@ export default class Universe extends View {
 							},
 						}))
 					: []),
-			commands: (kind === 'materializer' && this.placeCommands('new')) || (kind === 'transporter' && this.beamCommands()) || [],
+			commands:
+				(kind === 'materializer' && this.placeCommands('new')) || (kind === 'transporter' && this.beamCommands()) || [],
 		};
 	}
 

@@ -260,6 +260,10 @@ export const holdSpotAt = (hold, index) => ({ x: hold.x + 0.9 + index * POD_PITC
 export const padAt = hangar => ({ x: hangar.x + (hangar.w - 0.9) / 2, y: hangar.y + (hangar.face ?? FACE) + 1.8 });
 
 // The nav table on the bridge, forward of the terminals
+// The airlock in the bridge's far wall, over its nav table where no island stands, where those who come aboard come in
+// and go out: its doorway's middle, at the foot of the wall
+export const airlockAt = bridge => ({ x: navAt(bridge).x, y: bridge.y + (bridge.face ?? FACE) });
+
 export const navAt = bridge => ({ x: bridge.x + bridge.w - BRIDGE_NAV_W / 2 - 0.2, y: bridge.y + bridge.d * 0.6 });
 
 // A session's seat on the bridge
@@ -676,7 +680,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		hold: kind('hold'),
 		hangar: kind('hangar'),
 		rooms: [engineering, ...rooms, bridge],
-		halls: spines.map((spine, index) => ({
+		halls: spines.map(spine => ({
 			x: middle,
 			y: spine.hallTop,
 			w: width,
@@ -684,8 +688,6 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 			face: HALL_FACE,
 			lane: spine.lane,
 			hull: {},
-			// The airlock at the first spine's stern end, where those who come aboard come in and go out
-			...(index === 0 && { airlock: { x: middle + 0.9, y: spine.hallTop + HALL_FACE, lane: spine.lane } }),
 		})),
 		building: { left, right, top, bottom: top + total },
 
