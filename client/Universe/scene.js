@@ -1957,7 +1957,6 @@ export default class Ship {
 				room,
 				system: room.kind === 'system' ? this.systemOf(room) : undefined,
 			});
-		this.drawConduits(ctx, this.layout.halls[0]);
 		this.cables = this.conduitsOf();
 		this.fed = this.feedsOf();
 		// Each whole, machine to island, in one layer so none is broken where two would meet; on the floor, under all that
@@ -3875,41 +3874,6 @@ export default class Ship {
 
 	// Power from each engine's reactor along the hall to the bays where its sessions are at work, pulses running from its
 	// door to theirs
-	drawConduits(ctx, hall) {
-		const lines = this.engines
-			.map(engine => ({
-				engine,
-				bays: this.bays.filter(bay =>
-					bay.sessions.some(key => {
-						const session = this.workers.get(key)?.session;
-
-						return session?.engine.key === engine.key && session.status === 'working';
-					}),
-				),
-			}))
-			.filter(({ bays }) => bays.length);
-
-		lines.forEach(({ engine, bays }, index) => {
-			const lane = this.art({ x: 0, y: hall.lane }).y + 3 + index * 2;
-			const from = this.art(engine.door);
-			const hue = engine.hue ?? 215;
-
-			for (const bay of bays) {
-				const to = this.art(bay.door);
-				const step = Math.sign(to.x - from.x) || 1;
-
-				rect(ctx, Math.min(from.x, to.x), lane, Math.abs(to.x - from.x) + 1, 1, `hsl(${hue} 30% 24%)`);
-				for (const [x, y] of [
-					[from.x, from.y],
-					[to.x, to.y],
-				])
-					rect(ctx, x, Math.min(y, lane), 1, Math.abs(lane - y) + 1, `hsl(${hue} 30% 24%)`);
-				for (let x = from.x + step * (Math.floor(this.time * 30) % 8); (to.x - x) * step > 0; x += step * 8)
-					rect(ctx, x, lane, 2, 1, `hsl(${hue} 75% 66%)`);
-			}
-		});
-	}
-
 	// At each answer: when its cache's countdown was read, to run it down smoothly between answers, and when the latest
 	// ping or nudge was typed into it, for the drink it takes
 	noteKeeping(worker, session) {
