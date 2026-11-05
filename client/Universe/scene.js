@@ -2619,9 +2619,10 @@ export default class Ship {
 		];
 	}
 
-	// The ship's core wired into the rest of it: from its machine to the hall it opens on, and along the hall's far wall
-	// aft to the engines and forward to the bridge, a pair of lines lit in its color, pulses running out along them from
-	// it while it's worked on
+	// The ship's core wired into the rest of it: from its machine to the hall it opens on, and along the middle of the
+	// hall's far wall, clear of the other conduits low along it, aft to the engines and forward to the bridge. A heavy
+	// channel lit in its color always, breathing slowly at rest with a slow pulse running out now and then, and pulses
+	// running out fast along it while it's worked on.
 	coreLineParts(ctx) {
 		const bay = this.bays.find(({ own }) => own);
 		const part = bay?.parts?.[0];
@@ -2632,14 +2633,15 @@ export default class Ship {
 
 		const sessions = bay.sessions.map(key => this.workers.get(key)?.session).filter(Boolean);
 		const working = sessions.some(({ status }) => status === 'working');
-		const lit = sessions.length > 0;
-		const color = (light, alpha = 1) => `hsla(${bay.hue ?? 200} 85% ${light}% / ${lit ? alpha : alpha * 0.35})`;
+		const breath = 0.75 + 0.25 * Math.sin(this.time * 1.6);
+		const color = (light, alpha = 1) => `hsla(${bay.hue ?? 200} 85% ${light}% / ${working ? alpha : alpha * breath})`;
 
 		return [
 			{
 				y: hall.y + 0.002,
 				draw: () => {
-					const run = this.art({ x: 0, y: hall.y + (hall.face ?? FACE) }).y - 3;
+					const wall = this.art({ x: 0, y: hall.y }).y;
+					const run = wall + Math.round(((hall.face ?? FACE) * UNIT.y) / 2) - 1;
 					const [aft, fore] = [
 						this.art({ x: engineering.x + engineering.w, y: 0 }).x,
 						this.art({ x: this.bridge.x, y: 0 }).x,
@@ -2647,19 +2649,27 @@ export default class Ship {
 					const core = this.art({ x: part.x + part.w / 2, y: 0 }).x;
 					const above = part.y < hall.y;
 					const edge = this.art({ x: 0, y: above ? part.y + part.d : part.y }).y;
+					const [riserTop, riserBottom] = [Math.min(edge, run), Math.max(edge, run + 3)];
 
-					// Its riser from the machine to the hall, then along it both ways
-					rect(ctx, core - 2, Math.min(edge, run), 5, Math.abs(run - edge) + 2, PALETTE.k);
-					for (const offset of [-1, 1])
-						rect(ctx, core + offset, Math.min(edge, run), 1, Math.abs(run - edge) + 2, color(60));
-					rect(ctx, aft, run - 1, fore - aft, 4, PALETTE.k);
-					rect(ctx, aft, run, fore - aft, 1, color(60));
-					rect(ctx, aft, run + 2, fore - aft, 1, color(45, 0.8));
-					if (!working) return;
-					for (let along = Math.floor(this.time * 40) % 12; along < Math.max(core - aft, fore - core); along += 12) {
-						if (core - along > aft) rect(ctx, core - along - 1, run, 3, 1, '#ffffff');
-						if (core + along < fore) rect(ctx, core + along - 1, run + 2, 3, 1, '#ffffff');
-					}
+					// Its riser from the machine to the hall, then its channel along the wall both ways
+					rect(ctx, core - 3, riserTop, 7, riserBottom - riserTop, PALETTE.k);
+					rect(ctx, core - 2, riserTop, 5, riserBottom - riserTop, color(30));
+					rect(ctx, core, riserTop, 1, riserBottom - riserTop, color(72));
+					rect(ctx, aft, run - 2, fore - aft, 7, PALETTE.k);
+					rect(ctx, aft, run - 1, fore - aft, 5, color(28));
+					rect(ctx, aft, run + 1, fore - aft, 1, color(70));
+					for (const end of [aft, fore - 3]) rect(ctx, end, run - 2, 3, 7, color(60));
+
+					// Pulses running out from it: fast and many at work, one slow one now and then at rest
+					const reach = Math.max(core - aft, fore - core);
+					const [speed, gap] = working ? [40, 12] : [14, reach + 60];
+
+					for (let along = (this.time * speed) % gap; along < reach; along += gap)
+						for (const side of [-1, 1]) {
+							const x = Math.round(core + side * along);
+
+							if (x > aft && x < fore) rect(ctx, x - 1, run, 3, 3, working ? '#ffffff' : color(85));
+						}
 				},
 			},
 		];
