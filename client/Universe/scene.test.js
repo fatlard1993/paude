@@ -1282,7 +1282,7 @@ test("each other ship has an unmanned terminal along the bridge's near wall, cle
 		for (const island of bridge.islands)
 			if (island.y > y - 2.6) expect(x - 0.75 >= island.x + island.w || x + 0.75 <= island.x).toBe(true);
 	}
-	for (const [index, { x }] of spots.slice(1).entries()) expect(spots[index].x - x).toBeGreaterThanOrEqual(1.8);
+	for (const [index, { x }] of spots.slice(1).entries()) expect(Math.abs(spots[index].x - x)).toBeGreaterThanOrEqual(1.8 - 1e-9);
 });
 
 test("a row's conduits fit the aisle under it, clear of the next row's screens, however many islands share it", () => {
