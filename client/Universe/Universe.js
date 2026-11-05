@@ -644,7 +644,7 @@ export default class Universe extends View {
 			return this.dockOrReply(this.workerOf(target.session), 'notes');
 		if (target?.kind === 'subagent' && this.workerOf(target.session))
 			return this.dockOrReply(this.workerOf(target.session), 'tasks');
-		if (target?.kind === 'processes') return this.dockOrReply(target.worker, 'shares');
+		if (target?.kind === 'processes') return this.openRack(target, point);
 		if (target?.kind === 'use' && this.workerOf(target.use.session))
 			return this.openWorker(this.workerOf(target.use.session));
 		if (target?.kind === 'bridge' || target?.kind === 'lounge') {
@@ -662,6 +662,22 @@ export default class Universe extends View {
 
 		this.select(null);
 		this.aboard.look('all');
+	}
+
+	// A project's rack: the ports and processes of the session in it that runs some, or a pick of each that does
+	openRack({ worker, workers = [worker] }, point) {
+		if (workers.length < 2) return this.dockOrReply(worker, 'shares');
+
+		const box = this.canvas.getBoundingClientRect();
+
+		return openMenu({ x: box.left + point.x, y: box.top + point.y }, [
+			{ heading: 'Ports and processes of' },
+			...workers.map(each => ({
+				label: each.session.title || each.session.project || 'A session',
+				detail: `${(each.session.processes ?? []).length} ${(each.session.processes ?? []).length === 1 ? 'process' : 'processes'}`,
+				onPress: () => this.dockOrReply(each, 'shares'),
+			})),
+		]);
 	}
 
 	// The menu for what's under the point: a worker's session menu, a bay's project, an engine to look at

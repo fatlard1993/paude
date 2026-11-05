@@ -4480,7 +4480,8 @@ export default class Ship {
 	// its CPU has been; a shared port puts an antenna on them, its beacon lit
 	// A rack for each project's island (or its machine, for those jacked into it), out at its forward end where nobody
 	// stands in front of it: a sled in it for each process its sessions run beside Claude, as many as it holds, and a
-	// beacon atop it while any of them serves something. Pressed, it opens the processes of one of them that runs some.
+	// beacon atop it while any of them serves something. Pressed, it opens the processes of the one that runs some, or
+	// offers each that does.
 	rackParts(ctx) {
 		const racks = new Map();
 
@@ -4491,8 +4492,9 @@ export default class Ship {
 			if (!seat || lounging || leaving || (!processes.length && !services.length)) continue;
 
 			const key = seat.island?.key ?? `${session.project}|${seat.housing ? 'machine' : seat.y}`;
-			const rack = racks.get(key) ?? { seat, island: seat.island, processes: [], services: [], worker };
+			const rack = racks.get(key) ?? { seat, island: seat.island, processes: [], services: [], workers: [] };
 
+			rack.workers.push(worker);
 			rack.processes.push(...processes);
 			rack.services.push(...services);
 			racks.set(key, rack);
@@ -4507,7 +4509,7 @@ export default class Ship {
 		});
 	}
 
-	drawRack(ctx, at, { processes, services, worker }) {
+	drawRack(ctx, at, { processes, services, workers }) {
 		const count = Math.max(1, Math.min(RACK_SLEDS, processes.length));
 		const tall = count * 3 + 2;
 
@@ -4529,7 +4531,8 @@ export default class Ship {
 			...this.toScreen({ x: at.x, y: at.y - tall / 2 }),
 			r: 6 * this.camera.zoom,
 			kind: 'processes',
-			worker,
+			worker: workers[0],
+			workers,
 		});
 	}
 

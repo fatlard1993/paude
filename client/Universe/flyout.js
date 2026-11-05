@@ -232,20 +232,25 @@ const FLYOUTS = {
 			rows: [['answers in', engine.link === null ? 'no answer' : `${engine.link} ms`]],
 		};
 	},
+	// A project's rack: what each of its sessions there runs beside Claude, each under its name when there are several
 	processes: target => {
-		const { processes = [], services = [], title, project } = target.worker.session;
+		const workers = target.workers ?? [target.worker];
+		const { project } = workers[0].session;
 		const megabytes = bytes => `${Math.round((bytes ?? 0) / 1e6)} MB`;
+		const several = workers.length > 1;
+		const named = ({ title }) => title || project;
 
 		return {
-			title: `What ${title || project} runs`,
-			rows: [
-				...processes.map(({ command, cpuSeconds, memoryBytes }) => [
+			title: several ? `What ${project}'s sessions run` : `What ${named(workers[0].session)} runs`,
+			rows: workers.flatMap(({ session }) => [
+				several && ['session', named(session)],
+				...(session.processes ?? []).map(({ command, cpuSeconds, memoryBytes }) => [
 					command,
 					`${Math.round(cpuSeconds ?? 0)}s of CPU, ${megabytes(memoryBytes)}`,
 				]),
-				...services.map(({ name, port }) => ['shared', `port ${port} as ${name}`]),
-			],
-			hint: 'Press for its ports and processes',
+				...(session.services ?? []).map(({ name, port }) => ['shared', `port ${port} as ${name}`]),
+			]),
+			hint: several ? "Press to pick a session's ports and processes" : 'Press for its ports and processes',
 		};
 	},
 	delivery: target => {

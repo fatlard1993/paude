@@ -43,3 +43,27 @@ test("a session's card counts down how long its context stays cached, as its gre
 	);
 	expect(cacheOf({})).toBe('gone cold: its next turn costs more');
 });
+
+test("a project's rack lists what each of its sessions runs under its name, or just the one's when it's alone", () => {
+	const ship = { checkoutOf: () => null, walkers: new Map(), projectHues: new Map() };
+	const worker = (title, processes) => ({ session: { title, project: 'paude', processes, services: [] } });
+	const one = flyoutOf({ kind: 'processes', worker: worker('Build', [{ command: 'vite', cpuSeconds: 3 }]) }, ship);
+	const many = flyoutOf(
+		{
+			kind: 'processes',
+			workers: [worker('Build', [{ command: 'vite', cpuSeconds: 3 }]), worker('Tests', [{ command: 'bun test' }])],
+		},
+		ship,
+	);
+
+	expect(one.title).toBe('What Build runs');
+	expect(one.rows.filter(Boolean).map(([key]) => key)).toEqual(['vite']);
+	expect(many.title).toBe("What paude's sessions run");
+	expect(many.rows.filter(Boolean).map(([key, value]) => (key === 'session' ? value : key))).toEqual([
+		'Build',
+		'vite',
+		'Tests',
+		'bun test',
+	]);
+	expect(many.hint).toContain('pick a session');
+});
