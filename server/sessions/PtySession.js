@@ -75,7 +75,7 @@ export default class PtySession {
 	ended = false;
 	startedAt = Date.now();
 
-	constructor({ id, cwd, resume, prompt, claudePath, onExit, adopt = false, title = '' }) {
+	constructor({ id, cwd, resume, prompt, model, claudePath, onExit, adopt = false, title = '' }) {
 		this.id = id;
 		this.cwd = cwd;
 		// What it was called when saved, until Claude names it again (it does only when the name changes)
@@ -108,6 +108,7 @@ export default class PtySession {
 		// `--` keeps a prompt that starts with a dash from being read as an option
 		const args = [
 			...(settings ? ['--settings', settings] : []),
+			...(model ? ['--model', model] : []),
 			...(resume ? ['--resume', id] : ['--session-id', id, ...(prompt ? ['--', prompt] : [])]),
 		];
 

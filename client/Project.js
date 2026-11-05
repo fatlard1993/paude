@@ -4,6 +4,7 @@ import { runningSummary } from '../shared/checkouts';
 import { tintsOf } from '../shared/hues';
 import { readProgress, recentLines } from '../shared/progress';
 import { LIFETIMES } from '../shared/lifetimes';
+import { MODELS } from '../shared/models';
 import {
 	createSession,
 	getCheckouts,
@@ -93,8 +94,9 @@ export default class Project extends View {
 							prompt: this.prompt.value.trim(),
 							project,
 							// Started as this page starts one, in the checkout picked here
-							startFresh: async (_, lifetime) => {
+							startFresh: async (_, lifetime, model) => {
 								this.pickLifetime(lifetime);
+								this.pickModel(model);
 
 								return (await this.start()) === true;
 							},
@@ -115,12 +117,14 @@ export default class Project extends View {
 			placeholder: 'branch, tag, commit or PR (#123)',
 		});
 		this.lifetimeChip = element('button', 'chip variant-chip');
+		this.modelChip = element('button', 'chip variant-chip');
 		this.checkoutChip.style.display = 'none';
 		this.newName.style.display = 'none';
 		this.fromInput.style.display = 'none';
 		this.checkoutChip.addEventListener('click', () => this.openCheckouts());
 		this.lifetimeChip.addEventListener('click', () => this.openLifetimes());
-		compose.options.append(this.checkoutChip, this.newName, this.fromInput, this.lifetimeChip);
+		this.modelChip.addEventListener('click', () => this.openModels());
+		compose.options.append(this.checkoutChip, this.newName, this.fromInput, this.lifetimeChip, this.modelChip);
 		this.progress = new Progress({ appendTo: scroll, tag: 'pre', style: { display: 'none' } }).elem;
 
 		// Brought here from home to start in this project, in place of what was left typed here
@@ -131,6 +135,7 @@ export default class Project extends View {
 			this.prompt.dispatchEvent(new Event('input'));
 		}
 		this.pickLifetime(draft?.lifetime);
+		this.pickModel(undefined);
 
 		this.holdings(scroll);
 		this.tools(body);
@@ -395,6 +400,27 @@ export default class Project extends View {
 		]);
 	}
 
+	pickModel(model) {
+		this.model = model in MODELS ? model : 'default';
+
+		const { label, detail } = MODELS[this.model];
+
+		this.modelChip.replaceChildren(element('i', 'fa-solid fa-microchip'), ` ${label}`);
+		this.modelChip.title = `The model it runs on: ${label}, ${detail}. Click to change`;
+	}
+
+	openModels() {
+		openMenu(this.modelChip, [
+			{ heading: 'The model the new session runs on' },
+			...Object.entries(MODELS).map(([model, { label, detail }]) => ({
+				label,
+				...(model === this.model && { icon: 'check' }),
+				detail,
+				onPress: () => this.pickModel(model),
+			})),
+		]);
+	}
+
 	// Where the session works, asked every time in a git repository: the project folder, a worktree already there, or
 	// a new one
 	async loadCheckouts() {
@@ -482,7 +508,10 @@ export default class Project extends View {
 	async start() {
 		const text = this.prompt.value.trim();
 		const checkout = this.choice();
-		const mode = this.lifetime === 'ordinary' ? undefined : this.lifetime;
+		const how = {
+			mode: this.lifetime === 'ordinary' ? undefined : this.lifetime,
+			model: this.model === 'default' ? undefined : this.model,
+		};
 		const creating = Boolean(checkout && 'create' in checkout);
 
 		if (this.starting) return;
@@ -497,8 +526,8 @@ export default class Project extends View {
 		this.startLabel.textContent = creating ? 'Making the worktree...' : 'Starting...';
 
 		const result = creating
-			? await this.startInNewWorktree(text, checkout, mode)
-			: await this.startSession(text, checkout, mode);
+			? await this.startInNewWorktree(text, checkout, how)
+			: await this.startSession(text, checkout, how);
 
 		this.starting = false;
 		this.startButton.disabled = false;
@@ -510,7 +539,7 @@ export default class Project extends View {
 			return new Notify({ intent: 'danger', content: result.error, timeout: 10_000 });
 		}
 
-		if (result.files) return this.startAnyway(result, text, mode);
+		if (result.files) return this.startAnyway(result, text, how);
 
 		this.sent();
 		window.location.hash = `#/sessions/${result.id}`;
@@ -520,7 +549,7 @@ export default class Project extends View {
 
 	// A pull request that brings files Claude Code reads on start (hooks it would run among them) is checked out, but
 	// Claude starts in it only when asked. Otherwise the worktree stays, picked, to look over and start from later.
-	async startAnyway({ worktree, warning }, text, mode) {
+	async startAnyway({ worktree, warning }, text, how) {
 		const loading = this.loadCheckouts();
 		const confirmed = await confirmDialog({
 			header: 'Start Claude in this pull request?',
@@ -539,15 +568,16 @@ export default class Project extends View {
 				timeout: 20_000,
 			});
 
-		const started = await this.startSession(text, { join: worktree }, mode);
+		const started = await this.startSession(text, { join: worktree }, how);
 
 		if (started.error) return new Notify({ intent: 'danger', content: started.error, timeout: 10_000 });
 		this.sent();
 		window.location.hash = `#/sessions/${started.id}`;
 	}
 
-	async startSession(text, checkout, mode) {
-		const { body, response } = await createSession(this.options.project, text, checkout, mode);
+	// how: { mode, model }, as createSession takes them
+	async startSession(text, checkout, { mode, model } = {}) {
+		const { body, response } = await createSession(this.options.project, text, checkout, mode, model);
 
 		if (response?.ok) return { id: body.id };
 		if (response?.status === 404 && checkout?.join) return { error: 'That worktree is gone; pick again.' };
@@ -558,11 +588,11 @@ export default class Project extends View {
 	}
 
 	// Streamed, so a repo's own setup shows here while it runs
-	async startInNewWorktree(text, checkout, mode) {
+	async startInNewWorktree(text, checkout, { mode, model } = {}) {
 		const response = await fetch(`/api/projects/${encodeURIComponent(this.options.project)}/sessions`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ text, checkout, mode }),
+			body: JSON.stringify({ text, checkout, mode, model }),
 		}).catch(() => null);
 
 		if (!response) return { error: 'Could not reach the server.' };

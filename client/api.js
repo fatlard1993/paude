@@ -82,11 +82,12 @@ export const getProjectSessions = async (project, options) =>
 export const getCheckouts = async project =>
 	await GET('/api/projects/:project/checkouts', { urlParameters: { project }, invalidateAfter: 0 });
 
-// mode: 'warm' (kept warm), 'going' (kept warm and nudged on), 'brief' (short-lived), or nothing for an ordinary session
-export const createSession = async (project, text, checkout, mode) =>
+// mode: 'warm' (kept warm), 'going' (kept warm and nudged on), 'brief' (short-lived), or nothing for an ordinary session;
+// model: one of shared/models' MODEL_NAMES, or nothing for the default
+export const createSession = async (project, text, checkout, mode, model) =>
 	await POST('/api/projects/:project/sessions', {
 		urlParameters: { project },
-		body: { text, checkout, mode },
+		body: { text, checkout, mode, model },
 		invalidates: [['sessions', project]],
 	});
 
@@ -301,8 +302,8 @@ export const sendRemotePrompt = async (url, sessionId, text) =>
 	await POST('/api/remotes/prompt', { body: { url, sessionId, text } });
 
 // A new session in a project on another server, in its own folder: { id } there
-export const startRemoteSession = async (url, project, text, mode) =>
-	await POST('/api/remotes/start', { body: { url, project, text, mode } });
+export const startRemoteSession = async (url, project, text, mode, model) =>
+	await POST('/api/remotes/start', { body: { url, project, text, mode, model } });
 
 export const getArtifacts = async sessionId =>
 	await GET('/api/sessions/:id/artifacts', { urlParameters: { id: sessionId }, invalidateAfter: 0 });

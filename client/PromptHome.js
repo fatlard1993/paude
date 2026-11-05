@@ -1,6 +1,7 @@
 import { Dialog, Elem, isMac, Notify, styled } from '@vanilla-bean/components';
 
 import { tintsOf } from '../shared/hues';
+import { MODELS } from '../shared/models';
 import tokens from '../shared/tokenCount';
 import { createSession, findPromptHome, openRemote, sendPrompt, sendRemotePrompt, startRemoteSession } from './api';
 import { serverName } from './identity';
@@ -242,6 +243,20 @@ const Placing = styled(
 			opacity: 0.5;
 		}
 
+		.model {
+			display: flex;
+			align-items: center;
+			gap: ${space.sm};
+			padding: 0 ${space.md};
+			color: ${colors.muted};
+			font-size: 0.85em;
+		}
+
+		.model select {
+			min-width: 0;
+			font: inherit;
+		}
+
 		button.place.going {
 			opacity: 1;
 		}
@@ -290,8 +305,26 @@ const looking = text => {
 	return node;
 };
 
-// Each place a prompt can go, as { heading, lines, accent, go }: the sessions it carries on, then a new session in the
-// project that fits, here or on another server. go() takes it there and resolves true once it's on its way.
+// The model a new session runs on, as suggested and changeable before it starts: { node, value() }
+const modelPicker = suggested => {
+	const node = element('label', 'model');
+	const select = element('select');
+
+	for (const [model, { label, detail }] of Object.entries(MODELS)) {
+		const option = element('option', '', `${label}${model === suggested ? ' (suggested)' : ''}: ${detail}`);
+
+		option.value = model;
+		select.append(option);
+	}
+	select.value = suggested in MODELS ? suggested : 'default';
+	node.append('Runs on', select);
+
+	return { node, value: () => (select.value === 'default' ? undefined : select.value) };
+};
+
+// Each place a prompt can go, as { heading, lines, accent, go, after }: the sessions it carries on, then a new session
+// in the project that fits, here or on another server, with the model it runs on to pick under it (`after`). go()
+// takes it there and resolves true once it's on its way.
 const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive }) => {
 	const sessions = matches.map(({ session, remote, why, meter }) => ({
 		heading: 'Carries on',
@@ -317,6 +350,7 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive }
 	}));
 	const where = fresh.project ?? project;
 	const mode = /^(warm|brief)$/.test(fresh.lifetime ?? '') ? fresh.lifetime : undefined;
+	const model = modelPicker(fresh.model);
 
 	if (!where) return sessions;
 
@@ -330,18 +364,20 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive }
 				fresh.why && element('div', 'why', fresh.why),
 				mode && element('div', 'cost', LIFETIME_NOTES[mode]),
 			],
+			after: model.node,
+			fresh: true,
 			go: async () => {
 				if (fresh.remote) {
-					const { body, response } = await startRemoteSession(fresh.remote.url, where, prompt, mode);
+					const { body, response } = await startRemoteSession(fresh.remote.url, where, prompt, mode, model.value());
 
 					if (!response?.ok) return failed(`Could not start it on ${fresh.remote.name}`);
 					if (onArrive) return onArrive({ id: body.id, remote: fresh.remote }) ?? true;
 
 					return await openThere(fresh.remote.url, { sessionId: body.id });
 				}
-				if (startFresh) return startFresh(where, fresh.lifetime);
+				if (startFresh) return startFresh(where, fresh.lifetime, model.value());
 
-				const { body, response } = await createSession(where, prompt, undefined, mode);
+				const { body, response } = await createSession(where, prompt, undefined, mode, model.value());
 
 				if (!response?.ok) return failed(`Could not start it in ${where}`);
 				if (onArrive) return onArrive({ id: body.id }) ?? true;
@@ -355,8 +391,9 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive }
 
 // Finds where `prompt` belongs, in a dialog that shows it looking, then offers each place it could go; each goes
 // straight into its session (or to `onArrive({ id, remote })` when given, to open it elsewhere), and a single place is
-// gone to without asking. A new session here starts in the project's
-// own folder, or with startFresh(project, lifetime) when given (resolving true once started). onSent once it's gone.
+// gone to without asking, unless it's a new session, whose model is to pick. A new session here starts in the
+// project's own folder, or with startFresh(project, lifetime, model) when given (resolving true once started). onSent
+// once it's gone.
 export const placePrompt = async ({ prompt, project, startFresh, onArrive, onSent }) => {
 	if (!prompt) return new Notify({ intent: 'warning', content: 'Say what Claude should do first' });
 
@@ -385,7 +422,7 @@ export const placePrompt = async ({ prompt, project, startFresh, onArrive, onSen
 
 	const places = placesFor(found, { prompt, project, startFresh, onArrive });
 	const go = async (place, pressed) => {
-		const buttons = [...body.elem.querySelectorAll('button.place')];
+		const buttons = [...body.elem.querySelectorAll('button.place, .model select')];
 
 		for (const each of buttons) each.disabled = true;
 		pressed?.classList.add('going');
@@ -405,7 +442,7 @@ export const placePrompt = async ({ prompt, project, startFresh, onArrive, onSen
 		pressed?.classList.remove('going');
 	};
 
-	if (places.length === 1) {
+	if (places.length === 1 && !places[0].fresh) {
 		body.elem.replaceChildren(looking('Taking it there…'));
 		const gone = await places[0].go();
 
@@ -433,7 +470,7 @@ export const placePrompt = async ({ prompt, project, startFresh, onArrive, onSen
 		pressed.append(...place.lines.filter(Boolean));
 		if (place.accent) pressed.style.setProperty('--accent', place.accent);
 		pressed.addEventListener('click', () => go(place, pressed));
-		body.elem.append(pressed);
+		body.elem.append(pressed, ...(place.after ? [place.after] : []));
 	}
 	body.elem.querySelector('button.place')?.focus();
 };

@@ -20,6 +20,8 @@ import { FILTERS, matchesFilter, matchesQuery } from '../../shared/sessionSearch
 import { warmUntil } from '../keepWarm';
 import { continueSession } from '../usageLimit';
 import { LIFETIMES, WARM_LIFETIMES, lastSwitch, lifetimeOf, setLifetime, switchLifetime } from '../lifetime';
+import { MODEL_NAMES } from '../../shared/models';
+import { setModel } from '../sessionModels';
 import removeSession from '../removeSession';
 import { meterOf } from '../cacheMeter';
 import { catchUp } from '../catchUp';
@@ -114,17 +116,19 @@ const worktreeNameFor = text => {
 // { id: null, worktree, files, warning }, and joining that worktree is starting Claude in it anyway.
 const HEARTBEAT_MS = 5000;
 
-// A new session, kept warm, kept going or short-lived from the start when asked: mode is 'warm', 'going', 'brief' or
-// anything else for none
-const startWith = async (folder, text, mode) => {
-	const { id } = startSession(folder, text?.trim());
+// A new session, kept warm, kept going or short-lived from the start when asked, on the model asked for: mode is
+// 'warm', 'going', 'brief' or anything else for none, model one of MODEL_NAMES or anything else for the default
+const startWith = async (folder, text, { mode, model } = {}) => {
+	const known = MODEL_NAMES.includes(model) ? model : undefined;
+	const { id } = startSession(folder, text?.trim(), known);
 
+	await setModel(id, known);
 	if (LIFETIMES.includes(mode)) await setLifetime(id, mode);
 
 	return id;
 };
 
-const creatingSession = (create, text, mode) => {
+const creatingSession = (create, text, how) => {
 	const encoder = new TextEncoder();
 	let open = true;
 	let heartbeat;
@@ -150,7 +154,7 @@ const creatingSession = (create, text, mode) => {
 					if (files.length) send({ id: null, worktree: folder, files, warning: startFilesWarning(files) });
 					else {
 						// Started whether or not anyone is still reading
-						const id = await startWith(folder, text, mode);
+						const id = await startWith(folder, text, how);
 
 						if (open) send({ id });
 					}
@@ -267,7 +271,7 @@ const sessionsRoutes = async (request, server) => {
 
 	// A new session in a project on another server, in its own folder, started there as its owner: { id }
 	if (requestMatch('POST', '/api/remotes/start', request)) {
-		const { url, project, text, mode } = await request.json();
+		const { url, project, text, mode, model } = await request.json();
 
 		if (typeof project !== 'string' || !project || project.includes('/'))
 			return new Response('No such project', { status: 400 });
@@ -275,7 +279,7 @@ const sessionsRoutes = async (request, server) => {
 		try {
 			const started = await remoteApi(url, `/api/projects/${encodeURIComponent(project)}/sessions`, {
 				method: 'POST',
-				body: JSON.stringify({ text, mode }),
+				body: JSON.stringify({ text, mode, model }),
 			});
 
 			return started === undefined
@@ -370,7 +374,9 @@ const sessionsRoutes = async (request, server) => {
 				body: JSON.stringify({ watching: Boolean(watching) }),
 			});
 
-			return set === undefined ? new Response('Not one of your servers', { status: 404 }) : new Response(null, { status: 204 });
+			return set === undefined
+				? new Response('Not one of your servers', { status: 404 })
+				: new Response(null, { status: 204 });
 		} catch (error) {
 			return new Response(error.message, { status: 502 });
 		}
@@ -645,7 +651,7 @@ const sessionsRoutes = async (request, server) => {
 	match = requestMatch('POST', '/api/projects/:project/sessions', request);
 	if (match) {
 		const cwd = projectPath(match.project);
-		const { text, checkout, mode } = await request.json();
+		const { text, checkout, mode, model } = await request.json();
 
 		if (!(await isFolder(cwd))) return new Response('Unknown project', { status: 404 });
 
@@ -667,7 +673,7 @@ const sessionsRoutes = async (request, server) => {
 					return { folder, files: start?.pr ? await pullRequestStartFiles(folder, start.pr) : [] };
 				},
 				text,
-				mode,
+				{ mode, model },
 			);
 		}
 
@@ -681,7 +687,7 @@ const sessionsRoutes = async (request, server) => {
 			folder = joined.path;
 		}
 
-		return Response.json({ id: await startWith(folder, text, mode) });
+		return Response.json({ id: await startWith(folder, text, { mode, model }) });
 	}
 
 	match = requestMatch('GET', '/api/sessions/:id/attach', request);

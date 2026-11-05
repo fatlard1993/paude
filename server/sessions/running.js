@@ -5,6 +5,7 @@ import { getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import { setArchived } from '../archive';
 import { stopKeepingWarm } from '../keepWarm';
 import { projectOf } from '../projects';
+import { modelOf } from '../sessionModels';
 import { forgetLimit } from '../usageLimit';
 import { heldSessions, isHeld } from './holder';
 import PtySession from './PtySession';
@@ -53,7 +54,9 @@ const launch = options => {
 	return session;
 };
 
-export const startSession = (cwd, prompt) => launch({ id: crypto.randomUUID(), cwd, resume: false, prompt });
+// `model`: one of MODEL_NAMES, or none for the default
+export const startSession = (cwd, prompt, model) =>
+	launch({ id: crypto.randomUUID(), cwd, resume: false, prompt, model });
 
 // Sessions a previous server left running under dtach, taken back so they show as live and report their status
 const savedTitle = info => info?.customTitle ?? info?.summary ?? '';
@@ -118,7 +121,8 @@ export const openSession = async id => {
 	try {
 		// A concurrent attach may have started it while this one awaited
 		const session =
-			running.get(id) ?? launch({ id, cwd, resume: !isHeld(id), adopt: isHeld(id), title: savedTitle(info) });
+			running.get(id) ??
+			launch({ id, cwd, resume: !isHeld(id), adopt: isHeld(id), title: savedTitle(info), model: modelOf(id) });
 
 		startFailures.delete(id);
 		// Opened again, it's in use: back in the lists
