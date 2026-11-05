@@ -65,6 +65,9 @@ const BRIDGE_ROW = 2.8;
 // How many times the rows are spread out further, at most, as spreading them puts more islands in each
 const PITCH_TRIES = 8;
 const SEAT_W = 1.5;
+// The shaft up from the gondola, across, and how far out from its back wall its walkway runs, in world units
+const SHAFT_W = 0.6;
+const GONDOLA_WALK = 0.25;
 // The most an island's seats run across before it's split, in world units: six plain seats
 const ISLAND_SEATS_W = 6 * SEAT_W;
 // A subagent's small terminal beside its grey's seat, as many as are shown
@@ -93,6 +96,26 @@ export const splitSeats = (keys, widthOf) => {
 	}
 
 	return [...runs, run];
+};
+
+// Where a shaft goes up from the gondola to the spine above it, across: the middle of the widest stretch over it that
+// nothing on the deck between stands in (`standing`, rooms by their x and w), so nobody climbs through a project's
+// machine or the engine room; with no such stretch, at its forward end
+export const shaftOf = (gondola, standing) => {
+	const [from, to] = [gondola.x + SHAFT_W / 2, gondola.x + gondola.w - SHAFT_W / 2];
+	const taken = standing
+		.map(({ x, w }) => [x - SHAFT_W / 2, x + w + SHAFT_W / 2])
+		.filter(([a, b]) => b > from && a < to)
+		.sort((a, b) => a[0] - b[0]);
+	let best = null;
+	let at = from;
+
+	for (const [a, b] of [...taken, [to, to]]) {
+		if (a > at && (!best || a - at > best[1] - best[0])) best = [at, Math.min(a, to)];
+		at = Math.max(at, b);
+	}
+
+	return best && best[1] > best[0] ? (best[0] + best[1]) / 2 : gondola.x + gondola.w - SHAFT_W / 2;
 };
 
 // The islands of the bridge `from` its stern edge down `rows`, for the bays at work: [{ name, hue, keys, x, y, w,
@@ -501,6 +524,10 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		d: gondola.d,
 		face: FACE,
 		door: { x: room.x + 0.75, y: gondola.y, side: 'top', lane: spines.at(-1).lane },
+		// Its one way up, shared by all of the gondola: along its back, clear of what stands toward its front (the hold's
+		// stacks, the pad, the cloner), to the shaft, and up that
+		shaft: shaftOf(gondola, [{ x: left, w: middle - left }, ...decks.filter(deck => deck.y + deck.d > spines.at(-1).lane)]),
+		walk: gondola.y + FACE + GONDOLA_WALK,
 		hull: { top: false, bottom: true },
 		props: [],
 	}));

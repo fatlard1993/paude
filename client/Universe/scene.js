@@ -436,6 +436,15 @@ const exitOf = (room, from, lane) => {
 		];
 	}
 
+	// The gondola: along its back to its shaft, and up that, clear of what stands on the deck above
+	if (room.shaft !== undefined)
+		return [
+			{ x: from.x, y: room.walk },
+			{ x: room.shaft, y: room.walk },
+			{ x: room.shaft, y: room.y },
+			{ x: room.shaft, y: lane },
+		];
+
 	return [{ x: door.x, y: from.y }, door, { x: door.x, y: lane }];
 };
 
@@ -4294,8 +4303,8 @@ export default class Ship {
 		}));
 	}
 
-	// What stands on the bridge that something on the floor can pass behind, in art pixels, its foot the front of it:
-	// the islands with their screens, the other ships' terminals, and the lounge's couches and screen
+	// What stands that something on the floor can pass behind, in art pixels, its foot the front of it: the bridge's
+	// islands with their screens, the other ships' terminals, and the lounge's couches and screen; the gondola's tubes
 	furniture() {
 		const { lounge } = this;
 		const box = (from, to, rise) => {
@@ -4316,6 +4325,12 @@ export default class Ship {
 			...(lounge?.count
 				? [box({ x: lounge.x, y: lounge.y + LOUNGE_FURNISHED }, { x: lounge.x + lounge.w, y: lounge.y + lounge.d }, 0)]
 				: []),
+			// The materializer's cloner and the transporter's pad, tall tubes standing on the gondola's floor
+			...[this.layout.materializer, this.layout.transporter].filter(Boolean).map(room => {
+				const at = this.art(clonerAt(room));
+
+				return { left: at.x - 8, right: at.x + 8, top: at.y - 20, bottom: at.y + 3 };
+			}),
 		];
 	}
 

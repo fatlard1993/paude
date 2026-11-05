@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import Ship, { appliancesOf, bendAround, countdown, resting, risersFor, runsFor, tanksOf, triage } from './scene';
-import { clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats } from './plan';
+import { clonerAt, holdSpotAt, layOut, rowPitch, shaftOf, shortest, splitSeats } from './plan';
 import { SCREEN_RISE, UNIT, cableWeight } from './station';
 
 const session = changes => ({
@@ -1495,4 +1495,30 @@ test('an island gaining a seat grows to its new length over a moment rather than
 	expect(made.islandsShown.get('other#0').w).toBeLessThan(made.bridge.islands.find(({ name }) => name === 'other').w);
 	run(made, 2);
 	expect(made.islandsShown.get('paude#0').w).toBeCloseTo(goal);
+});
+
+test("the way up from the gondola is a shaft where nothing stands on the deck above it, its rooms reached along its back", () => {
+	const gondola = { x: -9.5, w: 10, y: 7, d: 3.3 };
+
+	// Under the engine room and two projects' rooms, the one clear stretch is past them
+	const shaft = shaftOf(gondola, [
+		{ x: -14, w: 6.6 },
+		{ x: -7.4, w: 3.1 },
+		{ x: -4.3, w: 3 },
+	]);
+
+	expect(shaft).toBeGreaterThan(-1.3 + 0.3);
+	expect(shaft).toBeLessThan(0.5);
+	// Nothing clear: its forward end
+	expect(shaftOf(gondola, [{ x: -20, w: 40 }])).toBeCloseTo(0.5 - 0.3);
+
+	// On a ship, a droid's way into the shipping bay climbs through no project's room nor the engine room
+	const made = shipWith([answer('here', [session(), session({ id: 'b', project: 'site' })], { projects: ['paude', 'site'] })]);
+	const { hangar, engineering } = made.layout;
+	const path = made.route(made.berthOf(0), engineering, { x: hangar.x + 1, y: hangar.y + 2 }, hangar);
+	const climbs = path.slice(1).filter((point, index) => point.x === path[index].x && point.y !== path[index].y);
+	const decks = made.layout.rooms.filter(({ kind, parts }) => !kind && parts);
+
+	for (const point of climbs.filter(({ y }) => y < hangar.y && y > engineering.door.y))
+		for (const deck of decks) expect(point.x > deck.x && point.x < deck.x + deck.w && point.y > deck.y).toBe(false);
 });
