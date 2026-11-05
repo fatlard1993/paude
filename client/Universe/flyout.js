@@ -69,11 +69,17 @@ const freshness = (worker, ship) => {
 
 	const since = (ship.time - (worker.cacheAt ?? ship.time)) * 1000;
 	const left = cache.left - since;
-	const life = `${Math.round(cache.life / 60_000)}-minute`;
+	const short = ms => {
+		const minutes = Math.round(ms / 60_000);
 
-	if (left > 0) return `fresh for ${left < 60_000 ? 'under a minute' : `${lasted(left)} more`}, of its ${life} cache`;
+		if (minutes < 60) return `${minutes}m`;
 
-	return `gone cold ${lasted(Math.max(60_000, (cache.ago ?? 0) + since - cache.left))} ago: its next turn writes its ${tokenCount(context.tokens)} context to the cache again`;
+		return minutes % 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes / 60}h`;
+	};
+
+	if (left > 0) return `warm: ${left < 60_000 ? 'under 1m' : short(left)} of ${short(cache.life)} left`;
+
+	return `cold ${short(Math.max(60_000, (cache.ago ?? 0) + since - cache.left))}: next turn re-caches ${tokenCount(context.tokens)}`;
 };
 
 const lasted = age => {

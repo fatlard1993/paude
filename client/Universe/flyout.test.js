@@ -36,14 +36,10 @@ test("a session's card counts down how long its context stays cached, as its gre
 	const HOUR = 3_600_000;
 
 	// Read 60 seconds ago with 24 minutes left: 23 now
-	expect(cacheOf({ left: 24 * 60_000, life: HOUR, ago: 0 }, { cacheAt: 40 })).toBe(
-		'fresh for 23 minutes more, of its 60-minute cache',
-	);
-	expect(cacheOf({ left: 30_000, life: HOUR, ago: 0 }, { cacheAt: 100 })).toBe(
-		'fresh for under a minute, of its 60-minute cache',
-	);
+	expect(cacheOf({ left: 24 * 60_000, life: HOUR, ago: 0 }, { cacheAt: 40 })).toBe('warm: 23m of 1h left');
+	expect(cacheOf({ left: 30_000, life: HOUR, ago: 0 }, { cacheAt: 100 })).toBe('warm: under 1m of 1h left');
 	expect(cacheOf({ left: 0, life: 5 * 60_000, ago: 9 * 60_000 }, { cacheAt: 40 })).toBe(
-		'gone cold 10 minutes ago: its next turn writes its 150k context to the cache again',
+		'cold 10m: next turn re-caches 150k',
 	);
 	expect(cacheOf({})).toBe('gone cold: its next turn costs more');
 });
