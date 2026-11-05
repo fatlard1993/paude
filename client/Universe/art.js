@@ -262,9 +262,6 @@ const HAULER = [
 	'....kkkkkkkk....',
 ];
 
-// A thought bubble, its dots drawn into it as they come and go
-const THOUGHT = ['.kkkkkkk.', 'kwwwwwwwk', 'kwwwwwwwk', 'kwwwwwwwk', '.kkkkkkk.', 'kk.......', 'k........'];
-
 // What stands in a bay's back corner: a potted plant, a locker with its stripe in the project's color, a rack of
 // drives blinking
 const PLANT = [
@@ -387,7 +384,6 @@ const SPRITES = {
 	plant: PLANT,
 	locker: LOCKER,
 	rack: RACK,
-	thought: THOUGHT,
 	...Object.fromEntries(
 		Object.entries(HEADS).flatMap(([size, rows]) => [
 			[`head-${size}`, rows],

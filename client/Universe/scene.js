@@ -68,6 +68,10 @@ const ABOARD_SECONDS = 6;
 // How long a can's toss onto its pile takes, and a drink of a grey's coffee or energy drink
 const TOSS_SECONDS = 0.7;
 const DRINK_SECONDS = 6;
+// Thinking: how long a grey's skull takes to brighten and dim again, in seconds, and how far up from its chin its eyes
+// are, in art pixels, the same on every size of head
+const THINK_BREATH = 2.2;
+const EYES_UP = 6;
 // The part of a drink spent lifting the cup to its mouth, and again setting it back
 const DRINK_LIFT = 0.15;
 // How long a beam off a transporter, or onto one, lasts
@@ -3774,7 +3778,7 @@ export default class Ship {
 		}
 		if (!watching && !walking && worker.seat && keepingOf(session) && this.drinking(worker))
 			this.drawSip(ctx, worker, at, neck);
-		if (thinking) this.drawThought(ctx, at.x + w / 2 + 1, top + 2);
+		if (thinking) this.drawConcentrating(ctx, { x: at.x, top, w, h, seed: worker.seed });
 		if (dozing) {
 			const rise = (this.time * 0.8 + worker.seed) % 1;
 
@@ -3841,10 +3845,26 @@ export default class Ship {
 				ctx.fillRect(at.x - Math.floor(width / 2) + column, at.y - row, 1, 1);
 	}
 
-	drawThought(ctx, x, y) {
-		drawSprite(ctx, 'thought', x + 5, y + 2);
-		for (let dot = 0; dot < 1 + (Math.floor(this.time * 3) % 3); dot++)
-			rect(ctx, x + 2 + dot * 2, y - 3, 1, 1, PALETTE.k);
+	// Thinking hard, on a head `w` by `h` with its top at `top` and its middle at `x`: its brow knit over its eyes, and
+	// its skull glowing softly, brightening and dimming slowly as it mulls it over
+	drawConcentrating(ctx, { x, top, w, h, seed }) {
+		const swell = 0.5 + 0.5 * Math.sin((this.time / THINK_BREATH + seed) * TAU);
+		const middle = top + (h - EYES_UP) / 2;
+		const glow = ctx.createRadialGradient(x, middle, 1, x, middle, w * 0.6);
+
+		glow.addColorStop(0, `rgba(160, 232, 255, ${0.25 + swell * 0.3})`);
+		glow.addColorStop(1, 'rgba(160, 232, 255, 0)');
+		ctx.fillStyle = glow;
+		ctx.fillRect(x - w, middle - h, w * 2, h * 2);
+
+		// Each brow angled down toward the nose, just over its eye
+		const brow = top + h - EYES_UP - 1;
+
+		for (const side of [-1, 1]) {
+			rect(ctx, x + side * 4, brow - 1, 1, 1, PALETTE.k);
+			rect(ctx, x + side * 3, brow, 1, 1, PALETTE.k);
+			rect(ctx, x + side * 2, brow, 1, 1, PALETTE.k);
+		}
 	}
 
 	// Eight points flying out and fading, `time` from 0 to 1
