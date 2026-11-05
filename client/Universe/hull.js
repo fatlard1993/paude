@@ -196,6 +196,76 @@ const paintHull = building => {
 	return { canvas, x: shape.left, y: shape.top, shape };
 };
 
+// The ship sealed in its outer plating while what's aboard comes in, `cover` of it (1 sealed, fading to 0 as it's
+// opened), the gondola under it (`gondola`, in art pixels) plated too, and a light sweeping along it the while. Its
+// outside as a ship's: a stripe in its color (`hue`) with its `name` painted over it, a row of portholes lit here and
+// there, vents along its belly, running lights blinking at its bow and stern, and hazard bands where the gondola hangs.
+export const drawHullCover = (ctx, layout, cover, { time, gondola, name = '', hue = 200 }) => {
+	if (!layout.building || cover <= 0) return;
+
+	const image = hullImage(layout.building);
+	const { shape } = image;
+	const tall = shape.bottom - shape.top;
+	const [from, to] = [shape.left + 14, shape.right - 14];
+
+	ctx.globalAlpha = cover;
+	ctx.drawImage(image.canvas, image.x, image.y);
+
+	// The stripe, its name over it
+	const stripe = Math.round(shape.top + tall * 0.36);
+
+	rect(ctx, from, stripe, to - from, 5, `hsl(${hue} 55% 42%)`);
+	rect(ctx, from, stripe, to - from, 1, `hsl(${hue} 60% 62%)`);
+	rect(ctx, from, stripe + 5, to - from, 1, PALETTE.k);
+	pixelText(ctx, name, from + 26, stripe - 4, { color: '#c9d3e3', size: 2, max: (to - from) * 0.6 });
+	pixelText(ctx, 'PAUDE', to - 24, stripe - 4, { color: `hsl(${hue} 45% 70%)`, align: 'right' });
+
+	// Portholes, a few of them lit, one now and then blinking
+	const ports = Math.round(shape.top + tall * 0.6);
+
+	for (let x = from + 8; x < to - 6; x += 16) {
+		const lit = seeded(`port${x}`);
+		const blink = lit > 0.85 && Math.floor(time * 1.5 + lit * 9) % 4 === 0;
+
+		rect(ctx, x - 1, ports - 1, 6, 5, PALETTE.k);
+		rect(ctx, x, ports, 4, 3, lit > 0.55 && !blink ? '#f2c66d' : '#0b1430');
+		if (lit > 0.55 && !blink) rect(ctx, x, ports, 1, 1, '#fff2c8');
+	}
+
+	// Vents along the belly
+	for (let x = from + 30; x < to - 30; x += 64)
+		for (let slot = 0; slot < 4; slot++) rect(ctx, x + slot * 3, shape.bottom - 9, 2, 5, '#0b0e13');
+
+	// Running lights: red at the stern, top and bottom, green at the bow
+	const on = Math.floor(time * 2) % 2 === 0;
+
+	rect(ctx, shape.left + 3, shape.top + 3, 2, 2, on ? '#ff4a3a' : '#5a1a16');
+	rect(ctx, shape.left + 3, shape.bottom - 5, 2, 2, on ? '#ff4a3a' : '#5a1a16');
+	rect(ctx, shape.tip - 4, shape.middle - 1, 2, 2, on ? '#5cff8a' : '#16502a');
+	if (gondola) {
+		const { left, top, right, bottom } = gondola;
+
+		rect(ctx, left, top, right - left, bottom - top, '#232b3a');
+		for (let x = left + 20; x < right; x += 20) rect(ctx, x, top, 1, bottom - top, '#141a26');
+		for (let y = top + 14; y < bottom; y += 14) rect(ctx, left, y, right - left, 1, '#141a26');
+		rect(ctx, left, top, right - left, 1, 'rgba(120, 140, 170, 0.25)');
+		rect(ctx, left, bottom - 1, right - left, 1, PALETTE.k);
+		// Hazard bands down its ends, where it hangs from the belly
+		for (const edge of [left + 1, right - 4])
+			for (let y = top; y < bottom - 1; y += 4) rect(ctx, edge, y, 3, 2, (y - top) % 8 ? PALETTE.k : '#f2c14e');
+	}
+
+	const sweep = shape.left + ((time * 0.6) % 1) * (shape.right - shape.left);
+	const glow = ctx.createLinearGradient(sweep - 24, 0, sweep + 24, 0);
+
+	glow.addColorStop(0, 'rgba(120, 220, 255, 0)');
+	glow.addColorStop(0.5, 'rgba(120, 220, 255, 0.18)');
+	glow.addColorStop(1, 'rgba(120, 220, 255, 0)');
+	ctx.fillStyle = glow;
+	ctx.fillRect(sweep - 24, shape.top, 48, shape.bottom - shape.top);
+	ctx.globalAlpha = 1;
+};
+
 // The nose: a cockpit window in an armored rim, space streaming past in it as the sky's does: `drift` how far the sky
 // has streamed, in art pixels, so its stars keep the sky's speed at any zoom; `pace` how fast the ship is going
 const drawCanopy = (ctx, image, { time, pace, drift }) => {

@@ -16,8 +16,7 @@ import {
 	drawLounge,
 	drawMaterializer,
 	drawSystem,
-	drawTransporter,
-} from './hull';
+	drawTransporter, drawHullCover } from './hull';
 import {
 	standingOf,
 	clonerAt,
@@ -78,6 +77,12 @@ const EYES_UP = 6;
 const DRINK_LIFT = 0.15;
 // How long a beam off a transporter, or onto one, lasts
 export const BEAM_SECONDS = 0.9;
+// How long the ship takes coming in out of warp, opened no sooner however fast what's aboard comes in
+const ENTER_SECONDS = 3.5;
+// How long the stars' streaks are at the start of it, in screen pixels for the nearest
+const WARP_STREAK = 160;
+// How long the outer plating takes to fade once what's aboard has come in
+const OPEN_SECONDS = 0.8;
 // Between the sessions' keys of a group picked together, in its selection's key: a session's key holds ':' and '/'
 export const GROUP_SEPARATOR = '|';
 // Someone off to the transporter walks this many times as fast, and beams out after this long however far they got
@@ -855,6 +860,9 @@ export default class Ship {
 
 	// answers: [{ key, name, hue, remote, error, projects, sessions, people }], what each engine last answered
 	update(answers) {
+		// Its own paude's, for its name and color on its hull
+		this.own = answers[0];
+
 		const sessions = answers.flatMap(answer =>
 			(answer.sessions ?? []).map(session => ({
 				...session,
@@ -1460,6 +1468,9 @@ export default class Ship {
 
 	step(seconds, calm) {
 		this.time += seconds;
+		// Sealed, it comes in out of warp once there's a ship to show, and is opened only once it's arrived
+		if (this.sealed && this.enteredAt === undefined && this.answered.size) this.enteredAt = this.time;
+		if (this.openWanted && this.arrived()) this.open();
 		// The ship under way: space streams past astern, faster the more was delivered in the last hour
 		const burning = flowOf(this.tanks.reduce((sum, { rate }) => sum + rate, 0));
 
@@ -1603,6 +1614,8 @@ export default class Ship {
 		ctx.fillRect(0, 0, this.width, this.height);
 
 		const size = this.camera.zoom;
+		// Coming out of warp, the stars drawn out into streaks, shortening as it slows
+		const warp = (1 - this.entering()) ** 2 * WARP_STREAK;
 
 		for (const star of this.stars) {
 			const on = Math.sin(this.time * 1.3 + star.phase) > -0.4;
@@ -1611,6 +1624,10 @@ export default class Ship {
 			const y = Math.round(star.y / size) * size;
 
 			ctx.fillStyle = (!on && '#434d61') || (star.depth > 0.7 && '#c3cad6') || '#77829a';
+			if (warp >= 1) {
+				ctx.fillRect(x - Math.round(warp * star.depth), y, Math.round(warp * star.depth) + size, size);
+				continue;
+			}
 			ctx.fillRect(x, y, size, size);
 			if (star.big && on) {
 				ctx.fillRect(x - size, y, size * 3, size);
@@ -1621,7 +1638,8 @@ export default class Ship {
 		// Only stars until the first answer
 		if (!this.answered.size) return;
 
-		const { x, y } = this.offset;
+		const { y } = this.offset;
+		const x = this.offset.x + Math.round(this.entryShift());
 
 		ctx.setTransform(size * ratio, 0, 0, size * ratio, x * ratio, y * ratio);
 
@@ -1648,7 +1666,8 @@ export default class Ship {
 			engines: this.engines.map((engine, index) => ({
 				y: this.thrusterAt(index),
 				hue: engine.hue ?? 215,
-				thrust: Math.min(
+				// Full on, coming in
+				thrust: this.entering() < 1 ? 1 : Math.min(
 					1,
 					sessions.filter(session => session.engine.key === engine.key && session.status === 'working').length / 3,
 				),
@@ -1838,11 +1857,63 @@ export default class Ship {
 		// Whoever's aboard over everything, as a game draws its people over the scenery: the bridge's aisles are too narrow
 		// to clear the consoles and screens about them
 		for (const walker of this.walkers.values()) if (walker.x !== undefined) this.drawWalker(ctx, walker);
+
+		const cover = this.coverOf();
+
+		// Sealed in its plating until what's aboard has all come in, so nothing is seen moving into place; opened then
+		const { gondola } = this.layout;
+		const [under, past] = gondola
+			? [this.art({ x: gondola.x, y: gondola.y }), this.art({ x: gondola.x + gondola.w, y: gondola.y + gondola.d })]
+			: [];
+
+		drawHullCover(ctx, this.layout, cover, {
+			time: this.time,
+			name: this.own?.name ?? '',
+			hue: this.own?.hue ?? 200,
+			gondola: gondola && { left: under.x, top: under.y - HULL_FACE * UNIT.y, right: past.x, bottom: past.y },
+		});
+		if (cover >= 1) return ctx.restore();
 		this.drawSelection(ctx);
 		ctx.restore();
 		for (const hauler of this.haulers) this.drawHauler(ctx, hauler);
 		for (const worker of this.workers.values()) if (worker.seat) this.drawMarker(ctx, worker);
 		this.drawLabels(ctx, ratio);
+	}
+
+	// How much of the ship its outer plating still covers: all of it while sealed, fading once opened
+	coverOf() {
+		if (this.sealed) return 1;
+
+		return Math.max(0, 1 - (this.time - (this.openedAt ?? -Infinity)) / OPEN_SECONDS);
+	}
+
+	// Its plating opened, showing what's aboard; asked before it's arrived, once it has
+	open() {
+		if (!this.sealed) return;
+		if (!this.arrived()) {
+			this.openWanted = true;
+
+			return;
+		}
+		this.sealed = false;
+		this.openWanted = false;
+		this.openedAt = this.time;
+	}
+
+	// How far through its coming in out of warp it is, 0 to 1; 1 for one that never came in
+	entering() {
+		if (this.enteredAt === undefined) return this.sealed ? 0 : 1;
+
+		return Math.min(1, (this.time - this.enteredAt) / ENTER_SECONDS);
+	}
+
+	arrived() {
+		return this.entering() >= 1;
+	}
+
+	// Where it is on its way in, in screen pixels left of its place: far off at first, slowing as it nears
+	entryShift() {
+		return -((1 - this.entering()) ** 3) * (this.width + 200);
 	}
 
 	light(ctx, working, running) {

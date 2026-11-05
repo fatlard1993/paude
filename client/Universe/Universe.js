@@ -113,6 +113,8 @@ const groupOf = group => ({
 	about: 'Shift-click to add or take one away',
 });
 
+// The longest the ship stays sealed waiting for other paudes to answer
+const OPEN_AFTER_MS = 6000;
 // What was last focused, kept for this browser so a reload comes back to it
 const FOCUS_KEPT = 'paude-universe-focus';
 // The width the docks were last dragged to, kept for this browser (where it can be: storage can be off)
@@ -242,6 +244,10 @@ export default class Universe extends View {
 		);
 		this.findRemotes();
 		this.poll();
+		// However long another paude takes to answer, the ship opens after this long
+		const opening = setTimeout(() => this.opened(), OPEN_AFTER_MS);
+
+		this.addCleanup('opening', () => clearTimeout(opening));
 
 		const polling = setInterval(() => this.poll(), POLL_MS);
 		const finding = setInterval(() => this.findRemotes(), REMOTES_MS);
@@ -258,6 +264,8 @@ export default class Universe extends View {
 		const ship = new Ship();
 
 		ship.aside = FOCUS_WIDTH + 32;
+		// The first sealed until what's aboard has all come in; those that come later, open
+		ship.sealed = !this.loaded;
 
 		return ship;
 	}
@@ -991,6 +999,13 @@ export default class Universe extends View {
 
 			return;
 		}
+	}
+
+	// Everything aboard come in: the ships' plating opened
+	opened() {
+		if (this.loaded) return;
+		this.loaded = true;
+		for (const ship of this.ships.values()) ship.open();
 	}
 
 	// Opened to nothing in particular, what was focused before the page was last left, once the first answer is in: a
@@ -1862,13 +1877,14 @@ export default class Universe extends View {
 		};
 
 		if (!identity()) return again();
-		if (!identity().remotes) return;
+		if (!identity().remotes) return (this.remotesKnown = true);
 
 		const { body } = await getRemotes().catch(() => ({}));
 
 		if (!Array.isArray(body)) return again();
 		this.retryMs = 0;
 		setServers(body);
+		this.remotesKnown = true;
 	}
 
 	// Each engine's universe; one that can't be reached, or is too old to say, adds nothing until it answers
@@ -1878,6 +1894,7 @@ export default class Universe extends View {
 
 		try {
 			const remotes = this.remotes ?? [];
+			const knew = this.remotesKnown;
 			const [local, ...elsewhere] = await Promise.all([
 				getUniverse(),
 				...remotes.map(remote =>
@@ -1909,6 +1926,8 @@ export default class Universe extends View {
 				}),
 			];
 			this.updateShips();
+			// Asked of every paude there is, the ship opens
+			if (knew) this.opened();
 			this.focusOpened();
 			this.refreshSelection();
 			this.paintFocus();
