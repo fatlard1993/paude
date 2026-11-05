@@ -69,6 +69,8 @@ const ABOARD_SECONDS = 6;
 const TOSS_SECONDS = 0.7;
 // How far apart the crew's bots wait in line below engineering's door, and the first of them below it
 const BERTH_GAP = 0.55;
+// The most sleds a session's rack of processes shows
+const RACK_SLEDS = 4;
 // How far aft of the transporter's pad the viewer waits while looking at it, in world units
 const BESIDE_PAD = 1.1;
 // A grey on its feet, half its width and its height, in art pixels, for what it passes behind
@@ -4210,24 +4212,26 @@ export default class Ship {
 				? { x: worker.seat.x + outward * 0.5, y: worker.seat.y - 0.05 }
 				: { x: worker.seat.x - 0.95, y: worker.seat.y - 0.35 },
 		);
-		const count = Math.max(1, Math.min(3, processes.length));
+		// One rack beside its seat, a sled in it for each process, stacked up rather than spread along the floor
+		const count = Math.max(1, Math.min(RACK_SLEDS, processes.length));
+		const tall = count * 3 + 2;
 
+		rect(ctx, at.x - 4, at.y - tall, 9, tall, PALETTE.k);
+		rect(ctx, at.x - 4, at.y - tall, 1, tall, PALETTE.d);
 		for (let unit = 0; unit < count; unit++) {
-			const x = at.x + outward * unit * 7;
+			const y = at.y - 3 - unit * 3;
 			const busy = (processes[unit]?.cpuSeconds ?? 0) > 1;
 
-			rect(ctx, x - 3, at.y - 8, 7, 8, PALETTE.k);
-			rect(ctx, x - 2, at.y - 7, 5, 6, PALETTE.m);
-			rect(ctx, x - 1, at.y - 6, 1, 1, busy && Math.floor(this.time * 6 + unit) % 2 ? PALETTE.t : PALETTE.T);
-			rect(ctx, x + 1, at.y - 6, 1, 1, Math.floor(this.time * 2 + unit) % 3 ? PALETTE.y : PALETTE.Y);
-			rect(ctx, x - 1, at.y - 3, 3, 1, PALETTE.d);
+			rect(ctx, at.x - 2, y, 6, 2, PALETTE.m);
+			rect(ctx, at.x - 1, y, 1, 1, busy && Math.floor(this.time * 6 + unit) % 2 ? PALETTE.t : PALETTE.T);
+			rect(ctx, at.x + 2, y, 1, 1, Math.floor(this.time * 2 + unit) % 3 ? PALETTE.y : PALETTE.Y);
 		}
 		if (services.length) {
-			rect(ctx, at.x, at.y - 15, 1, 7, PALETTE.l);
-			rect(ctx, at.x - 1, at.y - 17, 3, 2, Math.floor(this.time * 2) % 2 ? PALETTE.t : PALETTE.W);
+			rect(ctx, at.x, at.y - tall - 6, 1, 6, PALETTE.l);
+			rect(ctx, at.x - 1, at.y - tall - 8, 3, 2, Math.floor(this.time * 2) % 2 ? PALETTE.t : PALETTE.W);
 		}
 		this.hits.push({
-			...this.toScreen({ x: at.x + outward * (count - 1) * 3.5, y: at.y - 5 }),
+			...this.toScreen({ x: at.x, y: at.y - tall / 2 }),
 			r: 6 * this.camera.zoom,
 			kind: 'processes',
 			worker,
