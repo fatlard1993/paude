@@ -1572,3 +1572,22 @@ test('a grey on its feet walks over the conduits it crosses, and behind what sta
 	expect(layerAt({ x: made.bridge.x + 0.3, y: made.bridge.y + made.bridge.d - 0.2 })).toBeGreaterThan(1e5);
 	expect(layerAt({ x: island.x + island.w / 2, y: island.y - 0.2 })).toBeLessThan(1e5);
 });
+
+test("the hold's crane wanders its rail, and a commit made while it's mid-way brings it over that pod at once", () => {
+	const at = unpushed => [
+		{ ...answer('here', [session({ checkout: '/w/a' }), session({ id: 'b', project: 'b', checkout: '/w/b' })], { projects: ['paude', 'b'] }), checkouts: [{ root: '/w/a', changed: 3, unpushed }, { root: '/w/b', changed: 0, unpushed: 8 }] },
+	];
+	const made = shipWith(at(1));
+
+	run(made, 2);
+
+	const wandered = made.craneX;
+
+	run(made, 3);
+	expect(made.craneX).not.toBeCloseTo(wandered);
+	made.update(at(2));
+	run(made, 0.6);
+	expect(Math.abs(made.craneX - (made.art(holdSpotAt(made.layout.hold, 0)).x + 3))).toBeLessThan(2);
+	// More commits than a pod shows: drawn no more than it holds, without fault
+	expect(() => made.drawPod({ fillStyle: '', fillRect: () => {} }, { x: 0, y: 0 }, { hue: 10, crates: 8, sheets: 9 })).not.toThrow();
+});
