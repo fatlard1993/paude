@@ -70,10 +70,16 @@ export const checkBrief = async ({ sessionOf, meterOf, remove }, now = Date.now(
 export const initBriefSessions = async (dataDir, sweep) => {
 	file = path.join(dataDir, 'brief-sessions.json');
 	brief = await readJsonFile(file, {});
-	const checking = setInterval(
-		() => checkBrief(sweep).catch(error => console.error('Sweeping short-lived sessions failed:', error)),
-		CHECK_MS,
-	).unref();
+	// One sweep at a time: each reads every session's cache before it decides, and one running past the next would
+	// delete the same session twice
+	let sweeping = false;
+	const checking = setInterval(() => {
+		if (sweeping) return;
+		sweeping = true;
+		checkBrief(sweep)
+			.catch(error => console.error('Sweeping short-lived sessions failed:', error))
+			.finally(() => (sweeping = false));
+	}, CHECK_MS).unref();
 
 	return () => clearInterval(checking);
 };
