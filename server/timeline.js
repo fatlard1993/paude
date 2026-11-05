@@ -137,7 +137,10 @@ export const timelineFrom = (lines, cwd) => {
 		if (line.timestamp) turn.endedAt = line.timestamp;
 		// What the person sent while Claude worked, which it takes in mid-turn rather than as a turn of its own
 		if (line.attachment?.type === 'queued_command' && line.attachment.origin?.kind === 'human') {
-			turn.added = [...(turn.added ?? []), String(line.attachment.prompt ?? '').slice(0, ASKED_CHARACTERS)];
+			// A string, or content blocks when it came with an image
+			const added = promptText({ type: 'user', message: { content: line.attachment.prompt } });
+
+			if (added) turn.added = [...(turn.added ?? []), added.slice(0, ASKED_CHARACTERS)];
 			continue;
 		}
 

@@ -65,12 +65,21 @@ test('what the person sent mid-turn stays with the turn it went into, not a turn
 		attachment: { type: 'queued_command', prompt: text, origin: { kind } },
 	});
 	const turns = timelineFrom(
-		[prompt('lock accounts', 0), queued('per user, not per session'), queued('a task note', 'task')],
+		[
+			prompt('lock accounts', 0),
+			queued('per user, not per session'),
+			queued('a task note', 'task'),
+			// Sent with an image
+			queued([
+				{ type: 'text', text: '[Image #2]  what is this little thing?' },
+				{ type: 'image', source: { type: 'base64', data: 'iVBOR' } },
+			]),
+		],
 		'/repo',
 	);
 
 	expect(turns).toHaveLength(1);
-	expect(turns[0].added).toEqual(['per user, not per session']);
+	expect(turns[0].added).toEqual(['per user, not per session', '[Image #2]  what is this little thing?']);
 });
 
 test('a pasted prompt shows without the tags Claude Code keeps it in', () => {
