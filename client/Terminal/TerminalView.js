@@ -31,6 +31,7 @@ import DONE_MARKER from '../../shared/doneMarker';
 import { tintsOf } from '../../shared/hues';
 import tokens from '../../shared/tokenCount';
 import withoutPointerReporting from '../../shared/pointerReporting';
+import { claudePointer, wheelToClaude } from './claudePointer';
 import { NOTE_TYPES } from '../../shared/protocol';
 import { showNotification } from '../notify';
 import { recall, remember } from '../storage';
@@ -713,7 +714,7 @@ export default class TerminalView extends View {
 			this.terminal.reset();
 			this.terminal.resize(message.cols, message.rows);
 			this.decoder = new TextDecoder();
-			this.pointerModes.clear();
+			this.pointer.reset();
 			loadSymbolsFor(message.data);
 			this.terminal.write(withoutPointerReporting(message.data, this.trackPointerMode));
 			this.fitScale();
@@ -1161,21 +1162,12 @@ export default class TerminalView extends View {
 	// across the terminal, go to Claude as a wheel whenever Claude has asked for one; left to xterm on the alternate
 	// screen, the wheel would become arrow keys, which Claude reads as walking through past prompts.
 	scrollClaudeWithWheel() {
-		this.pointerModes = new Set();
-		this.trackPointerMode = (mode, on) => (on ? this.pointerModes.add(mode) : this.pointerModes.delete(mode));
+		this.pointer = claudePointer(this.terminal);
+		this.trackPointerMode = this.pointer.track;
 
-		const tracking = () => ['1000', '1002', '1003'].some(mode => this.pointerModes.has(mode));
+		const { tracking } = this.pointer;
 
-		this.terminal.attachCustomWheelEventHandler(event => {
-			// Not asked for: xterm scrolls its own scrollback, which the alternate screen doesn't have
-			if (!tracking()) return this.terminal.buffer.active.type !== 'alternate';
-			if (!canType() || !event.deltaY) return false;
-
-			// A touchpad sends many small deltas; a notch of a wheel is about 100
-			this.sendWheel(event.deltaY < 0, event, Math.max(1, Math.round(Math.abs(event.deltaY) / 100)));
-
-			return false;
-		});
+		wheelToClaude(this.terminal, this.pointer, data => this.sendInput(data), { allowed: canType });
 
 		this.scrollClaudeWithTouch(tracking);
 		this.clickClaude(tracking);
@@ -1219,30 +1211,9 @@ export default class TerminalView extends View {
 		});
 	}
 
-	// The terminal cell under a point, 1-based, as mouse reports count them
-	cellAt({ clientX, clientY }) {
-		// The screen, not the terminal element: scaled down, the element keeps its full-size width and the screen spills out
-		const bounds = this.terminal.element.querySelector('.xterm-screen').getBoundingClientRect();
-		const clamp = (value, most) => Math.min(Math.max(Math.ceil(value), 1), most);
-
-		return {
-			column: clamp(((clientX - bounds.left) / bounds.width) * this.terminal.cols, this.terminal.cols),
-			row: clamp(((clientY - bounds.top) / bounds.height) * this.terminal.rows, this.terminal.rows),
-		};
-	}
-
-	// A mouse report in the encoding Claude asked for; the legacy one has no button for a release, only 3
-	mouseReport(button, point, { release = false } = {}) {
-		const { column, row } = this.cellAt(point);
-
-		if (this.pointerModes.has('1006')) return `\x1b[<${button};${column};${row}${release ? 'm' : 'M'}`;
-
-		return `\x1b[M${String.fromCharCode(32 + (release ? 3 : button), 32 + column, 32 + row)}`;
-	}
-
 	// Wheel notches up or down at a point on the terminal
 	sendWheel(up, point, notches) {
-		this.sendInput(this.mouseReport(up ? 64 : 65, point).repeat(notches));
+		this.sendInput(this.pointer.wheel(up, point, notches));
 	}
 
 	// A click or tap that selected nothing goes to Claude, which moves its cursor there; a drag still selects
@@ -1258,7 +1229,7 @@ export default class TerminalView extends View {
 			)
 				return;
 
-			this.sendInput(this.mouseReport(0, event) + this.mouseReport(0, event, { release: true }));
+			this.sendInput(this.pointer.report(0, event) + this.pointer.report(0, event, { release: true }));
 		});
 	}
 

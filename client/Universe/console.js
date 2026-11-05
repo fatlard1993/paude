@@ -4,6 +4,7 @@ import '@xterm/xterm/css/xterm.css';
 
 import { canBrowse, canNote, canType } from '../identity';
 import attach from '../Terminal/attach';
+import { claudePointer, wheelToClaude } from '../Terminal/claudePointer';
 import { acceptFiles } from '../Terminal/fileDrop';
 import { copySelection, isCopyKey } from '../Terminal/copySelection';
 import { linkFilePaths, linkUrls } from '../Terminal/linkProviders';
@@ -102,6 +103,8 @@ export default class TerminalPanel {
 		});
 		let decoder = new TextDecoder();
 
+		const pointer = claudePointer(terminal);
+
 		this.terminal = terminal;
 		terminal.open(this.screen);
 		terminal.resize(cols, rows);
@@ -119,6 +122,7 @@ export default class TerminalPanel {
 		terminal.onSelectionChange(() => (this.selected.hidden = !terminal.hasSelection()));
 		redrawWhenSymbolsLoad(terminal);
 		terminal.onData(data => this.connection?.send({ type: 'input', data }));
+		wheelToClaude(terminal, pointer, data => this.connection?.send({ type: 'input', data }), { allowed: canType });
 		if (canType()) acceptFiles(this.screen, session.id, text => this.paste(text), through);
 		this.connection = attach(session.id, {
 			...(remote && { url: `${window.location.origin}${through}` }),
@@ -127,7 +131,7 @@ export default class TerminalPanel {
 				const text = decoder.decode(data, { stream: true });
 
 				loadSymbolsFor(text);
-				terminal.write(withoutPointerReporting(text));
+				terminal.write(withoutPointerReporting(text, pointer.track));
 			},
 			onMessage: message => {
 				if (message.type === 'snapshot') {
@@ -135,7 +139,8 @@ export default class TerminalPanel {
 					terminal.resize(message.cols, message.rows);
 					decoder = new TextDecoder();
 					loadSymbolsFor(message.data);
-					terminal.write(withoutPointerReporting(message.data), () => {
+					pointer.reset();
+					terminal.write(withoutPointerReporting(message.data, pointer.track), () => {
 						this.arrived = true;
 						this.fit();
 						if (this.pendingJump) this.jumpTo(this.pendingJump);
