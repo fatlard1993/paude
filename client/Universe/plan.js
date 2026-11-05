@@ -38,6 +38,8 @@ const holdWidth = checkouts => Math.max(2.4, checkouts * POD_PITCH + 0.6);
 const MATERIALIZER_W = 1.8;
 // How deep the materializer and transporter stand on the bridge, from its foot
 const STATION_D = 2.4;
+// How far up off the bridge's foot they stand, clear of its near wall, which is drawn in front of what's at its foot
+const STATION_CLEAR = 0.6;
 // The transporter, on a ship of a fleet: its pad, and the console that hears from the other ships
 const TRANSPORTER_W = 2.2;
 // The bridge at the bow: every session's grey at a terminal in rows up its depth, wired to its project's machine aft,
@@ -591,7 +593,13 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 	const stations = bridge.x + bridge.w - BRIDGE_NAV_W - MATERIALIZER_W - transporter;
 
 	rooms.push(
-		aboard({ kind: 'materializer', name: 'new sessions', props: [] }, stations, MATERIALIZER_W, STATION_D, top + total - STATION_D),
+		aboard(
+			{ kind: 'materializer', name: 'new sessions', props: [] },
+			stations,
+			MATERIALIZER_W,
+			STATION_D,
+			top + total - STATION_D - STATION_CLEAR,
+		),
 		...(transporter
 			? [
 					aboard(
@@ -599,7 +607,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 						stations + MATERIALIZER_W,
 						transporter,
 						STATION_D,
-						top + total - STATION_D,
+						top + total - STATION_D - STATION_CLEAR,
 					),
 				]
 			: []),
