@@ -546,19 +546,13 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 	};
 };
 
-// The parcel tube from the bridge to the hold, as a bank's: in at a station by the bridge's near wall, along the floor
-// by that wall aft to over the hold, and down through the belly to a hopper over its stacks
+// The parcel tube from the bridge to the hold, as a bank's: down the bridge's aft wall (`trunk`) from the pipes in its
+// ceiling over the islands, along the floor by its near wall (`rail`) aft to over the hold (`drop`), and down through
+// the belly to a hopper over its stacks (`hopper`)
 const tubeOf = (bridge, hold, bottom) => {
 	if (!bridge || !hold) return null;
 
-	const inlet = { x: bridge.x + 0.7, y: bottom - 0.4 };
-	const rail = bottom - 0.12;
-	const drop = hold.x + hold.w - 0.45;
-
-	return {
-		inlet,
-		points: [inlet, { x: inlet.x, y: rail }, { x: drop, y: rail }, { x: drop, y: hold.y + FACE + 0.35 }],
-	};
+	return { trunk: bridge.x + 0.3, rail: bottom - 0.12, drop: hold.x + hold.w - 0.45, hopper: hold.y + FACE + 0.35 };
 };
 
 const STOCK_PITCH = { x: 0.6, y: 0.5 };

@@ -418,9 +418,15 @@ test("what the work makes leaves its grey's desk: a reply for the bridge, a part
 
 	expect(bridge.x).toBeGreaterThan(made.bridge.x);
 	expect(hold).toEqual(holdSpotAt(made.layout.hold, 0));
-	// The part by way of the tube: to its station, through it, and down to its stack
-	expect(part.path.at(-1)).toEqual(made.layout.tube.inlet);
-	expect(part.legs[0]).toEqual({ path: made.layout.tube.points.slice(1), tube: true });
+	// The part by way of the tube: up from its desk into the pipe in the ceiling over its island, down the bridge's aft
+	// wall and along to the hold, and out of the hopper onto its stack
+	const net = made.tubeNet();
+	const { pipe } = part.tube;
+
+	expect(pipe[0].y).toBe(net.rows.get(made.workers.get('here/a').seat.island.y).y);
+	expect(pipe.at(-1)).toEqual({ x: net.drop, y: net.hopper });
+	expect(pipe.some(({ x, y }) => x === net.trunk && y === net.rail)).toBe(true);
+	expect(part.legs[0]).toEqual({ x: made.layout.tube.drop, y: made.layout.tube.hopper, path: [hold] });
 
 	run(made, 12);
 	expect(made.parcels.filter(({ kind }) => kind === 'part')).toEqual([]);

@@ -39,7 +39,6 @@ import {
 	HALL_FACE,
 	HULL_FACE,
 	UNIT,
-	box,
 	COUCH_SEAT,
 	drawIsland,
 	drawLaptop,
@@ -107,9 +106,16 @@ const HAUL_SECONDS = 3;
 const SPOKE_MS = 90_000;
 // How fast what the work made travels the ship
 const PARCEL_SPEED = 4;
-// How much faster a parcel shoots through the tube than it walks; how high its run is off the floor; and where in the
-// drawing order it stands, in front of everything in the rooms along the near wall it runs by
-const TUBE_PACE = 4;
+// How fast a part shoots through the tube, in art pixels a second; how high its run along the floor is; and where in
+// the drawing order the tube stands, in front of everything in the rooms it runs over
+const TUBE_PX = 90;
+// How long a nozzle takes to come down from the ceiling, draw a part up and go back; how far above its seat's foot the
+// pipe over a row of islands runs, in art pixels
+const POP_SECONDS = 1;
+const TUBE_GLASS = { body: '#34506a', shine: 'rgba(210, 240, 255, 0.6)' };
+// How far down a tube coming out of the ceiling fades in, in art pixels
+const FADE_IN = 8;
+const CEILING = 36;
 const TUBE_Z = 0.25;
 const TUBE_FRONT = 1e6;
 const SPARKLE_SECONDS = 1.2;
@@ -524,6 +530,25 @@ const withoutDoublingBack = (points, box) => {
 	}
 
 	return out;
+};
+
+const pathLength = points =>
+	points.slice(1).reduce((sum, point, index) => sum + Math.hypot(point.x - points[index].x, point.y - points[index].y), 0);
+
+// The point `along` pixels down a path
+const pointAlong = (points, along) => {
+	let left = along;
+
+	for (const [index, to] of points.slice(1).entries()) {
+		const from = points[index];
+		const length = Math.hypot(to.x - from.x, to.y - from.y);
+
+		if (left <= length)
+			return { x: Math.round(from.x + ((to.x - from.x) * left) / (length || 1)), y: Math.round(from.y + ((to.y - from.y) * left) / (length || 1)) };
+		left -= length;
+	}
+
+	return points.at(-1);
 };
 
 export const sessionKey = (engineKey, id) => `${engineKey}/${id}`;
@@ -1368,11 +1393,12 @@ export default class Ship {
 
 		for (const parcel of this.parcels) {
 			parcel.step += seconds * 9;
-			if (parcel.step >= 0)
-				walk(parcel, calm ? Infinity : PARCEL_SPEED * (parcel.tube ? TUBE_PACE : 1) * seconds, seconds);
-			if (!parcel.path.length && parcel.legs?.length) Object.assign(parcel, { tube: false }, parcel.legs.shift());
+			if (parcel.step < 0) continue;
+			if (parcel.tube) this.tendTube(parcel, calm ? Infinity : seconds);
+			else walk(parcel, calm ? Infinity : PARCEL_SPEED * seconds, seconds);
+			if (!parcel.tube && !parcel.path.length && parcel.legs?.length) Object.assign(parcel, parcel.legs.shift());
 		}
-		this.parcels = this.parcels.filter(({ path }) => path.length);
+		this.parcels = this.parcels.filter(({ path, tube }) => tube || path.length);
 		for (const hauler of this.haulers) hauler.time += seconds / HAUL_SECONDS;
 		this.haulers = this.haulers.filter(({ time }) => time < 1);
 
@@ -1431,19 +1457,23 @@ export default class Ship {
 
 			if (!to) continue;
 
-			// A part from the bridge goes by the tube: a few steps to its station, through it, and from its hopper down
-			// onto its stack
-			const tube = kind !== 'reply' && worker.room === this.bridge && this.layout.tube;
+			// A part from the bridge goes by the tube: drawn up into it from the desk, through the ceiling and down the walls
+			// to the hold, and out of its hopper onto its stack
+			const pipe = kind !== 'reply' && worker.room === this.bridge && this.pipeFrom(worker.seat);
+			const { tube } = this.layout;
 
 			for (let index = 0; index < count; index++)
 				this.parcels.push({
 					kind,
 					hue: worker.session.hue,
 					...from,
-					path: tube
-						? this.route(from, worker.room, tube.inlet, this.bridge)
-						: this.route(from, worker.room, to, kind === 'reply' ? consoleRoom : hold),
-					legs: tube ? [{ path: tube.points.slice(1), tube: true }, { path: [to] }] : [],
+					...(pipe
+						? {
+								path: [],
+								tube: { pipe, desk: this.art({ x: worker.seat.x + 0.55, y: worker.seat.y + 0.2 }), along: 0 },
+								legs: [{ x: tube.drop, y: tube.hopper, path: [to] }],
+							}
+						: { path: this.route(from, worker.room, to, kind === 'reply' ? consoleRoom : hold), legs: [] }),
 					step: -index * 4,
 				});
 		}
@@ -1689,7 +1719,10 @@ export default class Ship {
 				},
 			});
 		for (const parcel of this.parcels)
-			standing.push({ y: parcel.tube ? TUBE_FRONT : parcel.y, draw: () => this.drawParcel(ctx, parcel) });
+			standing.push({
+				y: (parcel.tube && (parcel.tube.age ?? 0) >= POP_SECONDS && TUBE_FRONT) || parcel.y + 0.5,
+				draw: () => this.drawParcel(ctx, parcel),
+			});
 
 		for (const thing of standing.sort((a, b) => a.y - b.y)) thing.draw();
 		this.light(ctx, working, running);
@@ -3989,60 +4022,149 @@ export default class Ship {
 	}
 
 	// A reply, a capsule glowing in its grey's color with a trail; a part, a sheet riding a little float
-	// The parcel tube: its station on the bridge, the glass run along the near wall and down into the hold, and its
-	// hopper there; drawn in front of all but what's in the tube, as it runs along the nearest wall
-	tubeParts(ctx) {
+	// The tube's runs in art pixels, worked out once a layout: a pipe in the ceiling over each row of islands, from its
+	// far end to the aft wall; the trunk down that wall; the rail along the near wall to over the hold; the drop into it
+	tubeNet() {
 		const { tube } = this.layout;
 
-		if (!tube) return [];
+		if (!tube || !this.bridge) return null;
+		if (this.tubeNetOf?.layout === this.layout) return this.tubeNetOf;
 
-		const points = tube.points.map(point => this.art({ ...point, z: TUBE_Z }));
-		const busy = this.parcels.some(parcel => parcel.tube);
+		const trunk = this.art({ x: tube.trunk, y: 0 }).x;
+		const rail = this.art({ x: 0, y: tube.rail, z: TUBE_Z }).y;
+		const drop = this.art({ x: tube.drop, y: 0 }).x;
+		const hopper = this.art({ x: 0, y: tube.hopper, z: TUBE_Z }).y;
+		const holdTop = this.art({ x: 0, y: this.layout.hold.y }).y;
+		const rows = new Map();
+
+		for (const island of this.bridge.islands ?? []) {
+			const y = this.art({ x: 0, y: island.y + 0.2 }).y - CEILING;
+			const end = this.art({ x: island.x + island.w, y: 0 }).x - 4;
+
+			rows.set(island.y, { y, end: Math.max(end, rows.get(island.y)?.end ?? trunk) });
+		}
+
+		this.tubeNetOf = { layout: this.layout, rows, trunk, rail, drop, hopper, holdTop };
+
+		return this.tubeNetOf;
+	}
+
+	// The way a part takes from the ceiling over a seat to the hopper, in art pixels; null where there's no tube over it
+	pipeFrom(seat) {
+		const net = this.tubeNet();
+		const row = seat?.island && net?.rows.get(seat.island.y);
+
+		if (!row) return null;
+
+		const over = this.art({ x: seat.x + 0.55, y: 0 }).x;
+
+		return [
+			...this.clearOfLounge([
+				{ x: over, y: row.y },
+				{ x: net.trunk, y: row.y },
+			]),
+			{ x: net.trunk, y: net.rail },
+			{ x: net.drop, y: net.rail },
+			{ x: net.drop, y: net.hopper },
+		];
+	}
+
+	// A part in the tube: a nozzle drops from the ceiling to its desk and draws it up, then it shoots along the pipe;
+	// out at the hopper, it falls onto its stack
+	tendTube(parcel, seconds) {
+		const { tube } = parcel;
+
+		tube.age = (tube.age ?? 0) + seconds;
+		if (tube.age < POP_SECONDS) return;
+
+		const length = pathLength(tube.pipe);
+
+		tube.along = Math.min(length, tube.along + TUBE_PX * seconds);
+		if (tube.along >= length) parcel.tube = null;
+	}
+
+	// The tube runs inside the ceiling and the walls, out of sight: only where it comes out over the hold's stacks shows,
+	// down from the hold's ceiling to its hopper
+	tubeParts(ctx) {
+		const net = this.tubeNet();
+
+		if (!net) return [];
 
 		return [
 			{
 				y: TUBE_FRONT - 0.001,
 				draw: () => {
-					for (const [index, from] of points.slice(0, -1).entries()) {
-						const to = points[index + 1];
-						const [x, y] = [Math.min(from.x, to.x), Math.min(from.y, to.y)];
-						const [w, h] = [Math.abs(to.x - from.x), Math.abs(to.y - from.y)];
-						const across = w >= h;
+					this.drawPipe(ctx, [
+						{ x: net.drop, y: net.holdTop },
+						{ x: net.drop, y: net.hopper },
+					]);
 
-						rect(ctx, x - (across ? 0 : 2), y - (across ? 2 : 0), w + (across ? 1 : 5), h + (across ? 5 : 1), PALETTE.k);
-						rect(ctx, x - (across ? 0 : 1), y - (across ? 1 : 0), w + (across ? 1 : 3), h + (across ? 3 : 1), '#1c2a36');
-						if (across) rect(ctx, x, y - 1, w + 1, 1, 'rgba(200, 235, 255, 0.35)');
-						else rect(ctx, x - 1, y, 1, h + 1, 'rgba(200, 235, 255, 0.35)');
-						// Its clamps every so often
-						for (let along = 6; along < Math.max(w, h); along += 14)
-							if (across) rect(ctx, x + along, y - 2, 2, 5, PALETTE.m);
-							else rect(ctx, x - 2, y + along, 5, 2, PALETTE.m);
-					}
-					// The station: a column with its hatch, lit while something's on its way
-					const station = points[0];
+					const { drop: x, hopper: y } = net;
 
-					box(ctx, station.x - 4, station.y - 14, 9, 15, PALETTE.l);
-					rect(ctx, station.x - 2, station.y - 11, 5, 4, '#1c2a36');
-					rect(ctx, station.x - 2, station.y - 11, 5, 1, 'rgba(200, 235, 255, 0.35)');
-					rect(ctx, station.x, station.y - 16, 1, 2, busy && Math.floor(this.time * 6) % 2 ? PALETTE.y : PALETTE.d);
-					// The hopper over the stacks, where it comes out
-					const hopper = points.at(-1);
-
-					rect(ctx, hopper.x - 4, hopper.y, 9, 4, PALETTE.k);
-					rect(ctx, hopper.x - 3, hopper.y, 7, 3, PALETTE.l);
-					rect(ctx, hopper.x - 2, hopper.y + 3, 5, 1, PALETTE.m);
+					rect(ctx, x - 4, y, 9, 4, PALETTE.k);
+					rect(ctx, x - 3, y, 7, 3, PALETTE.l);
+					rect(ctx, x - 2, y + 3, 5, 1, PALETTE.m);
 				},
 			},
 		];
 	}
 
+	drawPipe(ctx, points) {
+		for (const [index, from] of points.slice(0, -1).entries()) {
+			const to = points[index + 1];
+			const [x, y] = [Math.min(from.x, to.x), Math.min(from.y, to.y)];
+			const [w, h] = [Math.abs(to.x - from.x), Math.abs(to.y - from.y)];
+			const across = w >= h;
+
+			rect(ctx, x - (across ? 0 : 2), y - (across ? 2 : 0), w + (across ? 1 : 5), h + (across ? 5 : 1), PALETTE.k);
+			rect(ctx, x - (across ? 0 : 1), y - (across ? 1 : 0), w + (across ? 1 : 3), h + (across ? 3 : 1), TUBE_GLASS.body);
+			if (across) rect(ctx, x, y - 1, w + 1, 1, TUBE_GLASS.shine);
+			else rect(ctx, x - 1, y, 1, h + 1, TUBE_GLASS.shine);
+			for (let along = 6; along < Math.max(w, h); along += 14)
+				if (across) rect(ctx, x + along, y - 2, 2, 5, PALETTE.m);
+				else rect(ctx, x - 2, y + along, 5, 2, PALETTE.l);
+		}
+	}
+
+	// A part being drawn up into the ceiling: the nozzle coming down over its desk, the sheet rising into it, the two
+	// going back up together
+	drawPop(ctx, parcel) {
+		const { pipe, desk, age = 0 } = parcel.tube;
+		const ceiling = pipe[0].y;
+		const reach = desk.y - 14;
+		const t = age / POP_SECONDS;
+		const down = (t < 0.3 && t / 0.3) || (t < 0.75 && 1) || Math.max(0, 1 - (t - 0.75) / 0.25);
+		const mouth = Math.round(ceiling + (reach - ceiling) * down);
+		const x = pipe[0].x;
+
+		// Out of the ceiling: its top fading into it, as if it came down through it
+		for (let y = ceiling; y < mouth; y++) {
+			ctx.globalAlpha = Math.min(1, (y - ceiling) / FADE_IN);
+			rect(ctx, x - 2, y, 5, 1, PALETTE.k);
+			rect(ctx, x - 1, y, 3, 1, TUBE_GLASS.body);
+			rect(ctx, x - 1, y, 1, 1, TUBE_GLASS.shine);
+		}
+		ctx.globalAlpha = 1;
+		rect(ctx, x - 3, mouth - 1, 7, 2, PALETTE.l);
+		if (t >= 0.3 && t < 0.75) {
+			const rise = (t - 0.3) / 0.45;
+
+			drawSprite(ctx, 'paper', Math.round(desk.x + (x - desk.x) * rise), Math.round(desk.y + (mouth + 4 - desk.y) * rise));
+		}
+	}
+
 	drawParcel(ctx, parcel) {
 		const color = `hsl(${parcel.hue ?? 200} 75% 66%)`;
 
-		// A capsule shooting through the tube, its band in its session's color
+		// Drawn up from its desk, then a capsule shooting through the tube, its band in its session's color
 		if (parcel.tube) {
-			const at = this.art({ ...parcel, z: TUBE_Z });
+			if ((parcel.tube.age ?? 0) < POP_SECONDS) return this.drawPop(ctx, parcel);
 
+			const at = pointAlong(parcel.tube.pipe, parcel.tube.along);
+			const net = this.tubeNet();
+
+			// Out of sight in the walls till it comes out over the hold
+			if (at.x !== net.drop || at.y < net.holdTop) return;
 			rect(ctx, at.x - 2, at.y - 1, 5, 3, '#d8e2ee');
 			rect(ctx, at.x, at.y - 1, 1, 3, color);
 
