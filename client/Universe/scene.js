@@ -1843,8 +1843,19 @@ export default class Ship {
 			);
 		standing.push(...this.crewParts(ctx));
 		for (const bay of this.bays) {
-			this.drawBayOfMachine(ctx, bay);
-			standing.push(...this.machineParts(ctx, bay));
+			// Drawn where it's shown, gliding along its deck to where the layout puts it
+			const shift = this.bayShift(bay);
+			const shifted = draw => () => {
+				ctx.save();
+				ctx.translate(shift, 0);
+				draw();
+				ctx.restore();
+			};
+
+			shifted(() => this.drawBayOfMachine(ctx, bay))();
+			standing.push(
+				...this.machineParts(ctx, bay).map(part => (shift ? { ...part, draw: shifted(part.draw) } : part)),
+			);
 			this.bayHits(bay);
 		}
 		if (this.bridge) standing.push(...this.bridgeParts(ctx, art, label));
@@ -1947,6 +1958,13 @@ export default class Ship {
 					: null;
 			}
 
+		// Each project's machine along its deck, where it was shown; a new one is at its place at once
+		const placed = new Map((this.layout?.bays ?? []).map(bay => [bay.name, bay.x]));
+
+		this.baysShown ??= new Map();
+		for (const [name, x] of placed) this.baysShown.set(name, toward(this.baysShown.get(name) ?? x, x));
+		for (const name of this.baysShown.keys()) if (!placed.has(name)) this.baysShown.delete(name);
+
 		// Islands by project and which of its it is: a new one grows out from its end, one gone shrinks away
 		const goals = new Map();
 		const counts = new Map();
@@ -1979,6 +1997,13 @@ export default class Ship {
 			shown.w = toward(shown.w, 0);
 			if (shown.w < 0.05) this.islandsShown.delete(key);
 		}
+	}
+
+	// How far, in art pixels across, a project's machine is drawn from where the layout puts it while it glides there
+	bayShift(bay) {
+		const shown = this.baysShown?.get(bay.name);
+
+		return shown === undefined ? 0 : Math.round((shown - bay.x) * UNIT.x);
 	}
 
 	// How much of the ship its outer plating still covers: all of it while sealed, fading once opened

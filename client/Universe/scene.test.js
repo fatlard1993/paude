@@ -1521,3 +1521,36 @@ test('islands keep their rows as sessions come, go and grow: a new one goes into
 	made.update(at(first.filter(([, project]) => project !== 'c')));
 	for (const name of ['a', 'b', 'd', 'e']) expect(rows()[name]).toBe(before[name]);
 });
+
+test("a project's machine moved along its deck by one before it growing is drawn gliding there from where it was", () => {
+	const at = files => [
+		answer('here', [session(), session({ id: 'b', project: 'b' }), session({ id: 'c', project: 'c' })], {
+			projects: [
+				{ name: 'paude', hue: 10, character: { files } },
+				{ name: 'b', hue: 90, character: { files: 10 } },
+				{ name: 'c', hue: 180, character: { files: 10 } },
+			],
+		}),
+	];
+	const made = shipWith(at(2));
+
+	run(made, 1);
+
+	const xOf = name => made.layout.bays.find(bay => bay.name === name).x;
+	const moved = ['b', 'c'].map(name => [name, xOf(name)]);
+
+	made.update(at(100_000));
+
+	const shifted = moved.filter(([name, x]) => Math.abs(xOf(name) - x) > 0.01);
+
+	expect(shifted.length).toBeGreaterThan(0);
+	for (const [name, x] of shifted) {
+		const bay = made.layout.bays.find(other => other.name === name);
+
+		run(made, 0.02);
+		expect(made.bayShift(bay)).not.toBe(0);
+		expect(Math.sign(made.bayShift(bay))).toBe(Math.sign(x - bay.x));
+	}
+	run(made, 2);
+	for (const [name] of shifted) expect(made.bayShift(made.layout.bays.find(bay => bay.name === name))).toBe(0);
+});
