@@ -576,6 +576,14 @@ export default class Universe extends View {
 		if (target?.kind === 'monitor') return this.openWorker(target.worker);
 		if (target?.kind === 'worker') return this.paintFocus();
 		if (target?.kind === 'cloner') return this.newPrompt(undefined, point);
+		// Another ship's terminal: to the transporter with it picked, to beam over once confirmed
+		if (target?.kind === 'fleet') {
+			this.chosenShip = target.ship.key;
+			this.aboard.look('transporter');
+			this.focusPainted = null;
+
+			return this.paintFocus();
+		}
 		if (target?.kind === 'log') return this.openLog(target, point);
 		// The work itself opens where it's worked on: a checkout's cargo or pull request in its git, a chat in the chat, a
 		// small grey in the tasks, what runs behind a seat in its ports

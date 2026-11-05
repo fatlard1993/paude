@@ -116,6 +116,12 @@ const TUBE_PX = 90;
 // How long a nozzle takes to come down from the ceiling, draw a part up and go back; how far above its seat's foot the
 // pipe over a row of islands runs, in art pixels
 const POP_SECONDS = 1;
+// The other ships' terminals: how far in from the bridge's near wall and its forward end they stand, and how far apart
+const FLEET_FROM_WALL = 0.45;
+const FLEET_NOSE = 1.0;
+const FLEET_PITCH = 1.8;
+// How far up from its foot a terminal reaches, in world units, for keeping clear of islands near the wall
+const FLEET_TALL = 2.6;
 const TUBE_GLASS = { body: '#34506a', shine: 'rgba(210, 240, 255, 0.6)' };
 // How far down a tube coming out of the ceiling fades in, in art pixels
 const FADE_IN = 8;
@@ -1768,6 +1774,7 @@ export default class Ship {
 		standing.push(...this.cargoParts(ctx));
 		for (const worker of this.workers.values()) if (worker.seat) standing.push(...this.workerParts(ctx, worker));
 		standing.push(...this.tubeParts(ctx));
+		standing.push(...this.fleetParts(ctx));
 		// The deleted crumbling, over what they sat at, and their dust after, fading out in its last seconds
 		for (const worker of this.workers.values())
 			if (worker.crumble && worker.vaporizedAt !== undefined)
@@ -4195,6 +4202,75 @@ export default class Ship {
 	}
 
 	// A reply, a capsule glowing in its grey's color with a trail; a part, a sheet riding a little float
+	// Where each other ship's unmanned terminal stands, along the bridge's near wall from its forward end aft, in the
+	// places free of the lounge and of islands standing near the wall: [{ ship, x, y }]
+	fleetSpots() {
+		const { bridge, lounge } = this;
+
+		if (!bridge || !this.fleet?.length) return [];
+
+		const y = bridge.y + bridge.d - FLEET_FROM_WALL;
+		const half = FLEET_PITCH / 2;
+		const blocked = [
+			...(lounge?.count ? [{ from: lounge.x - 0.3, to: lounge.x + lounge.w + 0.3 }] : []),
+			...(bridge.islands ?? [])
+				.filter(island => island.y > y - FLEET_TALL)
+				.map(island => ({ from: island.x - 0.3, to: island.x + island.w + 0.3 })),
+		];
+		const free = x => blocked.every(({ from, to }) => x + half <= from || x - half >= to);
+		const spots = [];
+
+		for (let x = bridge.x + bridge.w - FLEET_NOSE; spots.length < this.fleet.length && x - half > bridge.x + 0.6; x -= 0.25)
+			if (free(x) && (!spots.length || spots.at(-1).x - x >= FLEET_PITCH)) spots.push({ x, y });
+
+		return spots.map((spot, index) => ({ ...spot, ship: this.fleet[index] }));
+	}
+
+	// Each other ship kept an eye on from the bridge: an unmanned terminal of its own, its screen saying what's on it as
+	// a grey's does (a question while one of its sessions asks, news, work, or at rest), how many need you beside it, and
+	// its name under it once close enough to read
+	fleetParts(ctx) {
+		return this.fleetSpots().map(({ ship, x, y }) => {
+			const at = this.art({ x, y });
+			const screen =
+				(ship.needs && { kind: 'ask', hue: 45 }) ||
+				(ship.news && { kind: 'news', hue: 210 }) ||
+				(ship.working && { kind: 'work', hue: 170 }) || { kind: 'idle', hue: 210 };
+			const count = ship.needs || ship.news;
+
+			this.hits.push({ ...this.toScreen({ x: at.x - 7, y: at.y - 21 }), r: 9 * this.camera.zoom, kind: 'fleet', ship });
+
+			return {
+				y,
+				draw: () => {
+					// A small desk of its own under its screen
+					rect(ctx, at.x - 18, at.y - 11, 33, 12, PALETTE.k);
+					rect(ctx, at.x - 17, at.y - 10, 31, 10, PALETTE.m);
+					rect(ctx, at.x - 17, at.y - 10, 31, 1, PALETTE.l);
+					rect(ctx, at.x - 17, at.y - 2, 31, 2, PALETTE.d);
+					drawSeat(ctx, at, { screen, engineColor: PALETTE.p, time: this.time, seed: seeded(ship.key) });
+					if (count)
+						this.labels.push({
+							text: String(count),
+							at: { x: at.x + 6, y: at.y - 25 },
+							color: ship.needs ? PALETTE.y : PALETTE.b,
+							size: 1,
+							align: 'left',
+						});
+					if (this.camera.zoom >= 3)
+						this.labels.push({
+							text: ship.name,
+							at: { x: at.x - 4, y: at.y + 4 },
+							color: 'hsl(265 50% 78%)',
+							align: 'center',
+							size: 1,
+							width: FLEET_PITCH * UNIT.x,
+						});
+				},
+			};
+		});
+	}
+
 	// The tube's runs in art pixels, worked out once a layout: a pipe in the ceiling over each row of islands, from its
 	// far end to the aft wall; the trunk down that wall; the rail along the near wall to over the hold; the drop into it
 	tubeNet() {

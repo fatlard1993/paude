@@ -104,6 +104,16 @@ const ROOM_FLYOUT = (target, ship) => ({
 const FLYOUTS = {
 	// A room's own when it has one, below, over the plain room's
 	...Object.fromEntries(Object.keys(ROOMS).map(kind => [kind, ROOM_FLYOUT])),
+	// Another ship's terminal on this one's bridge
+	fleet: ({ ship }) => ({
+		title: `${ship.name}'s ship`,
+		rows: [
+			['now', shipWords(ship)],
+			ship.needs && ['asking', String(ship.needs)],
+			ship.news && ['news', String(ship.news)],
+		],
+		hint: 'Press to beam over to it from the transporter',
+	}),
 	transporter: (target, ship) => ({
 		title: 'Transporter',
 		rows: ship.fleet.map(other => [other.name, shipWords(other)]),

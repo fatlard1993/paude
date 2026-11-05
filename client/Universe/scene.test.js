@@ -1240,3 +1240,32 @@ test("the risers' order keeps a cable coming along the hall from lying along ano
 			.map(({ bay }) => bay.name),
 	).toEqual(['ender-launcher', 'paude']);
 });
+
+test("each other ship has an unmanned terminal along the bridge's near wall, clear of the lounge and the islands", () => {
+	const made = new Ship();
+
+	made.resize(800, 600);
+	made.fleet = [
+		{ key: 'b', name: 'vps', needs: 2 },
+		{ key: 'c', name: 'workbook', news: 1 },
+		{ key: 'd', name: 'thinkpad' },
+	];
+	made.update([
+		answer('here', [session(), ...Array.from({ length: 6 }, (_, index) => session({ id: `s${index}`, status: 'stopped' }))], {
+			projects: ['paude'],
+		}),
+	]);
+	run(made, 2);
+
+	const spots = made.fleetSpots();
+	const { lounge, bridge } = made;
+
+	expect(spots.map(({ ship }) => ship.key)).toEqual(['b', 'c', 'd']);
+	for (const { x, y } of spots) {
+		expect(y).toBeGreaterThan(bridge.y + bridge.d - 1);
+		expect(x - 0.75 >= lounge.x + lounge.w || x + 0.75 <= lounge.x).toBe(true);
+		for (const island of bridge.islands)
+			if (island.y > y - 2.6) expect(x - 0.75 >= island.x + island.w || x + 0.75 <= island.x).toBe(true);
+	}
+	for (const [index, { x }] of spots.slice(1).entries()) expect(spots[index].x - x).toBeGreaterThanOrEqual(1.8);
+});

@@ -30,6 +30,8 @@ const TRANSPORTER_W = 2.2;
 // whoever watches walking among them; the nav table, the ship's log and the scanner forward of them, by the nose
 const BRIDGE_NAV_W = 1.2;
 const BRIDGE_MARGIN = 0.8;
+// The room left at the bridge's forward end, along its near wall, for an unmanned terminal for each other ship
+const fleetRoom = ships => (ships ? 0.4 + ships * 1.8 : 0);
 // The room left along the bridge's aft wall, before its islands and lounge, for a conduit's riser for each project with
 // an island, side by side as thick as each can get (a pixel more for each of its sessions at its desk, to five) with
 // their outlines and a gap between, and the walk along it
@@ -306,7 +308,8 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 			lounge: loungeBlock,
 			agents,
 		});
-		const bridgeW = sternRoom(inLine(placed)) + BRIDGE_MARGIN + Math.max(2 * SEAT_W, islandsReach) + BRIDGE_NAV_W;
+		const bridgeW =
+			sternRoom(inLine(placed)) + BRIDGE_MARGIN + Math.max(2 * SEAT_W, islandsReach) + BRIDGE_NAV_W + fleetRoom(fleet);
 
 		return { levels, placed, width, total, rows, bridgeW };
 	};
