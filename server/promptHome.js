@@ -1,3 +1,4 @@
+import { limitsOf } from './accountLimits';
 import { meterOf } from './cacheMeter';
 import askHaiku, { jsonIn } from './haiku';
 import { isNudge } from './keepWarm';
@@ -51,7 +52,35 @@ const lately = async id => {
 	};
 };
 
-export const homePrompt = ({ prompt, candidates, projects }) =>
+// How long until `at`, roughly: minutes, hours, or days
+const until = (at, now) => {
+	const minutes = Math.max(0, Math.round((new Date(at).getTime() - now) / 60_000));
+
+	if (minutes < 90) return `${minutes} minutes`;
+
+	return minutes < 36 * 60 ? `${Math.round(minutes / 60)} hours` : `${Math.round(minutes / (24 * 60))} days`;
+};
+
+const limitWords = (name, { percent, resetsAt }, now) =>
+	`${name} ${Math.round(percent)}% used${resetsAt ? `, resetting in ${until(resetsAt, now)}` : ''}`;
+
+// The account's limits as Haiku is told them, to weigh the model against; none when they aren't known
+export const limitsPrompt = (limits, now = Date.now()) =>
+	limits &&
+	[
+		`The account's usage limits right now: ${[
+			limits.session.resetsAt
+				? limitWords('the five-hour window', limits.session, now)
+				: 'the five-hour window not yet begun (none of it used)',
+			limits.week && limitWords('the week', limits.week, now),
+			...limits.models.map(model => limitWords(`${model.name}'s own week`, model, now)),
+		]
+			.filter(Boolean)
+			.join('; ')}.`,
+		'Weigh them in the model: with a limit well used and long to reset, suggest a lighter model unless the task truly needs a heavier one; never one whose own week is nearly used up; with plenty left, the task alone decides.',
+	].join(' ');
+
+export const homePrompt = ({ prompt, candidates, projects, limits, now = Date.now() }) =>
 	[
 		'Someone is about to give Claude, a coding assistant, the task below. Decide where it belongs: in one of the conversations already going, if it carries one on (the same piece of work, or one that needs what that conversation already knows), or in a new session. A different task in the same project belongs in a new session.',
 		`The task:\n${prompt}`,
@@ -71,8 +100,9 @@ export const homePrompt = ({ prompt, candidates, projects }) =>
 			: 'There are no conversations going.',
 		projects && `For a new session, the projects (each on its server) are: ${projects.join(', ')}.`,
 		`For a new session, also say which model suits the task, the lightest that will do it well: ${MODEL_NAMES.map(name => `"${name}" (${MODELS[name].detail})`).join('; ')}.`,
+		limitsPrompt(limits, now),
 		'For a new session, also say how long it should last: "brief" for a quick question or one-off check nobody will come back to (it deletes itself once done), "warm" for deep work likely to be picked up again after a break of an hour or more (kept ready while away), or "ordinary".',
-		`Reply with only a JSON object: {"matches": [{"n": 2, "why": "…"}], "fresh": {${projects ? '"project": "…", ' : ''}"model": "sonnet", "lifetime": "ordinary", "why": "…"}}.${projects ? ' "project" is one of the projects exactly as written above.' : ''} "matches" holds at most ${MOST_MATCHES} conversations this truly carries on, best first, and is empty when none does; each "why" is one plain sentence that names a conversation by its title, never by its number.`,
+		`Reply with only a JSON object: {"matches": [{"n": 2, "why": "…"}], "fresh": {${projects ? '"project": "…", ' : ''}"model": "sonnet", "modelWhy": "…", "lifetime": "ordinary", "why": "…"}}.${projects ? ' "project" is one of the projects exactly as written above.' : ''} "matches" holds at most ${MOST_MATCHES} conversations this truly carries on, best first, and is empty when none does; each "why" is one plain sentence that names a conversation by its title, never by its number. "modelWhy" is one plain sentence saying why that model fits, naming the limits when they swayed it.`,
 	]
 		.filter(Boolean)
 		.join('\n\n');
@@ -129,14 +159,17 @@ const meterFor = async ({ id, remote }) => {
 // servers' sessions and projects too.
 export const findHome = async ({ prompt, project, identity, remotes = false }) => {
 	const here = await serverName();
-	const { candidates, projects } = await everyPlace({ project, identity, remotes });
+	const [{ candidates, projects }, limits] = await Promise.all([
+		everyPlace({ project, identity, remotes }),
+		limitsOf(),
+	]);
 	const named = candidates.map(session => ({
 		...session,
 		where: placeName({ name: session.project, remote: session.remote }, here),
 	}));
 	const reply = jsonIn(
 		await askHaiku(
-			homePrompt({ prompt, candidates: named, projects: projects?.map(found => placeName(found, here)) }),
+			homePrompt({ prompt, candidates: named, projects: projects?.map(found => placeName(found, here)), limits }),
 			'placing a prompt',
 		),
 	);
@@ -171,6 +204,7 @@ export const findHome = async ({ prompt, project, identity, remotes = false }) =
 					? reply.fresh.lifetime
 					: 'ordinary',
 			model: MODEL_NAMES.includes(reply.fresh?.model) ? reply.fresh.model : 'default',
+			modelWhy: MODEL_NAMES.includes(reply.fresh?.model) ? String(reply.fresh?.modelWhy ?? '') : '',
 			why: String(reply.fresh?.why ?? ''),
 		},
 	};

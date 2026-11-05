@@ -245,11 +245,17 @@ const Placing = styled(
 
 		.model {
 			display: flex;
-			align-items: center;
-			gap: ${space.sm};
+			flex-direction: column;
+			gap: 2px;
 			padding: 0 ${space.md};
 			color: ${colors.muted};
 			font-size: 0.85em;
+		}
+
+		.model .pick {
+			display: flex;
+			align-items: center;
+			gap: ${space.sm};
 		}
 
 		.model select {
@@ -305,9 +311,10 @@ const looking = text => {
 	return node;
 };
 
-// The model a new session runs on, as suggested and changeable before it starts: { node, value() }
-const modelPicker = suggested => {
-	const node = element('label', 'model');
+// The model a new session runs on, as suggested (and why) and changeable before it starts: { node, value() }
+const modelPicker = (suggested, why) => {
+	const node = element('div', 'model');
+	const picking = element('label', 'pick');
 	const select = element('select');
 
 	for (const [model, { label, detail }] of Object.entries(MODELS)) {
@@ -317,7 +324,8 @@ const modelPicker = suggested => {
 		select.append(option);
 	}
 	select.value = suggested in MODELS ? suggested : 'default';
-	node.append('Runs on', select);
+	picking.append('Runs on', select);
+	node.append(picking, ...(why ? [element('div', 'model-why', why)] : []));
 
 	return { node, value: () => (select.value === 'default' ? undefined : select.value) };
 };
@@ -350,7 +358,7 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive }
 	}));
 	const where = fresh.project ?? project;
 	const mode = /^(warm|brief)$/.test(fresh.lifetime ?? '') ? fresh.lifetime : undefined;
-	const model = modelPicker(fresh.model);
+	const model = modelPicker(fresh.model, fresh.modelWhy);
 
 	if (!where) return sessions;
 
