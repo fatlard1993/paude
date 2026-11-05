@@ -83,6 +83,8 @@ const MILL_SECONDS = 25;
 const WORKER_SPEED = 2.6;
 // How fast the service crew trundles about the ship
 const BOT_SPEED = 2.2;
+// How long after another the next bot sent out sets off
+const BOT_GAP = 0.45;
 // How long a worker takes to be made in the materializer
 const MAKE_SECONDS = 1.6;
 // How long the materializer stays charged for a prompt sent, waiting for its session to show
@@ -465,10 +467,10 @@ const walk = (mover, budget, seconds) => {
 };
 
 // Axis-aligned points bent round `box` ({ left, right, top, bottom }) wherever a straight run of them would cross it end
-// to end: out to its nearer edge (its far one, the top, when it's `walled` at the bottom), along it, and back, `apart`
-// further out and `step` clear of its sides; then without the back-and-forth that leaves where the run before or after
+// to end: out to its nearer edge (its far one, the top, when it's `walled` at the bottom; `over` in place of its top
+// when the way over it runs elsewhere), along it, and back, `apart` further out and `step` clear of its sides; then without the back-and-forth that leaves where the run before or after
 // already heads that way
-export const bendAround = (points, box, { walled = false, apart = 0, step = 1 } = {}) => {
+export const bendAround = (points, box, { walled = false, apart = 0, step = 1, over } = {}) => {
 	const bent = [points[0]];
 
 	for (const [index, to] of points.slice(1).entries()) {
@@ -477,7 +479,7 @@ export const bendAround = (points, box, { walled = false, apart = 0, step = 1 } 
 		const down = at.x === to.x && at.x > box.left && at.x < box.right;
 
 		if (across && Math.min(at.x, to.x) < box.left && Math.max(at.x, to.x) > box.right) {
-			const edge = walled || at.y - box.top < box.bottom - at.y ? box.top - apart : box.bottom + apart;
+			const edge = walled || at.y - box.top < box.bottom - at.y ? (over ?? box.top) - apart : box.bottom + apart;
 			const [enter, leave] = to.x > at.x ? [box.left - step, box.right + step] : [box.right + step, box.left - step];
 
 			bent.push({ x: enter, y: at.y }, { x: enter, y: edge }, { x: leave, y: edge }, { x: leave, y: at.y });
@@ -957,8 +959,10 @@ export default class Ship {
 		if (!lounge?.count) return path;
 
 		const box = { left: lounge.x - 0.1, right: lounge.x + lounge.w + 0.2, top: lounge.y + 0.2, bottom: lounge.y + lounge.d };
+		// Over it along the aisle before the row of consoles above it, clear of its couches' backs
+		const over = lounge.y > this.bridge.y + 0.5 ? standingOf(this.bridge, lounge.y - 0.3) : lounge.y - 0.15;
 
-		return bendAround([from, ...path], box, { walled: this.loungeWalled(), step: 0.1 }).slice(1);
+		return bendAround([from, ...path], box, { walled: this.loungeWalled(), step: 0.1, over }).slice(1);
 	}
 
 	// Workers set off: one new from the materializer, one stopped or woken from where it was; and one already on its way
@@ -3795,6 +3799,8 @@ export default class Ship {
 			this.bots.set(job, {
 				job,
 				index,
+				// Setting off one behind another, so those sent together trail along rather than ride on each other
+				wait: [...this.bots.values()].filter(bot => !bot.back && bot.path.length).length * BOT_GAP,
 				...home,
 				path: place ? this.walkAround(home, this.route(home, engineering, place.at, place.room)) : [],
 				room: place?.room ?? engineering,
@@ -3810,6 +3816,11 @@ export default class Ship {
 					path: room === engineering ? [home] : this.walkAround(bot, this.route(bot, room, home, engineering)),
 				});
 			}
+			if (bot.wait > 0) {
+				bot.wait -= seconds;
+				continue;
+			}
+
 			let left = seconds * BOT_SPEED;
 
 			while (left > 0 && bot.path.length) {
