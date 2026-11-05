@@ -138,7 +138,8 @@ const FLYOUTS = {
 				['where', [session.project, session.engine.name].filter(Boolean).join(' on ')],
 				context && [
 					'context',
-					`${Math.round(context.fill * 100)}% of ${tokenCount(context.window)}${context.fill >= 0.75 ? ', getting full' : ''}`,
+					// Used and left both, so it reads alongside Claude's own status line, which counts what's left
+					`${Math.round(context.fill * 100)}% used, ${100 - Math.round(context.fill * 100)}% left of ${tokenCount(context.window)}${context.fill >= 0.75 ? ', getting full' : ''}`,
 				],
 				session.limit && ['usage limit', limitWords(session.limit.resetAt)],
 				session.todos?.length && ['todos', todoWords(session.todos)],
