@@ -1,4 +1,5 @@
-export const FONT = { most: 14, least: 8, tiny: 6 };
+// `room`, the size the panel's terminal is laid out for when it's driving
+export const FONT = { most: 14, least: 8, tiny: 6, room: 13 };
 
 // The docked terminal's font for the room it has, `drawn` its size drawn at `size` now: as large as lets its columns
 // across and its rows down both fit, never one found too big for this room (`tooBig`, kept by the caller for as long as

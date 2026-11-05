@@ -135,6 +135,8 @@ export default class TerminalPanel {
 			},
 			onMessage: message => {
 				if (message.type === 'snapshot') {
+					// A new socket: what's claimed is told again once it's fitted
+					this.natural = null;
 					terminal.reset();
 					terminal.resize(message.cols, message.rows);
 					decoder = new TextDecoder();
@@ -208,6 +210,7 @@ export default class TerminalPanel {
 			terminal.options.fontSize = font;
 			requestAnimationFrame(() => this.fit());
 		}
+		this.claimRoom({ drawn, dock, chrome, sized, height });
 		requestAnimationFrame(() => {
 			if (this.elem.hidden || sized) return;
 
@@ -216,6 +219,25 @@ export default class TerminalPanel {
 			// Written only when it changes, so the panel resizing under it doesn't fit it again for nothing
 			if (dock.style.width !== width) dock.style.width = width;
 		});
+	}
+
+	// The size that fills the panel at a comfortable font, told to the session: once typed into here it's driving, and
+	// the session takes it, as it takes the size of the page of whoever's typing; till then it's shown as it is. As wide
+	// as the panel's been dragged, else half the stage (not the panel's own width, which follows the terminal drawn),
+	// and as tall as the panel
+	claimRoom({ drawn, dock, chrome, sized, height }) {
+		const { terminal } = this;
+		const stage = dock.parentElement.clientWidth;
+		const width = sized ? dock.offsetWidth : Math.min(stage - 32, Math.max(DOCK_LEAST, stage * 0.5));
+		const scale = FONT.room / terminal.options.fontSize;
+		const natural = {
+			cols: Math.max(80, Math.floor((width - chrome - 24) / ((drawn.offsetWidth / terminal.cols) * scale))),
+			rows: Math.max(24, Math.floor((height - 8) / ((drawn.offsetHeight / terminal.rows) * scale))),
+		};
+
+		if (natural.cols === this.natural?.cols && natural.rows === this.natural?.rows) return;
+		this.natural = natural;
+		this.connection?.send({ type: 'resize', ...natural });
 	}
 
 	refresh() {
