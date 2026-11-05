@@ -86,6 +86,8 @@ const ENTER_SECONDS = 3.5;
 // How quickly islands and seats glide to where a changed layout puts them: the share of the way left gone each second,
 // as a rate (about a third of a second to get most of the way)
 const LAYOUT_EASE = 7;
+// How long a conduit laid anew takes to fade from where it ran to where it runs now
+const CABLE_FADE_SECONDS = 0.5;
 // How long the stars' streaks are at the start of it, in screen pixels for the nearest
 const WARP_STREAK = 160;
 // How long the outer plating takes to fade once what's aboard has come in
@@ -2586,24 +2588,60 @@ export default class Ship {
 	// project's machine, along its lane, up its riser and along its row to its island, so its corners join and its color
 	// holds the whole way
 	drawTerminalCables(ctx) {
-		for (const { color, weight, working, seed, tray, riser, exit, out, plates } of this.cables.values()) {
-			const style = { color, weight, working, seed };
-			const machine = () => [{ x: out.x, y: tray }, out, exit];
+		// None for a frame while a changed layout's machines are first measured: the last drawn stay meanwhile
+		if (!this.cables.size && this.cablesDrawn?.size) {
+			for (const paths of this.cablesDrawn.values()) for (const { points, style } of paths) this.drawWire(ctx, points, style);
 
-			for (const { at, run = at.y } of plates)
-				// From the island, so its pulse runs toward the machine as it always has
-				this.drawWire(
-					ctx,
-					[
+			return;
+		}
+
+		const now = new Map();
+
+		for (const [name, { color, weight, working, seed, tray, riser, exit, out, plates }] of this.cables) {
+			const style = { color, weight, working, seed };
+			const machine = [{ x: out.x, y: tray }, out, exit];
+
+			// From the island, so its pulse runs toward the machine as it always has
+			now.set(
+				name,
+				plates.map(({ at, run = at.y }) => ({
+					style,
+					points: [
 						...this.clearOfLounge(
 							[at, ...(run === at.y ? [] : [{ x: at.x, y: run }]), { x: riser, y: run }, { x: riser, y: tray }],
 							this.besideOf(riser),
 						),
-						...machine(),
+						...machine,
 					],
-					style,
-				);
+				})),
+			);
 		}
+
+		// The layout changed: each conduit laid anew fades from where it ran to where it runs now, one gone fades out
+		if (this.cablesDrawn && this.cablesDrawnFor !== this.cables) {
+			this.cablesBefore = { drawn: this.cablesDrawn, at: this.time };
+			this.cablesDrawnFor = this.cables;
+		}
+		this.cablesDrawnFor ??= this.cables;
+
+		const fading = this.cablesBefore && (this.time - this.cablesBefore.at) / CABLE_FADE_SECONDS;
+		const route = paths => JSON.stringify(paths?.map(({ points }) => points.map(({ x, y }) => [Math.round(x), Math.round(y)])));
+		const draw = (paths, alpha) => {
+			ctx.globalAlpha = alpha;
+			for (const { points, style } of paths) this.drawWire(ctx, points, style);
+			ctx.globalAlpha = 1;
+		};
+
+		for (const [name, paths] of now) {
+			const was = fading < 1 && this.cablesBefore.drawn.get(name);
+
+			if (was && route(was) !== route(paths)) {
+				draw(was, 1 - fading);
+				draw(paths, fading);
+			} else draw(paths, fading < 1 && !was ? fading : 1);
+		}
+		if (fading < 1) for (const [name, was] of this.cablesBefore.drawn) if (!now.has(name)) draw(was, 1 - fading);
+		this.cablesDrawn = now;
 	}
 
 	// A wire along axis-aligned points, a pulse running it from the first to the last while `working`
