@@ -13,7 +13,6 @@ import {
 	clickToClaude,
 	forkButtons,
 	forkFromMarker,
-	gpuRenderer,
 	touchToClaude,
 } from '../Terminal/claudeTerminal';
 import { acceptFiles } from '../Terminal/fileDrop';
@@ -190,7 +189,6 @@ export default class TerminalPanel {
 
 		this.terminal = terminal;
 		terminal.open(this.screen);
-		gpuRenderer(terminal);
 		terminal.resize(cols, rows);
 		const send = data => Boolean(this.connection?.send({ type: 'input', data }));
 		const over = on => (this.overLink = on);
