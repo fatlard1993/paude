@@ -394,14 +394,6 @@ export const drawLaptop = (ctx, at, { screen, time, seed }) => {
 	ctx.restore();
 };
 
-// A branch's pennant on its pole, `x` and `y` the pole's top, in the branch's hue (null for none)
-export const drawPennant = (ctx, { x, y, pole }, hue) => {
-	const flag = hue === null ? PALETTE.l : `hsl(${hue} 60% 58%)`;
-
-	rect(ctx, x, y, 1, pole, PALETTE.k);
-	[5, 4, 2].forEach((length, row) => rect(ctx, x + 1, y + row, length, 1, flag));
-};
-
 // A todo's lamp: done green, under way blinking amber, waiting dark
 const todoLamp = (status, time) => {
 	if (status === 'in_progress') return Math.floor(time * 3) % 2 ? PALETTE.y : PALETTE.Y;

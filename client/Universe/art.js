@@ -251,16 +251,6 @@ const SMALL_GREY_WORK = [
 const PAPER = ['kkkkkkk', 'kwwwwwk', 'klllllk', 'kkkkkkk'];
 const CRATE = ['kkkkkkkk', 'koooooOk', 'kokkkkOk', 'koOooOOk', 'kokkkkOk', 'kOOOOOOk', 'kkkkkkkk'];
 const CANISTER = ['.kkk.', 'kccck', 'kcWck', 'kccck', 'kccck', '.kkk.'];
-const HAULER = [
-	'....kkkkkk......',
-	'...kllwwwlk.....',
-	'kkkkmmmmmmlkkk..',
-	'kyykmmmbbmmmmlkk',
-	'kyykmmmbbmmmmmlk',
-	'kkkkmmmmmmmmlkk.',
-	'...kddddddddk...',
-	'....kkkkkkkk....',
-];
 
 // What stands in a bay's back corner: a potted plant, a locker with its stripe in the project's color, a rack of
 // drives blinking
@@ -408,7 +398,6 @@ const SPRITES = {
 	paper: PAPER,
 	crate: CRATE,
 	canister: CANISTER,
-	hauler: HAULER,
 };
 
 const cache = new Map();

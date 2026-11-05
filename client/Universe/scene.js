@@ -41,7 +41,6 @@ import {
 	COUCH_SEAT,
 	drawIsland,
 	drawLaptop,
-	drawPennant,
 	drawSeat,
 	housingOf,
 	drawHall,
@@ -71,6 +70,8 @@ const BERTH_GAP = 0.55;
 // How long a commit's press takes over its pod, and how much of a push the pod spends lifting off its cradle before it
 // drops
 const PACK_SECONDS = 1.4;
+// How fast the hold's crane wanders its rail when it has nothing to press, as a rate
+const CRANE_WANDER = 0.3;
 const HAUL_LIFT = 0.2;
 const DRINK_SECONDS = 6;
 // Thinking: how long a grey's skull takes to brighten and dim again, in seconds, and how far up from its chin its eyes
@@ -1530,6 +1531,7 @@ export default class Ship {
 
 		for (const worker of this.workers.values()) this.tendSmallGreys(worker, calm);
 		this.tendCrew(seconds);
+		this.tendCrane(seconds);
 		for (const [name, walker] of this.walkers)
 			walk(
 				walker,
@@ -1836,8 +1838,8 @@ export default class Ship {
 			standing.push(
 				...drawHangar(ctx, art, label, this.layout.hangar, {
 					time: this.time,
-					hauler: !this.haulers.length,
 					journey: this.journey,
+					launching: this.haulers.length > 0,
 				}),
 				...this.deliveryParts(ctx),
 			);
@@ -4453,8 +4455,24 @@ export default class Ship {
 
 		// A pod on its way out has left its cradle; an empty one is back once it's gone
 		const launching = new Set(this.haulers.map(({ pod }) => pod));
+		// The gantry along the hold's ceiling, its crane's trolley over the pod it's working or wandering the rail
+		const gantry = {
+			y: hold.y + 0.05,
+			draw: () => {
+				const { left, right, rail } = this.gantryOf(hold);
+				const trolley = Math.round(this.craneX ?? (left + right) / 2);
 
-		return this.cargo.map((checkout, index) => {
+				rect(ctx, left, rail - 1, right - left, 3, PALETTE.k);
+				rect(ctx, left, rail, right - left, 1, PALETTE.m);
+				for (let bolt = left + 4; bolt < right; bolt += 12) rect(ctx, bolt, rail, 1, 1, PALETTE.l);
+				rect(ctx, trolley - 5, rail + 1, 11, 5, PALETTE.k);
+				rect(ctx, trolley - 4, rail + 2, 9, 3, PALETTE.d);
+				rect(ctx, trolley - 4, rail + 2, 9, 1, PALETTE.l);
+				rect(ctx, trolley, rail + 3, 2, 1, Math.floor(this.time * 2) % 2 ? PALETTE.y : PALETTE.o);
+			},
+		};
+
+		return [gantry, ...this.cargo.map((checkout, index) => {
 			const spot = holdSpotAt(hold, index);
 			const bay = this.bays.find(({ name }) => name === checkout.project);
 
@@ -4471,7 +4489,7 @@ export default class Ship {
 
 						if (commit)
 							this.hits.push({
-								...this.toScreen({ x: at.x + 5 + (crate % 2) * 7, y: at.y - 6 - Math.floor(crate / 2) * 5 }),
+								...this.toScreen({ x: this.crateAt(at, crate).x + 1, y: this.crateAt(at, crate).y + 1 }),
 								r: 4 * this.camera.zoom,
 								kind: 'commit',
 								commit,
@@ -4489,19 +4507,20 @@ export default class Ship {
 						rect(ctx, at.x - 9, at.y + 1, 5, 4, PALETTE.k);
 						rect(ctx, at.x - 8, at.y + 2, 3, 2, stamp);
 					}
-					// Off the trunk, the stack flies its branch's pennant and, close enough, its name
+					// Off the trunk, its branch's plate on the cradle in the branch's color and, close enough, its name
 					if (!checkout.trunk && (checkout.changed || checkout.unpushed)) {
 						const hue = checkout.branch ? branchHue(checkout.branch) : null;
-						const pole = 16 + (index % 2) * 9;
+						const color = hue === null ? PALETTE.l : `hsl(${hue} 60% 74%)`;
 
-						drawPennant(ctx, { x: at.x - 9, y: at.y - pole, pole }, hue);
+						rect(ctx, at.x + 1, at.y + 1, 13, 4, PALETTE.k);
+						rect(ctx, at.x + 2, at.y + 2, 11, 2, hue === null ? PALETTE.m : `hsl(${hue} 50% 45%)`);
 						if (this.camera.zoom >= 4)
 							this.labels.push({
 								text: checkout.branch ?? 'detached',
-								at: { x: at.x - 9, y: at.y - pole },
-								color: hue === null ? PALETTE.l : `hsl(${hue} 60% 74%)`,
-								lift: 0,
-								gap: -16,
+								at: { x: at.x + 7, y: at.y + 5 },
+								color,
+								align: 'center',
+								gap: 8,
 								width: 2.4 * UNIT.x,
 							});
 					}
@@ -4514,11 +4533,37 @@ export default class Ship {
 					});
 				},
 			};
-		});
+		})];
 	}
 
 	// A push leaving: its checkout's pod lets go of the dock and drops out through the doors in the belly under it with
 	// its crates aboard
+	// The hold's gantry, in art pixels: its rail's ends and height along the ceiling
+	gantryOf(hold) {
+		return {
+			left: this.art({ x: hold.x + 0.15, y: 0 }).x,
+			right: this.art({ x: hold.x + hold.w - 0.15, y: 0 }).x,
+			rail: this.art({ x: 0, y: hold.y + 0.3 }).y,
+		};
+	}
+
+	// The crane's trolley along the gantry: to the pod whose commit it's pressing, else wandering the rail slowly
+	tendCrane(seconds) {
+		const hold = this.layout?.hold;
+
+		if (!hold) return;
+
+		const { left, right } = this.gantryOf(hold);
+		const pressing = this.cargo.findIndex(({ key }) => this.time - (this.packings.get(key) ?? -Infinity) < PACK_SECONDS);
+		const goal =
+			pressing >= 0
+				? this.art(holdSpotAt(hold, pressing)).x + 3
+				: left + 8 + (right - left - 16) * (0.5 + 0.5 * Math.sin(this.time * CRANE_WANDER));
+
+		this.craneX ??= goal;
+		this.craneX += (goal - this.craneX) * Math.min(1, seconds * (pressing >= 0 ? 10 : 2));
+	}
+
 	// A commit made: over its pod, a press coming down on the sheets of changes, which flash as they're pressed, and the
 	// new crate popping into its place with a spark; up again after
 	drawPacking(ctx, at, checkout) {
@@ -4527,21 +4572,24 @@ export default class Ship {
 		if (since < 0 || since > PACK_SECONDS) return;
 
 		const t = since / PACK_SECONDS;
-		const down = Math.round(Math.sin(Math.min(1, t / 0.6) * Math.PI) * 9);
+		const down = Math.round(Math.sin(Math.min(1, t / 0.6) * Math.PI) * 4);
 
-		// The press: a rod from above and its plate, over the sheets
-		rect(ctx, at.x - 5, at.y - 30, 3, 12 + down, PALETTE.k);
-		rect(ctx, at.x - 4, at.y - 30, 1, 12 + down, PALETTE.l);
-		rect(ctx, at.x - 9, at.y - 19 + down, 11, 3, PALETTE.k);
-		rect(ctx, at.x - 8, at.y - 18 + down, 9, 1, PALETTE.y);
-		if (t < 0.6 && down > 6) rect(ctx, at.x - 7, at.y - 6, 7, 3, PALETTE.W);
+		// The crane's arm let down from its trolley to the pod's top, and its plate pressing; the sheets flashing under it
+		const { rail } = this.gantryOf(this.layout.hold);
+		const arm = Math.round(this.craneX ?? at.x + 3);
+		const plate = at.y - 29 + down;
+
+		rect(ctx, arm - 1, rail + 6, 3, plate - rail - 6, PALETTE.k);
+		rect(ctx, arm, rail + 6, 1, plate - rail - 6, PALETTE.l);
+		rect(ctx, arm - 5, plate, 11, 3, PALETTE.k);
+		rect(ctx, arm - 4, plate + 1, 9, 1, PALETTE.y);
+		if (t < 0.6 && down > 2) rect(ctx, at.x - 7, at.y - 17, 6, 10, 'rgba(255, 255, 255, 0.55)');
 
 		// The crate it made, popped into its slot
 		if (t >= 0.55) {
-			const crate = Math.max(0, Math.min(MOST.crates, checkout.unpushed) - 1);
-			const slot = { x: at.x + 5 + (crate % 2) * 7, y: at.y - 3 - Math.floor(crate / 2) * 5 };
+			const slot = this.crateAt(at, Math.max(0, Math.min(MOST.crates, checkout.unpushed) - 1));
 
-			this.drawSparkle(ctx, slot.x + 2, slot.y - 2, (t - 0.55) / 0.45);
+			this.drawSparkle(ctx, slot.x + 1, slot.y, (t - 0.55) / 0.45);
 		}
 	}
 
@@ -4573,24 +4621,56 @@ export default class Ship {
 			rect(ctx, at.x - 1, at.y - 20 - flame, 4, flame, PALETTE.Y);
 			rect(ctx, at.x, at.y - 20 - flame + 1, 2, flame - 1, PALETTE.W);
 		}
-		this.drawPod(ctx, at, { hue, crates, sheets: 0 });
+		this.drawPod(ctx, at, { hue, crates, sheets: 0, docked: false });
 	}
 
-	// A checkout's pod, `at` its foot: a capsule in its project's color with a window down its side, its crates of
-	// commits to push and sheets of changes inside
-	drawPod(ctx, at, { hue, crates, sheets }) {
-		const color = hue === null || hue === undefined ? PALETTE.l : `hsl(${hue} 50% 50%)`;
+	// Where a pod's `index`th crate of commits sits in its window, `at` the pod's foot, in art pixels: two rows of three
+	crateAt(at, index) {
+		return { x: at.x + 1 + (index % 3) * 5, y: at.y - 12 - Math.floor(index / 3) * 5 };
+	}
 
-		rect(ctx, at.x - 12, at.y - 20, 30, 20, PALETTE.k);
-		rect(ctx, at.x - 11, at.y - 19, 28, 18, PALETTE.d);
-		rect(ctx, at.x - 11, at.y - 19, 28, 2, color);
-		rect(ctx, at.x - 13, at.y - 15, 1, 10, PALETTE.k);
-		rect(ctx, at.x + 18, at.y - 15, 1, 10, PALETTE.k);
-		rect(ctx, at.x - 9, at.y - 15, 24, 12, '#0d1118');
-		for (let crate = 0; crate < Math.min(MOST.crates, crates); crate++)
-			drawSprite(ctx, 'crate', at.x + 5 + (crate % 2) * 7, at.y - 3 - Math.floor(crate / 2) * 5);
-		for (let sheet = 0; sheet < Math.min(4, sheets); sheet++)
-			rect(ctx, at.x - 7, at.y - 5 - sheet * 2, 7, 1, PALETTE.W);
+	// A checkout's pod, `at` its foot: a cargo capsule in its project's color, a rounded nose and an engine bell, ribs down
+	// its hull and a window in its side showing its changes as sheets and its commits stacked as crates; a lamp on top
+	// blinking amber while changes are loading, steady green with commits to push, dark when empty. Docked, it stands on
+	// a cradle.
+	drawPod(ctx, at, { hue, crates, sheets, docked = true }) {
+		const tint = (s, l) => (hue === null || hue === undefined ? `hsl(220 10% ${l}%)` : `hsl(${hue} ${s}% ${l}%)`);
+		const [color, light, dark] = [tint(45, 46), tint(55, 66), tint(40, 27)];
+		const { x, y } = at;
+		const [top, bottom] = [y - 22, y - 4];
+
+		if (docked) {
+			rect(ctx, x - 10, y - 3, 27, 3, PALETTE.k);
+			rect(ctx, x - 9, y - 2, 25, 1, PALETTE.m);
+			for (const strut of [x - 7, x + 12]) rect(ctx, strut, y - 5, 2, 3, PALETTE.k);
+		}
+		// Its hull: outlined, the nose rounded off, the bell narrower, lit along its top and shaded along its keel
+		rect(ctx, x - 11, top, 28, bottom - top + 1, PALETTE.k);
+		rect(ctx, x - 12, top + 2, 1, bottom - top - 3, PALETTE.k);
+		rect(ctx, x + 17, top + 3, 2, bottom - top - 5, PALETTE.k);
+		rect(ctx, x - 10, top + 1, 26, bottom - top - 1, color);
+		rect(ctx, x - 11, top + 3, 1, bottom - top - 5, color);
+		rect(ctx, x + 17, top + 4, 1, bottom - top - 7, dark);
+		rect(ctx, x - 10, top + 1, 26, 1, light);
+		rect(ctx, x - 10, bottom - 1, 26, 1, dark);
+		for (let rib = x - 5; rib < x + 16; rib += 7) rect(ctx, rib, top + 1, 1, bottom - top - 1, dark);
+		// Its window, the sheets of changes to its left and the crates of commits stacked beside them
+		rect(ctx, x - 8, top + 4, 25, 12, PALETTE.k);
+		rect(ctx, x - 7, top + 5, 23, 10, '#0d1118');
+		for (let sheet = 0; sheet < Math.min(4, sheets); sheet++) rect(ctx, x - 6, top + 13 - sheet * 2, 5, 1, PALETTE.W);
+		for (let crate = 0; crate < Math.min(MOST.crates, crates); crate++) {
+			const box = this.crateAt(at, crate);
+
+			rect(ctx, box.x, box.y, 4, 4, '#a8702e');
+			rect(ctx, box.x, box.y, 4, 1, '#f2c66d');
+			rect(ctx, box.x + 1, box.y + 2, 2, 1, '#6e4a1e');
+		}
+		// Its lamp
+		const loading = sheets > 0;
+		const lamp = (loading && (Math.floor(this.time * 3) % 2 ? '#f2c14e' : '#5a4416')) || (crates > 0 && '#5cff8a') || '#2a3040';
+
+		rect(ctx, x + 2, top - 2, 4, 2, PALETTE.k);
+		rect(ctx, x + 3, top - 2, 2, 1, lamp);
 	}
 
 	// Whether `who` said something in a session's chat in the last minute and a half ('Claude' for its answers there)

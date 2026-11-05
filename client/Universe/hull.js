@@ -1,4 +1,4 @@
-import { PALETTE, drawSprite } from './art';
+import { PALETTE } from './art';
 import {
 	NACELLE,
 	NOSE,
@@ -29,11 +29,12 @@ import {
 } from './station';
 
 // The ship's log on a room's back wall: how far it has come
-const stationLog = (ctx, art, label, room, journey) => ({
+// `on`, where to mount it instead, in art pixels (its foot's middle)
+const stationLog = (ctx, art, label, room, journey, on) => ({
 	y: room.y + (room.face ?? FACE),
 	draw: () => {
-		// Clear of the room's name over its wall's top; where there's no wall, a little lower still, above its pad
-		const at = art({ x: room.x + room.w / 2, y: room.y + (room.face ?? FACE) + (room.face === 0 ? 1.15 : 0.7) });
+		// Clear of the room's name over its wall's top
+		const at = on ?? art({ x: room.x + room.w / 2, y: room.y + (room.face ?? FACE) + 0.7 });
 		const log = { x: at.x - 13, y: at.y - 10 };
 
 		box(ctx, log.x, log.y, 26, 10, PALETTE.k);
@@ -1458,23 +1459,87 @@ export const drawHold = (ctx, art, label, room) => {
 	return walls(ctx, art, label, room, { name: room.name, color: PALETTE.o });
 };
 
-// The hangar: its landing pad and the hauler waiting on it; its doors are in the hull below
-export const drawHangar = (ctx, art, label, room, { time, hauler, journey }) => {
+// The tug that waits on the pad, `at` its foot: a stubby craft, its hull ribbed, a lit cockpit at its nose, fins at its
+// tail, legs down on the pad, its engine idling and a beacon blinking on its back
+const drawTug = (ctx, at, time, flying = false) => {
+	const { x, y } = at;
+	const top = y - 9;
+
+	// Its legs, down on the pad, tucked up flying; under it, flying, its lift jets' glow
+	if (flying) for (const jet of [x - 6, x + 4]) rect(ctx, jet, y - 2, 2, 2 + (Math.floor(time * 12) % 2), PALETTE.Y);
+	else
+		for (const leg of [x - 6, x + 5]) {
+			rect(ctx, leg, y - 3, 1, 3, PALETTE.k);
+			rect(ctx, leg - 1, y - 1, 3, 1, PALETTE.k);
+		}
+	// Its fins, aft, and its engine's glow
+	rect(ctx, x - 12, top + 1, 3, 3, PALETTE.k);
+	rect(ctx, x - 12, top + 6, 3, 3, PALETTE.k);
+	rect(ctx, x - 11, top + 2, 1, 1, PALETTE.l);
+	rect(ctx, x - 11, top + 7, 1, 1, PALETTE.l);
+	rect(ctx, x - 13 - (flying ? 2 : 0), top + 4, flying ? 4 : 2, 2, Math.floor(time * 6) % 2 ? PALETTE.Y : PALETTE.o);
+	// Its hull: outlined, lit along its top, shaded under, ribbed
+	rect(ctx, x - 10, top, 18, 7, PALETTE.k);
+	rect(ctx, x + 8, top + 1, 2, 5, PALETTE.k);
+	rect(ctx, x - 9, top + 1, 17, 5, PALETTE.l);
+	rect(ctx, x - 9, top + 1, 17, 1, PALETTE.W);
+	rect(ctx, x - 9, top + 4, 17, 1, PALETTE.Y);
+	rect(ctx, x - 9, top + 5, 17, 1, PALETTE.m);
+	for (let rib = x - 6; rib < x + 4; rib += 4) rect(ctx, rib, top + 2, 1, 2, PALETTE.m);
+	// Its cockpit, at the nose
+	rect(ctx, x + 4, top + 2, 4, 3, PALETTE.k);
+	rect(ctx, x + 5, top + 2, 3, 2, '#7fd6ff');
+	rect(ctx, x + 5, top + 2, 1, 1, '#e0f6ff');
+	// Its beacon
+	rect(ctx, x - 2, top - 1, 2, 1, Math.floor(time * 2) % 2 ? '#ff4a3a' : '#5a1a16');
+};
+
+// How many lights chase round the hangar's pad, and how tall its arch stands, in art pixels
+const PAD_LIGHTS = 12;
+const ARCH_TALL = 14;
+
+// The hangar: its landing pad under an arch, lights chasing round it, and the tug waiting on it; its doors are in
+// the hull below
+export const drawHangar = (ctx, art, label, room, { time, journey, launching = false }) => {
 	floor(ctx, art, room);
 
 	const pad = art(padAt(room));
 
 	return [
 		...walls(ctx, art, label, room, { name: room.name, color: PALETTE.y }),
-		stationLog(ctx, art, label, room, journey),
+		// Its count of what's gone out, the sign atop the pad's arch
+		stationLog(ctx, art, label, room, journey, { x: pad.x, y: pad.y - ARCH_TALL + 2 }),
 		{
 			y: padAt(room).y,
 			draw: () => {
+				// Its arch over the pad, its sign atop it, a warning lamp at each end lit while a pod's going out
+				for (const side of [-22, 21]) {
+					rect(ctx, pad.x + side, pad.y - ARCH_TALL, 2, ARCH_TALL, PALETTE.k);
+					rect(ctx, pad.x + side, pad.y - ARCH_TALL + 1, 1, ARCH_TALL - 2, PALETTE.l);
+					rect(ctx, pad.x + side, pad.y - ARCH_TALL - 2, 2, 2, launching && Math.floor(time * 6) % 2 ? '#ff4a3a' : '#5a1a16');
+				}
+				rect(ctx, pad.x - 22, pad.y - ARCH_TALL, 45, 2, PALETTE.k);
+				rect(ctx, pad.x - 21, pad.y - ARCH_TALL, 43, 1, PALETTE.m);
+				// The pad: its ring, a light chasing round it, faster and brighter while a pod's going out
 				pixelEllipse(ctx, pad.x, pad.y, 18, 5, PALETTE.Y);
 				pixelEllipse(ctx, pad.x, pad.y, 16, 4, '#1d222b');
-				rect(ctx, pad.x - 3, pad.y - 1, 7, 1, PALETTE.Y);
-				if (hauler) drawSprite(ctx, 'hauler', pad.x, pad.y + 2);
-				if (Math.floor(time * 2) % 2) rect(ctx, pad.x + 17, pad.y, 1, 1, PALETTE.y);
+				pixelEllipse(ctx, pad.x, pad.y, 10, 2, '#2a3040');
+				for (let light = 0; light < PAD_LIGHTS; light++) {
+					const angle = (light / PAD_LIGHTS) * Math.PI * 2;
+					const lit = Math.floor(time * (launching ? 16 : 5)) % PAD_LIGHTS === light;
+					const resting = launching ? PALETTE.Y : PALETTE.o;
+
+					rect(
+						ctx,
+						Math.round(pad.x + Math.cos(angle) * 17),
+						Math.round(pad.y + Math.sin(angle) * 4.5),
+						1,
+						1,
+						lit ? PALETTE.W : resting,
+					);
+				}
+				// Lifting off its pad while a pod goes out, its engine flaring, and down again once it's away
+				drawTug(ctx, { x: pad.x, y: pad.y + 1 - (launching ? 3 + Math.round(Math.sin(time * 4)) : 0) }, time, launching);
 			},
 		},
 	];
