@@ -301,7 +301,7 @@ test('a checkout with work in it has cargo in the hold; fewer commits to push th
 
 	made.update(working([checkout(0)]));
 	expect(made.haulers).toMatchObject([{ crates: 3 }]);
-	run(made, 4);
+	run(made, 7);
 	expect(made.haulers).toHaveLength(0);
 });
 

@@ -16,7 +16,7 @@ import {
 	drawLounge,
 	drawMaterializer,
 	drawSystem,
-	drawTransporter, drawHullCover } from './hull';
+	drawTransporter, drawHullCover, drawTug } from './hull';
 import {
 	standingOf,
 	clonerAt,
@@ -82,7 +82,16 @@ const PACK_SECONDS = 1.4;
 const CRANE_WANDER = 0.3;
 // How far under the hopper a part hangs on the crane's hook as it's carried, in world units
 const HOOK_HANG = 0.6;
-const HAUL_LIFT = 0.2;
+const HAUL_LIFT = 0.08;
+// How far a jettisoned pod falls away under the ship and is left aft of it by the end of its push, in world units, and
+// how much smaller it's gone with the distance
+const JETTISON = { down: 14, aft: 10, shrink: 0.7 };
+// The tug's flight seeing a push off, as parts of it: lifting off its pad, down out through the hangar's belly doors,
+// after the pod until both are gone from sight, away, and back up onto its pad from under the ship
+const TUG_FLIGHT = { lifted: 0.08, below: 0.28, escorting: 0.45, gone: 0.76, home: 1 };
+// How far the tug hovers over its pad lifting off, and under the ship it waits for the pod, in world units
+const TUG_HOVER = 0.7;
+const TUG_UNDER = 1.6;
 const DRINK_SECONDS = 6;
 // Thinking: how long a grey's skull takes to brighten and dim again, in seconds, and how far up from its chin its eyes
 // are, in art pixels, the same on every size of head
@@ -143,7 +152,7 @@ const TEXT = 2;
 const MOST = { papers: 8, crates: 6, canisters: 6, cans: 12, smallGreys: 4, bots: 4 };
 // A lounger's empties pile up, one more every half hour since its session's prompt cache went cold
 const CAN_MS = 30 * 60_000;
-const HAUL_SECONDS = 3;
+const HAUL_SECONDS = 6;
 // Something said in a session's chat shows over its speaker this long
 const SPOKE_MS = 90_000;
 // How fast what the work made travels the ship
@@ -1882,6 +1891,7 @@ export default class Ship {
 					time: this.time,
 					journey: this.journey,
 					launching: this.haulers.length > 0,
+					tugAway: this.haulers.length > 0,
 				}),
 				...this.deliveryParts(ctx),
 			);
@@ -1966,6 +1976,7 @@ export default class Ship {
 		this.drawSelection(ctx);
 		ctx.restore();
 		for (const hauler of this.haulers) this.drawHauler(ctx, hauler);
+		this.drawTugFlight(ctx);
 		for (const worker of this.workers.values()) if (worker.seat) this.drawMarker(ctx, worker);
 		this.drawLabels(ctx, ratio);
 	}
@@ -4690,35 +4701,119 @@ export default class Ship {
 		}
 	}
 
-	// A push: the pod lifted off its cradle, its clamps blinking, then dropped out through the hatch in the belly, its
-	// thruster firing as it goes and its trail fading behind it
-	drawHauler(ctx, { crates, time, pod, project }) {
-		const hold = this.layout.hold;
+	// Where a push's pod is at `time` of it, in world units, and how small it's gone: lifted off its cradle, then dropped
+	// out through the hatch in the belly and falling away under and aft of the ship faster and faster as it's left behind
+	podFlight({ pod }, time) {
+		const from = holdSpotAt(this.layout.hold, pod ?? 0);
 
-		if (!hold) return;
+		if (time < HAUL_LIFT) return { x: from.x, y: from.y - Math.sin((time / HAUL_LIFT) * Math.PI) * 0.12, scale: 1 };
 
-		const from = holdSpotAt(hold, pod ?? 0);
-		const floor = this.layout.building.bottom;
-		const lift = HAUL_LIFT;
-		const falling = Math.max(0, (time - lift) / (1 - lift));
-		const rise = time < lift ? Math.sin((time / lift) * Math.PI) * 0.12 : 0;
-		const at = this.art({ x: from.x, y: from.y - rise + (floor + 3 - from.y) * falling * falling });
-		const hue = this.bays.find(({ name }) => name === project)?.hue;
+		const falling = (time - HAUL_LIFT) / (1 - HAUL_LIFT);
 
-		if (time < lift && Math.floor(this.time * 10) % 2)
-			for (const side of [-14, 19]) rect(ctx, at.x + side - 1, at.y - 12, 2, 2, PALETTE.y);
-		if (falling > 0) {
-			// Its trail, fading up behind it
-			ctx.globalAlpha = 0.35 * (1 - falling);
-			rect(ctx, at.x - 1, at.y - 20 - 18, 4, 18, '#9fd8ff');
-			ctx.globalAlpha = 1;
-			// Its thruster, atop it, pushing it down and away
-			const flame = 3 + (Math.floor(this.time * 20) % 3);
+		return {
+			x: from.x - JETTISON.aft * falling ** 3,
+			y: from.y + JETTISON.down * falling ** 2,
+			scale: 1 - JETTISON.shrink * falling ** 2,
+			falling,
+		};
+	}
 
-			rect(ctx, at.x - 1, at.y - 20 - flame, 4, flame, PALETTE.Y);
-			rect(ctx, at.x, at.y - 20 - flame + 1, 2, flame - 1, PALETTE.W);
+	// Where the hangar's tug is through a push's `time`, in world units, which way it faces and how small it's gone; null
+	// while it's on its pad, or away out of sight
+	tugFlight(hauler) {
+		const { hangar } = this.layout;
+
+		if (!hangar || !this.layout.hold) return null;
+
+		const pad = padAt(hangar);
+		const under = this.layout.building.bottom + TUG_UNDER;
+		const { time } = hauler;
+		const { lifted, below, escorting, gone, home } = TUG_FLIGHT;
+		const ease = t => t * t * (3 - 2 * t);
+
+		if (time < lifted) return { x: pad.x, y: pad.y - TUG_HOVER * ease(time / lifted), scale: 1 };
+		if (time < below) {
+			const t = (time - lifted) / (below - lifted);
+
+			return { x: pad.x, y: pad.y - TUG_HOVER + (under - pad.y + TUG_HOVER) * t * t, scale: 1, diving: true };
 		}
-		this.drawPod(ctx, at, { hue, crates, sheets: 0, docked: false });
+		if (time < gone) {
+			// Swung round after the pod, closing to just off its nose and keeping there as both are left behind
+			const pod = this.podFlight(hauler, time);
+			const closing = ease(Math.min(1, (time - below) / (escorting - below)));
+			const beside = { x: pod.x + 1.6 * pod.scale, y: pod.y - 0.4 * pod.scale };
+
+			return {
+				x: pad.x + (beside.x - pad.x) * closing,
+				y: under + (beside.y - under) * closing,
+				scale: 1 + (pod.scale - 1) * closing,
+				aft: true,
+			};
+		}
+
+		const t = (time - gone) / (home - gone);
+
+		if (t < 0.15) return null;
+
+		const back = (t - 0.15) / 0.85;
+
+		return { x: pad.x, y: under + 3 - (under + 3 - pad.y) * (1 - (1 - back) ** 2), scale: 1 };
+	}
+
+	// Draws `draw` around `at` as much smaller as `scale` says, as something far off
+	scaledAbout(ctx, at, scale, draw) {
+		ctx.save();
+		ctx.translate(at.x, at.y);
+		ctx.scale(scale, scale);
+		ctx.translate(-at.x, -at.y);
+		draw();
+		ctx.restore();
+	}
+
+	// A push: the pod lifted off its cradle, its clamps blinking, then dropped out through the hatch in the belly and
+	// falling away aft, its thruster firing as it goes and its trail behind it; the tug seeing it off
+	drawHauler(ctx, hauler) {
+		if (!this.layout.hold) return;
+
+		const { crates, time, project } = hauler;
+		const hue = this.bays.find(({ name }) => name === project)?.hue;
+		const flight = this.podFlight(hauler, time);
+		const at = this.art(flight);
+
+		if (time < HAUL_LIFT && Math.floor(this.time * 10) % 2)
+			for (const side of [-14, 19]) rect(ctx, at.x + side - 1, at.y - 12, 2, 2, PALETTE.y);
+		if (flight.falling > 0) {
+			// Its trail: where it was a moment ago, fading the further back
+			for (let back = 1; back <= 6; back++) {
+				const was = this.podFlight(hauler, Math.max(HAUL_LIFT, time - back * 0.012));
+				const dot = this.art(was);
+
+				ctx.globalAlpha = 0.4 * (1 - back / 7) * (1 - flight.falling);
+				rect(ctx, dot.x + 1, dot.y - 22 * was.scale, Math.max(1, Math.round(4 * was.scale)), 3, '#9fd8ff');
+			}
+			ctx.globalAlpha = 1;
+		}
+		this.scaledAbout(ctx, at, flight.scale, () => {
+			if (flight.falling > 0) {
+				// Its thruster, atop it, pushing it down and away
+				const flame = 3 + (Math.floor(this.time * 20) % 3);
+
+				rect(ctx, at.x - 1, at.y - 20 - flame, 4, flame, PALETTE.Y);
+				rect(ctx, at.x, at.y - 20 - flame + 1, 2, flame - 1, PALETTE.W);
+			}
+			this.drawPod(ctx, at, { hue, crates, sheets: 0, docked: false });
+		});
+	}
+
+	// The tug off its pad seeing the first push out, as `tugFlight` puts it
+	drawTugFlight(ctx) {
+		const tug = this.haulers[0] && this.tugFlight(this.haulers[0]);
+
+		if (!tug) return;
+
+		const at = this.art(tug);
+
+		this.scaledAbout(ctx, at, tug.scale, () => drawTug(ctx, at, this.time, { flying: true, aft: tug.aft }));
 	}
 
 	// Where a pod's `index`th crate of commits sits in its window, `at` the pod's foot, in art pixels: two rows of three

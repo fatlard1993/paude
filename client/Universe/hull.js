@@ -568,9 +568,10 @@ export const drawHull = (
 	drawFins(ctx, image, layout.engineering, { time });
 	for (const engine of engines) drawEngine(ctx, shape, { ...engine, time });
 	ctx.drawImage(image.canvas, image.x, image.y);
-	// The hatch in the belly under the hold, hazard-banded, open while a pod drops out through it
-	if (layout.hold) {
-		const [left, right] = [Math.round(layout.hold.x * UNIT.x) + 4, Math.round((layout.hold.x + layout.hold.w) * UNIT.x) - 4];
+	// The hatches in the belly under the hold and the hangar, hazard-banded, open while a pod drops out through the one
+	// and the tug flies out after it through the other
+	for (const room of [layout.hold, layout.hangar].filter(Boolean)) {
+		const [left, right] = [Math.round(room.x * UNIT.x) + 4, Math.round((room.x + room.w) * UNIT.x) - 4];
 
 		for (let x = left; x < right; x++) {
 			const gap = hangarOpen && Math.abs(x - (left + right) / 2) < (right - left) * 0.42;
@@ -1479,8 +1480,19 @@ export const drawHold = (ctx, art, label, room) => {
 };
 
 // The tug that waits on the pad, `at` its foot: a stubby craft, its hull ribbed, a lit cockpit at its nose, fins at its
-// tail, legs down on the pad, its engine idling and a beacon blinking on its back
-const drawTug = (ctx, at, time, flying = false) => {
+// tail, legs down on the pad, its engine idling and a beacon blinking on its back; `flying`, its legs tucked and its
+// jets lit, and `aft`, turned to fly toward the stern
+export const drawTug = (ctx, at, time, { flying = false, aft = false } = {}) => {
+	if (aft) {
+		ctx.save();
+		ctx.translate(at.x * 2, 0);
+		ctx.scale(-1, 1);
+		drawTug(ctx, at, time, { flying });
+		ctx.restore();
+
+		return;
+	}
+
 	const { x, y } = at;
 	const top = y - 9;
 
@@ -1517,9 +1529,9 @@ const drawTug = (ctx, at, time, flying = false) => {
 const PAD_LIGHTS = 12;
 const ARCH_TALL = 14;
 
-// The hangar: its landing pad under an arch, lights chasing round it, and the tug waiting on it; its doors are in
-// the hull below
-export const drawHangar = (ctx, art, label, room, { time, journey, launching = false }) => {
+// The hangar: its landing pad under an arch, lights chasing round it, and the tug waiting on it, unless it's away
+// (`tugAway`); its doors are in the hull below
+export const drawHangar = (ctx, art, label, room, { time, journey, launching = false, tugAway = false }) => {
 	floor(ctx, art, room);
 
 	const pad = art(padAt(room));
@@ -1557,8 +1569,7 @@ export const drawHangar = (ctx, art, label, room, { time, journey, launching = f
 						lit ? PALETTE.W : resting,
 					);
 				}
-				// Lifting off its pad while a pod goes out, its engine flaring, and down again once it's away
-				drawTug(ctx, { x: pad.x, y: pad.y + 1 - (launching ? 3 + Math.round(Math.sin(time * 4)) : 0) }, time, launching);
+				if (!tugAway) drawTug(ctx, { x: pad.x, y: pad.y + 1 }, time);
 			},
 		},
 	];
