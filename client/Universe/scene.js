@@ -3695,7 +3695,7 @@ export default class Ship {
 	// at the materializer, commits and decisions filed in the hold, a pull request drafted in the hangar, a session kept
 	// warm in the lounge
 	placeOfJob(job) {
-		const { materializer, hold, hangar } = this.layout;
+		const { materializer, hangar } = this.layout;
 		const bridge = this.bridge;
 		const lounge = this.lounge;
 		const place = {
@@ -3707,16 +3707,17 @@ export default class Ship {
 			'finding what to open': bridge && { room: bridge, at: { x: navAt(bridge).x, y: navAt(bridge).y + 0.6 } },
 			'placing a prompt': materializer && {
 				room: materializer,
-				at: { x: clonerAt(materializer).x + 0.9, y: clonerAt(materializer).y + 0.2 },
+				at: { x: clonerAt(materializer).x - 0.6, y: clonerAt(materializer).y + 0.6 },
 			},
-			'filing decisions': hold && { room: hold, at: { x: hold.x + hold.w - 0.5, y: hold.y + hold.d - 0.5 } },
-			'writing a commit message': hold && {
-				room: hold,
-				at: { x: hold.x + hold.w - 0.9, y: hold.y + hold.d - 0.4 },
+			// Clear of the hold's stacks and the pad's ring: round the pad on the shipping floor
+			'filing decisions': hangar && { room: hangar, at: { x: padAt(hangar).x - 1, y: padAt(hangar).y - 0.5 } },
+			'writing a commit message': hangar && {
+				room: hangar,
+				at: { x: padAt(hangar).x + 1.3, y: padAt(hangar).y + 0.5 },
 			},
 			'drafting a pull request': hangar && {
 				room: hangar,
-				at: { x: padAt(hangar).x - 0.9, y: padAt(hangar).y + 0.5 },
+				at: { x: padAt(hangar).x - 1.1, y: padAt(hangar).y + 0.5 },
 			},
 			'deciding to keep going': bridge && {
 				room: bridge,
@@ -3762,7 +3763,7 @@ export default class Ship {
 				job,
 				index,
 				...home,
-				path: place ? this.route(home, engineering, place.at, place.room) : [],
+				path: place ? this.walkAround(home, this.route(home, engineering, place.at, place.room)) : [],
 				room: place?.room ?? engineering,
 			});
 		}
@@ -3773,7 +3774,7 @@ export default class Ship {
 
 				Object.assign(bot, {
 					back: true,
-					path: room === engineering ? [home] : this.route(bot, room, home, engineering),
+					path: room === engineering ? [home] : this.walkAround(bot, this.route(bot, room, home, engineering)),
 				});
 			}
 			let left = seconds * BOT_SPEED;
@@ -3782,6 +3783,7 @@ export default class Ship {
 				const [goal] = bot.path;
 				const away = Math.hypot(goal.x - bot.x, goal.y - bot.y);
 
+				if (Math.abs(goal.x - bot.x) > 0.01) bot.facing = Math.sign(goal.x - bot.x);
 				if (away <= left) {
 					Object.assign(bot, { x: goal.x, y: goal.y });
 					bot.path.shift();
@@ -3817,15 +3819,7 @@ export default class Ship {
 				const working = !bot.docked && !bot.back && !bot.path.length;
 				const walking = bot.path.length > 0;
 				const bob = (working || walking) && Math.floor(this.time * (walking ? 8 : 4) + bot.index) % 2;
-				const lit = !bot.docked;
-
-				rect(ctx, at.x, at.y - 9 - bob, 1, 2, PALETTE.l);
-				rect(ctx, at.x - 2, at.y - 7 - bob, 5, 4, PALETTE.k);
-				rect(ctx, at.x - 1, at.y - 6 - bob, 3, 2, lit ? PALETTE.o : PALETTE.O);
-				rect(ctx, at.x, at.y - 6 - bob, 1, 1, lit ? PALETTE.W : PALETTE.d);
-				rect(ctx, at.x - 2, at.y - 3, 5, 3, PALETTE.k);
-				rect(ctx, at.x - 1, at.y - 3, 3, 2, PALETTE.m);
-				if (working && Math.floor(this.time * 3 + bot.index) % 2) rect(ctx, at.x + 3, at.y - 5, 1, 1, PALETTE.y);
+				this.drawDroid(ctx, at, { facing: bot.facing ?? 1, lit: !bot.docked, bob, working, seed: bot.index });
 				this.hits.push({
 					...this.toScreen({ x: at.x, y: at.y - 4 }),
 					r: 5 * this.camera.zoom,
@@ -3834,6 +3828,32 @@ export default class Ship {
 				});
 			},
 		}));
+	}
+
+	// A little droid of the crew, `at` its foot: a low black box on wheels scooting about, its front sloped toward where
+	// it's going (`facing`), a sensor eye lit while it's on a job and a stripe of paude's color down its side
+	drawDroid(ctx, at, { facing, lit, bob, working, seed }) {
+		const { x } = at;
+		const y = at.y - bob;
+		const front = x + facing * 4;
+
+		// Its wheels, turning while it goes
+		for (const wheel of [-3, 2]) {
+			rect(ctx, x + wheel, at.y - 1, 2, 1, PALETTE.k);
+			if (bob) rect(ctx, x + wheel, at.y - 1, 1, 1, PALETTE.d);
+		}
+		// The box, its top lit and its front sloped
+		rect(ctx, x - 5, y - 6, 10, 5, PALETTE.k);
+		rect(ctx, x - 4, y - 5, 8, 3, '#2a2f38');
+		rect(ctx, x - 4, y - 5, 8, 1, '#4a5160');
+		rect(ctx, front - (facing > 0 ? 1 : 0), y - 5, 1, 1, PALETTE.k);
+		rect(ctx, x - 4, y - 3, 8, 1, PALETTE.o);
+		// The grille at its back, its eye at its front
+		rect(ctx, x - facing * 3, y - 4, 1, 1, '#4a5160');
+		const blink = Math.floor(this.time * 4 + seed) % 4 === 0;
+
+		rect(ctx, front - facing * 2, y - 4, 1, 1, (!lit && PALETTE.d) || (blink && PALETTE.W) || PALETTE.r);
+		if (working && Math.floor(this.time * 3 + seed) % 2) rect(ctx, x - facing, y - 7, 1, 1, PALETTE.y);
 	}
 
 	// Hazard tape round a seat whose session asks nothing before it acts
