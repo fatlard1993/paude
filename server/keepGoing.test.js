@@ -5,7 +5,7 @@ import { claudeActive, isNudge, keepWarm, nudgeWith, warmUntil } from './keepWar
 
 const NUDGE = nudgeWith('');
 
-const ids = ['going', 'only-warm', 'typing', 'held', 'gone', 'no'];
+const ids = ['going', 'only-warm', 'typing', 'held', 'gone', 'no', 'hooks'];
 
 afterAll(() => Promise.all(ids.map(id => keepWarm(id, 0))));
 
@@ -83,6 +83,58 @@ test('someone typing, or the session switched off while Haiku thinks, keeps the 
 
 	expect(await keepGoing('typing', 'Next I would…', { ...going(session), ask: switchedOff })).toBe(false);
 	expect(session.typed).toEqual([]);
+});
+
+test("a nudge Haiku answers while the turn's other Stop hooks still run waits for Claude to go idle", async () => {
+	const session = fakeSession();
+	let pauses = 0;
+
+	await keepWarm('hooks', 12, Date.now(), { going: true });
+	session.busy = true;
+	expect(
+		await keepGoing('hooks', 'Done.', {
+			...going(session),
+			ask: says('{"go": true, "next": "Check it."}'),
+			pause: async () => {
+				pauses += 1;
+				session.busy = pauses < 3;
+			},
+		}),
+	).toBe(true);
+	expect(session.typed[0]).toContain('Check it.');
+
+	const stuck = fakeSession();
+
+	stuck.busy = true;
+	expect(await keepGoing('hooks', 'Done.', { ...going(stuck), ask: says('{"go": true}'), pause: async () => {} })).toBe(
+		false,
+	);
+	expect(stuck.typed).toEqual([]);
+});
+
+test('a nudge waiting on a busy Claude gives way to the turn end after it', async () => {
+	const session = fakeSession();
+	let later;
+
+	await keepWarm('hooks', 12, Date.now(), { going: true });
+	session.busy = true;
+
+	const waiting = keepGoing('hooks', 'Done.', {
+		...going(session),
+		ask: says('{"go": true, "next": "Stale."}'),
+		pause: async () => {
+			if (!later) {
+				session.busy = false;
+				later = keepGoing('hooks', 'Filed it.', { ...going(session), ask: says('{"go": true, "next": "Fresh."}') });
+				await later;
+			}
+		},
+	});
+
+	expect(await waiting).toBe(false);
+	expect(await later).toBe(true);
+	expect(session.typed).toHaveLength(1);
+	expect(session.typed[0]).toContain('Fresh.');
 });
 
 test('a run of nudges stops at its cap, or once nudged turns stop changing anything, without asking Haiku', async () => {

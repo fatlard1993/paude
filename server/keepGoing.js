@@ -24,6 +24,10 @@ const ASKED_CHARACTERS = 1500;
 // What the session settled, as Haiku is shown it, newest first
 const SETTLED_SHOWN = 12;
 const SETTLED_CHARACTERS = 300;
+// Claude's title shows it busy until the turn's last Stop hook is done, and paude's is only one of them: Haiku often
+// answers before the rest finish. How long a nudge waits for that, and how often it looks
+const IDLE_WAIT_MS = 5 * 60_000;
+const IDLE_CHECK_MS = 1000;
 
 const KEEP_WARM_PING = /^keep-?warm ping/i;
 
@@ -152,7 +156,7 @@ const keptOut = (id, session, ended, sessionOf) => {
 
 // After a turn ends in a session that keeps going: told what to do next unless Haiku finds nothing useful left that
 // doesn't need the person. Without an answer from Haiku it's still told to carry on toward the goal. Typed in only
-// while Claude sits idle with an empty prompt box and nobody's message waiting to go in (whoever came back and started
+// once Claude sits idle with an empty prompt box and nobody's message waiting to go in (whoever came back and started
 // typing has the session). A turn end another Stop hook turned back isn't the end: Claude answers the hook and ends
 // again, and only the later one is answered. Whether it was typed.
 export const keepGoing = async (
@@ -163,6 +167,7 @@ export const keepGoing = async (
 		sessionOf = runningSession,
 		turnsOf = sessionTurns,
 		decisionsOf = (sessionId, cwd) => sessionDecisions(sessionId, cwd, { onlyRead: true }),
+		pause = () => Bun.sleep(IDLE_CHECK_MS),
 	} = {},
 ) => {
 	const session = sessionOf(id);
@@ -195,9 +200,14 @@ export const keepGoing = async (
 
 	const next = typeof verdict?.next === 'string' ? verdict.next : '';
 	// Asking takes seconds: answered by a later turn end, switched off, ended, or taken up by someone meanwhile
-	const out =
-		keptOut(id, session, ended, sessionOf) ??
-		(typeWhenIdle(id, session, nudgeWith(next)) ? null : 'Claude is busy, asking, or someone is typing');
+	let out = keptOut(id, session, ended, sessionOf);
+
+	for (let waited = 0; !out && session.busy && waited < IDLE_WAIT_MS; waited += IDLE_CHECK_MS) {
+		await pause();
+		out = keptOut(id, session, ended, sessionOf);
+	}
+	if (!out && session.busy) out = `Claude was still busy after ${IDLE_WAIT_MS / 60_000} minutes`;
+	if (!out && !typeWhenIdle(id, session, nudgeWith(next))) out = 'Claude is asking, or someone is typing';
 
 	console.log(`Keep going ${id}: ${out ? `not sent, ${out}:` : 'on,'} ${next || 'toward the goal'} (${why})`);
 	if (out) return false;
