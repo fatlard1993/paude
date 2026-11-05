@@ -82,10 +82,12 @@ const SHUTTLE = { fly: 1.6, tube: 0.6, walk: 1.6, retract: 0.5 };
 // close up (`warp`); the ship pulling in under it as the view draws back to all of it (the ship's own coming in,
 // ENTER_SECONDS); its plating shimmering as the shuttle settles on it (`settle`); then its tube and their walk. How
 // much closer than the whole ship the view starts, in zoom.
-const JOIN = { warp: 1.2, settle: 1.2, closer: 3, tubeCloser: 2, opened: 1.2 };
+const JOIN = { warp: 1.2, settle: 1.2, closer: 3, tubeCloser: 2, opened: 2.6, stepped: 1.4 };
 // How long the view watches the one looking walk out from the airlock before what's to be focused on opening is, in
 // seconds: long enough to see them clear it, not the whole way to where they belong
-const WALK_IN_MOST = 1.4;
+const WALK_IN_MOST = 2;
+// How long someone just come aboard stands in the airlock's doorway as its door opens before stepping out, in seconds
+const DOORWAY_SECONDS = 0.6;
 // How fast the view's zoom eases to where it's going, as a rate
 const ZOOM_EASE = 2.6;
 const SHUTTLE_WAITS = 20;
@@ -941,10 +943,11 @@ export default class Ship {
 		const dock = { x: this.art(this.airlock).x, y: hullEdges(this.layout.building).top };
 		const pulled = JOIN.warp + ENTER_SECONDS;
 
-		// Over its tube while they walk it, then the whole ship again as it opens
+		// Over its tube while they walk it, and on through the airlock as its door opens on them, the plating fading
+		// round them and they step out; then the whole ship again
 		if (since >= pulled + JOIN.settle)
-			return since < boarded
-				? { x: dock.x, y: dock.y + 4, zoom: Math.min(ZOOMS.most, whole.zoom + JOIN.tubeCloser) }
+			return since < boarded + JOIN.stepped
+				? { x: dock.x, y: dock.y + 8, zoom: Math.min(ZOOMS.most, whole.zoom + JOIN.tubeCloser) }
 				: whole;
 		if (since >= pulled) return whole;
 
@@ -1734,7 +1737,7 @@ export default class Ship {
 		this.tendCrew(seconds);
 		this.tendCrane(seconds);
 		for (const [name, walker] of this.walkers)
-			if (!this.boarding(walker))
+			if (!this.boarding(walker) && !this.inDoorway(walker))
 				walk(
 					walker,
 					calm
@@ -1956,7 +1959,11 @@ export default class Ship {
 		});
 
 		clipToShip(ctx, this.layout);
-		const movers = [...this.walkers.values(), ...[...this.workers.values()].filter(worker => this.walking(worker))];
+		// Whoever's on the way down a shuttle's tube isn't at the airlock yet: its door opens only as they reach it
+		const movers = [
+			...[...this.walkers.values()].filter(walker => !this.boarding(walker)),
+			...[...this.workers.values()].filter(worker => this.walking(worker)),
+		];
 
 		this.airlockOpen = Boolean(
 			this.airlock && movers.some(mover => Math.hypot(mover.x - this.airlock.x, mover.y - this.airlock.y) < 0.9),
@@ -5132,6 +5139,20 @@ export default class Ship {
 		if (!shuttle?.join || !walker.path.length) return false;
 
 		return this.time - shuttle.at - this.approachOf(shuttle) - SHUTTLE.tube - SHUTTLE.walk < WALK_IN_MOST;
+	}
+
+	// Whether someone just down a shuttle's tube is still in the airlock's doorway, its door opening on them, before
+	// they step onto the bridge
+	inDoorway(walker) {
+		const { shuttle } = walker;
+		const age = shuttle && this.shuttleAge(shuttle);
+
+		return (
+			Boolean(shuttle) &&
+			shuttle.kind === 'in' &&
+			age !== null &&
+			age < this.approachOf(shuttle) + SHUTTLE.tube + SHUTTLE.walk + DOORWAY_SECONDS
+		);
 	}
 
 	// Whether the one looking is still coming aboard as the ship opens, its plating held shut till they're in
