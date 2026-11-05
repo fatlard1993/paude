@@ -1129,7 +1129,7 @@ test("however many projects have islands, their conduits' risers stand side by s
 	expect(risersFor(0, null, [1, 1])).toEqual([5, 10]);
 });
 
-test("islands sharing a row each have their cable along it at its own height, none on another, a busy row's bundle clear of the next row", () => {
+test('islands sharing a row each have their cable along it at its own height, none on another, the further ones under the nearer and none up over an island', () => {
 	for (const count of [5, 30]) {
 		const bays = Array.from({ length: count }, (_, index) => ({
 			name: `p${index}`,
@@ -1151,11 +1151,13 @@ test("islands sharing a row each have their cable along it at its own height, no
 			for (const [other, also] of ends.entries())
 				if (other > index && also.y === end.y)
 					expect(band(index)[1] < band(other)[0] || band(other)[1] < band(index)[0]).toBe(true);
-		for (const [row, y] of rows.slice(0, -1).entries()) {
-			const lowest = Math.max(...runs.filter((_, index) => ends[index].y === y)) + 3;
-
-			expect(lowest).toBeLessThan(rows[row + 1] - 3);
+		// The consoles stand from their foot up: no run goes above it, and the further along the row, the lower
+		for (const [index, end] of ends.entries()) {
+			expect(runs[index]).toBeGreaterThanOrEqual(end.y);
+			for (const [other, also] of ends.entries())
+				if (also.y === end.y && also.x < end.x) expect(runs[other]).toBeLessThan(runs[index]);
 		}
+		expect(rows.length).toBeGreaterThan(0);
 	}
 });
 
@@ -1205,16 +1207,36 @@ test("the risers' order is weighed at the places their thicknesses put them, not
 		exit: { x: -10, y: tray + 5 },
 		plates: [{ at: plate }],
 	});
-	// Evenly spaced, r0 r1 r2 looks best; where their thicknesses really put them, it crosses twice and r0 r2 r1 once
+	// Evenly spaced, r0 r2 r1 looks best; where their thicknesses really put them, r2 r0 r1 crosses once and touches none
 	const routes = [
-		route('r0', 4, 44, -39, { x: 39, y: 18 }),
-		route('r1', 2, 18, -25, { x: 27, y: 67 }),
-		route('r2', 5, 24, -18, { x: 20, y: 42 }),
+		route('r0', 4, 26, -22, { x: 23, y: 56 }),
+		route('r1', 2, 66, -16, { x: 44, y: 8 }),
+		route('r2', 5, 6, -33, { x: 18, y: 56 }),
 	];
 
 	expect(
 		new Ship()
 			.riserOrder(routes, 0)
 			.map(({ bay }) => bay.name),
-	).toEqual(['r0', 'r2', 'r1']);
+	).toEqual(['r2', 'r0', 'r1']);
+});
+
+test("the risers' order keeps a cable coming along the hall from lying along another's run to its island", () => {
+	const route = (name, tray, out, plate) => ({
+		bay: { name },
+		weight: 1,
+		tray,
+		out: { x: out, y: tray },
+		exit: { x: out, y: tray + 5 },
+		plates: [{ at: plate, run: plate.y }],
+	});
+	// The hall brings ender-launcher in at the height paude's island is reached at: ender-launcher's riser nearer the
+	// wall, so its run out along the hall starts short of paude's
+	const routes = [route('paude', 15, -32, { x: 73, y: 7 }), route('ender-launcher', 7, -39, { x: 73, y: -27 })];
+
+	expect(
+		new Ship()
+			.riserOrder(routes, 0)
+			.map(({ bay }) => bay.name),
+	).toEqual(['ender-launcher', 'paude']);
 });

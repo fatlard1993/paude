@@ -583,9 +583,9 @@ export const risersFor = (wall, lounge, weights) => {
 	});
 };
 // The height each island's cable runs along its row at, in art pixels, for cables as thick as their `weight` ending at
-// `x`, `y`: islands sharing a row each at their own, the nearest the wall at the row's own height and each further one a
-// cable's width below the last, their outlines meeting, so none lies on another and a crowded row's bundle stays clear
-// of the next row
+// `x`, `y` (an island's console's foot): islands sharing a row each at their own, the nearest the wall along the foot
+// and each further one a cable's width below the last, in the aisle under the row, their outlines meeting; so none lies
+// on another or over a nearer island, and each comes up into its own
 export const runsFor = ends => {
 	const runs = [];
 	const rows = new Map();
@@ -605,6 +605,8 @@ export const runsFor = ends => {
 
 // The clear gap between neighbouring risers, outlines apart, when there's room
 const RISER_GAP = 2;
+// How many times the risers of a bridge with too many to try every order are gone over, pairs swapped
+const SWAP_PASSES = 4;
 
 // A project's conduit: in its color while any of its sessions is at an island, dark with all of them away
 const wireColor = (hue, manned) => {
@@ -2199,6 +2201,12 @@ export default class Ship {
 					.map(island => ({ island, at: this.art({ x: island.x + 0.15, y: island.y + 0.2 }) })),
 			};
 		});
+		// Each island's run height first, which the risers' order is weighed with
+		const plates = routes.flatMap(({ plates: own, weight }) => own.map(plate => ({ plate, weight })));
+		const runs = runsFor(plates.map(({ plate, weight }) => ({ ...plate.at, weight })));
+
+		plates.forEach(({ plate }, index) => (plate.run = runs[index]));
+
 		const order = this.riserOrder(routes, wall);
 		const { lounge } = this;
 		const risers = risersFor(
@@ -2208,10 +2216,6 @@ export default class Ship {
 		);
 
 		order.forEach((route, index) => conduits.set(route.bay.name, { ...route, riser: risers[index] }));
-		const plates = [...conduits.values()].flatMap(({ plates: own, weight }) => own.map(plate => ({ plate, weight })));
-		const runs = runsFor(plates.map(({ plate, weight }) => ({ ...plate.at, weight })));
-
-		plates.forEach(({ plate }, index) => (plate.run = runs[index]));
 		this.conduits = { layout: this.layout, key, map: conduits };
 
 		return conduits;
@@ -2229,9 +2233,26 @@ export default class Ship {
 		if (this.risers?.key === key)
 			return this.risers.names.map(name => routes.find(({ bay }) => bay.name === name)).filter(Boolean);
 
-		const runs = (route, x) => ({
+		// Its stretches' bounds, as far out as any two can be and still touch, so two far apart are passed over at once
+		const boxed = laid => {
+			const xs = [...laid.across.flatMap(({ from, to }) => [from, to]), ...laid.down.map(({ x }) => x)];
+			const ys = [...laid.across.map(({ y }) => y), ...laid.down.flatMap(({ from, to }) => [from, to])];
+			const reach = laid.weight / 2 + RISER_GAP + 1 + 5 / 2;
+
+			return {
+				...laid,
+				box: {
+					left: Math.min(...xs) - reach,
+					right: Math.max(...xs) + reach,
+					top: Math.min(...ys) - reach,
+					bottom: Math.max(...ys) + reach,
+				},
+			};
+		};
+		const runs = (route, x) => boxed({
+			weight: route.weight,
 			across: [
-				...route.plates.map(({ at }) => ({ y: at.y, from: Math.min(x, at.x), to: Math.max(x, at.x) })),
+				...route.plates.map(({ at, run = at.y }) => ({ y: run, from: Math.min(x, at.x), to: Math.max(x, at.x) })),
 				{ y: route.tray, from: Math.min(x, route.out.x), to: Math.max(x, route.out.x) },
 			],
 			down: [
@@ -2239,18 +2260,44 @@ export default class Ship {
 				{ x: route.out.x, from: Math.min(route.tray, route.exit.y), to: Math.max(route.tray, route.exit.y) },
 			],
 		});
+		// What two conduits laid at their risers cost: each crossing of one's run by the other's riser, and each stretch
+		// the two lie along one line, or near enough that their outlines meet, as three (worse than a crossing: one hides
+		// the other)
+		const between = (a, b) => {
+			if (
+				a.box.right < b.box.left ||
+				b.box.right < a.box.left ||
+				a.box.bottom < b.box.top ||
+				b.box.bottom < a.box.top
+			)
+				return 0;
+
+			let count = 0;
+
+			for (const [flats, uprights] of [
+				[a.across, b.down],
+				[b.across, a.down],
+			])
+				for (const flat of flats)
+					for (const upright of uprights)
+						if (flat.y > upright.from && flat.y < upright.to && upright.x > flat.from && upright.x < flat.to) count++;
+			for (const flat of a.across)
+				for (const also of b.across)
+					if (
+						Math.abs(flat.y - also.y) < (a.weight + b.weight) / 2 + RISER_GAP + 1 &&
+						Math.min(flat.to, also.to) > Math.max(flat.from, also.from) + 2
+					)
+						count += 3;
+
+			return count;
+		};
 		const crossings = ordered => {
 			const at = risersFor(wall, null, ordered.map(({ weight }) => weight));
 			const laid = ordered.map((route, index) => runs(route, at[index]));
 			let count = 0;
 
-			for (const [one, a] of laid.entries())
-				for (const [other, b] of laid.entries())
-					if (one !== other)
-						for (const flat of a.across)
-							for (const upright of b.down)
-								if (flat.y > upright.from && flat.y < upright.to && upright.x > flat.from && upright.x < flat.to)
-									count++;
+			for (let one = 0; one < laid.length; one++)
+				for (let other = one + 1; other < laid.length; other++) count += between(laid[one], laid[other]);
 
 			return count;
 		};
@@ -2260,7 +2307,39 @@ export default class Ship {
 				: list.flatMap((first, index) =>
 						permutations([...list.slice(0, index), ...list.slice(index + 1)]).map(rest => [first, ...rest]),
 					);
-		// Too many to try every order: the trays nearest the bridge's rows first
+		// Too many to try every order: the trays nearest the bridge's rows first, then any two swapped while that does
+		// better, a few passes at most
+		// Each laid at the risers' places as the first order has them (near enough, their weights alike), so a swap only
+		// changes what the two swapped cost with the rest
+		const swapped = start => {
+			const ordered = [...start];
+			const at = risersFor(wall, null, ordered.map(({ weight }) => weight));
+			const laid = new Map(ordered.map(route => [route, at.map(x => runs(route, x))]));
+			const cost = (route, slot, also, alsoSlot) => between(laid.get(route)[slot], laid.get(also)[alsoSlot]);
+
+			for (let pass = 0, better = true; better && pass < SWAP_PASSES; pass++) {
+				better = false;
+				for (let one = 0; one < ordered.length - 1; one++)
+					for (let other = one + 1; other < ordered.length; other++) {
+						const [a, b] = [ordered[one], ordered[other]];
+						let change = cost(b, one, a, other) - cost(a, one, b, other);
+
+						for (const [slot, route] of ordered.entries())
+							if (slot !== one && slot !== other)
+								change +=
+									cost(b, one, route, slot) +
+									cost(a, other, route, slot) -
+									cost(a, one, route, slot) -
+									cost(b, other, route, slot);
+						if (change < 0) {
+							[ordered[one], ordered[other]] = [b, a];
+							better = true;
+						}
+					}
+			}
+
+			return ordered;
+		};
 		const best =
 			routes.length <= 6
 				? permutations(routes).reduce(
@@ -2271,7 +2350,7 @@ export default class Ship {
 						},
 						{ ordered: routes, count: Infinity },
 					).ordered
-				: [...routes].sort((a, b) => a.tray - b.tray);
+				: swapped([...routes].sort((a, b) => a.tray - b.tray));
 
 		this.risers = { key, names: best.map(({ bay }) => bay.name) };
 
