@@ -4209,8 +4209,8 @@ export default class Ship {
 		const outward = -1;
 		const at = this.art(
 			worker.seat.housing
-				? { x: worker.seat.x + outward * 0.5, y: worker.seat.y - 0.05 }
-				: { x: worker.seat.x - 0.95, y: worker.seat.y - 0.35 },
+				? { x: worker.seat.x + outward * 0.65, y: worker.seat.y + 0.05 }
+				: { x: worker.seat.x - 1.1, y: worker.seat.y - 0.15 },
 		);
 		// One rack beside its seat, a sled in it for each process, stacked up rather than spread along the floor
 		const count = Math.max(1, Math.min(RACK_SLEDS, processes.length));
