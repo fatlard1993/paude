@@ -589,8 +589,10 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		rooms.push({ ...placed, props: furnish(placed) });
 	}
 	// Where new sessions are made, and on a ship of a fleet the transporter's pad, stand on the bridge at its foot just
-	// aft of the nav table, by the terminals that keep an eye on the other ships
-	const stations = bridge.x + bridge.w - BRIDGE_NAV_W - MATERIALIZER_W - transporter;
+	// aft of the nav table and the terminals that keep an eye on the other ships
+	// Aft of the room the terminals watching the other ships take, so they stand on the transporter's forward side,
+	// by its pad
+	const stations = bridge.x + bridge.w - BRIDGE_NAV_W - fleetRoom(fleet) - MATERIALIZER_W - transporter;
 
 	rooms.push(
 		aboard(
