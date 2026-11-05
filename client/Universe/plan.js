@@ -270,6 +270,10 @@ export const seatOf = (bridge, key) => bridge.seats?.[key];
 // their feet above the next row's, which rise into the aisle
 export const standingOf = (bridge, y) => aisleOf(bridge, y) - 0.6;
 
+// Where whoever walks a row of the bridge goes, nearest `y`: down its aisle over the conduits laid there, clear of the
+// console before them and above the next row's screens
+export const walkwayOf = (bridge, y) => aisleOf(bridge, y) - 0.1;
+
 export const aisleOf = (bridge, y) => {
 	const first = bridge.y + BRIDGE_ROW_TOP;
 	const pitch = bridge.pitch ?? BRIDGE_ROW;
@@ -352,8 +356,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		const tallest = Math.max(
 			0,
 			...[...levels.values()].map(
-				along =>
-					along.slice(1).reduce((sum, weight, index) => sum + cableStep(along[index], weight), 0) + along[0],
+				along => along.slice(1).reduce((sum, weight, index) => sum + cableStep(along[index], weight), 0) + along[0],
 			),
 		);
 
@@ -703,7 +706,12 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 const tubeOf = (bridge, hold, bottom) => {
 	if (!bridge || !hold) return null;
 
-	return { trunk: bridge.x + 0.3, rail: bottom - 0.12, drop: hold.x + hold.w - 0.45, hopper: hold.y + (hold.face ?? FACE) + 0.35 };
+	return {
+		trunk: bridge.x + 0.3,
+		rail: bottom - 0.12,
+		drop: hold.x + hold.w - 0.45,
+		hopper: hold.y + (hold.face ?? FACE) + 0.35,
+	};
 };
 
 const STOCK_PITCH = { x: 0.6, y: 0.5 };

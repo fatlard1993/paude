@@ -16,9 +16,13 @@ import {
 	drawLounge,
 	drawMaterializer,
 	drawSystem,
-	drawTransporter, drawHullCover, drawTug } from './hull';
+	drawTransporter,
+	drawHullCover,
+	drawTug,
+} from './hull';
 import {
 	standingOf,
+	walkwayOf,
 	clonerAt,
 	holdSpotAt,
 	layOut,
@@ -417,6 +421,32 @@ const trackOf = points => {
 	return { runs, legs };
 };
 
+// How far behind an island's console someone walks to or from its seats, and how far past its end they go round it,
+// in world units
+const BEHIND_CONSOLE = 0.15;
+const ROUND_ISLAND = 0.25;
+
+// The island on the bridge whose seat `point` is at, behind its console
+const islandAt = (bridge, point) =>
+	bridge.islands?.find(({ x, y, w }) => point.x >= x && point.x <= x + w && Math.abs(point.y - y) <= 0.3);
+
+// From `point` on the bridge out to its row's walkway: from a seat, behind its island's console, past the others sat
+// there, to its aft end and round it; from anywhere else, straight down to it
+const toWalkway = (bridge, point) => {
+	const walkway = walkwayOf(bridge, point.y);
+	const island = islandAt(bridge, point);
+
+	if (!island) return [{ x: point.x, y: walkway }];
+
+	const [back, end] = [island.y - BEHIND_CONSOLE, island.x - ROUND_ISLAND];
+
+	return [
+		{ x: point.x, y: back },
+		{ x: end, y: back },
+		{ x: end, y: walkway },
+	];
+};
+
 // From inside a room out to the spine at `lane`: across to its door and through it
 const exitOf = (room, from, lane) => {
 	// A project's section is left by the deck the point is on
@@ -442,15 +472,15 @@ const exitOf = (room, from, lane) => {
 		const inside = room.aisle ?? door.x + (door.side === 'left' ? 0.6 : -0.6);
 		const outside = door.x + (door.side === 'left' ? -0.4 : 0.4);
 
-		// Off the bridge along the front of its row's consoles, then along its aft wall, never behind an island nor over
-		// the screens of the row before it
+		// Off the bridge down its row's walkway, then along its aft wall, never through an island nor over the screens of
+		// the row before it
 		if (room.kind === 'bridge') {
-			const aisle = standingOf(room, from.y);
+			const out = toWalkway(room, from);
 			const wall = door.x + (door.side === 'left' ? BRIDGE_WALL : -BRIDGE_WALL);
 
 			return [
-				{ x: from.x, y: aisle },
-				{ x: wall, y: aisle },
+				...out,
+				{ x: wall, y: out.at(-1).y },
 				{ x: wall, y: lane },
 				{ x: door.x, y: lane },
 				{ x: outside, y: lane },
@@ -1075,17 +1105,21 @@ export default class Ship {
 		return this.walkAround(from, [...out, ...exitOf(toRoom, to, lane).reverse(), to]);
 	}
 
-	// From one place on the bridge to another along the fronts of the rows' consoles and up or down its aft wall, where
-	// nobody walks over a screen
+	// From one place on the bridge to another down the rows' walkways and up or down its aft wall, round the islands
+	// rather than through them, where nobody walks over a screen
 	acrossBridge(from, to) {
 		const wall = this.bridge.x + BRIDGE_WALL;
-		const [leave, reach] = [standingOf(this.bridge, from.y), standingOf(this.bridge, to.y)];
-
-		const path =
+		const [out, back] = [toWalkway(this.bridge, from), toWalkway(this.bridge, to).reverse()];
+		const [leave, reach] = [out.at(-1).y, back[0].y];
+		const along =
 			leave === reach
-				? [{ x: from.x, y: leave }, { x: to.x, y: reach }, to]
-				: [{ x: from.x, y: leave }, { x: wall, y: leave }, { x: wall, y: reach }, { x: to.x, y: reach }, to];
-		return this.walkAround(from, path);
+				? []
+				: [
+						{ x: wall, y: leave },
+						{ x: wall, y: reach },
+					];
+
+		return this.walkAround(from, [...out, ...along, ...back, to]);
 	}
 
 	// From where a walker is to a new spot: across the ship by the spine; within the bridge along its aisles; within
@@ -1362,7 +1396,8 @@ export default class Ship {
 
 				// The viewer goes to whatever they've looked at closely: the transporter's side, by its pad but not on it,
 				// or the room's floor, just in from its front; the bridge, or the whole ship, as a pilot does
-				const focus = this.viewer === name && this.looking !== 'all' && this.looking !== BRIDGE && this.roomOf(this.looking);
+				const focus =
+					this.viewer === name && this.looking !== 'all' && this.looking !== BRIDGE && this.roomOf(this.looking);
 
 				if (focus && focus !== this.bridge) {
 					const pad = focus.kind === 'transporter' && clonerAt(focus);
@@ -1371,7 +1406,9 @@ export default class Ship {
 						name,
 						{
 							pose: 'overseer',
-							spot: pad ? { x: pad.x - BESIDE_PAD, y: pad.y + 0.1 } : { x: focus.x + focus.w / 2, y: focus.y + focus.d - 0.35 },
+							spot: pad
+								? { x: pad.x - BESIDE_PAD, y: pad.y + 0.1 }
+								: { x: focus.x + focus.w / 2, y: focus.y + focus.d - 0.35 },
 							room: focus,
 						},
 					];
@@ -1672,11 +1709,7 @@ export default class Ship {
 									{
 										x: tube.drop,
 										y: tube.hopper,
-										path: [
-											{ x: tube.drop, y: tube.hopper + HOOK_HANG },
-											{ x: to.x, y: tube.hopper + HOOK_HANG },
-											to,
-										],
+										path: [{ x: tube.drop, y: tube.hopper + HOOK_HANG }, { x: to.x, y: tube.hopper + HOOK_HANG }, to],
 										craned: true,
 									},
 								],
@@ -1757,10 +1790,14 @@ export default class Ship {
 				y: this.thrusterAt(index),
 				hue: engine.hue ?? 215,
 				// Full on, coming in
-				thrust: this.entering() < 1 ? 1 : Math.min(
-					1,
-					sessions.filter(session => session.engine.key === engine.key && session.status === 'working').length / 3,
-				),
+				thrust:
+					this.entering() < 1
+						? 1
+						: Math.min(
+								1,
+								sessions.filter(session => session.engine.key === engine.key && session.status === 'working').length /
+									3,
+							),
 				limited: Boolean(engine.limit),
 			})),
 			comms: {
@@ -1907,9 +1944,7 @@ export default class Ship {
 			};
 
 			shifted(() => this.drawBayOfMachine(ctx, bay))();
-			standing.push(
-				...this.machineParts(ctx, bay).map(part => (shift ? { ...part, draw: shifted(part.draw) } : part)),
-			);
+			standing.push(...this.machineParts(ctx, bay).map(part => (shift ? { ...part, draw: shifted(part.draw) } : part)));
 			this.bayHits(bay);
 		}
 		if (this.bridge) standing.push(...this.bridgeParts(ctx, art, label));
@@ -1925,8 +1960,9 @@ export default class Ship {
 		this.drawConduits(ctx, this.layout.halls[0]);
 		this.cables = this.conduitsOf();
 		this.fed = this.feedsOf();
-		// Each whole, machine to island, over everything, so none is ever hidden or broken where two layers would meet
-		standing.push({ y: TUBE_FRONT - 0.002, draw: () => this.drawTerminalCables(ctx) });
+		// Each whole, machine to island, in one layer so none is broken where two would meet; on the floor, under all that
+		// stands or walks on it
+		standing.push({ y: -Infinity, draw: () => this.drawTerminalCables(ctx) });
 		standing.push(...this.inspectionParts(ctx));
 		this.drawMats(ctx);
 		standing.push(...this.cargoParts(ctx));
@@ -2011,7 +2047,8 @@ export default class Ship {
 			]) {
 				const goal = worker[goalKey];
 
-				if (goal && worker[key]) Object.assign(worker[key], { x: toward(worker[key].x, goal.x), y: toward(worker[key].y, goal.y) });
+				if (goal && worker[key])
+					Object.assign(worker[key], { x: toward(worker[key].x, goal.x), y: toward(worker[key].y, goal.y) });
 				worker[shownKey] = worker[key]
 					? { x: worker[key].x, y: worker[key].y, bridge: worker.room === this.bridge }
 					: null;
@@ -2273,7 +2310,9 @@ export default class Ship {
 		else if (kind === 'engine') boxes.push(around(this.layout.engineering));
 		else if (kind === 'room')
 			boxes.push(
-				around({ bridge: this.bridge, lounge: this.lounge?.count ? this.lounge : null }[name] ?? this.layout.materializer),
+				around(
+					{ bridge: this.bridge, lounge: this.lounge?.count ? this.lounge : null }[name] ?? this.layout.materializer,
+				),
 			);
 		else if (kind === 'worker' || kind === 'group') {
 			// A group, picked together: each of them bracketed
@@ -2495,7 +2534,10 @@ export default class Ship {
 				.sort((a, b) => lanes.get(a.bay.name) - lanes.get(b.bay.name));
 			const weights = inHall.map(({ workers }) => cableWeight(workers.length));
 			const steps = weights.slice(1).map((weight, index) => cableStep(weights[index], weight));
-			const [top, bottom] = [this.art({ x: 0, y: room.y }).y + HALL_TRAY_IN, this.art({ x: 0, y: room.y + room.d }).y - HALL_TRAY_IN];
+			const [top, bottom] = [
+				this.art({ x: 0, y: room.y }).y + HALL_TRAY_IN,
+				this.art({ x: 0, y: room.y + room.d }).y - HALL_TRAY_IN,
+			];
 			const first = top + Math.ceil((weights[0] ?? 1) / 2);
 			const fits = Math.max(0, bottom - Math.floor((weights.at(-1) ?? 1) / 2) - first);
 			const total = steps.reduce((sum, step) => sum + step, 0);
@@ -2579,27 +2621,23 @@ export default class Ship {
 				},
 			};
 		};
-		const runs = (route, x) => boxed({
-			weight: route.weight,
-			across: [
-				...route.plates.map(({ at, run = at.y }) => ({ y: run, from: Math.min(x, at.x), to: Math.max(x, at.x) })),
-				{ y: route.tray, from: Math.min(x, route.out.x), to: Math.max(x, route.out.x) },
-			],
-			down: [
-				...route.plates.map(({ at }) => ({ x, from: Math.min(at.y, route.tray), to: Math.max(at.y, route.tray) })),
-				{ x: route.out.x, from: Math.min(route.tray, route.exit.y), to: Math.max(route.tray, route.exit.y) },
-			],
-		});
+		const runs = (route, x) =>
+			boxed({
+				weight: route.weight,
+				across: [
+					...route.plates.map(({ at, run = at.y }) => ({ y: run, from: Math.min(x, at.x), to: Math.max(x, at.x) })),
+					{ y: route.tray, from: Math.min(x, route.out.x), to: Math.max(x, route.out.x) },
+				],
+				down: [
+					...route.plates.map(({ at }) => ({ x, from: Math.min(at.y, route.tray), to: Math.max(at.y, route.tray) })),
+					{ x: route.out.x, from: Math.min(route.tray, route.exit.y), to: Math.max(route.tray, route.exit.y) },
+				],
+			});
 		// What two conduits laid at their risers cost: each crossing of one's run by the other's riser, and each stretch
 		// the two lie along one line, or near enough that their outlines meet, as three (worse than a crossing: one hides
 		// the other)
 		const between = (a, b) => {
-			if (
-				a.box.right < b.box.left ||
-				b.box.right < a.box.left ||
-				a.box.bottom < b.box.top ||
-				b.box.bottom < a.box.top
-			)
+			if (a.box.right < b.box.left || b.box.right < a.box.left || a.box.bottom < b.box.top || b.box.bottom < a.box.top)
 				return 0;
 
 			let count = 0;
@@ -2743,7 +2781,8 @@ export default class Ship {
 		this.cablesDrawnFor ??= this.cables;
 
 		const fading = this.cablesBefore && (this.time - this.cablesBefore.at) / CABLE_FADE_SECONDS;
-		const route = paths => JSON.stringify(paths?.map(({ points }) => points.map(({ x, y }) => [Math.round(x), Math.round(y)])));
+		const route = paths =>
+			JSON.stringify(paths?.map(({ points }) => points.map(({ x, y }) => [Math.round(x), Math.round(y)])));
 		const draw = (paths, alpha) => {
 			ctx.globalAlpha = alpha;
 			for (const { points, style } of paths) this.drawWire(ctx, points, style);
@@ -2827,16 +2866,16 @@ export default class Ship {
 		const working = session.status === 'working';
 		const screen = screenOf(session);
 
-		// Walking, over the conduits it crosses, which lie over everything; but behind what stands in front of it, sorted
-		// in among that by depth so it hides it
-		const walker = this.walking(worker)
-			? [
-					{
-						y: this.behindFurniture(worker, this.furniture(), GREY_SIZE) ? worker.y : TUBE_FRONT - 0.0015,
-						draw: () => this.drawWorker(ctx, worker),
-					},
-				]
-			: [];
+		// Walking, over everything; but behind what stands in front of it, sorted in among that by depth so it hides it,
+		// and behind a console it's on its way to or from a seat at, as those sat there are
+		const walkingDepth = () => {
+			const island = this.bridge && islandAt(this.bridge, worker);
+
+			if (island) return island.y - BEHIND_CONSOLE;
+
+			return this.behindFurniture(worker, this.furniture(), GREY_SIZE) ? worker.y : TUBE_FRONT - 0.0015;
+		};
+		const walker = this.walking(worker) ? [{ y: walkingDepth(), draw: () => this.drawWorker(ctx, worker) }] : [];
 
 		if (worker.lounging)
 			return [...(walker.length ? walker : this.loungerParts(ctx, worker)), ...this.homeSeatParts(ctx, worker)];
@@ -4447,7 +4486,7 @@ export default class Ship {
 		const bots = this.bots.size ? [...this.bots.values()] : [{ ...this.berthOf(0), index: 0, docked: true, path: [] }];
 		const furniture = this.furniture();
 
-		// Over the conduits they drive across, which lie over everything; but behind what stands in front of them (an
+		// Over everything; but behind what stands in front of them (an
 		// island, a ship's terminal, the lounge's couches and screen), sorted in among it by depth, so it hides them
 		return bots.map(bot => ({
 			y: this.behindFurniture(bot, furniture) ? bot.y : TUBE_FRONT - 0.001,
@@ -4503,7 +4542,12 @@ export default class Ship {
 	// `half` its width and `tall`, in art pixels, say otherwise
 	behindFurniture(at, furniture, { half = 5, tall = 7 } = {}) {
 		const foot = this.art(at);
-		const { left, right, top, bottom } = { left: foot.x - half, right: foot.x + half, top: foot.y - tall, bottom: foot.y };
+		const { left, right, top, bottom } = {
+			left: foot.x - half,
+			right: foot.x + half,
+			top: foot.y - tall,
+			bottom: foot.y,
+		};
 
 		return furniture.some(
 			thing =>
@@ -4577,68 +4621,71 @@ export default class Ship {
 			},
 		};
 
-		return [gantry, ...this.cargo.map((checkout, index) => {
-			const spot = holdSpotAt(hold, index);
-			const bay = this.bays.find(({ name }) => name === checkout.project);
+		return [
+			gantry,
+			...this.cargo.map((checkout, index) => {
+				const spot = holdSpotAt(hold, index);
+				const bay = this.bays.find(({ name }) => name === checkout.project);
 
-			return {
-				y: spot.y,
-				draw: () => {
-					const at = this.art(spot);
+				return {
+					y: spot.y,
+					draw: () => {
+						const at = this.art(spot);
 
-					if (launching.has(index)) return;
-					this.drawPod(ctx, at, { hue: bay?.hue, crates: checkout.unpushed, sheets: checkout.changed });
-					this.drawPacking(ctx, at, checkout);
-					for (let crate = 0; crate < Math.min(MOST.crates, checkout.unpushed); crate++) {
-						const commit = checkout.commits?.[crate];
+						if (launching.has(index)) return;
+						this.drawPod(ctx, at, { hue: bay?.hue, crates: checkout.unpushed, sheets: checkout.changed });
+						this.drawPacking(ctx, at, checkout);
+						for (let crate = 0; crate < Math.min(MOST.crates, checkout.unpushed); crate++) {
+							const commit = checkout.commits?.[crate];
 
-						if (commit)
-							this.hits.push({
-								...this.toScreen({ x: this.crateAt(at, crate).x + 1, y: this.crateAt(at, crate).y + 1 }),
-								r: 4 * this.camera.zoom,
-								kind: 'commit',
-								commit,
-								checkout,
-							});
-					}
-					const stamp =
-						VERDICT_COLORS[
-							Ship.worstVerdict(
-								this.sessions.filter(({ checkout: root, engine }) => `${engine.key}:${root}` === checkout.key),
-							)
-						];
+							if (commit)
+								this.hits.push({
+									...this.toScreen({ x: this.crateAt(at, crate).x + 1, y: this.crateAt(at, crate).y + 1 }),
+									r: 4 * this.camera.zoom,
+									kind: 'commit',
+									commit,
+									checkout,
+								});
+						}
+						const stamp =
+							VERDICT_COLORS[
+								Ship.worstVerdict(
+									this.sessions.filter(({ checkout: root, engine }) => `${engine.key}:${root}` === checkout.key),
+								)
+							];
 
-					if (stamp && (checkout.changed || checkout.unpushed)) {
-						rect(ctx, at.x - 9, at.y + 1, 5, 4, PALETTE.k);
-						rect(ctx, at.x - 8, at.y + 2, 3, 2, stamp);
-					}
-					// Off the trunk, its branch's plate on the cradle in the branch's color and, close enough, its name
-					if (!checkout.trunk && (checkout.changed || checkout.unpushed)) {
-						const hue = checkout.branch ? branchHue(checkout.branch) : null;
-						const color = hue === null ? PALETTE.l : `hsl(${hue} 60% 74%)`;
+						if (stamp && (checkout.changed || checkout.unpushed)) {
+							rect(ctx, at.x - 9, at.y + 1, 5, 4, PALETTE.k);
+							rect(ctx, at.x - 8, at.y + 2, 3, 2, stamp);
+						}
+						// Off the trunk, its branch's plate on the cradle in the branch's color and, close enough, its name
+						if (!checkout.trunk && (checkout.changed || checkout.unpushed)) {
+							const hue = checkout.branch ? branchHue(checkout.branch) : null;
+							const color = hue === null ? PALETTE.l : `hsl(${hue} 60% 74%)`;
 
-						rect(ctx, at.x + 1, at.y + 1, 13, 4, PALETTE.k);
-						rect(ctx, at.x + 2, at.y + 2, 11, 2, hue === null ? PALETTE.m : `hsl(${hue} 50% 45%)`);
-						if (this.camera.zoom >= 4)
-							this.labels.push({
-								text: checkout.branch ?? 'detached',
-								at: { x: at.x + 7, y: at.y + 5 },
-								color,
-								align: 'center',
-								gap: 8,
-								width: 2.4 * UNIT.x,
-							});
-					}
-					this.hits.push({
-						...this.toScreen({ x: at.x + 4, y: at.y - 4 }),
-						r: 10 * this.camera.zoom,
-						kind: 'cargo',
-						bay,
-						checkout,
-					});
-				},
-			};
-		})];
+							rect(ctx, at.x + 1, at.y + 1, 13, 4, PALETTE.k);
+							rect(ctx, at.x + 2, at.y + 2, 11, 2, hue === null ? PALETTE.m : `hsl(${hue} 50% 45%)`);
+							if (this.camera.zoom >= 4)
+								this.labels.push({
+									text: checkout.branch ?? 'detached',
+									at: { x: at.x + 7, y: at.y + 5 },
+									color,
+									align: 'center',
+									gap: 8,
+									width: 2.4 * UNIT.x,
+								});
+						}
+						this.hits.push({
+							...this.toScreen({ x: at.x + 4, y: at.y - 4 }),
+							r: 10 * this.camera.zoom,
+							kind: 'cargo',
+							bay,
+							checkout,
+						});
+					},
+				};
+			}),
+		];
 	}
 
 	// A push leaving: its checkout's pod lets go of the dock and drops out through the doors in the belly under it with
@@ -4661,7 +4708,9 @@ export default class Ship {
 		const { left, right } = this.gantryOf(hold);
 		// Carrying a part out of the hopper to its pod, over it; else pressing a commit, over that pod; else wandering
 		const carrying = this.parcels.find(({ craned, path }) => craned && path.length);
-		const pressing = this.cargo.findIndex(({ key }) => this.time - (this.packings.get(key) ?? -Infinity) < PACK_SECONDS);
+		const pressing = this.cargo.findIndex(
+			({ key }) => this.time - (this.packings.get(key) ?? -Infinity) < PACK_SECONDS,
+		);
 		const goal =
 			(carrying && this.art(carrying).x) ||
 			(pressing >= 0 && this.art(holdSpotAt(hold, pressing)).x + 3) ||
@@ -4669,7 +4718,9 @@ export default class Ship {
 
 		this.craneX ??= goal;
 		// Carrying, right over its load; else easing there
-		this.craneX = carrying ? goal : this.craneX + (goal - this.craneX) * Math.min(1, seconds * (pressing >= 0 ? 12 : 2));
+		this.craneX = carrying
+			? goal
+			: this.craneX + (goal - this.craneX) * Math.min(1, seconds * (pressing >= 0 ? 12 : 2));
 	}
 
 	// A commit made: over its pod, a press coming down on the sheets of changes, which flash as they're pressed, and the
@@ -4859,7 +4910,8 @@ export default class Ship {
 		}
 		// Its lamp
 		const loading = sheets > 0;
-		const lamp = (loading && (Math.floor(this.time * 3) % 2 ? '#f2c14e' : '#5a4416')) || (crates > 0 && '#5cff8a') || '#2a3040';
+		const lamp =
+			(loading && (Math.floor(this.time * 3) % 2 ? '#f2c14e' : '#5a4416')) || (crates > 0 && '#5cff8a') || '#2a3040';
 
 		rect(ctx, x + 2, top - 2, 4, 2, PALETTE.k);
 		rect(ctx, x + 3, top - 2, 2, 1, lamp);
@@ -4912,7 +4964,11 @@ export default class Ship {
 
 		// Butted up to the transporter's forward side, one after another toward the bow, where it stands on the bridge
 		if (pad)
-			for (let x = pad.x + pad.w + half; spots.length < this.fleet.length && x + half <= bridge.x + bridge.w; x += FLEET_PITCH)
+			for (
+				let x = pad.x + pad.w + half;
+				spots.length < this.fleet.length && x + half <= bridge.x + bridge.w;
+				x += FLEET_PITCH
+			)
 				spots.push({ x, y });
 		else
 			for (

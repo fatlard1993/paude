@@ -57,16 +57,46 @@ test('a project is a section of the hull while a session of it is aboard or it i
 
 test('each project keeps its place along the ship: one coming aboard goes after the rest, and one that leaves and comes back is where it was', () => {
 	const projects = ['paude', 'site', 'alpha', 'zeta'];
-	const at = ids => [answer('here', ids.map(([id, project]) => session({ id, project })), { projects })];
-	const made = shipWith(at([['a', 'paude'], ['b', 'site']]));
+	const at = ids => [
+		answer(
+			'here',
+			ids.map(([id, project]) => session({ id, project })),
+			{ projects },
+		),
+	];
+	const made = shipWith(
+		at([
+			['a', 'paude'],
+			['b', 'site'],
+		]),
+	);
 
 	expect(made.bays.map(({ name }) => name)).toEqual(['paude', 'site']);
 	// site's one session gone, faded out
-	made.update(at([['a', 'paude'], ['c', 'zeta'], ['d', 'alpha']]));
+	made.update(
+		at([
+			['a', 'paude'],
+			['c', 'zeta'],
+			['d', 'alpha'],
+		]),
+	);
 	run(made, 3);
-	made.update(at([['a', 'paude'], ['c', 'zeta'], ['d', 'alpha']]));
+	made.update(
+		at([
+			['a', 'paude'],
+			['c', 'zeta'],
+			['d', 'alpha'],
+		]),
+	);
 	expect(made.bays.map(({ name }) => name)).toEqual(['paude', 'alpha', 'zeta']);
-	made.update(at([['a', 'paude'], ['b', 'site'], ['c', 'zeta'], ['d', 'alpha']]));
+	made.update(
+		at([
+			['a', 'paude'],
+			['b', 'site'],
+			['c', 'zeta'],
+			['d', 'alpha'],
+		]),
+	);
 	expect(made.bays.map(({ name }) => name)).toEqual(['paude', 'site', 'alpha', 'zeta']);
 });
 
@@ -318,7 +348,8 @@ test("what is staged to ship is in the shipping bay in the hull's bottom deck, a
 	const { hold, hangar, building, bays } = made.layout;
 	const inside = (point, box) =>
 		point.x >= box.x && point.x <= box.x + box.w && point.y >= box.y && point.y <= box.y + box.d;
-	const overlap = (a, b) => a.x < b.x + b.w - 1e-9 && b.x < a.x + a.w - 1e-9 && a.y < b.y + b.d - 1e-9 && b.y < a.y + a.d - 1e-9;
+	const overlap = (a, b) =>
+		a.x < b.x + b.w - 1e-9 && b.x < a.x + a.w - 1e-9 && a.y < b.y + b.d - 1e-9 && b.y < a.y + a.d - 1e-9;
 
 	// In the hull, its floor the belly, the hangar ending where the bridge starts
 	for (const room of [hold, hangar]) {
@@ -807,25 +838,49 @@ test("more engines' systems go compact, so the ship keeps its depth and its leng
 	expect(widthWith(3)).toBeCloseTo(widthWith(1));
 });
 
-test('a walk across the bridge runs along the fronts of its consoles and up its aft wall, never over a screen', async () => {
-	const { standingOf } = await import('./plan');
+test("a walk across the bridge goes round its islands, never through a console nor over the next row's screens", () => {
 	const made = shipWith([
 		answer(
 			'here',
-			['one', 'two', 'three'].map((project, index) => session({ id: `s${index}`, project })),
-			{ projects: ['one', 'two', 'three'] },
+			['one', 'two', 'three', 'four'].flatMap((project, index) =>
+				[0, 1, 2].map(seat => session({ id: `s${index}-${seat}`, project })),
+			),
+			{ projects: ['one', 'two', 'three', 'four'] },
 		),
 	]);
-	const seats = [...made.workers.values()].map(({ seat }) => seat).filter(Boolean);
-	const wall = made.bridge.x + 0.6;
+	const { islands } = made.bridge;
+	const seats = [...made.workers.values()].map(worker => made.placeOf(worker));
+	// In a console, as it looks: from where its seats are to half a unit before its foot, so close that a grey's feet
+	// there show among it; and among a row's screens, risen from its consoles'
+	// foot toward the row before, but for the line just behind its consoles that leads to and from its seats
+	const inConsole = ({ x, y }) =>
+		islands.some(island => x > island.x && x < island.x + island.w && y > island.y && y < island.y + 0.5);
+	const inScreens = ({ x, y }) =>
+		islands.some(
+			island =>
+				x > island.x &&
+				x < island.x + island.w &&
+				y > island.y + 0.2 - SCREEN_RISE / UNIT.y &&
+				y < island.y + 0.2 &&
+				Math.abs(y - (island.y - 0.15)) > 1e-9,
+		);
 
+	expect(new Set(islands.map(({ y }) => y)).size).toBeGreaterThan(1);
 	for (const from of seats)
 		for (const to of seats) {
-			const path = made.acrossBridge(from, to);
+			const path = [from, ...made.acrossBridge(from, to)];
 
-			// Every leg but the last step to the seat itself runs before a row's consoles or along the aft wall
-			for (const point of path.slice(0, -1))
-				expect(point.x === wall || Math.abs(point.y - standingOf(made.bridge, point.y)) < 1e-9).toBe(true);
+			// Every leg but the first step up from the seat and the last down into one
+			for (let leg = 1; leg < path.length - 2; leg++)
+				for (let t = 0; t <= 1; t += 0.05) {
+					const point = {
+						x: path[leg].x + (path[leg + 1].x - path[leg].x) * t,
+						y: path[leg].y + (path[leg + 1].y - path[leg].y) * t,
+					};
+
+					expect(inConsole(point)).toBe(false);
+					expect(inScreens(point)).toBe(false);
+				}
 		}
 });
 
@@ -908,7 +963,9 @@ test('one held up on the way to the transporter beams out from wherever they got
 
 test('looking at the transporter, whoever looks walks to beside its pad, onto the middle of it only once beaming away; looking off, they walk back', async () => {
 	const me = { key: 'me', name: 'chase', role: 'owner', sessions: [] };
-	const looks = [{ ...answer('here', [session({ id: 'a', project: 'paude' })], { projects: ['paude'] }), people: [me] }];
+	const looks = [
+		{ ...answer('here', [session({ id: 'a', project: 'paude' })], { projects: ['paude'] }), people: [me] },
+	];
 	const ship = shipWith(looks);
 	let gone = false;
 
@@ -1015,7 +1072,9 @@ test('a lounge clear of the hull lets a run nearer its near side go round by tha
 });
 
 test('a session resting on a couch, selected, is bracketed on the couch and at the terminal it left', () => {
-	const made = shipWith([answer('here', [session(), session({ id: 'b', status: 'stopped' })], { projects: ['paude'] })]);
+	const made = shipWith([
+		answer('here', [session(), session({ id: 'b', status: 'stopped' })], { projects: ['paude'] }),
+	]);
 	const worker = made.workers.get('here/b');
 
 	run(made, 4);
@@ -1027,7 +1086,10 @@ test('a session resting on a couch, selected, is bracketed on the couch and at t
 	const terminal = made.art({ x: worker.homeSeat.x, y: worker.homeSeat.y + 0.2 });
 
 	const couch = made.art(made.placeOf(worker));
-	const around = point => ({ from, to }) => from.x < point.x && to.x > point.x && from.y < point.y && to.y >= point.y;
+	const around =
+		point =>
+		({ from, to }) =>
+			from.x < point.x && to.x > point.x && from.y < point.y && to.y >= point.y;
 
 	expect(boxes).toHaveLength(2);
 	expect(boxes.filter(around(terminal))).toHaveLength(1);
@@ -1054,7 +1116,13 @@ test("a conduit bent round the lounge turns up its riser from the lounge's edge,
 });
 
 test('walking about the bridge, off it to the spine, or onto it from where new sessions are made, goes round the lounge', () => {
-	const made = shipWith([answer('here', [session(), ...Array.from({ length: 8 }, (_, index) => session({ id: `s${index}`, status: 'stopped' }))], { projects: ['paude'] })]);
+	const made = shipWith([
+		answer(
+			'here',
+			[session(), ...Array.from({ length: 8 }, (_, index) => session({ id: `s${index}`, status: 'stopped' }))],
+			{ projects: ['paude'] },
+		),
+	]);
 
 	run(made, 4);
 
@@ -1074,19 +1142,19 @@ test('walking about the bridge, off it to the spine, or onto it from where new s
 	for (const path of [there, back, out, tour, arriving])
 		for (const [index, point] of path.slice(1).entries()) {
 			const at = path[index];
-		const crosses =
-			Math.max(at.x, point.x) > inside.left &&
-			Math.min(at.x, point.x) < inside.right &&
-			Math.max(at.y, point.y) > inside.top &&
-			Math.min(at.y, point.y) < inside.bottom;
+			const crosses =
+				Math.max(at.x, point.x) > inside.left &&
+				Math.min(at.x, point.x) < inside.right &&
+				Math.max(at.y, point.y) > inside.top &&
+				Math.min(at.y, point.y) < inside.bottom;
 
-		expect(crosses).toBe(false);
-	}
+			expect(crosses).toBe(false);
+		}
 	expect(there.at(-1)).toEqual(to);
 	expect(back.at(-1)).toEqual(from);
 });
 
-test("a stream leaves its engine-bay unit straight across into its lane of the trunk, and along it to the hall", () => {
+test('a stream leaves its engine-bay unit straight across into its lane of the trunk, and along it to the hall', () => {
 	const made = shipWith([
 		{ ...answer('here', [session({ status: 'working', tool: 'Bash' })], { projects: ['paude'] }), tools: ['Bash'] },
 	]);
@@ -1102,7 +1170,8 @@ test("a stream leaves its engine-bay unit straight across into its lane of the t
 
 	expect(outlet).toEqual(made.throughSystem(room).outlet);
 	// In the gap beside the units, not over any of them
-	for (const unit of Object.values(made.layout.systems)) expect(lane).toBeGreaterThan(made.art({ x: unit.x + unit.w, y: 0 }).x);
+	for (const unit of Object.values(made.layout.systems))
+		expect(lane).toBeGreaterThan(made.art({ x: unit.x + unit.w, y: 0 }).x);
 	expect([across.x, across.y]).toEqual([lane, outlet.y]);
 	// Along its lane to the hall, up or down as the hall lies
 	expect(down.x).toBe(lane);
@@ -1242,11 +1311,7 @@ test("the risers' order is weighed at the places their thicknesses put them, not
 		route('r2', 5, 6, -33, { x: 18, y: 56 }),
 	];
 
-	expect(
-		new Ship()
-			.riserOrder(routes, 0)
-			.map(({ bay }) => bay.name),
-	).toEqual(['r2', 'r0', 'r1']);
+	expect(new Ship().riserOrder(routes, 0).map(({ bay }) => bay.name)).toEqual(['r2', 'r0', 'r1']);
 });
 
 test("the risers' order keeps a cable coming along the hall from lying along another's run to its island", () => {
@@ -1262,11 +1327,7 @@ test("the risers' order keeps a cable coming along the hall from lying along ano
 	// wall, so its run out along the hall starts short of paude's
 	const routes = [route('paude', 15, -32, { x: 73, y: 7 }), route('ender-launcher', 7, -39, { x: 73, y: -27 })];
 
-	expect(
-		new Ship()
-			.riserOrder(routes, 0)
-			.map(({ bay }) => bay.name),
-	).toEqual(['ender-launcher', 'paude']);
+	expect(new Ship().riserOrder(routes, 0).map(({ bay }) => bay.name)).toEqual(['ender-launcher', 'paude']);
 });
 
 test("each other ship has an unmanned terminal along the bridge's near wall, clear of the lounge and the islands", () => {
@@ -1279,9 +1340,13 @@ test("each other ship has an unmanned terminal along the bridge's near wall, cle
 		{ key: 'd', name: 'thinkpad' },
 	];
 	made.update([
-		answer('here', [session(), ...Array.from({ length: 6 }, (_, index) => session({ id: `s${index}`, status: 'stopped' }))], {
-			projects: ['paude'],
-		}),
+		answer(
+			'here',
+			[session(), ...Array.from({ length: 6 }, (_, index) => session({ id: `s${index}`, status: 'stopped' }))],
+			{
+				projects: ['paude'],
+			},
+		),
 	]);
 	run(made, 2);
 
@@ -1295,7 +1360,8 @@ test("each other ship has an unmanned terminal along the bridge's near wall, cle
 		for (const island of bridge.islands)
 			if (island.y > y - 2.6) expect(x - 0.75 >= island.x + island.w || x + 0.75 <= island.x).toBe(true);
 	}
-	for (const [index, { x }] of spots.slice(1).entries()) expect(Math.abs(spots[index].x - x)).toBeGreaterThanOrEqual(1.8 - 1e-9);
+	for (const [index, { x }] of spots.slice(1).entries())
+		expect(Math.abs(spots[index].x - x)).toBeGreaterThanOrEqual(1.8 - 1e-9);
 });
 
 test("a row's conduits fit the aisle under it, clear of the next row's screens, however many islands share it", () => {
@@ -1331,7 +1397,9 @@ test("a row's conduits fit the aisle under it, clear of the next row's screens, 
 });
 
 test('the lounge, selected, is bracketed round it', () => {
-	const made = shipWith([answer('here', [session(), session({ id: 'b', status: 'stopped' })], { projects: ['paude'] })]);
+	const made = shipWith([
+		answer('here', [session(), session({ id: 'b', status: 'stopped' })], { projects: ['paude'] }),
+	]);
 
 	run(made, 4);
 	made.selected = 'room:lounge';
@@ -1344,7 +1412,9 @@ test('the lounge, selected, is bracketed round it', () => {
 });
 
 test('a droid passing behind an island or the couches is hidden by them, and drawn over the floor and its cables anywhere else', () => {
-	const made = shipWith([answer('here', [session(), session({ id: 'b', status: 'stopped' })], { projects: ['paude'] })]);
+	const made = shipWith([
+		answer('here', [session(), session({ id: 'b', status: 'stopped' })], { projects: ['paude'] }),
+	]);
 
 	run(made, 4);
 
@@ -1357,10 +1427,12 @@ test('a droid passing behind an island or the couches is hidden by them, and dra
 	expect(made.behindFurniture({ x: lounge.x + lounge.w / 2, y: lounge.y + lounge.d / 2 }, furniture)).toBe(true);
 	// In front of the island, in the aisle; out on the open floor
 	expect(made.behindFurniture({ x: island.x + island.w / 2, y: island.y + 1 }, furniture)).toBe(false);
-	expect(made.behindFurniture({ x: made.bridge.x + 0.3, y: made.bridge.y + made.bridge.d - 0.1 }, furniture)).toBe(false);
+	expect(made.behindFurniture({ x: made.bridge.x + 0.3, y: made.bridge.y + made.bridge.d - 0.1 }, furniture)).toBe(
+		false,
+	);
 });
 
-test("a project seating more than an island holds is split into as few islands as hold it, its seats shared out evenly", () => {
+test('a project seating more than an island holds is split into as few islands as hold it, its seats shared out evenly', () => {
 	const plain = () => 1.5;
 	const keys = count => Array.from({ length: count }, (_, index) => `k${index}`);
 
@@ -1380,7 +1452,10 @@ test("a project seating more than an island holds is split into as few islands a
 	// Every seat once, in order
 	expect(splitSeats(keys(14), plain).flat()).toEqual(keys(14));
 
-	const bays = [{ name: 'big', hue: 10, sessions: keys(14) }, { name: 'small', hue: 50, sessions: ['s0'] }];
+	const bays = [
+		{ name: 'big', hue: 10, sessions: keys(14) },
+		{ name: 'small', hue: 50, sessions: ['s0'] },
+	];
 	const { bridge } = layOut({ bays: bays.map(bay => ({ ...bay, seated: bay.sessions.length })) });
 	const big = bridge.islands.filter(({ name }) => name === 'big');
 
@@ -1418,14 +1493,17 @@ test('several sessions picked together are each bracketed', () => {
 
 	const boxes = made.selectionBoxes();
 	const at = key => made.art({ x: made.workers.get(key).seat.x, y: made.workers.get(key).seat.y + 0.2 });
-	const around = point => ({ from, to }) => from.x < point.x && to.x > point.x && from.y < point.y && to.y >= point.y;
+	const around =
+		point =>
+		({ from, to }) =>
+			from.x < point.x && to.x > point.x && from.y < point.y && to.y >= point.y;
 
 	expect(boxes).toHaveLength(2);
 	expect(boxes.filter(around(at('here/a')))).toHaveLength(1);
 	expect(boxes.filter(around(at('here/b')))).toHaveLength(1);
 });
 
-test("one deleted on a couch keeps its place till its dust has gone, the others staying where they sit, and only then are the couches laid again", () => {
+test('one deleted on a couch keeps its place till its dust has gone, the others staying where they sit, and only then are the couches laid again', () => {
 	const stopped = id => session({ id, status: 'stopped', tool: null, coldAgo: 60_000, stoppedAgo: 60_000 });
 	const all = [stopped('a'), stopped('b'), stopped('c')];
 	const made = shipWith([answer('here', all, { projects: ['paude'] })]);
@@ -1490,14 +1568,18 @@ test("a ship that's never sealed never comes in, nor is covered", () => {
 	expect(made.coverOf()).toBe(0);
 });
 
-test('an island gaining a seat grows to its new length over a moment rather than jumping, and a new project\'s island grows in from nothing', () => {
+test("an island gaining a seat grows to its new length over a moment rather than jumping, and a new project's island grows in from nothing", () => {
 	const made = shipWith([answer('here', [session()], { projects: ['paude', 'other'] })]);
 
 	run(made, 1);
 
 	const was = made.islandsShown.get('paude#0').w;
 
-	made.update([answer('here', [session(), session({ id: 'b' }), session({ id: 'c', project: 'other' })], { projects: ['paude', 'other'] })]);
+	made.update([
+		answer('here', [session(), session({ id: 'b' }), session({ id: 'c', project: 'other' })], {
+			projects: ['paude', 'other'],
+		}),
+	]);
 
 	const goal = made.bridge.islands.find(({ name }) => name === 'paude').w;
 
@@ -1510,11 +1592,22 @@ test('an island gaining a seat grows to its new length over a moment rather than
 	expect(made.islandsShown.get('paude#0').w).toBeCloseTo(goal);
 });
 
-
 test('islands keep their rows as sessions come, go and grow: a new one goes into whichever row reaches least far', () => {
 	const projects = ['a', 'b', 'c', 'd', 'e', 'f'];
-	const at = list => [answer('here', list.map(([id, project]) => session({ id, project })), { projects })];
-	const first = [['1', 'a'], ['2', 'b'], ['3', 'c'], ['4', 'd'], ['5', 'e']];
+	const at = list => [
+		answer(
+			'here',
+			list.map(([id, project]) => session({ id, project })),
+			{ projects },
+		),
+	];
+	const first = [
+		['1', 'a'],
+		['2', 'b'],
+		['3', 'c'],
+		['4', 'd'],
+		['5', 'e'],
+	];
 	const made = shipWith(at(first));
 	const rows = () => Object.fromEntries(made.bridge.islands.map(({ name, row }) => [name, row]));
 	const before = rows();
@@ -1588,7 +1681,15 @@ test('a grey on its feet walks over the conduits it crosses, and behind what sta
 
 test("the hold's crane wanders its rail, and a commit made while it's mid-way brings it over that pod at once", () => {
 	const at = unpushed => [
-		{ ...answer('here', [session({ checkout: '/w/a' }), session({ id: 'b', project: 'b', checkout: '/w/b' })], { projects: ['paude', 'b'] }), checkouts: [{ root: '/w/a', changed: 3, unpushed }, { root: '/w/b', changed: 0, unpushed: 8 }] },
+		{
+			...answer('here', [session({ checkout: '/w/a' }), session({ id: 'b', project: 'b', checkout: '/w/b' })], {
+				projects: ['paude', 'b'],
+			}),
+			checkouts: [
+				{ root: '/w/a', changed: 3, unpushed },
+				{ root: '/w/b', changed: 0, unpushed: 8 },
+			],
+		},
 	];
 	const made = shipWith(at(1));
 
@@ -1602,5 +1703,7 @@ test("the hold's crane wanders its rail, and a commit made while it's mid-way br
 	run(made, 0.6);
 	expect(Math.abs(made.craneX - (made.art(holdSpotAt(made.layout.hold, 0)).x + 3))).toBeLessThan(2);
 	// More commits than a pod shows: drawn no more than it holds, without fault
-	expect(() => made.drawPod({ fillStyle: '', fillRect: () => {} }, { x: 0, y: 0 }, { hue: 10, crates: 8, sheets: 9 })).not.toThrow();
+	expect(() =>
+		made.drawPod({ fillStyle: '', fillRect: () => {} }, { x: 0, y: 0 }, { hue: 10, crates: 8, sheets: 9 }),
+	).not.toThrow();
 });
