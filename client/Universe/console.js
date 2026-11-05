@@ -10,6 +10,7 @@ import { linkFilePaths, linkUrls } from '../Terminal/linkProviders';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from '../Terminal/xtermOptions';
 import { button, element } from '../dom';
 import { FONT, fitFont } from './fitFont';
+import withoutPointerReporting from '../../shared/pointerReporting';
 
 // The dock's own width, the least it narrows to for a small terminal
 const DOCK_LEAST = 620;
@@ -126,7 +127,7 @@ export default class TerminalPanel {
 				const text = decoder.decode(data, { stream: true });
 
 				loadSymbolsFor(text);
-				terminal.write(text);
+				terminal.write(withoutPointerReporting(text));
 			},
 			onMessage: message => {
 				if (message.type === 'snapshot') {
@@ -134,7 +135,7 @@ export default class TerminalPanel {
 					terminal.resize(message.cols, message.rows);
 					decoder = new TextDecoder();
 					loadSymbolsFor(message.data);
-					terminal.write(message.data, () => {
+					terminal.write(withoutPointerReporting(message.data), () => {
 						this.arrived = true;
 						this.fit();
 						if (this.pendingJump) this.jumpTo(this.pendingJump);
