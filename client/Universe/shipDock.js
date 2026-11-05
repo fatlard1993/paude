@@ -10,8 +10,7 @@ import {
 	getProjects,
 	getRecentSessions,
 	getRemoteSessions,
-	markProjectLink,
-} from '../api';
+	markProjectLink, setProjectWatching } from '../api';
 import { button, element } from '../dom';
 import { sessionCard } from '../Layout';
 import SessionBrowser from '../SessionBrowser';
@@ -257,40 +256,56 @@ export const enginesPane = ({ remotes = [], localName, onConnected }) => ({
 	},
 });
 
-// A folder added as a project, or each folder in one; `onAdded(names)` once it's done
-export const foldersPane = ({ onAdded }) => ({
+// A folder on one of `machines` ({ name, url }, url null for this one) added as a project, or each folder in one, and
+// watched so it comes aboard now unless that's unticked; `onAdded(names)` once it's done
+export const foldersPane = ({ onAdded, machines = [] }) => ({
 	key: 'folders',
 	label: 'Add a folder',
 	make: appendTo => {
 		const elem = element('div', 'pane');
 		const form = element('form', 'add-folder');
+		const machine = element('select', 'where');
 		const input = element('input');
+		const watch = element('label', 'watch');
+		const watching = element('input');
 		const add = element('button', '', 'Add');
 
+		machines.forEach(({ name }, index) =>
+			machine.append(Object.assign(element('option', '', `On ${name}`), { value: String(index) })),
+		);
+		machine.title = 'The machine the folder is on';
+		machine.hidden = machines.length < 2;
+		watching.type = 'checkbox';
+		watching.checked = true;
+		watch.append(watching, ' Watch it, so it comes aboard now');
 		input.placeholder = '~/path/to/it, or ~/path/* for each folder in it';
 		form.append(
 			element(
 				'p',
 				'about',
-				'A folder becomes a project to start sessions in. It comes aboard, a module on the hull and a deck inside, once a session starts there or you watch it.',
+				'A folder on one of your machines becomes a project to start sessions in. It comes aboard, a module on the hull and a deck inside, once you watch it or a session starts there.',
 			),
+			machine,
 			input,
+			watch,
 			add,
 		);
 		form.addEventListener('submit', async event => {
 			event.preventDefault();
 			if (!input.value.trim()) return;
 
-			const { body, response } = await addFolder(input.value.trim());
+			const on = machines[Number(machine.value)] ?? { name: 'this machine', url: null };
+			const { body, response } = await addFolder(input.value.trim(), on.url);
 
 			if (!response?.ok) return new Notify({ intent: 'danger', content: body || 'Could not add that folder.' });
 
 			const { names } = JSON.parse(body);
 
+			if (watching.checked) await Promise.all(names.map(name => setProjectWatching(name, true, on.url)));
 			input.value = '';
 			new Notify({
 				intent: 'success',
-				content: names.length === 1 ? `Added "${names[0]}"` : `Added ${names.length} projects: ${names.join(', ')}`,
+				content: `${names.length === 1 ? `Added "${names[0]}"` : `Added ${names.length} projects: ${names.join(', ')}`} on ${on.name}${watching.checked ? ', watched' : ''}`,
 				timeout: 4000,
 			});
 			onAdded(names);

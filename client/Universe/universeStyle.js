@@ -139,6 +139,35 @@ export const Stage = styled(
 			font: inherit;
 		}
 
+		/* A folder to add: where it is, its path, whether to watch it, each on its own line */
+		.pane .add-folder {
+			display: flex;
+			flex-direction: column;
+			align-items: stretch;
+			gap: ${space.sm};
+		}
+
+		.pane .add-folder .watch {
+			display: flex;
+			align-items: center;
+			gap: ${space.sm};
+		}
+
+		.pane .add-folder button {
+			align-self: flex-end;
+		}
+
+		/* Where a new prompt goes, or a folder is added */
+		.reply-card select.where,
+		.pane select.where {
+			font: inherit;
+			padding: 2px ${space.xs};
+			border: 1px solid ${colors.border};
+			border-radius: ${radius.sm};
+			background: ${colors.alpha(colors.black, 0.6)};
+			color: inherit;
+		}
+
 		.reply-card .actions {
 			display: flex;
 			flex-wrap: wrap;

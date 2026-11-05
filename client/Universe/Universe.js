@@ -972,7 +972,13 @@ export default class Universe extends View {
 								onStart: project => (this.closeDock(), this.newPrompt(project)),
 								onOpenThere: (remote, project) => this.openProject({ name: remote.name, remote }, project),
 							}),
-							foldersPane({ onAdded: names => this.added(names) }),
+							foldersPane({
+								onAdded: names => this.added(names),
+								machines: [
+									{ name: localName(), url: null },
+									...(only ? [] : (this.remotes ?? []).filter(({ error }) => !error)),
+								],
+							}),
 							enginesPane({
 								remotes: this.remotes,
 								localName: localName(),
@@ -1180,6 +1186,7 @@ export default class Universe extends View {
 		this.openCard(
 			promptCard({
 				project,
+				projects: this.aboard.bays.map(({ name }) => name),
 				onSent: () => this.aboard.charge(),
 				onArrive: place => this.dockWhenAboard(place),
 				onClose: () => this.closeCard(),

@@ -140,23 +140,34 @@ export const replyCard = ({ session, onOpen, onSent, onClose, note }) => {
 	return card;
 };
 
-// A prompt placed as from home: paude finds the session it carries on or the project to start one in (`project`'s
-// when given), and goes there: to `onArrive({ id, remote })` when given, else straight to its page
-export const promptCard = ({ project, onSent, onArrive, onClose }) => {
+// A prompt placed as from home: paude finds the session it carries on or the project to start one in, or, a project
+// chosen (`project`, or one of `projects` picked in the card), the session there it carries on or a new one there; and
+// goes there: to `onArrive({ id, remote })` when given, else straight to its page
+export const promptCard = ({ project, projects = [], onSent, onArrive, onClose }) => {
 	const card = element('div', 'reply-card');
+	const where = element('select', 'where');
+	const about = () => (where.value ? 'paude finds the session it carries on there, or starts one' : 'paude finds where it goes');
+	const head = heading(project ? `New prompt in ${project}` : 'New prompt', about(), onClose);
+
+	where.append(
+		Object.assign(element('option', '', 'Let paude find the project'), { value: '' }),
+		...[...new Set([...(project ? [project] : []), ...projects])]
+			.sort((a, b) => a.localeCompare(b))
+			.map(name => Object.assign(element('option', '', name), { value: name })),
+	);
+	where.value = project ?? '';
+	where.title = 'Where it goes';
+	where.addEventListener('change', () => (head.querySelector('.about').textContent = about()));
 
 	card.append(
-		heading(
-			project ? `New prompt in ${project}` : 'New prompt',
-			project ? 'paude finds the session it carries on, or starts one here' : 'paude finds where it goes',
-			onClose,
-		),
+		head,
+		where,
 		composer({
 			placeholder: 'What should Claude do?',
 			send: text =>
 				placePrompt({
 					prompt: text,
-					project,
+					project: where.value || undefined,
 					onArrive,
 					onSent: () => {
 						onSent?.();

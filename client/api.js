@@ -301,12 +301,16 @@ export const getProjectArtifacts = async project =>
 export const setLifetime = async (sessionId, lifetime) =>
 	await PUT('/api/sessions/:id/lifetime', { urlParameters: { id: sessionId }, body: { lifetime } });
 
-export const addFolder = async path => await POST('/api/projects', { body: { path }, responseType: 'text' });
+// `remote`, another paude's address, adds it there, through this one
+const remoteBase = remote => (remote ? `/api/remotes/at/${encodeURIComponent(remote)}` : '');
+
+export const addFolder = async (path, remote) =>
+	await POST(`${remoteBase(remote)}/api/projects`, { body: { path }, responseType: 'text' });
 
 export const removeFolder = async name => await DELETE('/api/projects/:name', { urlParameters: { name } });
 
-export const setProjectWatching = async (name, watching) =>
-	await PUT('/api/projects/:name/watch', { urlParameters: { name }, body: { watching } });
+export const setProjectWatching = async (name, watching, remote) =>
+	await PUT(`${remoteBase(remote)}/api/projects/:name/watch`, { urlParameters: { name }, body: { watching } });
 
 export const getRemotes = async () => await GET('/api/remotes', { invalidateAfter: 0 });
 
