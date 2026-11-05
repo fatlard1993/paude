@@ -5,7 +5,7 @@ import { claudeActive, isNudge, keepWarm, nudgeWith, warmUntil } from './keepWar
 
 const NUDGE = nudgeWith('');
 
-const ids = ['going', 'only-warm', 'typing', 'held', 'gone', 'no', 'hooks'];
+const ids = ['going', 'only-warm', 'typing', 'held', 'gone', 'no', 'hooks', 'thoughts'];
 
 afterAll(() => Promise.all(ids.map(id => keepWarm(id, 0))));
 
@@ -318,4 +318,26 @@ test('the latest reply is shown by its start and its end, where a list of what i
 	expect(prompt).toContain('Done: the cans and the plates.');
 	expect(prompt).toContain('[...]');
 	expect(prompt).toContain('Left: the walk cycle.');
+});
+
+test('thoughts the person drops in while Claude works are asks Haiku is shown, in order, and count as them speaking', async () => {
+	const nudged = { ...turn(NUDGE), added: ['the fuel tank would look better inside', 'cards should show staleness'] };
+	const turns = [turn('fix the hull'), turn(NUDGE, false), turn(NUDGE, false), nudged];
+	let prompt = '';
+
+	// Two idle nudges in a row would hold it, but the person spoke since
+	expect(holdBefore(turns)).toBeNull();
+	await keepWarm('thoughts', 12, Date.now(), { going: true });
+	await keepGoing('thoughts', 'Did the hull.', {
+		...going(fakeSession(), turns),
+		ask: async text => {
+			prompt = text;
+
+			return '{"go": false}';
+		},
+	});
+	expect(prompt).toContain(
+		'<asked>\nfix the hull\n</asked>\n<asked>\n(added while Claude worked) the fuel tank would look better inside\n</asked>\n<asked>\n(added while Claude worked) cards should show staleness\n</asked>',
+	);
+	expect(prompt).not.toContain(`<asked>\n${NUDGE}`);
 });

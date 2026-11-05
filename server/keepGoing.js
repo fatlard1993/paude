@@ -34,9 +34,11 @@ const IDLE_CHECK_MS = 1000;
 const KEEP_WARM_PING = /^keep-?warm ping/i;
 
 const theirs = turn => !isNudge(turn.prompt) && !KEEP_WARM_PING.test(turn.prompt) && !turn.summary;
+// A turn the person spoke in: prompted it, or added to it while Claude worked, as they do with thoughts as they come
+const spoke = turn => theirs(turn) || Boolean(turn.added?.length);
 
-// Newest last, as sessionTurns has them: the person's last turn, then everything since
-const sinceTheirs = turns => turns.slice(Math.max(0, turns.findLastIndex(theirs)));
+// Newest last, as sessionTurns has them: the last turn the person spoke in, then everything since
+const sinceTheirs = turns => turns.slice(Math.max(0, turns.findLastIndex(spoke)));
 
 const nudgedRun = turns => sinceTheirs(turns).filter(turn => isNudge(turn.prompt));
 
@@ -55,18 +57,19 @@ export const holdBefore = turns => {
 
 const ASKED_PROMPTS = 4;
 
-// The turns from the person's last few prompts on: the goal, and how they've been steering toward it
+// The turns from the last few the person spoke in on: the goal, and how they've been steering toward it
 const lately = turns => {
-	const asked = turns.flatMap((turn, index) => (theirs(turn) ? [index] : []));
+	const asked = turns.flatMap((turn, index) => (spoke(turn) ? [index] : []));
 
 	return turns.slice(asked.at(-ASKED_PROMPTS) ?? asked[0] ?? 0);
 };
 
-// What the person last asked for, oldest first
+// What the person last asked for, oldest first: each prompt, then what they added to its turn while Claude worked
 const lastAsked = turns =>
-	lately(turns)
-		.filter(theirs)
-		.map(turn => turn.asked);
+	lately(turns).flatMap(turn => [
+		...(theirs(turn) ? [turn.asked] : []),
+		...(turn.added ?? []).map(added => `(added while Claude worked) ${added}`),
+	]);
 
 // How Claude ended the turns before the one just ended, whoever prompted them: without them Haiku sees only the latest
 // reply, and sends Claude back to do what an earlier turn already did
@@ -81,8 +84,8 @@ const SAID_AS = { decision: 'Decided', direction: 'Direction', deferred: 'Put of
 
 // What the session settled lately that still stands (not set aside by the person), newest first: work put off is work
 // left, and each decision and direction is something the work can be checked against. Only from the turns given (the
-// person's last few prompts on): nothing marks work put off as done once it is, and older put-off work came back
-// as suggestions long after it was done. One waiting on the person's answer is shown whenever it was asked, as theirs,
+// last few turns the person spoke in on): nothing marks work put off as done once it is, and older put-off work came
+// back as suggestions long after it was done. One waiting on the person's answer is shown whenever it was asked, as theirs,
 // so the way forward goes around it rather than through it.
 export const settledSoFar = (decisions, within = null) => {
 	const open = decisions.filter(
@@ -111,7 +114,7 @@ export const promptFor = (reply, asked, earlier = [], settled = []) =>
 		'A person is away from a Claude Code session and wants it to keep working toward their goal the whole time they are gone, never sitting idle while anything useful is left to do. Claude just ended a turn. Say what Claude should do next.',
 		'',
 		'Pick, in this order:',
-		"0. Anything the person's last message asked for that neither the latest reply nor the earlier ones show done: a message asking for several things is often answered for only some of them.",
+		"0. Anything the person asked for that neither the latest reply nor the earlier ones show done, the oldest first: a message asking for several things is often answered for only some of them, and the person drops thoughts and findings in while Claude works, to be taken up whenever there is time. Each of those is work left until a reply shows it done or the person sets it aside; a thought that only needs their call is a question for them, not work.",
 		'1. The next step toward the goal: what the reply names as left or offers to do next ("I\'d take those next", "a good next step if you want it" count as accepted), rough edges it noticed in its own work, work the session put off that nothing since shows done (unless it was put off until the person says), or the plain next step of the plan.',
 		'2. If that step waits on the person (a question to them, a choice between real alternatives, a credential, a restart only they can do), or on background work Claude started, then work that is useful toward the goal and does not depend on it: another part of the goal, or the parts of the open choice that are the same either way.',
 		'3. If the goal looks done, something that makes it better done: check it end to end the way the person will use it, check it holds to what the session decided (each decision and direction kept, nothing it rejected crept back in), cover edge cases and failure paths, review the change as a stranger would, look for the same fault elsewhere, tighten what it touched.',
@@ -181,8 +184,9 @@ export const keepGoing = async (
 	{
 		ask = text => askHaiku(text, 'deciding to keep going'),
 		sessionOf = runningSession,
-		turnsOf = sessionTurns,
-		decisionsOf = (sessionId, cwd) => sessionDecisions(sessionId, cwd, { onlyRead: true }),
+		// Whole: a session heavy with screenshots can hold the person's last prompts far back past the usual tail
+		turnsOf = (sessionId, cwd) => sessionTurns(sessionId, cwd, { whole: true }),
+		decisionsOf = (sessionId, cwd) => sessionDecisions(sessionId, cwd, { onlyRead: true, whole: true }),
 		pause = () => Bun.sleep(IDLE_CHECK_MS),
 	} = {},
 ) => {
