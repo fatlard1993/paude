@@ -1554,3 +1554,21 @@ test("a project's machine moved along its deck by one before it growing is drawn
 	run(made, 2);
 	for (const [name] of shifted) expect(made.bayShift(made.layout.bays.find(bay => bay.name === name))).toBe(0);
 });
+
+test('a grey on its feet walks over the conduits it crosses, and behind what stands in front of it', () => {
+	const made = shipWith([answer('here', [session(), session({ id: 'b' })], { projects: ['paude'] })]);
+
+	run(made, 4);
+
+	const worker = made.workers.get('here/a');
+	const [island] = made.bridge.islands;
+	const layerAt = point => {
+		Object.assign(worker, point, { path: [{ x: point.x + 1, y: point.y }] });
+
+		return made.workerParts(null, worker)[0].y;
+	};
+
+	// Out on the floor by the aft wall, over the conduits; just behind an island's console, sorted in behind it
+	expect(layerAt({ x: made.bridge.x + 0.3, y: made.bridge.y + made.bridge.d - 0.2 })).toBeGreaterThan(1e5);
+	expect(layerAt({ x: island.x + island.w / 2, y: island.y - 0.2 })).toBeLessThan(1e5);
+});

@@ -67,6 +67,8 @@ const ABOARD_SECONDS = 6;
 const TOSS_SECONDS = 0.7;
 // How far apart the crew's bots wait in line below engineering's door, and the first of them below it
 const BERTH_GAP = 0.55;
+// A grey on its feet, half its width and its height, in art pixels, for what it passes behind
+const GREY_SIZE = { half: 6, tall: 26 };
 // How long a commit's press takes over its pod, and how much of a push the pod spends lifting off its cradle before it
 // drops
 const PACK_SECONDS = 1.4;
@@ -2736,7 +2738,16 @@ export default class Ship {
 		const working = session.status === 'working';
 		const screen = screenOf(session);
 
-		const walker = this.walking(worker) ? [{ y: worker.y, draw: () => this.drawWorker(ctx, worker) }] : [];
+		// Walking, over the conduits it crosses, which lie over everything; but behind what stands in front of it, sorted
+		// in among that by depth so it hides it
+		const walker = this.walking(worker)
+			? [
+					{
+						y: this.behindFurniture(worker, this.furniture(), GREY_SIZE) ? worker.y : TUBE_FRONT - 0.0015,
+						draw: () => this.drawWorker(ctx, worker),
+					},
+				]
+			: [];
 
 		if (worker.lounging)
 			return [...(walker.length ? walker : this.loungerParts(ctx, worker)), ...this.homeSeatParts(ctx, worker)];
@@ -2758,10 +2769,12 @@ export default class Ship {
 		return [
 			...walker,
 			...(!walker.length && !floor ? [{ y: seat.y - 0.12, draw: () => this.drawWorker(ctx, worker) }] : []),
+			// Sat on the floor before its console, where the conduits run along the row's foot: over them, nothing standing
+			// before it but the next row, well clear
 			...(floor
 				? [
 						{
-							y: seat.y + ON_FLOOR,
+							y: TUBE_FRONT - 0.0015,
 							draw: () => {
 								// Its cable out of the laptop's back and up into the console's front
 								rect(ctx, laptop.x + 6, laptop.y - 1, 2, 1, PALETTE.k);
@@ -4395,10 +4408,11 @@ export default class Ship {
 		];
 	}
 
-	// Whether something on the floor at `at` (a droid, as big as one) stands behind any of `furniture`, overlapping it
-	behindFurniture(at, furniture) {
+	// Whether something on the floor at `at` stands behind any of `furniture`, overlapping it: as big as a droid unless
+	// `half` its width and `tall`, in art pixels, say otherwise
+	behindFurniture(at, furniture, { half = 5, tall = 7 } = {}) {
 		const foot = this.art(at);
-		const { left, right, top, bottom } = { left: foot.x - 5, right: foot.x + 5, top: foot.y - 7, bottom: foot.y };
+		const { left, right, top, bottom } = { left: foot.x - half, right: foot.x + half, top: foot.y - tall, bottom: foot.y };
 
 		return furniture.some(
 			thing =>
