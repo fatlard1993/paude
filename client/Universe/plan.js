@@ -1,4 +1,17 @@
-import { FACE, HALL_FACE, HALL_LANE, furnish, loungeDepth, loungeWidth, footprintOf, machineWidth } from './station';
+import {
+	FACE,
+	HALL_FACE,
+	HALL_LANE,
+	SCREEN_RISE,
+	UNIT,
+	cableStep,
+	cableWeight,
+	furnish,
+	loungeDepth,
+	loungeWidth,
+	footprintOf,
+	machineWidth,
+} from './station';
 
 // Where everything aboard stands, in world units: rooms, seats, and the spots things move between
 const ENGINEERING_W = 3.4;
@@ -36,7 +49,10 @@ const fleetRoom = ships => (ships ? 0.4 + ships * 1.8 : 0);
 // an island, side by side as thick as each can get (a pixel more for each of its sessions at its desk, to five) with
 // their outlines and a gap between, and the walk along it
 const sternRoom = islands =>
-	Math.max(BRIDGE_MARGIN, (9 + islands.reduce((sum, { sessions = [] }) => sum + Math.min(5, 1 + sessions.length) + 4, 0)) / 20);
+	Math.max(
+		BRIDGE_MARGIN,
+		(9 + islands.reduce((sum, { sessions = [] }) => sum + Math.min(5, 1 + sessions.length) + 4, 0)) / 20,
+	);
 // How long to deep the hull may get before it takes another level, and how many it takes at most; an idle machine's
 // size against a working one's
 const ASPECT = 3;
@@ -45,7 +61,9 @@ const IDLE_SCALE = 0.75;
 const BRIDGE_ROW_TOP = FACE + 1.3;
 // Its islands: one console for each project being worked on, its greys seated side by side behind it; rows far enough
 // apart that a grey's head clears the console behind it, with an aisle between for whoever walks the bridge
-const BRIDGE_ROW = 2.4;
+const BRIDGE_ROW = 2.8;
+// How many times the rows are spread out further, at most, as spreading them puts more islands in each
+const PITCH_TRIES = 8;
 const SEAT_W = 1.5;
 // A subagent's small terminal beside its grey's seat, as many as are shown
 const SMALL_W = 0.8;
@@ -55,7 +73,7 @@ const ISLAND_GAP = 0.6;
 
 // The islands of the bridge `from` its stern edge down `rows`, for the bays at work: [{ name, hue, keys, x, y, w,
 // seats: [{ key, x, y }] }], and how far forward they reach
-const islandsOf = (bays, { from, top, rows, lounge, agents = {} }) => {
+const islandsOf = (bays, { from, top, rows, lounge, agents = {}, pitch = BRIDGE_ROW }) => {
 	// One island for each project however many it seats, never split, in the order given: the order their conduits come
 	// to the bridge
 	const runs = bays.map(({ name, hue, sessions = [] }) => ({ name, hue, keys: sessions }));
@@ -63,7 +81,7 @@ const islandsOf = (bays, { from, top, rows, lounge, agents = {} }) => {
 	// row reaches least far yet, so short ones fill in beside long ones
 	const reach = Array(rows).fill(0);
 	// (less a hair, so a lounge exactly two rows deep isn't rounded up to three)
-	const covers = lounge ? Math.min(rows, Math.ceil((lounge.d - 0.6) / BRIDGE_ROW - 1e-9)) : 0;
+	const covers = lounge ? Math.min(rows, Math.ceil((lounge.d - 0.6) / pitch - 1e-9)) : 0;
 
 	for (let row = rows - covers; row < rows; row++) reach[row] = lounge.w + ISLAND_GAP;
 	// With fewer islands than rows left open, they spread evenly down the bridge
@@ -112,7 +130,7 @@ const islandsOf = (bays, { from, top, rows, lounge, agents = {} }) => {
 		const row = runs.length <= open.length ? open[Math.floor(((index + 0.5) * open.length) / runs.length)] : filling;
 		const x = from + reach[row];
 		const widths = seatWidths(run);
-		const y = top + BRIDGE_ROW_TOP + row * BRIDGE_ROW;
+		const y = top + BRIDGE_ROW_TOP + row * pitch;
 		let along = x + ISLAND_END;
 
 		reach[row] += w + ISLAND_GAP;
@@ -139,7 +157,7 @@ const islandsOf = (bays, { from, top, rows, lounge, agents = {} }) => {
 	const past = Math.max(0, ...reach.filter((_, row) => covered(row)).map(far => far - shift));
 
 	for (const island of islands) {
-		if (!covered(Math.round((island.y - top - BRIDGE_ROW_TOP) / BRIDGE_ROW))) continue;
+		if (!covered(Math.round((island.y - top - BRIDGE_ROW_TOP) / pitch))) continue;
 		island.x -= shift;
 		for (const seat of island.seats) seat.x -= shift;
 	}
@@ -207,8 +225,34 @@ export const standingOf = (bridge, y) => aisleOf(bridge, y) - 0.6;
 
 export const aisleOf = (bridge, y) => {
 	const first = bridge.y + BRIDGE_ROW_TOP;
+	const pitch = bridge.pitch ?? BRIDGE_ROW;
 
-	return first + Math.max(0, Math.floor((y - first + 0.5) / BRIDGE_ROW)) * BRIDGE_ROW + 0.85;
+	return first + Math.max(0, Math.floor((y - first + 0.5) / pitch)) * pitch + 0.85;
+};
+
+// How far apart the rows of `islands` must stand for the conduits along each to fit the aisle under it, clear of the
+// next row's screens: a row's nearest island's conduit along its consoles' foot, each further one a cable below the last
+// (as the conduits are laid), each as thick as every seat at its island wired up would make it; never less than
+// BRIDGE_ROW, and a pixel to spare for where the art rounds them
+export const rowPitch = islands => {
+	const rows = new Map();
+
+	for (const island of islands) rows.set(island.y, [...(rows.get(island.y) ?? []), island]);
+
+	const deepest = Math.max(
+		0,
+		...[...rows.values()].map(row => {
+			const weights = row.sort((a, b) => a.x - b.x).map(({ keys = [] }) => cableWeight(keys.length));
+
+			return weights.length < 2
+				? 0
+				: weights.slice(1).reduce((below, weight, index) => below + cableStep(weights[index], weight), 0) +
+						Math.ceil(weights.at(-1) / 2) +
+						1;
+		}),
+	);
+
+	return Math.max(BRIDGE_ROW, (deepest + 2 + SCREEN_RISE) / UNIT.y);
 };
 
 // For each name, the shortest start of it (two letters at least) no other name begins with, so names too long for a
@@ -300,18 +344,24 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		});
 		const width = Math.max(Math.max(0, ...reach), holdWidth(checkouts) + HANGAR_W + transporter);
 		const total = levels * (base + extraDepthOf(levels));
-		const rows = Math.max(1, Math.floor((total - BRIDGE_ROW_TOP - 0.4) / BRIDGE_ROW + 1e-9) + 1);
-		const { reach: islandsReach } = islandsOf(inLine(placed), {
-			from: 0,
-			top: 0,
-			rows,
-			lounge: loungeBlock,
-			agents,
-		});
+		// The rows as far apart as their conduits need, worked out again while spreading them changes how many fit
+		const rowsAt = pitch => Math.max(1, Math.floor((total - BRIDGE_ROW_TOP - 0.4) / pitch + 1e-9) + 1);
+		const islandsAt = pitch =>
+			islandsOf(inLine(placed), { from: 0, top: 0, rows: rowsAt(pitch), lounge: loungeBlock, agents, pitch });
+		let pitch = BRIDGE_ROW;
+		let laid = islandsAt(pitch);
+
+		for (let tries = 0; tries < PITCH_TRIES && rowPitch(laid.islands) > pitch + 1e-9; tries++) {
+			pitch = rowPitch(laid.islands);
+			laid = islandsAt(pitch);
+		}
+
+		const rows = rowsAt(pitch);
+		const { reach: islandsReach } = laid;
 		const bridgeW =
 			sternRoom(inLine(placed)) + BRIDGE_MARGIN + Math.max(2 * SEAT_W, islandsReach) + BRIDGE_NAV_W + fleetRoom(fleet);
 
-		return { levels, placed, width, total, rows, bridgeW };
+		return { levels, placed, width, total, rows, pitch, bridgeW };
 	};
 	// Another level only while it shortens the ship: one that only adds empty decks under the core and the bridge isn't
 	// worth its depth
@@ -325,7 +375,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		layout = deeper;
 	}
 
-	const { levels, placed: packed, width, total, rows: bridgeRows, bridgeW } = layout;
+	const { levels, placed: packed, width, total, rows: bridgeRows, pitch: rowsApart, bridgeW } = layout;
 
 	depth.top += extraDepthOf(levels) / 2;
 	depth.bottom += extraDepthOf(levels) / 2;
@@ -447,6 +497,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		d: total,
 		face: FACE,
 		rows: bridgeRows,
+		pitch: rowsApart,
 		door: { x: middle + width, y: lane, side: 'left', lane },
 		hull: { top: true, bottom: true, right: true },
 		props: [],
@@ -458,6 +509,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		rows: bridgeRows,
 		lounge: loungeBlock,
 		agents,
+		pitch: rowsApart,
 	});
 	const aboard = (room, x, w, d, y = top) => ({
 		...room,

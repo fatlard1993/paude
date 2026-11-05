@@ -125,6 +125,17 @@ export const furnish = room => {
 // Art pixels to a world unit across, deep, and up
 export const UNIT = { x: 20, y: 14, z: 14 };
 
+// A project's conduit to its islands, as thick as the sessions wired up at them make it, in art pixels
+export const cableWeight = wired => Math.min(5, 1 + wired);
+// The clear gap between conduits laid side by side along a row, in art pixels: their outlines meeting
+export const CABLE_GAP = 2;
+// How far below a conduit `above` thick the next one `below` thick lies along a row, their middles apart, in art pixels;
+// each is drawn from its middle less half its thickness, rounded down, so the one above reaches half its, rounded up
+export const cableStep = (above, below) => Math.ceil(above / 2) + Math.floor(below / 2) + CABLE_GAP;
+// How far a seat's screen stands above its desk's line, in art pixels: the top of the next row's screens bounds the
+// aisle under a row
+export const SCREEN_RISE = 31;
+
 const rect = (ctx, x, y, w, h, color) => {
 	ctx.fillStyle = color;
 	ctx.fillRect(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
@@ -361,7 +372,7 @@ export const drawSeat = (ctx, at, { screen, engineColor, time, seed, todos = [],
 	rect(ctx, x + 1, y - 11, 9, 2, PALETTE.d);
 	rect(ctx, x + 2, y - 11, 7, 1, PALETTE.m);
 	rect(ctx, x - 9, y - 16, 3, 4, PALETTE.d);
-	rect(ctx, x - 17, y - 31, 19, 15, PALETTE.k);
+	rect(ctx, x - 17, y - SCREEN_RISE, 19, 15, PALETTE.k);
 	rect(ctx, x - 16, y - 30, 17, 13, PALETTE.d);
 	drawScreen(ctx, { x: x - 15, y: y - 29, w: 15, h: 11 }, { ...screen, time, seed });
 	if (frost) drawFrost(ctx, { x: x - 17, y: y - 31, w: 19, h: 15 });

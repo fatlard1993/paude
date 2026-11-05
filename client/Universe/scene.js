@@ -50,6 +50,8 @@ import {
 	loungeSeatAt,
 	rect,
 	seeded,
+	cableStep,
+	cableWeight,
 } from './station';
 
 const TAU = Math.PI * 2;
@@ -552,7 +554,9 @@ const withoutDoublingBack = (points, box) => {
 };
 
 const pathLength = points =>
-	points.slice(1).reduce((sum, point, index) => sum + Math.hypot(point.x - points[index].x, point.y - points[index].y), 0);
+	points
+		.slice(1)
+		.reduce((sum, point, index) => sum + Math.hypot(point.x - points[index].x, point.y - points[index].y), 0);
 
 // The point `along` pixels down a path
 const pointAlong = (points, along) => {
@@ -563,7 +567,10 @@ const pointAlong = (points, along) => {
 		const length = Math.hypot(to.x - from.x, to.y - from.y);
 
 		if (left <= length)
-			return { x: Math.round(from.x + ((to.x - from.x) * left) / (length || 1)), y: Math.round(from.y + ((to.y - from.y) * left) / (length || 1)) };
+			return {
+				x: Math.round(from.x + ((to.x - from.x) * left) / (length || 1)),
+				y: Math.round(from.y + ((to.y - from.y) * left) / (length || 1)),
+			};
 		left -= length;
 	}
 
@@ -577,7 +584,9 @@ export const risersFor = (wall, lounge, weights) => {
 	const thick = weights.reduce((sum, weight) => sum + weight + 2, 0);
 	const room = lounge === null ? Infinity : lounge - 5 - (wall + 4);
 	const gap =
-		weights.length < 2 ? RISER_GAP : Math.max(0, Math.min(RISER_GAP, Math.floor((room - thick) / (weights.length - 1))));
+		weights.length < 2
+			? RISER_GAP
+			: Math.max(0, Math.min(RISER_GAP, Math.floor((room - thick) / (weights.length - 1))));
 	let x = wall + 4;
 
 	return weights.map(weight => {
@@ -599,10 +608,12 @@ export const runsFor = ends => {
 	ends.forEach((end, index) => rows.set(end.y, [...(rows.get(end.y) ?? []), { ...end, index }]));
 	for (const row of rows.values()) {
 		let below = 0;
+		let above = null;
 
 		for (const { y, weight, index } of row.sort((a, b) => a.x - b.x)) {
+			if (above !== null) below += cableStep(above, weight);
 			runs[index] = y + below;
-			below += weight + 2;
+			above = weight;
 		}
 	}
 
@@ -1027,8 +1038,15 @@ export default class Ship {
 
 		if (!lounge?.count) return path;
 
-		const box = { left: lounge.x - 0.1, right: lounge.x + lounge.w + 0.2, top: lounge.y + 0.2, bottom: lounge.y + lounge.d };
-		return bendAround([from, ...path], box, { walled: this.loungeWalled(), step: 0.1, over: this.loungeOver() }).slice(1);
+		const box = {
+			left: lounge.x - 0.1,
+			right: lounge.x + lounge.w + 0.2,
+			top: lounge.y + 0.2,
+			bottom: lounge.y + lounge.d,
+		};
+		return bendAround([from, ...path], box, { walled: this.loungeWalled(), step: 0.1, over: this.loungeOver() }).slice(
+			1,
+		);
 	}
 
 	// Workers set off: one new from the materializer, one stopped or woken from where it was; and one already on its way
@@ -1454,7 +1472,15 @@ export default class Ship {
 		for (const worker of this.workers.values()) this.tendSmallGreys(worker, calm);
 		this.tendCrew(seconds);
 		for (const [name, walker] of this.walkers)
-			walk(walker, calm ? Infinity : WALK_SPEED * seconds * (this.departing?.key === name || (this.readying && this.viewer === name) ? HURRY : 1), seconds);
+			walk(
+				walker,
+				calm
+					? Infinity
+					: WALK_SPEED *
+							seconds *
+							(this.departing?.key === name || (this.readying && this.viewer === name) ? HURRY : 1),
+				seconds,
+			);
 		this.tendTravel();
 		for (const worker of this.workers.values())
 			if (worker.path?.length && (calm || this.time - (worker.madeAt ?? -Infinity) >= MAKE_SECONDS))
@@ -2197,7 +2223,7 @@ export default class Ship {
 				bay,
 				color: wireColor(bay.hue, workers.length > 0),
 				working: workers.some(({ session }) => session.status === 'working'),
-				weight: Math.min(5, 1 + workers.length),
+				weight: cableWeight(workers.length),
 				seed: seeded(bay.name) * TAU,
 				tray,
 				entry: { x: machine.from - 1, y: height },
@@ -2299,7 +2325,11 @@ export default class Ship {
 			return count;
 		};
 		const crossings = ordered => {
-			const at = risersFor(wall, null, ordered.map(({ weight }) => weight));
+			const at = risersFor(
+				wall,
+				null,
+				ordered.map(({ weight }) => weight),
+			);
 			const laid = ordered.map((route, index) => runs(route, at[index]));
 			let count = 0;
 
@@ -2320,7 +2350,11 @@ export default class Ship {
 		// changes what the two swapped cost with the rest
 		const swapped = start => {
 			const ordered = [...start];
-			const at = risersFor(wall, null, ordered.map(({ weight }) => weight));
+			const at = risersFor(
+				wall,
+				null,
+				ordered.map(({ weight }) => weight),
+			);
 			const laid = new Map(ordered.map(route => [route, at.map(x => runs(route, x))]));
 			const cost = (route, slot, also, alsoSlot) => between(laid.get(route)[slot], laid.get(also)[alsoSlot]);
 
@@ -2735,7 +2769,12 @@ export default class Ship {
 			return [
 				...fed,
 				{
-					track: trackOf([tech.outlet, { x: along, y: tech.outlet.y }, { x: along, y: onward[0].y }, ...onward.slice(1)]),
+					track: trackOf([
+						tech.outlet,
+						{ x: along, y: tech.outlet.y },
+						{ x: along, y: onward[0].y },
+						...onward.slice(1),
+					]),
 					ports: [tech.outlet],
 				},
 			];
@@ -2853,13 +2892,17 @@ export default class Ship {
 		const from = this.art({ x: lounge.x, y: lounge.y });
 		const past = this.art({ x: lounge.x + lounge.w, y: lounge.y + lounge.d });
 
-		return bendAround(points, { left: from.x - 2, right: past.x + 2, top: from.y - 2, bottom: past.y + 2 }, {
-			walled: this.loungeWalled(),
-			apart,
-			step: 1,
-			// Over it along the aisle before the islands above, clear of their consoles as of its couches
-			over: this.art({ x: 0, y: this.loungeOver() }).y + 6,
-		});
+		return bendAround(
+			points,
+			{ left: from.x - 2, right: past.x + 2, top: from.y - 2, bottom: past.y + 2 },
+			{
+				walled: this.loungeWalled(),
+				apart,
+				step: 1,
+				// Over it along the aisle before the islands above, clear of their consoles as of its couches
+				over: this.art({ x: 0, y: this.loungeOver() }).y + 6,
+			},
+		);
 	}
 
 	// The way over the lounge: the aisle before the row of consoles above it, clear of its couches' backs
@@ -3578,8 +3621,6 @@ export default class Ship {
 		rect(ctx, x + 2, lid - 7, 1, 1, CUP.band);
 	}
 
-
-
 	// What keeps it going on the console beside it, `at` the console's front (art pixels): a mug of coffee kept warm, a
 	// giant cup of something caffeinated kept going. Off the console while it's drinking.
 	drawPick(ctx, worker, at) {
@@ -4224,7 +4265,11 @@ export default class Ship {
 		const free = x => blocked.every(({ from, to }) => x + half <= from || x - half >= to);
 		const spots = [];
 
-		for (let x = bridge.x + bridge.w - FLEET_NOSE; spots.length < this.fleet.length && x - half > bridge.x + 0.6; x -= 0.25)
+		for (
+			let x = bridge.x + bridge.w - FLEET_NOSE;
+			spots.length < this.fleet.length && x - half > bridge.x + 0.6;
+			x -= 0.25
+		)
 			if (free(x) && (!spots.length || spots.at(-1).x - x >= FLEET_PITCH)) spots.push({ x, y });
 
 		return spots.map((spot, index) => ({ ...spot, ship: this.fleet[index] }));
@@ -4236,8 +4281,7 @@ export default class Ship {
 	fleetParts(ctx) {
 		return this.fleetSpots().map(({ ship, x, y }) => {
 			const at = this.art({ x, y });
-			const screen =
-				(ship.needs && { kind: 'ask', hue: 45 }) ||
+			const screen = (ship.needs && { kind: 'ask', hue: 45 }) ||
 				(ship.news && { kind: 'news', hue: 210 }) ||
 				(ship.working && { kind: 'work', hue: 170 }) || { kind: 'idle', hue: 210 };
 			const count = ship.needs || ship.news;
@@ -4370,7 +4414,14 @@ export default class Ship {
 			const across = w >= h;
 
 			rect(ctx, x - (across ? 0 : 2), y - (across ? 2 : 0), w + (across ? 1 : 5), h + (across ? 5 : 1), PALETTE.k);
-			rect(ctx, x - (across ? 0 : 1), y - (across ? 1 : 0), w + (across ? 1 : 3), h + (across ? 3 : 1), TUBE_GLASS.body);
+			rect(
+				ctx,
+				x - (across ? 0 : 1),
+				y - (across ? 1 : 0),
+				w + (across ? 1 : 3),
+				h + (across ? 3 : 1),
+				TUBE_GLASS.body,
+			);
 			if (across) rect(ctx, x, y - 1, w + 1, 1, TUBE_GLASS.shine);
 			else rect(ctx, x - 1, y, 1, h + 1, TUBE_GLASS.shine);
 			for (let along = 6; along < Math.max(w, h); along += 14)
@@ -4402,7 +4453,12 @@ export default class Ship {
 		if (t >= 0.3 && t < 0.75) {
 			const rise = (t - 0.3) / 0.45;
 
-			drawSprite(ctx, 'paper', Math.round(desk.x + (x - desk.x) * rise), Math.round(desk.y + (mouth + 4 - desk.y) * rise));
+			drawSprite(
+				ctx,
+				'paper',
+				Math.round(desk.x + (x - desk.x) * rise),
+				Math.round(desk.y + (mouth + 4 - desk.y) * rise),
+			);
 		}
 	}
 

@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test';
 
 import Ship, { appliancesOf, bendAround, countdown, resting, risersFor, runsFor, tanksOf, triage } from './scene';
-import { clonerAt, holdSpotAt, layOut, shortest } from './plan';
-import { UNIT } from './station';
+import { clonerAt, holdSpotAt, layOut, rowPitch, shortest } from './plan';
+import { SCREEN_RISE, UNIT, cableWeight } from './station';
 
 const session = changes => ({
 	id: 'a',
@@ -1268,4 +1268,36 @@ test("each other ship has an unmanned terminal along the bridge's near wall, cle
 			if (island.y > y - 2.6) expect(x - 0.75 >= island.x + island.w || x + 0.75 <= island.x).toBe(true);
 	}
 	for (const [index, { x }] of spots.slice(1).entries()) expect(spots[index].x - x).toBeGreaterThanOrEqual(1.8);
+});
+
+test("a row's conduits fit the aisle under it, clear of the next row's screens, however many islands share it", () => {
+	for (const count of [3, 8, 16, 30, 50]) {
+		const bays = Array.from({ length: count }, (_, index) => ({
+			name: `p${index}`,
+			hue: index * 12,
+			sessions: Array.from({ length: 1 + (index % 5) }, (_, seat) => `p${index}-${seat}`),
+		}));
+		const { bridge } = layOut({ bays: bays.map(bay => ({ ...bay, seated: bay.sessions.length })) });
+		const pitch = bridge.pitch;
+
+		expect(pitch).toBeGreaterThanOrEqual(rowPitch(bridge.islands) - 1e-9);
+
+		// Every cable as thick as its island's seats could make it, laid as the conduits are
+		const ends = bridge.islands.map(island => ({
+			x: (island.x + 0.15) * UNIT.x,
+			y: (island.y + 0.2) * UNIT.y,
+			weight: cableWeight(island.keys.length),
+		}));
+		const runs = runsFor(ends);
+
+		for (const [index, end] of ends.entries()) {
+			const below = ends.filter(other => other.y > end.y);
+
+			if (!below.length) continue;
+
+			const screens = Math.min(...below.map(other => other.y)) - SCREEN_RISE;
+
+			expect(runs[index] + Math.ceil(end.weight / 2) + 1).toBeLessThan(screens);
+		}
+	}
 });
