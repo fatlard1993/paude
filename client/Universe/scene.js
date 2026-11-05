@@ -929,9 +929,16 @@ export default class Ship {
 		this.people = this.peopleOf(answers);
 		this.projectHues = new Map(answers.flatMap(answer => (answer.projects ?? []).map(({ name, hue }) => [name, hue])));
 
-		const lounging = [...this.workers]
+		const onCouches = [...this.workers]
 			.filter(([, worker]) => worker.lounging && (!worker.leaving || worker.opacity > 0))
 			.map(([key]) => key);
+		// Each keeps its couch while it stays, and one deleted there keeps its place until its dust has gone, so the couches
+		// aren't moved from under its heap; newcomers after them
+		const held = new Set(this.dust.map(({ key }) => key).filter(Boolean));
+		const kept = (this.lounging ?? []).filter(key => onCouches.includes(key) || held.has(key));
+		const lounging = [...kept, ...onCouches.filter(key => !kept.includes(key))];
+
+		this.lounging = lounging;
 
 		// Each session watched by whoever isn't any one session's guest, once
 		const pilots = [...this.people.values()].filter(person => !this.guestOf(person));
@@ -993,8 +1000,9 @@ export default class Ship {
 				if (worker && seat) Object.assign(worker, { seat, homeSeat: seat, bay, room: this.bridge });
 			}),
 		);
+		// A place held for one gone from it (its dust still there) seats nobody
 		this.lounge?.sessions.forEach((key, index) =>
-			Object.assign(this.workers.get(key), {
+			Object.assign(this.workers.get(key) ?? {}, {
 				seat: loungeSeatAt(this.lounge, index),
 				bay: this.lounge,
 				room: this.lounge,
@@ -1486,7 +1494,12 @@ export default class Ship {
 			if (worker.opacity > 0 || !worker.leaving) continue;
 			// Its dust stays a while where it was
 			if (worker.vaporizedAt !== undefined && worker.dustAt)
-				this.dust.push({ ...worker.dustAt, hue: worker.session.hue, at: this.time });
+				this.dust.push({
+					...worker.dustAt,
+					hue: worker.session.hue,
+					at: this.time,
+					...(worker.lounging && { key }),
+				});
 			this.workers.delete(key);
 		}
 		this.dust = this.dust.filter(({ at }) => this.time - at < DUST_SECONDS);

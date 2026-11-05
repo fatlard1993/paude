@@ -1397,3 +1397,31 @@ test('several sessions picked together are each bracketed', () => {
 	expect(boxes.filter(around(at('here/a')))).toHaveLength(1);
 	expect(boxes.filter(around(at('here/b')))).toHaveLength(1);
 });
+
+test("one deleted on a couch keeps its place till its dust has gone, the others staying where they sit, and only then are the couches laid again", () => {
+	const stopped = id => session({ id, status: 'stopped', tool: null, coldAgo: 60_000, stoppedAgo: 60_000 });
+	const all = [stopped('a'), stopped('b'), stopped('c')];
+	const made = shipWith([answer('here', all, { projects: ['paude'] })]);
+
+	run(made, 4);
+
+	// Where on the couches, wherever the lounge itself stands
+	const seatOf = key => {
+		const place = made.placeOf(made.workers.get(key));
+
+		return { x: Math.round((place.x - made.lounge.x) * 100), y: Math.round((place.y - made.lounge.y) * 100) };
+	};
+	const [a, c] = [seatOf('here/a'), seatOf('here/c')];
+
+	made.vaporize('here/b');
+	run(made, 3);
+	made.update([answer('here', [stopped('a'), stopped('c')], { projects: ['paude'] })]);
+	expect(made.workers.has('here/b')).toBe(false);
+	expect(made.layout.rooms.find(({ kind }) => kind === 'lounge').count).toBe(3);
+	expect(seatOf('here/a')).toEqual(a);
+	expect(seatOf('here/c')).toEqual(c);
+
+	run(made, 7);
+	made.update([answer('here', [stopped('a'), stopped('c')], { projects: ['paude'] })]);
+	expect(made.layout.rooms.find(({ kind }) => kind === 'lounge').count).toBe(2);
+});
