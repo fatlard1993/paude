@@ -172,8 +172,17 @@ const window = (ctx, { x, y, w, h }, { form, hue, state, time, seed }) => {
 // machine runs and flashing amber at its tips while one of its sessions asks you something. `left` to `right` along the
 // hull, from `base`, `out` from it: -1 up off its back, 1 down under its belly.
 const EXTERIOR_TALL = 18;
+// The hull's own plating, as its skin is painted (hull.js): lighter along the back, in shadow under the belly; what
+// grows out of it is built of the same, so it looks part of it
+const HULL_PLATING = {
+	back: { outline: '#0b0f17', plate: '#2c3547', lit: '#4a5878', dark: '#1c2330', seam: '#141a26', rivet: '#3a4762' },
+	belly: { outline: '#0b0f17', plate: '#1c2330', lit: '#34405a', dark: '#141a26', seam: '#0f141e', rivet: '#2c3547' },
+};
+// How far a fairing steps out of the hull's skin before the machinery on it, in art pixels
+const FAIRING = 3;
 
-const drawStructure = (ctx, { x, w, h, form, accent, glow, tip, lit, time, seed, years }, row) => {
+const drawStructure = (ctx, { x, w, h, form, accent, glow, tip, lit, time, seed, years, plating }, row) => {
+	const { outline, plate, lit: edge, dark } = plating;
 	// `rows` rows from `from` out from the hull, as a rect
 	const at = (left, from, width, rows, fill) => row(left, from, width, rows, fill);
 
@@ -185,21 +194,21 @@ const drawStructure = (ctx, { x, w, h, form, accent, glow, tip, lit, time, seed,
 		const towers = Math.max(1, Math.round(w / pick('pitch', 6, 9)));
 		const each = Math.floor((w - 2) / towers);
 
-		at(x, 0, w, 2, PALETTE.k);
-		at(x + 1, 0, w - 2, 1, PALETTE.l);
+		at(x, 0, w, 2, outline);
+		at(x + 1, 0, w - 2, 1, edge);
 		for (let tower = 0; tower < towers; tower++) {
 			const left = x + 1 + tower * each;
 			const tw = each - (towers > 1 ? 1 : 0);
 			const th = Math.max(6, Math.round(h * (0.55 + 0.45 * noise(`${seed}|tower${tower}`))));
 			const core = left + Math.floor(tw / 2);
 
-			at(left, 2, tw, th - 4, PALETTE.k);
-			at(left + 1, 2, tw - 2, th - 4, PALETTE.m);
-			at(left + 1, 2, 1, th - 4, PALETTE.l);
+			at(left, 2, tw, th - 4, outline);
+			at(left + 1, 2, tw - 2, th - 4, plate);
+			at(left + 1, 2, 1, th - 4, edge);
 			at(core, 3, 1, th - 6, glow);
 			if (lit) at(core, 3 + (Math.floor(time * 10 + tower * 3) % Math.max(1, th - 6)), 1, 1, PALETTE.W);
-			at(left, th - 4, tw, 1, accent);
-			at(left + 1, th - 3, Math.max(1, tw - 2), 2, PALETTE.k);
+			at(left + 1, th - 4, Math.max(1, tw - 2), 1, accent);
+			at(left + 1, th - 3, Math.max(1, tw - 2), 2, outline);
 			at(left + 2, th - 3, Math.max(1, tw - 4), 1, tip);
 		}
 	} else if (form === 'coils') {
@@ -207,36 +216,36 @@ const drawStructure = (ctx, { x, w, h, form, accent, glow, tip, lit, time, seed,
 		const gap = pick('gap', 2, 3);
 		const proud = pick('proud', 2, 4);
 
-		at(x, 0, w, 2, PALETTE.k);
-		at(x + 1, 0, w - 2, 1, PALETTE.d);
+		at(x, 0, w, 2, outline);
+		at(x + 1, 0, w - 2, 1, dark);
 		for (let fin = x + 1, index = 0; fin < x + w - 1; fin += gap, index++) {
 			const reach = h - (index % proud === 0 ? 0 : 3);
 
-			at(fin, 2, 1, reach - 2, PALETTE.l);
+			at(fin, 2, 1, reach - 2, edge);
 			at(fin, reach - 1, 1, 1, tip);
 		}
-		at(x, pick('band', 3, Math.max(3, h - 4)), w, 1, accent);
+		for (let dot = x + 1; dot < x + w - 1; dot += 4) at(dot, pick('band', 3, Math.max(3, h - 4)), 1, 1, accent);
 	} else if (form === 'lattice') {
 		const rails = [x + 1, x + w - 2];
 		const pitch = pick('braces', 2, 4);
 
-		at(x, 0, w, 2, PALETTE.k);
-		for (const rail of rails) at(rail, 2, 1, h - 3, PALETTE.l);
+		at(x, 0, w, 2, outline);
+		for (const rail of rails) at(rail, 2, 1, h - 3, edge);
 		for (let brace = 2; brace < h - 2; brace += pitch)
 			for (let step = 0; step < w - 2; step++)
-				at(x + 1 + step, brace + Math.round((step / Math.max(1, w - 3)) * 2), 1, 1, PALETTE.d);
-		at(x + 1, 3, w - 2, 1, accent);
+				at(x + 1 + step, brace + Math.round((step / Math.max(1, w - 3)) * 2), 1, 1, dark);
+		for (const rail of [x + 1, x + w - 2]) at(rail, 3, 1, 2, accent);
 		for (const rail of rails) {
 			const on = lit ? Math.sin(time * 4 + rail + seed * 9) > 0 : true;
 
-			at(rail, h - 1, 1, 1, on ? tip : PALETTE.d);
+			at(rail, h - 1, 1, 1, on ? tip : dark);
 		}
 	} else {
 		const r = Math.max(2, Math.floor(Math.min(w, h) / 2) - 1);
 		const middle = { x: x + Math.floor(w / 2), along: h - r - 1 };
 
-		at(middle.x - 1, 0, 3, middle.along, PALETTE.k);
-		at(middle.x, 0, 1, middle.along, PALETTE.l);
+		at(middle.x - 1, 0, 3, middle.along, outline);
+		at(middle.x, 0, 1, middle.along, edge);
 		for (let a = 0; a < 24; a++) {
 			const angle = (a / 24) * Math.PI * 2;
 
@@ -245,7 +254,7 @@ const drawStructure = (ctx, { x, w, h, form, accent, glow, tip, lit, time, seed,
 				Math.round(middle.along + Math.sin(angle) * r),
 				1,
 				1,
-				a % 6 ? PALETTE.l : accent,
+				a % 6 ? edge : accent,
 			);
 		}
 		const turn = lit ? time * 6 : seed;
@@ -264,7 +273,7 @@ const drawStructure = (ctx, { x, w, h, form, accent, glow, tip, lit, time, seed,
 		}
 		at(middle.x, middle.along, 1, 1, tip);
 	}
-	if (years >= 2) for (let rivet = x + 1; rivet < x + w - 1; rivet += 3) at(rivet, 1, 1, 1, PALETTE.l);
+	if (years >= 2) for (let rivet = x + 1; rivet < x + w - 1; rivet += 3) at(rivet, 1, 1, 1, edge);
 	else if (years < 0.5) {
 		ctx.globalAlpha = 0.45;
 		at(x + 1, 2, 1, Math.max(1, h - 4), PALETTE.W);
@@ -280,9 +289,21 @@ export const drawExterior = (
 	const trim = hue === null || hue === undefined ? PALETTE.l : `hsl(${hue} 45% 52%)`;
 	const tip = (asking && (Math.floor(time * 3) % 2 ? PALETTE.y : PALETTE.Y)) || (state === 'idle' ? PALETTE.d : glow);
 	const years = history?.since ? (Date.now() - history.since) / (365 * DAY_MS) : 1;
-	const row = (x, from, width, rows, fill) =>
+	const plating = out < 0 ? HULL_PLATING.back : HULL_PLATING.belly;
+	const skin = (x, from, width, rows, fill) =>
 		width > 0 && rows > 0 && rect(ctx, x, out < 0 ? base - from - rows : base + from, width, rows, fill);
+	const row = (x, from, width, rows, fill) => skin(x, from + FAIRING, width, rows, fill);
 	let x = left;
+
+	// Its fairing: plating stepped out of the hull's skin under it all, seamed and riveted as the hull is
+	for (let step = 0; step < FAIRING; step++) {
+		const inset = step * 2;
+
+		skin(left - 4 + inset, step, right - left + 8 - inset * 2, 1, plating.outline);
+		skin(left - 3 + inset, step, right - left + 6 - inset * 2, 1, step === FAIRING - 1 ? plating.lit : plating.plate);
+	}
+	for (let seam = left + 8; seam < right - 2; seam += 20) skin(seam, 0, 1, FAIRING, plating.seam);
+	for (let rivet = left + 2; rivet < right - 2; rivet += 6) skin(rivet, 1, 1, 1, plating.rivet);
 
 	modulesOf(folders, right - left, fallback).forEach(({ w, scale, form, language }, index) => {
 		const width = w - (index ? 1 : 0);
@@ -295,6 +316,7 @@ export const drawExterior = (
 				h: Math.max(7, Math.round(EXTERIOR_TALL * scale)),
 				form,
 				accent: LANGUAGE_COLORS[language] ?? trim,
+				plating,
 				glow,
 				tip,
 				lit: state === 'working',
