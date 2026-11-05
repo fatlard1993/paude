@@ -97,6 +97,10 @@ const TOSS_SECONDS = 0.7;
 const BERTH_GAP = 0.55;
 // The most sleds a project's rack of processes shows
 const RACK_SLEDS = 4;
+// A top deck's machine's name, inside the hull under its ceiling: how far down it's drawn, and how far down the machine
+// starts to clear it, in art pixels
+const NAME_INSIDE = 9;
+const NAME_ROOM = 12;
 // How far aft of the transporter's pad the viewer waits while looking at it, in world units
 const BESIDE_PAD = 1.1;
 // A grey on its feet, half its width and its height, in art pixels, for what it passes behind
@@ -2615,19 +2619,22 @@ export default class Ship {
 			...decks.map(({ part, housing, sockets, upper }, deck) => ({
 				y: housing.floor - 0.3,
 				draw: () => {
+					// Its name over it: on a top deck, inside the hull under its ceiling, the machine lowered to clear it
+					const ceiling = this.art({ x: 0, y: part.y + 0.3 }).y;
+
 					if (deck === 0)
 						this.labels.push({
 							text: own ? `${bay.name} core` : bay.name,
-							at: this.art({ x: housing.middle, y: part.y + 0.3 }),
+							at: { x: this.art({ x: housing.middle, y: 0 }).x, y: upper ? ceiling + NAME_INSIDE : ceiling },
 							color: bay.hue === null ? PALETTE.w : `hsl(${bay.hue} 60% 74%)`,
 							align: 'center',
 							size: 1,
-							lift: 4,
+							lift: upper ? 0 : 4,
 							width: housing.w * UNIT.x + 8,
 						});
 					// The ship's own works its core, unlike any project's machine
 					bay.built[deck] = (own ? drawCore : drawHousing)(ctx, point => this.art(point), housing, {
-						top: this.art({ x: 0, y: part.y + 0.3 }).y,
+						top: upper ? ceiling + NAME_ROOM : ceiling,
 						form,
 						hue: bay.hue,
 						state,

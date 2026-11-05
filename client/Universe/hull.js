@@ -723,26 +723,12 @@ export const drawHull = (
 		}
 	}
 	drawCanopy(ctx, image, { time, pace, drift });
-	// Each project's section: plated in its color, its name on the belly, dim while idle, a lamp on its back amber while
-	// one of its sessions asks you something and teal while they work
+	// Each project's section: seams at its ends where it has no machine, and its machine's machinery outside
 	for (const section of sections) {
 		const [from, to] = [Math.round(section.from * UNIT.x), Math.round(section.to * UNIT.x)];
-		const lightness = section.idle ? 30 : 46;
-		const color = section.hue === null ? PALETTE.l : `hsl(${section.hue} ${section.idle ? 20 : 45}% ${lightness}%)`;
-
 		const back = section.side === 'top' || section.side === 'both';
 		const belly = section.side === 'bottom' || section.side === 'both';
 
-		// A machine is marked only as far as it reaches, so the hull runs on unbroken between machines
-		const reach = section.housings?.length
-			? [
-					Math.round(Math.min(...section.housings.map(({ x }) => x)) * UNIT.x),
-					Math.round(Math.max(...section.housings.map(({ x, w }) => x + w)) * UNIT.x),
-				]
-			: [from, to];
-		const [left, right] = reach;
-
-		if (back) rect(ctx, left, shape.top + 2, right - left, 3, color);
 		if (!section.housings?.length)
 			for (const x of [from, to - 1])
 				rect(ctx, x, back ? shape.top : shape.bottom, 1, back && belly ? shape.bottom - shape.top + 9 : 9, PALETTE.k);
