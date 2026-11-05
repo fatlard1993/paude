@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import Ship, { appliancesOf, bendAround, countdown, resting, risersFor, runsFor, tanksOf, triage } from './scene';
-import { clonerAt, holdSpotAt, layOut, rowPitch, shaftOf, shortest, splitSeats } from './plan';
+import { clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats } from './plan';
 import { SCREEN_RISE, UNIT, cableWeight } from './station';
 
 const session = changes => ({
@@ -305,7 +305,7 @@ test('a checkout with work in it has cargo in the hold; fewer commits to push th
 	expect(made.haulers).toHaveLength(0);
 });
 
-test('what is staged to ship is in the shipping bay below the belly with the pad: a pod for each checkout, all inside it', () => {
+test("what is staged to ship is in the shipping bay in the hull's bottom deck, at the bridge's end, with the pad: a pod for each checkout, all inside it, clear of every project's machine", () => {
 	// Six checkouts, each with a session working in it
 	const names = Array.from({ length: 6 }, (_, index) => `p${index}`);
 	const checkouts = names.map(name => ({ root: `/work/${name}`, changed: 2, unpushed: 1 }));
@@ -315,19 +315,19 @@ test('what is staged to ship is in the shipping bay below the belly with the pad
 	made.resize(800, 600);
 	made.update([{ ...answer('here', sessions, { projects: names }), checkouts }]);
 
-	const { gondola, hold, hangar, building } = made.layout;
+	const { hold, hangar, building, bays } = made.layout;
 	const inside = (point, box) =>
 		point.x >= box.x && point.x <= box.x + box.w && point.y >= box.y && point.y <= box.y + box.d;
+	const overlap = (a, b) => a.x < b.x + b.w - 1e-9 && b.x < a.x + a.w - 1e-9 && a.y < b.y + b.d - 1e-9 && b.y < a.y + a.d - 1e-9;
 
-	// The gondola hangs below the hull and holds both, the staged pods and the pad
-	expect(gondola.y).toBeGreaterThanOrEqual(building.bottom - 1e-9);
-	expect(gondola.x).toBeGreaterThanOrEqual(building.left);
-	expect(gondola.x + gondola.w).toBeLessThanOrEqual(building.right + 1e-9);
+	// In the hull, its floor the belly, the hangar ending where the bridge starts
 	for (const room of [hold, hangar]) {
-		expect(room.x).toBeGreaterThanOrEqual(gondola.x - 1e-9);
-		expect(room.x + room.w).toBeLessThanOrEqual(gondola.x + gondola.w + 1e-9);
-		expect(room.y).toBe(gondola.y);
+		expect(room.y + room.d).toBeCloseTo(building.bottom);
+		expect(room.x).toBeGreaterThanOrEqual(building.left);
+		for (const part of bays.flatMap(({ parts }) => parts)) expect(overlap(room, part)).toBe(false);
 	}
+	expect(hangar.x + hangar.w).toBeCloseTo(made.bridge.x);
+	expect(made.layout.gondola).toBeUndefined();
 	expect(made.cargo).toHaveLength(6);
 	made.cargo.forEach((_, index) => expect(inside(holdSpotAt(hold, index), hold)).toBe(true));
 });
@@ -1497,28 +1497,3 @@ test('an island gaining a seat grows to its new length over a moment rather than
 	expect(made.islandsShown.get('paude#0').w).toBeCloseTo(goal);
 });
 
-test("the way up from the gondola is a shaft where nothing stands on the deck above it, its rooms reached along its back", () => {
-	const gondola = { x: -9.5, w: 10, y: 7, d: 3.3 };
-
-	// Under the engine room and two projects' rooms, the one clear stretch is past them
-	const shaft = shaftOf(gondola, [
-		{ x: -14, w: 6.6 },
-		{ x: -7.4, w: 3.1 },
-		{ x: -4.3, w: 3 },
-	]);
-
-	expect(shaft).toBeGreaterThan(-1.3 + 0.3);
-	expect(shaft).toBeLessThan(0.5);
-	// Nothing clear: its forward end
-	expect(shaftOf(gondola, [{ x: -20, w: 40 }])).toBeCloseTo(0.5 - 0.3);
-
-	// On a ship, a droid's way into the shipping bay climbs through no project's room nor the engine room
-	const made = shipWith([answer('here', [session(), session({ id: 'b', project: 'site' })], { projects: ['paude', 'site'] })]);
-	const { hangar, engineering } = made.layout;
-	const path = made.route(made.berthOf(0), engineering, { x: hangar.x + 1, y: hangar.y + 2 }, hangar);
-	const climbs = path.slice(1).filter((point, index) => point.x === path[index].x && point.y !== path[index].y);
-	const decks = made.layout.rooms.filter(({ kind, parts }) => !kind && parts);
-
-	for (const point of climbs.filter(({ y }) => y < hangar.y && y > engineering.door.y))
-		for (const deck of decks) expect(point.x > deck.x && point.x < deck.x + deck.w && point.y > deck.y).toBe(false);
-});

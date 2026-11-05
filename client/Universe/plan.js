@@ -31,8 +31,6 @@ const COMPACT = { w: SYSTEM.w / 2, d: FACE + 1.2 };
 // How tall a system's unit stands from its foot, in art pixels
 export const systemTallOf = room => (room.compact ? 16 : 33);
 const HANGAR_W = 2.6;
-// The shipping bay, a gondola hung under the belly, what's staged to ship and the pad it leaves from
-const GONDOLA_D = FACE + 2.3;
 const POD_PITCH = 1.7;
 // The staged part of the shipping bay, long enough for each checkout's pod
 const holdWidth = checkouts => Math.max(2.4, checkouts * POD_PITCH + 0.6);
@@ -67,9 +65,6 @@ const BRIDGE_ROW = 2.8;
 // How many times the rows are spread out further, at most, as spreading them puts more islands in each
 const PITCH_TRIES = 8;
 const SEAT_W = 1.5;
-// The shaft up from the gondola, across, and how far out from its back wall its walkway runs, in world units
-const SHAFT_W = 0.6;
-const GONDOLA_WALK = 0.25;
 // The most an island's seats run across before it's split, in world units: six plain seats
 const ISLAND_SEATS_W = 6 * SEAT_W;
 // A subagent's small terminal beside its grey's seat, as many as are shown
@@ -98,26 +93,6 @@ export const splitSeats = (keys, widthOf) => {
 	}
 
 	return [...runs, run];
-};
-
-// Where a shaft goes up from the gondola to the spine above it, across: the middle of the widest stretch over it that
-// nothing on the deck between stands in (`standing`, rooms by their x and w), so nobody climbs through a project's
-// machine or the engine room; with no such stretch, at its forward end
-export const shaftOf = (gondola, standing) => {
-	const [from, to] = [gondola.x + SHAFT_W / 2, gondola.x + gondola.w - SHAFT_W / 2];
-	const taken = standing
-		.map(({ x, w }) => [x - SHAFT_W / 2, x + w + SHAFT_W / 2])
-		.filter(([a, b]) => b > from && a < to)
-		.sort((a, b) => a[0] - b[0]);
-	let best = null;
-	let at = from;
-
-	for (const [a, b] of [...taken, [to, to]]) {
-		if (a > at && (!best || a - at > best[1] - best[0])) best = [at, Math.min(a, to)];
-		at = Math.max(at, b);
-	}
-
-	return best && best[1] > best[0] ? (best[0] + best[1]) / 2 : gondola.x + gondola.w - SHAFT_W / 2;
 };
 
 // The islands of the bridge `from` its stern edge down `rows`, for the bays at work: [{ name, hue, keys, x, y, w,
@@ -265,7 +240,7 @@ export const clonerAt = room => ({ x: room.x + room.w / 2, y: room.y + FACE + 1.
 export const holdSpotAt = (hold, index) => ({ x: hold.x + 0.9 + index * POD_PITCH, y: hold.y + hold.d - 0.45 });
 
 // The hangar's landing pad, where the hauler waits
-export const padAt = hangar => ({ x: hangar.x + (hangar.w - 0.9) / 2, y: hangar.y + FACE + 1.8 });
+export const padAt = hangar => ({ x: hangar.x + (hangar.w - 0.9) / 2, y: hangar.y + (hangar.face ?? FACE) + 1.8 });
 
 // The nav table on the bridge, forward of the terminals
 export const navAt = bridge => ({ x: bridge.x + bridge.w - BRIDGE_NAV_W / 2 - 0.2, y: bridge.y + bridge.d * 0.6 });
@@ -332,10 +307,10 @@ export const shortest = names => {
 
 // The ship from stern to bow: engineering, a reactor for each engine and the systems it drives; the core, the rooms the
 // work shares in two rows either side of the spine (the lounge and the plans station above, the hold, the hangar and
-// the materializer in the gondola below); then each project's machine on one deck or the other. Engineering is as deep as both rows and
+// the materializer on the bridge); then each project's machine on one deck or the other. Engineering is as deep as both rows and
 // the spine, deeper still when it needs the room.
 export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents = {}, fleet = 0 } = {}) => {
-	// A ship of a fleet has a transporter besides, in the shipping gondola beside the hangar
+	// A ship of a fleet has a transporter besides, on the bridge beside the materializer
 	const transporter = fleet ? TRANSPORTER_W : 0;
 	const system = ({ key, name }) => ({ kind: 'system', key, name, w: SYSTEM.w, d: SYSTEM.d });
 	// Each project's machine stands on one deck, as wide as the project is big, into whichever deck reaches least far
@@ -389,15 +364,19 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 	// as long as it's deep, so a hundred projects make a deeper ship rather than an endless one
 	const plan = levels => {
 		const reach = Array(levels * 2).fill(0);
+		// Shipping takes the bridge's end of the bottom deck: counted there while the machines are shared out, so the
+		// decks come out even with it
+		const shipping = reach.map((_, deck) => (deck === levels * 2 - 1 ? holdWidth(checkouts) + HANGAR_W : 0));
+		const reaching = deck => reach[deck] + shipping[deck];
 		const placed = order.map(item => {
-			const deck = reach.indexOf(Math.min(...reach));
+			const deck = reach.map((_, index) => index).sort((a, b) => reaching(a) - reaching(b))[0];
 			const at = reach[deck];
 
 			reach[deck] += item.w;
 
 			return { ...item, deck, at };
 		});
-		const width = Math.max(Math.max(0, ...reach), holdWidth(checkouts) + HANGAR_W);
+		const width = Math.max(0, ...reach.map((_, deck) => reaching(deck)));
 		const total = levels * (base + extraDepthOf(levels));
 		// The rows as far apart as their conduits need, worked out again while spreading them changes how many fit
 		const rowsAt = pitch => Math.max(1, Math.floor((total - BRIDGE_ROW_TOP - 0.4) / pitch + 1e-9) + 1);
@@ -488,34 +467,20 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 			part.props = [];
 		}
 
-	// Shipping, a gondola hung under the belly near the bow: each checkout a pod docked along it, the pad at its forward
-	// end, the doors in its floor under both
+	// Shipping, in the hull: at the bridge's end of the bottom deck, where its projects' machines leave off, each
+	// checkout a pod docked along it and the pad beside them; what's pushed drops out through the belly under it
 	const staged = holdWidth(checkouts);
-	const gondola = {
-		x: middle + width - staged - HANGAR_W - 0.4,
-		y: top + total,
-		w: staged + HANGAR_W,
-		d: GONDOLA_D,
-	};
+	const bottomSpine = spines.at(-1);
+	const shipping = { x: middle + width - staged - HANGAR_W, y: bottomSpine.hallTop + hall, d: depth.bottom };
 	const docked = [
-		{ kind: 'hold', name: 'changes', x: gondola.x, w: staged, joined: { right: true }, unsigned: true },
-		{
-			kind: 'hangar',
-			name: 'shipping',
-			x: gondola.x + staged,
-			w: HANGAR_W,
-			joined: { left: true },
-		},
+		{ kind: 'hold', name: 'changes', x: shipping.x, w: staged, joined: { right: true }, unsigned: true },
+		{ kind: 'hangar', name: 'shipping', x: shipping.x + staged, w: HANGAR_W, joined: { left: true } },
 	].map(room => ({
 		...room,
-		y: gondola.y,
-		d: gondola.d,
-		face: FACE,
-		door: { x: room.x + 0.75, y: gondola.y, side: 'top', lane: spines.at(-1).lane },
-		// Its one way up, shared by all of the gondola: along its back, clear of what stands toward its front (the hold's
-		// stacks, the pad, the cloner), to the shaft, and up that
-		shaft: shaftOf(gondola, [{ x: left, w: middle - left }, ...decks.filter(deck => deck.y + deck.d > spines.at(-1).lane)]),
-		walk: gondola.y + FACE + GONDOLA_WALK,
+		y: shipping.y,
+		d: shipping.d,
+		face: 0,
+		door: { x: room.x + room.w / 2, y: shipping.y, side: 'top', lane: bottomSpine.lane },
 		hull: { top: false, bottom: true },
 		props: [],
 	}));
@@ -673,13 +638,13 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 			...(index === 0 && { airlock: { x: middle + 0.9, y: spine.hallTop + HALL_FACE, lane: spine.lane } }),
 		})),
 		building: { left, right, top, bottom: top + total },
-		gondola,
+
 		tube: tubeOf(bridge, kind('hold'), top + total),
 		bounds: {
 			left: left - RIM - NACELLE - 1.4,
 			right: right + RIM + NOSE,
 			top: top - RIM - 3.2,
-			bottom: top + total + GONDOLA_D + RIM + 3.4,
+			bottom: top + total + RIM + 3.4,
 		},
 		radius: Math.max(right - left, total),
 	};
@@ -691,7 +656,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 const tubeOf = (bridge, hold, bottom) => {
 	if (!bridge || !hold) return null;
 
-	return { trunk: bridge.x + 0.3, rail: bottom - 0.12, drop: hold.x + hold.w - 0.45, hopper: hold.y + FACE + 0.35 };
+	return { trunk: bridge.x + 0.3, rail: bottom - 0.12, drop: hold.x + hold.w - 0.45, hopper: hold.y + (hold.face ?? FACE) + 0.35 };
 };
 
 const STOCK_PITCH = { x: 0.6, y: 0.5 };

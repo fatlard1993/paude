@@ -68,6 +68,10 @@ const ABOARD_SECONDS = 6;
 const TOSS_SECONDS = 0.7;
 // How far apart the crew's bots wait in line below engineering's door, and the first of them below it
 const BERTH_GAP = 0.55;
+// How long a commit's press takes over its pod, and how much of a push the pod spends lifting off its cradle before it
+// drops
+const PACK_SECONDS = 1.4;
+const HAUL_LIFT = 0.2;
 const DRINK_SECONDS = 6;
 // Thinking: how long a grey's skull takes to brighten and dim again, in seconds, and how far up from its chin its eyes
 // are, in art pixels, the same on every size of head
@@ -436,15 +440,6 @@ const exitOf = (room, from, lane) => {
 		];
 	}
 
-	// The gondola: along its back to its shaft, and up that, clear of what stands on the deck above
-	if (room.shaft !== undefined)
-		return [
-			{ x: from.x, y: room.walk },
-			{ x: room.shaft, y: room.walk },
-			{ x: room.shaft, y: room.y },
-			{ x: room.shaft, y: lane },
-		];
-
 	return [{ x: door.x, y: from.y }, door, { x: door.x, y: lane }];
 };
 
@@ -755,6 +750,8 @@ export default class Ship {
 	// to its pad to go (`departing`), and just beamed in (`arriving`)
 	visitor = null;
 	away = null;
+	// When each checkout last had its changes pressed into a commit's crate, by its key
+	packings = new Map();
 	departing = null;
 	arriving = null;
 
@@ -1179,6 +1176,8 @@ export default class Ship {
 				if (!project) continue;
 
 				this.cargo.push({ ...checkout, key, engineName: answer.name, project });
+				// Committed: its changes pressed into a crate of their own
+				if (before !== undefined && checkout.unpushed > before) this.packings.set(key, this.time);
 				// Pushed: its pod drops out through the doors under the dock
 				if (before > checkout.unpushed)
 					this.haulers.push({ crates: before - checkout.unpushed, time: 0, pod: this.cargo.length - 1, project });
@@ -1895,16 +1894,10 @@ export default class Ship {
 		const cover = this.coverOf();
 
 		// Sealed in its plating until what's aboard has all come in, so nothing is seen moving into place; opened then
-		const { gondola } = this.layout;
-		const [under, past] = gondola
-			? [this.art({ x: gondola.x, y: gondola.y }), this.art({ x: gondola.x + gondola.w, y: gondola.y + gondola.d })]
-			: [];
-
 		drawHullCover(ctx, this.layout, cover, {
 			time: this.time,
 			name: this.own?.name ?? '',
 			hue: this.own?.hue ?? 200,
-			gondola: gondola && { left: under.x, top: under.y - HULL_FACE * UNIT.y, right: past.x, bottom: past.y },
 		});
 		if (cover >= 1) return ctx.restore();
 		this.drawSelection(ctx);
@@ -4393,6 +4386,9 @@ export default class Ship {
 
 		if (!hold) return [];
 
+		// A pod on its way out has left its cradle; an empty one is back once it's gone
+		const launching = new Set(this.haulers.map(({ pod }) => pod));
+
 		return this.cargo.map((checkout, index) => {
 			const spot = holdSpotAt(hold, index);
 			const bay = this.bays.find(({ name }) => name === checkout.project);
@@ -4402,7 +4398,9 @@ export default class Ship {
 				draw: () => {
 					const at = this.art(spot);
 
+					if (launching.has(index)) return;
 					this.drawPod(ctx, at, { hue: bay?.hue, crates: checkout.unpushed, sheets: checkout.changed });
+					this.drawPacking(ctx, at, checkout);
 					for (let crate = 0; crate < Math.min(MOST.crates, checkout.unpushed); crate++) {
 						const commit = checkout.commits?.[crate];
 
@@ -4456,16 +4454,60 @@ export default class Ship {
 
 	// A push leaving: its checkout's pod lets go of the dock and drops out through the doors in the belly under it with
 	// its crates aboard
+	// A commit made: over its pod, a press coming down on the sheets of changes, which flash as they're pressed, and the
+	// new crate popping into its place with a spark; up again after
+	drawPacking(ctx, at, checkout) {
+		const since = this.time - (this.packings.get(checkout.key) ?? -Infinity);
+
+		if (since < 0 || since > PACK_SECONDS) return;
+
+		const t = since / PACK_SECONDS;
+		const down = Math.round(Math.sin(Math.min(1, t / 0.6) * Math.PI) * 9);
+
+		// The press: a rod from above and its plate, over the sheets
+		rect(ctx, at.x - 5, at.y - 30, 3, 12 + down, PALETTE.k);
+		rect(ctx, at.x - 4, at.y - 30, 1, 12 + down, PALETTE.l);
+		rect(ctx, at.x - 9, at.y - 19 + down, 11, 3, PALETTE.k);
+		rect(ctx, at.x - 8, at.y - 18 + down, 9, 1, PALETTE.y);
+		if (t < 0.6 && down > 6) rect(ctx, at.x - 7, at.y - 6, 7, 3, PALETTE.W);
+
+		// The crate it made, popped into its slot
+		if (t >= 0.55) {
+			const crate = Math.max(0, Math.min(MOST.crates, checkout.unpushed) - 1);
+			const slot = { x: at.x + 5 + (crate % 2) * 7, y: at.y - 3 - Math.floor(crate / 2) * 5 };
+
+			this.drawSparkle(ctx, slot.x + 2, slot.y - 2, (t - 0.55) / 0.45);
+		}
+	}
+
+	// A push: the pod lifted off its cradle, its clamps blinking, then dropped out through the hatch in the belly, its
+	// thruster firing as it goes and its trail fading behind it
 	drawHauler(ctx, { crates, time, pod, project }) {
 		const hold = this.layout.hold;
 
 		if (!hold) return;
 
 		const from = holdSpotAt(hold, pod ?? 0);
-		const floor = this.layout.gondola ? this.layout.gondola.y + this.layout.gondola.d : this.layout.building.bottom;
-		const at = this.art({ x: from.x, y: from.y + (floor + 3 - from.y) * time * time });
+		const floor = this.layout.building.bottom;
+		const lift = HAUL_LIFT;
+		const falling = Math.max(0, (time - lift) / (1 - lift));
+		const rise = time < lift ? Math.sin((time / lift) * Math.PI) * 0.12 : 0;
+		const at = this.art({ x: from.x, y: from.y - rise + (floor + 3 - from.y) * falling * falling });
 		const hue = this.bays.find(({ name }) => name === project)?.hue;
 
+		if (time < lift && Math.floor(this.time * 10) % 2)
+			for (const side of [-14, 19]) rect(ctx, at.x + side - 1, at.y - 12, 2, 2, PALETTE.y);
+		if (falling > 0) {
+			// Its trail, fading up behind it
+			ctx.globalAlpha = 0.35 * (1 - falling);
+			rect(ctx, at.x - 1, at.y - 20 - 18, 4, 18, '#9fd8ff');
+			ctx.globalAlpha = 1;
+			// Its thruster, atop it, pushing it down and away
+			const flame = 3 + (Math.floor(this.time * 20) % 3);
+
+			rect(ctx, at.x - 1, at.y - 20 - flame, 4, flame, PALETTE.Y);
+			rect(ctx, at.x, at.y - 20 - flame + 1, 2, flame - 1, PALETTE.W);
+		}
 		this.drawPod(ctx, at, { hue, crates, sheets: 0 });
 	}
 
@@ -4883,7 +4925,10 @@ export default class Ship {
 		const signs = this.labels.filter(({ sign }) => sign);
 		const signSize = Math.min(...signs.map(label => sizing(label).size));
 
+		// One with a least zoom (`least`) only once that close: too small to read further out, it would run into those by it
 		for (const label of this.labels) {
+			if (label.least && this.camera.zoom < label.least) continue;
+
 			const { at, color, align, lift = 0, gap = 0, size: wanted = TEXT, width = Infinity } = label;
 			const { text, size } = sizing(label.sign && signSize < wanted ? { ...label, size: signSize } : label);
 			const point = this.toScreen({ x: at.x, y: at.y - lift });

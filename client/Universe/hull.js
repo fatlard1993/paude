@@ -30,9 +30,10 @@ import {
 
 // The ship's log on a room's back wall: how far it has come
 const stationLog = (ctx, art, label, room, journey) => ({
-	y: room.y + FACE,
+	y: room.y + (room.face ?? FACE),
 	draw: () => {
-		const at = art({ x: room.x + room.w / 2, y: room.y + FACE + 0.7 });
+		// Clear of the room's name over its wall's top; where there's no wall, a little lower still, above its pad
+		const at = art({ x: room.x + room.w / 2, y: room.y + (room.face ?? FACE) + (room.face === 0 ? 1.15 : 0.7) });
 		const log = { x: at.x - 13, y: at.y - 10 };
 
 		box(ctx, log.x, log.y, 26, 10, PALETTE.k);
@@ -40,7 +41,7 @@ const stationLog = (ctx, art, label, room, journey) => ({
 		label(
 			String(journey?.distance ?? 0),
 			{ x: log.x + 13, y: log.y + 5 },
-			{ color: PALETTE.y, align: 'center', gap: 6, width: 22 },
+			{ color: PALETTE.y, align: 'center', gap: 6, width: 22, least: 3 },
 		);
 		room.log = { x: log.x + 13, y: log.y + 5 };
 	},
@@ -54,16 +55,6 @@ export const clipToShip = (ctx, layout) => {
 	ctx.save();
 	ctx.beginPath();
 	ctx.rect(x, y, Math.round(right * UNIT.x) - x, Math.round(bottom * UNIT.y) - y);
-	if (layout.gondola) {
-		const { gondola } = layout;
-
-		ctx.rect(
-			Math.round(gondola.x * UNIT.x),
-			Math.round(gondola.y * UNIT.y) - 1,
-			Math.round(gondola.w * UNIT.x),
-			Math.round(gondola.d * UNIT.y) + 1,
-		);
-	}
 	ctx.clip();
 };
 
@@ -197,10 +188,10 @@ const paintHull = building => {
 };
 
 // The ship sealed in its outer plating while what's aboard comes in, `cover` of it (1 sealed, fading to 0 as it's
-// opened), the gondola under it (`gondola`, in art pixels) plated too, and a light sweeping along it the while. Its
-// outside as a ship's: a stripe in its color (`hue`) with its `name` painted over it, a row of portholes lit here and
-// there, vents along its belly, running lights blinking at its bow and stern, and hazard bands where the gondola hangs.
-export const drawHullCover = (ctx, layout, cover, { time, gondola, name = '', hue = 200 }) => {
+// opened), a light sweeping along it the while. Its outside as a ship's: a stripe in its color (`hue`) with its `name`
+// painted over it, a row of portholes lit here and there, vents along its belly, and running lights blinking at its bow
+// and stern.
+export const drawHullCover = (ctx, layout, cover, { time, name = '', hue = 200 }) => {
 	if (!layout.building || cover <= 0) return;
 
 	const image = hullImage(layout.building);
@@ -242,18 +233,6 @@ export const drawHullCover = (ctx, layout, cover, { time, gondola, name = '', hu
 	rect(ctx, shape.left + 3, shape.top + 3, 2, 2, on ? '#ff4a3a' : '#5a1a16');
 	rect(ctx, shape.left + 3, shape.bottom - 5, 2, 2, on ? '#ff4a3a' : '#5a1a16');
 	rect(ctx, shape.tip - 4, shape.middle - 1, 2, 2, on ? '#5cff8a' : '#16502a');
-	if (gondola) {
-		const { left, top, right, bottom } = gondola;
-
-		rect(ctx, left, top, right - left, bottom - top, '#232b3a');
-		for (let x = left + 20; x < right; x += 20) rect(ctx, x, top, 1, bottom - top, '#141a26');
-		for (let y = top + 14; y < bottom; y += 14) rect(ctx, left, y, right - left, 1, '#141a26');
-		rect(ctx, left, top, right - left, 1, 'rgba(120, 140, 170, 0.25)');
-		rect(ctx, left, bottom - 1, right - left, 1, PALETTE.k);
-		// Hazard bands down its ends, where it hangs from the belly
-		for (const edge of [left + 1, right - 4])
-			for (let y = top; y < bottom - 1; y += 4) rect(ctx, edge, y, 3, 2, (y - top) % 8 ? PALETTE.k : '#f2c14e');
-	}
 
 	const sweep = shape.left + ((time * 0.6) % 1) * (shape.right - shape.left);
 	const glow = ctx.createLinearGradient(sweep - 24, 0, sweep + 24, 0);
@@ -569,6 +548,17 @@ export const drawHull = (
 	drawFins(ctx, image, layout.engineering, { time });
 	for (const engine of engines) drawEngine(ctx, shape, { ...engine, time });
 	ctx.drawImage(image.canvas, image.x, image.y);
+	// The hatch in the belly under the hold, hazard-banded, open while a pod drops out through it
+	if (layout.hold) {
+		const [left, right] = [Math.round(layout.hold.x * UNIT.x) + 4, Math.round((layout.hold.x + layout.hold.w) * UNIT.x) - 4];
+
+		for (let x = left; x < right; x++) {
+			const gap = hangarOpen && Math.abs(x - (left + right) / 2) < (right - left) * 0.42;
+			const stripe = Math.floor(x / 3) % 2 ? PALETTE.y : PALETTE.k;
+
+			rect(ctx, x, shape.bottom - 1, 1, 3, gap ? '#05070a' : stripe);
+		}
+	}
 	drawCanopy(ctx, image, { time, pace, drift });
 	// Each project's section: plated in its color, its name on the belly, dim while idle, a lamp on its back amber while
 	// one of its sessions asks you something and teal while they work
@@ -720,35 +710,6 @@ export const drawHull = (
 		});
 	}
 
-	if (layout.gondola) {
-		// The shipping gondola hung under the belly
-		const [from, to] = [
-			Math.round(layout.gondola.x * UNIT.x),
-			Math.round((layout.gondola.x + layout.gondola.w) * UNIT.x),
-		];
-		const [top, bottom] = [
-			Math.round(layout.gondola.y * UNIT.y),
-			Math.round((layout.gondola.y + layout.gondola.d) * UNIT.y),
-		];
-
-		rect(ctx, from + 6, shape.bottom, to - from - 12, top - shape.bottom + 2, PALETTE.k);
-		rect(ctx, from + 7, shape.bottom, to - from - 14, top - shape.bottom + 2, PALETTE.m);
-		rect(ctx, from - 4, top - 3, to - from + 8, bottom - top + 8, PALETTE.k);
-		rect(ctx, from - 3, top - 2, to - from + 6, bottom - top + 6, PALETTE.d);
-		rect(ctx, from - 3, top - 2, to - from + 6, 1, PALETTE.l);
-		for (const x of [from - 7, to + 4]) {
-			rect(ctx, x, top + 2, 3, bottom - top - 2, PALETTE.k);
-			rect(ctx, x + 1, top + 3, 1, bottom - top - 4, PALETTE.m);
-		}
-		const [left, right] = [from + 6, to - 6];
-
-		for (let x = left; x < right; x++) {
-			const gap = hangarOpen && Math.abs(x - (left + right) / 2) < (right - left) * 0.4;
-			const stripe = Math.floor(x / 3) % 2 ? PALETTE.y : PALETTE.k;
-
-			rect(ctx, x, bottom + 1, 1, 3, gap ? '#05070a' : stripe);
-		}
-	}
 
 	for (let x = shape.left + 14; x < shape.right; x += 26) {
 		const on = (Math.floor(time * 2) + x / 26) % 4 < 1;
@@ -1434,9 +1395,20 @@ export const drawTransporter = (ctx, art, label, room, { time, ships = [], beami
 };
 
 // The materializer's room, the materializer in its middle
+// Standing on the bridge, short names that fit over the narrow stations side by side; the materializer's cloner names
+// itself
+const STATION_NAMES = { materializer: null, transporter: 'beam' };
+
 // Standing on the bridge (`room.within`), no floor or walls of its own: its hardware on the bridge's floor, named
 const stationName = (art, label, room, color) => {
-	label(room.name, art({ x: room.x + room.w / 2, y: room.y + 0.3 }), { color, align: 'center', size: 1 });
+	const name = Object.hasOwn(STATION_NAMES, room.kind) ? STATION_NAMES[room.kind] : room.name;
+
+	if (!name) return [];
+	label(name, art({ x: room.x + room.w / 2, y: room.y + 0.3 }), {
+		color,
+		align: 'center',
+		size: 1,
+	});
 
 	return [];
 };
