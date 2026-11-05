@@ -514,6 +514,9 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		d: total,
 		face: FACE,
 		door: { x: middle, y: lane, side: 'right', lane },
+		// The way in from its door: up the trunk between its units and its inner wall, the units filling the rest of its
+		// height
+		aisle: middle - TRUNK_W / 2,
 		hull: { top: true, bottom: true, left: true },
 		joined: { right: true },
 		props: [],

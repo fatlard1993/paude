@@ -1361,3 +1361,24 @@ test("a project seating more than an island holds is split into as few islands a
 	expect(big.flatMap(({ keys: seated }) => seated)).toEqual(keys(14));
 	expect(Object.keys(bridge.seats)).toHaveLength(15);
 });
+
+test("the crew's droids wait in line in engineering's trunk and leave up it, clear of its units", () => {
+	const made = shipWith([answer('here', [session()], { projects: ['paude'] })]);
+
+	run(made, 2);
+
+	const engineering = made.layout.engineering;
+	const units = Object.values(made.layout.systems ?? {});
+	const clear = ({ x }) => units.every(unit => x > unit.x + unit.w);
+
+	for (const index of [0, 1, 2, 3]) {
+		const berth = made.berthOf(index);
+
+		expect(clear(berth)).toBe(true);
+		expect(berth.y).toBeLessThan(engineering.y + engineering.d);
+		expect(made.route(berth, engineering, { x: made.bridge.x + 1, y: made.bridge.y + 1 }, made.bridge)[0].x).toBe(
+			engineering.aisle,
+		);
+	}
+	expect(new Set([0, 1, 2, 3].map(index => made.berthOf(index).y)).size).toBe(4);
+});

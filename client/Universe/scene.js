@@ -67,6 +67,8 @@ const WALK_SPEED = 1.2;
 const ABOARD_SECONDS = 6;
 // How long a can's toss onto its pile takes, and a drink of a grey's coffee or energy drink
 const TOSS_SECONDS = 0.7;
+// How far apart the crew's bots wait in line below engineering's door, and the first of them below it
+const BERTH_GAP = 0.55;
 const DRINK_SECONDS = 6;
 // Thinking: how long a grey's skull takes to brighten and dim again, in seconds, and how far up from its chin its eyes
 // are, in art pixels, the same on every size of head
@@ -398,7 +400,7 @@ const exitOf = (room, from, lane) => {
 	}
 
 	if (door.side === 'left' || door.side === 'right') {
-		const inside = door.x + (door.side === 'left' ? 0.6 : -0.6);
+		const inside = room.aisle ?? door.x + (door.side === 'left' ? 0.6 : -0.6);
 		const outside = door.x + (door.side === 'left' ? -0.4 : 0.4);
 
 		// Off the bridge along the front of its row's consoles, then along its aft wall, never behind an island nor over
@@ -4010,11 +4012,14 @@ export default class Ship {
 		return place || null;
 	}
 
-	// Where a bot of the service crew waits in engineering
+	// Where a bot of the service crew waits in engineering: lined up in the trunk below its door, the one way in clear of
+	// its units
 	berthOf(index) {
 		const engineering = this.layout.engineering;
+		const x = engineering.aisle ?? engineering.x + engineering.w - 0.2;
+		const floor = engineering.y + engineering.d - BERTH_GAP;
 
-		return { x: engineering.x + engineering.w - 0.7 - index * 0.4, y: engineering.door.y + 2.7 };
+		return { x, y: Math.min(floor, engineering.door.y + BERTH_GAP * (index + 1)) };
 	}
 
 	// A bot sets off from engineering for each job that starts, works where the job is done while it runs, and walks
