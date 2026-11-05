@@ -23,7 +23,7 @@ const GONDOLA_D = FACE + 2.3;
 const POD_PITCH = 1.7;
 // The staged part of the shipping bay, long enough for each checkout's pod
 const holdWidth = checkouts => Math.max(2.4, checkouts * POD_PITCH + 0.6);
-const MATERIALIZER_W = 1.2;
+const MATERIALIZER_W = 1.8;
 // The transporter, on a ship of a fleet: its pad, and the console that hears from the other ships
 const TRANSPORTER_W = 2.2;
 // The bridge at the bow: every session's grey at a terminal in rows up its depth, wired to its project's machine aft,
@@ -59,14 +59,12 @@ const islandsOf = (bays, { from, top, rows, lounge, agents = {} }) => {
 	const covers = lounge ? Math.min(rows, Math.ceil((lounge.d - 0.6) / BRIDGE_ROW - 1e-9)) : 0;
 
 	for (let row = rows - covers; row < rows; row++) reach[row] = lounge.w + ISLAND_GAP;
-	// The materializer's room at the top row's end, reserved before the islands are packed
-	reach[0] += MATERIALIZER_W + ISLAND_GAP;
 	// With fewer islands than rows left open, they spread evenly down the bridge
 	const open = Array.from({ length: rows }, (_, row) => row).filter(row => row < rows - covers);
 	const seatWidths = run => run.keys.map(key => SEAT_W + Math.min(MOST_SMALL, agents[key] ?? 0) * SMALL_W);
 	const widthOf = run => ISLAND_END + seatWidths(run).reduce((sum, seat) => sum + seat, 0) + 0.3;
 	// More than the open rows: down the rows in order, as short a bridge as holds them all, each row starting from what's
-	// already in it (the lounge, the materializer)
+	// already in it (the lounge)
 	const widths = runs.map(widthOf);
 	const fits = length => {
 		let row = 0;
@@ -127,14 +125,10 @@ const islandsOf = (bays, { from, top, rows, lounge, agents = {} }) => {
 		};
 	});
 
-	// The materializer at the top row's far end, the bridge's top right, so new sessions always start from the same place
-	const farthest = Math.max(0, ...reach) - ISLAND_GAP;
-
 	return {
 		islands,
 		reach: Math.max(0, ...reach.map(far => far - ISLAND_GAP)),
 		lounge: lounge && { x: from },
-		materializer: { x: from + farthest - MATERIALIZER_W, y: top + BRIDGE_ROW_TOP },
 	};
 };
 
@@ -219,8 +213,8 @@ export const shortest = names => {
 };
 
 // The ship from stern to bow: engineering, a reactor for each engine and the systems it drives; the core, the rooms the
-// work shares in two rows either side of the spine (the lounge, the materializer and the plans station above, the hold
-// and the hangar below); then each project's machine on one deck or the other. Engineering is as deep as both rows and
+// work shares in two rows either side of the spine (the lounge and the plans station above, the hold, the hangar and
+// the materializer in the gondola below); then each project's machine on one deck or the other. Engineering is as deep as both rows and
 // the spine, deeper still when it needs the room.
 export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents = {}, fleet = 0 } = {}) => {
 	// A ship of a fleet has a transporter besides, in the shipping gondola beside the hangar
@@ -367,9 +361,9 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 	// end, the doors in its floor under both
 	const staged = holdWidth(checkouts);
 	const gondola = {
-		x: middle + width - staged - HANGAR_W - transporter - 0.4,
+		x: middle + width - staged - HANGAR_W - MATERIALIZER_W - transporter - 0.4,
 		y: top + total,
-		w: staged + HANGAR_W + transporter,
+		w: staged + HANGAR_W + MATERIALIZER_W + transporter,
 		d: GONDOLA_D,
 	};
 	const docked = [
@@ -379,6 +373,14 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 			name: 'shipping',
 			x: gondola.x + staged,
 			w: HANGAR_W,
+			joined: { left: true, right: true },
+		},
+		// Where new sessions are made, a room of its own beside where the work ships out
+		{
+			kind: 'materializer',
+			name: 'new sessions',
+			x: gondola.x + staged + HANGAR_W,
+			w: MATERIALIZER_W,
 			joined: { left: true, ...(transporter && { right: true }) },
 		},
 		// Where you beam over to another ship, beside where the work ships out
@@ -387,7 +389,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 					{
 						kind: 'transporter',
 						name: 'transporter',
-						x: gondola.x + staged + HANGAR_W,
+						x: gondola.x + staged + HANGAR_W + MATERIALIZER_W,
 						w: transporter,
 						joined: { left: true },
 					},
@@ -429,7 +431,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		hull: { top: true, bottom: true, right: true },
 		props: [],
 	};
-	const { islands, materializer } = islandsOf(inLine(layout.placed), {
+	const { islands } = islandsOf(inLine(layout.placed), {
 		from: bridge.x + BRIDGE_MARGIN,
 		top,
 		rows: bridgeRows,
@@ -493,16 +495,6 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 				props: [],
 			});
 		});
-	});
-	rooms.push({
-		...aboard(
-			{ kind: 'materializer', name: 'new sessions' },
-			materializer.x,
-			MATERIALIZER_W,
-			FACE + 1.7,
-			Math.max(top, materializer.y - FACE - 1.3),
-		),
-		props: [],
 	});
 	bridge.islands = islands;
 	bridge.seats = Object.fromEntries(
