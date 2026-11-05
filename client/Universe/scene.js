@@ -97,6 +97,9 @@ const TUG_FLIGHT = { lifted: 0.08, below: 0.28, escorting: 0.45, gone: 0.76, hom
 const TUG_HOVER = 0.7;
 const TUG_UNDER = 1.6;
 const DRINK_SECONDS = 6;
+// How long the tube's nozzle takes to bring a grey its coffee or its giant cup, or take them away: down from the ceiling, a
+// moment at the desk, and back up
+const SERVE_SECONDS = 1.6;
 // Thinking: how long a grey's skull takes to brighten and dim again, in seconds, and how far up from its chin its eyes
 // are, in art pixels, the same on every size of head
 const THINK_BREATH = 2.2;
@@ -958,6 +961,9 @@ export default class Ship {
 				worker.compactedAt = this.time;
 				worker.compactedFrom = this.headOf(worker.session);
 			}
+			// Its coffee or giant cup given or taken: the tube brings it, or takes it away
+			if (worker && keepingOf(worker.session) !== keepingOf(session))
+				worker.serving = { at: this.time, give: keepingOf(session), take: keepingOf(worker.session) };
 			if (worker) Object.assign(worker, { session, lounging, leaving: worker.vaporizedAt !== undefined });
 			if (worker) this.noteKeeping(worker, session);
 			else
@@ -2924,7 +2930,7 @@ export default class Ship {
 				: []),
 			...this.smallGreyParts(ctx, worker),
 			{ y: seat.y - 0.35, draw: () => this.drawProcesses(ctx, worker) },
-			...(keepingOf(session) && !walker.length
+			...((keepingOf(session) || this.serving(worker)) && !walker.length
 				? [{ y: seat.y + 0.2, draw: () => this.drawPick(ctx, worker, at) }]
 				: []),
 			{
@@ -3980,26 +3986,63 @@ export default class Ship {
 		rect(ctx, x + 2, lid - 7, 1, 1, CUP.band);
 	}
 
+	// Its coffee or giant cup on its way down the tube to it, or back up, while that's going on
+	serving(worker) {
+		const { serving } = worker;
+
+		return serving && this.time - serving.at < SERVE_SECONDS && this.pipeFrom(worker.seat) ? serving : null;
+	}
+
 	// What keeps it going on the console beside it, `at` the console's front (art pixels): a mug of coffee kept warm, a
-	// giant cup of something caffeinated kept going. Off the console while it's drinking.
+	// giant cup of something caffeinated kept going. Off the console while it's drinking; brought down the tube by its
+	// nozzle when it's given, and taken back up it when it's taken away.
 	drawPick(ctx, worker, at) {
 		if (this.drinking(worker)) return;
 
+		const serving = this.serving(worker);
+		const kind = serving ? (serving.give ?? serving.take) : keepingOf(worker.session);
 		const spot = { x: at.x + 12, y: at.y - 7 };
+		// The cup stands back on the desk's top, behind the mug's place at its front edge; each one's top, where the
+		// nozzle holds it
+		const drink = kind === 'warm' ? { x: spot.x, top: spot.y - 6 } : { x: spot.x + 3, top: spot.y - 16 };
 
-		// The cup stands back on the desk's top, behind the mug's place at its front edge
-		if (keepingOf(worker.session) !== 'warm') return this.drawCup(ctx, { x: spot.x + 3, y: spot.y - 6 });
+		if (!serving) return this.drawDrink(ctx, worker, kind, spot, 0);
 
-		rect(ctx, spot.x - 3, spot.y - 6, 7, 7, PALETTE.k);
-		rect(ctx, spot.x - 2, spot.y - 5, 5, 5, '#e8e2d6');
-		rect(ctx, spot.x - 2, spot.y - 5, 5, 1, '#5a3a22');
-		rect(ctx, spot.x + 4, spot.y - 4, 2, 3, PALETTE.k);
-		rect(ctx, spot.x + 4, spot.y - 3, 1, 1, '#e8e2d6');
+		const ceiling = this.pipeFrom(worker.seat)[0].y;
+		const t = (this.time - serving.at) / SERVE_SECONDS;
+		const down = (t < 0.3 && t / 0.3) || (t < 0.7 && 1) || Math.max(0, 1 - (t - 0.7) / 0.3);
+		const mouth = Math.round(ceiling + (drink.top - 1 - ceiling) * down);
+		const held = serving.give ? t < 0.5 : t >= 0.5;
+
+		// Held in the nozzle, out of the ceiling and back into it
+		ctx.save();
+		ctx.beginPath();
+		ctx.rect(drink.x - 20, ceiling, 40, at.y - ceiling + 4);
+		ctx.clip();
+		this.drawDrink(ctx, worker, kind, spot, held ? mouth + 1 - drink.top : 0);
+		ctx.restore();
+		this.drawNozzle(ctx, drink.x, ceiling, mouth);
+	}
+
+	// A mug of coffee, steaming while it sits on the desk, or a giant cup of something caffeinated, `spot` the mug's place at the
+	// desk's front edge, `lift` art pixels up from it (negative)
+	drawDrink(ctx, worker, kind, spot, lift) {
+		const { x } = spot;
+		const y = spot.y + lift;
+
+		if (kind !== 'warm') return this.drawCup(ctx, { x: x + 3, y: y - 6 }, { straw: !lift });
+
+		rect(ctx, x - 3, y - 6, 7, 7, PALETTE.k);
+		rect(ctx, x - 2, y - 5, 5, 5, '#e8e2d6');
+		rect(ctx, x - 2, y - 5, 5, 1, '#5a3a22');
+		rect(ctx, x + 4, y - 4, 2, 3, PALETTE.k);
+		rect(ctx, x + 4, y - 3, 1, 1, '#e8e2d6');
+		if (lift) return;
 
 		const rise = (this.time * 0.9 + worker.seed) % 1;
 
 		ctx.globalAlpha = 0.7 * (1 - rise);
-		rect(ctx, spot.x + (Math.floor(rise * 3) % 2), spot.y - 8 - Math.round(rise * 6), 1, 2, PALETTE.W);
+		rect(ctx, x + (Math.floor(rise * 3) % 2), y - 8 - Math.round(rise * 6), 1, 2, PALETTE.W);
 		ctx.globalAlpha = 1;
 	}
 
@@ -5100,6 +5143,19 @@ export default class Ship {
 		}
 	}
 
+	// The tube's nozzle let down from the ceiling at `x` to `mouth`, its top fading into the ceiling as if it came down
+	// through it
+	drawNozzle(ctx, x, ceiling, mouth) {
+		for (let y = ceiling; y < mouth; y++) {
+			ctx.globalAlpha = Math.min(1, (y - ceiling) / FADE_IN);
+			rect(ctx, x - 2, y, 5, 1, PALETTE.k);
+			rect(ctx, x - 1, y, 3, 1, TUBE_GLASS.body);
+			rect(ctx, x - 1, y, 1, 1, TUBE_GLASS.shine);
+		}
+		ctx.globalAlpha = 1;
+		rect(ctx, x - 3, mouth - 1, 7, 2, PALETTE.l);
+	}
+
 	// A part being drawn up into the ceiling: the nozzle coming down over its desk, the sheet rising into it, the two
 	// going back up together
 	drawPop(ctx, parcel) {
@@ -5111,15 +5167,7 @@ export default class Ship {
 		const mouth = Math.round(ceiling + (reach - ceiling) * down);
 		const x = pipe[0].x;
 
-		// Out of the ceiling: its top fading into it, as if it came down through it
-		for (let y = ceiling; y < mouth; y++) {
-			ctx.globalAlpha = Math.min(1, (y - ceiling) / FADE_IN);
-			rect(ctx, x - 2, y, 5, 1, PALETTE.k);
-			rect(ctx, x - 1, y, 3, 1, TUBE_GLASS.body);
-			rect(ctx, x - 1, y, 1, 1, TUBE_GLASS.shine);
-		}
-		ctx.globalAlpha = 1;
-		rect(ctx, x - 3, mouth - 1, 7, 2, PALETTE.l);
+		this.drawNozzle(ctx, x, ceiling, mouth);
 		if (t >= 0.3 && t < 0.75) {
 			const rise = (t - 0.3) / 0.45;
 

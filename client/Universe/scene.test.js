@@ -1707,3 +1707,22 @@ test("the hold's crane wanders its rail, and a commit made while it's mid-way br
 		made.drawPod({ fillStyle: '', fillRect: () => {} }, { x: 0, y: 0 }, { hue: 10, crates: 8, sheets: 9 }),
 	).not.toThrow();
 });
+
+test('a coffee given to a grey comes down the tube to its desk, and taken away goes back up it', () => {
+	const keeping = value => [answer('here', [session({ status: 'ready', keeping: value })], { projects: ['paude'] })];
+	const made = shipWith(keeping(undefined));
+	const [worker] = made.workers.values();
+
+	expect(made.pipeFrom(worker.seat)).not.toBeNull();
+	expect(made.serving(worker)).toBeNull();
+
+	made.update(keeping('warm'));
+	expect(made.serving(worker)).toMatchObject({ give: 'warm', take: undefined });
+	run(made, 2);
+	expect(made.serving(worker)).toBeNull();
+
+	made.update(keeping(undefined));
+	expect(made.serving(worker)).toMatchObject({ give: undefined, take: 'warm' });
+	run(made, 2);
+	expect(made.serving(worker)).toBeNull();
+});
