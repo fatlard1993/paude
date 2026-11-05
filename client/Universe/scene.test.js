@@ -1497,3 +1497,27 @@ test('an island gaining a seat grows to its new length over a moment rather than
 	expect(made.islandsShown.get('paude#0').w).toBeCloseTo(goal);
 });
 
+
+test('islands keep their rows as sessions come, go and grow: a new one goes into whichever row reaches least far', () => {
+	const projects = ['a', 'b', 'c', 'd', 'e', 'f'];
+	const at = list => [answer('here', list.map(([id, project]) => session({ id, project })), { projects })];
+	const first = [['1', 'a'], ['2', 'b'], ['3', 'c'], ['4', 'd'], ['5', 'e']];
+	const made = shipWith(at(first));
+	const rows = () => Object.fromEntries(made.bridge.islands.map(({ name, row }) => [name, row]));
+	const before = rows();
+
+	// a grows by two sessions, f comes aboard: the others stay where they were
+	made.update(at([...first, ['6', 'a'], ['7', 'a'], ['8', 'f']]));
+
+	const after = rows();
+
+	for (const name of ['a', 'b', 'c', 'd', 'e']) expect(after[name]).toBe(before[name]);
+	expect(after.f).toBeDefined();
+
+	// One leaves and comes back: back in a row, the rest unmoved
+	run(made, 3);
+	made.update(at(first.filter(([, project]) => project !== 'c')));
+	run(made, 3);
+	made.update(at(first.filter(([, project]) => project !== 'c')));
+	for (const name of ['a', 'b', 'd', 'e']) expect(rows()[name]).toBe(before[name]);
+});

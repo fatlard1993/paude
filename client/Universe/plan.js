@@ -97,7 +97,7 @@ export const splitSeats = (keys, widthOf) => {
 
 // The islands of the bridge `from` its stern edge down `rows`, for the bays at work: [{ name, hue, keys, x, y, w,
 // seats: [{ key, x, y }] }], and how far forward they reach
-const islandsOf = (bays, { from, top, rows, lounge, agents = {}, pitch = BRIDGE_ROW }) => {
+const islandsOf = (bays, { from, top, rows, lounge, agents = {}, pitch = BRIDGE_ROW, kept }) => {
 	// One island for each project, in the order given (the order their conduits come to the bridge); one seating more
 	// than an island holds split into as few as hold it, its seats shared out evenly, so no row runs on for one project
 	const runs = bays.flatMap(({ name, hue, sessions = [] }) =>
@@ -148,25 +148,39 @@ const islandsOf = (bays, { from, top, rows, lounge, agents = {}, pitch = BRIDGE_
 	const length = longest + 1e-6;
 	let filling = 0;
 	let filled = reach[0];
+	const counts = new Map();
 	const islands = runs.map((run, index) => {
 		const w = widthOf(run);
+		const nth = counts.get(run.name) ?? 0;
 
-		if (runs.length > open.length) {
+		counts.set(run.name, nth + 1);
+
+		// Laid out before (`kept`, each island's row by its project and which of its it is), each stays in its row while
+		// there is one, so rows don't repack as islands come, go and grow; a new one into whichever row reaches least far
+		const keptRow = kept?.[`${run.name}#${nth}`];
+
+		if (!kept && runs.length > open.length) {
 			while (filling < rows - 1 && filled + w > length && (filled > reach[filling] || reach[filling] + w > length))
 				filled = reach[++filling];
 			filled += w + ISLAND_GAP;
 		}
 
-		const row = runs.length <= open.length ? open[Math.floor(((index + 0.5) * open.length) / runs.length)] : filling;
-		const x = from + reach[row];
+		const packed = runs.length <= open.length ? open[Math.floor(((index + 0.5) * open.length) / runs.length)] : filling;
+		const stays = Number.isInteger(keptRow) && keptRow < rows;
+		let placedRow = packed;
+
+		if (kept) placedRow = stays ? keptRow : reach.indexOf(Math.min(...reach));
+		const x = from + reach[placedRow];
 		const widths = seatWidths(run);
-		const y = top + BRIDGE_ROW_TOP + row * pitch;
+		const y = top + BRIDGE_ROW_TOP + placedRow * pitch;
 		let along = x + ISLAND_END;
 
-		reach[row] += w + ISLAND_GAP;
+		reach[placedRow] += w + ISLAND_GAP;
 
 		return {
 			...run,
+			key: `${run.name}#${nth}`,
+			row: placedRow,
 			x,
 			y,
 			w,
@@ -309,7 +323,8 @@ export const shortest = names => {
 // work shares in two rows either side of the spine (the lounge and the plans station above, the hold, the hangar and
 // the materializer on the bridge); then each project's machine on one deck or the other. Engineering is as deep as both rows and
 // the spine, deeper still when it needs the room.
-export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents = {}, fleet = 0 } = {}) => {
+// `kept`: the rows the bridge's islands stood in last time, by island key, so they stay in them
+export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents = {}, fleet = 0, kept } = {}) => {
 	// A ship of a fleet has a transporter besides, on the bridge beside the materializer
 	const transporter = fleet ? TRANSPORTER_W : 0;
 	const system = ({ key, name }) => ({ kind: 'system', key, name, w: SYSTEM.w, d: SYSTEM.d });
@@ -381,7 +396,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		// The rows as far apart as their conduits need, worked out again while spreading them changes how many fit
 		const rowsAt = pitch => Math.max(1, Math.floor((total - BRIDGE_ROW_TOP - 0.4) / pitch + 1e-9) + 1);
 		const islandsAt = pitch =>
-			islandsOf(inLine(placed), { from: 0, top: 0, rows: rowsAt(pitch), lounge: loungeBlock, agents, pitch });
+			islandsOf(inLine(placed), { from: 0, top: 0, rows: rowsAt(pitch), lounge: loungeBlock, agents, pitch, kept });
 		let pitch = BRIDGE_ROW;
 		let laid = islandsAt(pitch);
 
@@ -523,6 +538,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		lounge: loungeBlock,
 		agents,
 		pitch: rowsApart,
+		kept,
 	});
 	const aboard = (room, x, w, d, y = top) => ({
 		...room,
