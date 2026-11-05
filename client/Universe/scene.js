@@ -4640,7 +4640,8 @@ export default class Ship {
 			left + 8 + (right - left - 16) * (0.5 + 0.5 * Math.sin(this.time * CRANE_WANDER));
 
 		this.craneX ??= goal;
-		this.craneX += (goal - this.craneX) * Math.min(1, seconds * (carrying || pressing >= 0 ? 12 : 2));
+		// Carrying, right over its load; else easing there
+		this.craneX = carrying ? goal : this.craneX + (goal - this.craneX) * Math.min(1, seconds * (pressing >= 0 ? 12 : 2));
 	}
 
 	// A commit made: over its pod, a press coming down on the sheets of changes, which flash as they're pressed, and the
