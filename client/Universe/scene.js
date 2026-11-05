@@ -1146,7 +1146,8 @@ export default class Ship {
 		this.loadCargo(answers);
 		this.layout = layOut({
 			// Each island in the row it stood in last time
-			kept: this.bridge?.islands && Object.fromEntries(this.bridge.islands.map(({ key, row }) => [key, row])),
+			kept:
+				this.bridge?.islands && Object.fromEntries(this.bridge.islands.map(({ key, row, at }) => [key, { row, at }])),
 			bays: this.bays.map(bay => ({ ...bay, seated: bay.sessions.length })),
 			engines: engines.filter(({ quiet }) => !quiet),
 			lounge: { count: lounging.length, sessions: lounging },

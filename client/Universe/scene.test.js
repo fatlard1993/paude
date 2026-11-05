@@ -1958,3 +1958,28 @@ test('a couch more needed is dropped out of the tube; one no longer needed is ph
 	run(made, 2);
 	expect(made.dust.length).toBe(ashes + 1);
 });
+
+test('islands stay where they stood as others come and go, unless they no longer fit there', () => {
+	const projects = ['one', 'two', 'three', 'four'];
+	const crew = names => [
+		answer(
+			'here',
+			names.flatMap((project, index) =>
+				[0, 1].map(seat => session({ id: `${project}-${seat}`, project, status: index ? 'ready' : 'working' })),
+			),
+			{ projects },
+		),
+	];
+	const made = shipWith(crew(['one', 'two', 'three']));
+	const standing = () =>
+		Object.fromEntries(made.bridge.islands.map(({ key, row, x }) => [key, `${row}@${(x - made.bridge.x).toFixed(2)}`]));
+	const before = standing();
+
+	made.update(crew(['one', 'two', 'three', 'four']));
+	run(made, 1);
+
+	const after = standing();
+
+	for (const key of Object.keys(before)) expect(after[key]).toBe(before[key]);
+	expect(after['four#0']).toBeDefined();
+});

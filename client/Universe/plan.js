@@ -51,10 +51,11 @@ const fleetRoom = ships => (ships ? 0.4 + ships * 1.8 : 0);
 // The room left along the bridge's aft wall, before its islands and lounge, for a conduit's riser for each project with
 // an island, side by side as thick as each can get (a pixel more for each of its sessions at its desk, to five) with
 // their outlines and a gap between, and the walk along it
+// Rounded up to a whole unit, with room to spare, so it grows only now and then and the islands beside it seldom move
 const sternRoom = islands =>
 	Math.max(
 		BRIDGE_MARGIN,
-		(9 + islands.reduce((sum, { sessions = [] }) => sum + Math.min(5, 1 + sessions.length) + 4, 0)) / 20,
+		Math.ceil((9 + islands.reduce((sum, { sessions = [] }) => sum + Math.min(5, 1 + sessions.length) + 4, 0)) / 20),
 	);
 // How long to deep the hull may get before it takes another level, and how many it takes at most; an idle machine's
 // size against a working one's
@@ -100,7 +101,9 @@ export const splitSeats = (keys, widthOf) => {
 
 // The islands of the bridge `from` its stern edge down `rows`, for the bays at work: [{ name, hue, keys, x, y, w,
 // seats: [{ key, x, y }] }], and how far forward they reach
-const islandsOf = (bays, { from, top, rows, lounge, agents = {}, pitch = BRIDGE_ROW, kept }) => {
+// `stern`: how much of the bridge from its aft wall `from` is past, the risers' room, so where an island stood is kept
+// from the wall itself, and an island stays put as the risers' room grows unless it grows into it
+const islandsOf = (bays, { from, top, rows, lounge, agents = {}, pitch = BRIDGE_ROW, kept, stern = 0 }) => {
 	// One island for each project, in the order given (the order their conduits come to the bridge); one seating more
 	// than an island holds split into as few as hold it, its seats shared out evenly, so no row runs on for one project
 	const runs = bays.flatMap(({ name, hue, sessions = [] }) =>
@@ -152,43 +155,91 @@ const islandsOf = (bays, { from, top, rows, lounge, agents = {}, pitch = BRIDGE_
 	let filling = 0;
 	let filled = reach[0];
 	const counts = new Map();
-	const islands = runs.map((run, index) => {
-		const w = widthOf(run);
+	const keyed = runs.map(run => {
 		const nth = counts.get(run.name) ?? 0;
 
 		counts.set(run.name, nth + 1);
 
-		// Laid out before (`kept`, each island's row by its project and which of its it is), each stays in its row while
-		// there is one, so rows don't repack as islands come, go and grow; a new one into whichever row reaches least far
-		const keptRow = kept?.[`${run.name}#${nth}`];
+		return { run, key: `${run.name}#${nth}`, w: widthOf(run) };
+	});
+	// Laid out before (`kept`: each island's row and where along it it stood, by its project and which of its it is),
+	// each stays where it stood while it still fits there, so islands don't move as others come, go and grow; one that
+	// no longer fits, or a new one, into the first gap wide enough in its row (or the row reaching least far)
+	const keptOf = key => {
+		const entry = kept?.[key];
 
-		if (!kept && runs.length > open.length) {
-			while (filling < rows - 1 && filled + w > length && (filled > reach[filling] || reach[filling] + w > length))
-				filled = reach[++filling];
-			filled += w + ISLAND_GAP;
+		if (typeof entry === 'number') return { row: entry };
+
+		return entry && { ...entry, at: typeof entry.at === 'number' ? entry.at - stern : undefined };
+	};
+	const taken = Array.from({ length: rows }, (_, row) => (reach[row] ? [[0, reach[row] - ISLAND_GAP]] : []));
+	const free = (row, at, w) =>
+		taken[row].every(([start, end]) => at + w + ISLAND_GAP <= start || at >= end + ISLAND_GAP);
+	const take = (row, at, w) => {
+		taken[row].push([at, at + w]);
+		taken[row].sort((a, b) => a[0] - b[0]);
+		reach[row] = Math.max(reach[row], at + w + ISLAND_GAP);
+	};
+	const gapIn = (row, w) => {
+		let at = 0;
+
+		for (const [start, end] of taken[row]) {
+			if (at + w + ISLAND_GAP <= start) return at;
+			at = Math.max(at, end + ISLAND_GAP);
 		}
 
-		const packed = runs.length <= open.length ? open[Math.floor(((index + 0.5) * open.length) / runs.length)] : filling;
-		const stays = Number.isInteger(keptRow) && keptRow < rows;
-		let placedRow = packed;
+		return at;
+	};
+	const placed = new Map();
 
-		if (kept) placedRow = stays ? keptRow : reach.indexOf(Math.min(...reach));
-		const x = from + reach[placedRow];
+	if (kept)
+		for (const { key, w } of keyed) {
+			const { row, at } = keptOf(key) ?? {};
+
+			if (!Number.isInteger(row) || row >= rows || typeof at !== 'number' || at < 0 || !free(row, at, w)) continue;
+			take(row, at, w);
+			placed.set(key, { row, at });
+		}
+
+	const islands = keyed.map(({ run, key, w }, index) => {
+		let spot = placed.get(key);
+
+		if (!spot && kept) {
+			const keptRow = keptOf(key)?.row;
+			const row = Number.isInteger(keptRow) && keptRow < rows ? keptRow : reach.indexOf(Math.min(...reach));
+
+			spot = { row, at: gapIn(row, w) };
+			take(row, spot.at, w);
+		}
+		if (!spot) {
+			if (runs.length > open.length) {
+				while (filling < rows - 1 && filled + w > length && (filled > reach[filling] || reach[filling] + w > length))
+					filled = reach[++filling];
+				filled += w + ISLAND_GAP;
+			}
+
+			const row = runs.length <= open.length ? open[Math.floor(((index + 0.5) * open.length) / runs.length)] : filling;
+
+			spot = { row, at: reach[row] };
+			reach[row] += w + ISLAND_GAP;
+		}
+
+		const x = from + spot.at;
 		const widths = seatWidths(run);
-		const y = top + BRIDGE_ROW_TOP + placedRow * pitch;
+		const y = top + BRIDGE_ROW_TOP + spot.row * pitch;
 		let along = x + ISLAND_END;
-
-		reach[placedRow] += w + ISLAND_GAP;
 
 		return {
 			...run,
-			key: `${run.name}#${nth}`,
-			row: placedRow,
+			key,
+			row: spot.row,
+			// Where along its row it stands from the bridge's aft wall, kept to stand there again
+			at: spot.at + stern,
 			x,
 			y,
 			w,
-			seats: run.keys.map((key, seat) => {
-				const at = { key, x: along + SEAT_W / 2 - 0.3, y };
+			seats: run.keys.map((seatKey, seat) => {
+				const at = { key: seatKey, x: along + SEAT_W / 2 - 0.3, y };
 
 				along += widths[seat];
 
@@ -424,7 +475,16 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		// The rows as far apart as their conduits need, worked out again while spreading them changes how many fit
 		const rowsAt = pitch => Math.max(1, Math.floor((total - BRIDGE_ROW_TOP - 0.4) / pitch + 1e-9) + 1);
 		const islandsAt = pitch =>
-			islandsOf(inLine(placed), { from: 0, top: 0, rows: rowsAt(pitch), lounge: loungeBlock, agents, pitch, kept });
+			islandsOf(inLine(placed), {
+				from: 0,
+				top: 0,
+				rows: rowsAt(pitch),
+				lounge: loungeBlock,
+				agents,
+				pitch,
+				kept,
+				stern: sternRoom(inLine(placed)),
+			});
 		let pitch = BRIDGE_ROW;
 		let laid = islandsAt(pitch);
 
@@ -571,6 +631,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		agents,
 		pitch: rowsApart,
 		kept,
+		stern,
 	});
 	const aboard = (room, x, w, d, y = top) => ({
 		...room,
