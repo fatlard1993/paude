@@ -27,6 +27,8 @@ import withoutPointerReporting from '../../shared/pointerReporting';
 
 // The dock's own width, the least it narrows to for a small terminal
 const DOCK_LEAST = 620;
+// How near its foot a terminal too tall for the panel counts as scrolled down, in CSS pixels
+const PINNED_SLACK = 4;
 
 // A session's terminal in its dock, at the session's own size so opening it here resizes nothing for anyone, its font
 // as large as lets that size fit (smaller than the least, it scrolls across). Sized by its font, never a CSS transform:
@@ -224,7 +226,7 @@ export default class TerminalPanel {
 				const text = decoder.decode(data, { stream: true });
 
 				loadSymbolsFor(text);
-				terminal.write(withoutPointerReporting(text, pointer.track));
+				terminal.write(withoutPointerReporting(text, pointer.track), () => this.keepDown());
 			},
 			onMessage: message => {
 				if (message.type === 'snapshot') {
@@ -236,6 +238,7 @@ export default class TerminalPanel {
 					loadSymbolsFor(message.data);
 					pointer.reset();
 					terminal.write(withoutPointerReporting(message.data, pointer.track), () => {
+						this.keepDown();
 						this.arrived = true;
 						this.fit();
 						if (this.pendingJump) this.jumpTo(this.pendingJump);
@@ -261,6 +264,14 @@ export default class TerminalPanel {
 						unauthorized: remote ? `the login on ${remote.name} has ended; run: paude login ${remote.url}` : undefined,
 					}[value] ?? value;
 			},
+		});
+		// Too tall for the panel even at its least font (a session laid out for a taller screen than this), it scrolls; kept
+		// at its foot, where Claude's prompt is, and following what's written there, unless scrolled up to read
+		this.pinned = true;
+		terminal.element.addEventListener('scroll', () => {
+			const box = terminal.element;
+
+			this.pinned = box.scrollTop + box.clientHeight >= box.scrollHeight - PINNED_SLACK;
 		});
 		this.resizing = new ResizeObserver(() => this.fit());
 		this.resizing.observe(this.elem);
@@ -308,6 +319,7 @@ export default class TerminalPanel {
 			terminal.options.fontSize = font;
 			requestAnimationFrame(() => this.fit());
 		}
+		requestAnimationFrame(() => this.keepDown());
 		this.claimRoom({ drawn, dock, chrome, sized, height });
 		requestAnimationFrame(() => {
 			if (this.elem.hidden || sized) return;
@@ -339,6 +351,12 @@ export default class TerminalPanel {
 		if (natural.cols === this.natural?.cols && natural.rows === this.natural?.rows) return;
 		this.natural = natural;
 		this.connection?.send({ type: 'resize', ...natural });
+	}
+
+	keepDown() {
+		const box = this.terminal?.element;
+
+		if (box && this.pinned) box.scrollTop = box.scrollHeight;
 	}
 
 	refresh() {
