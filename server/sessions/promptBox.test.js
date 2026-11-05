@@ -25,3 +25,15 @@ test('no prompt box on the screen is null', async () => {
 	await new Promise(done => terminal.write('Do you want to proceed?\r\n❯ 1. Yes\r\n  2. No\r\n', done));
 	expect(promptDraft(terminal.buffer.active)).toBeNull();
 });
+
+test("a named session's prompt box, its name drawn into the top rule, is read like any other", async () => {
+	const terminal = new xterm.Terminal({ cols: 60, rows: 8, allowProposedApi: true });
+	const rule = '─'.repeat(60);
+	const named = `${'─'.repeat(22)} startup-and-server-join-performance ─`;
+
+	await new Promise(done => terminal.write(`● It builds.\r\n\r\n${named}\r\n❯ \r\n${rule}\r\n  ⏵⏵ auto mode on\r\n`, done));
+	expect(promptDraft(terminal.buffer.active)).toBe('');
+
+	await new Promise(done => terminal.write(`\r\n${named}\r\n❯ the mixin sounds\r\n${rule}\r\n`, done));
+	expect(promptDraft(terminal.buffer.active)).toBe('the mixin sounds');
+});

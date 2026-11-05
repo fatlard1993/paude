@@ -1,4 +1,5 @@
-const RULE = /^─{20,}$/;
+// A named session draws its name into the top one, toward its right end
+const RULE = /^─{20,}(?: .+ ─+)?$/;
 const PROMPT = '❯';
 // Claude's placeholder is dim; without colors it still reads "Try "..."
 const PLACEHOLDER = /^Try "/;
