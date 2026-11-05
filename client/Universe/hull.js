@@ -601,65 +601,103 @@ const moduleName = (section, width) => {
 	return textWidth(words, 1) <= width ? words : (section.short ?? initials).toUpperCase();
 };
 
-// A project's machine's module outside the hull, `left` to `right` along it, mounted at `base` and standing `out` from
-// it (-1 up off its back, 1 down under its belly): an armored casing on struts with fins at its ends, a band in its
-// color (its name on it, under the belly), a row of lights that runs while it works, blinks amber while it asks you
-// something and goes dark while idle, and its lamp (`lamp`) out at the end of an antenna or under it
+// A project's machine's pod outside the hull, `left` to `right` along it, on a pylon from the hull at `base`, `out`
+// from it (-1 up off its back, 1 down under its belly); the same pod either way, only its mount turned: a rounded
+// capsule lit from above, nose cones at its ends, a band in its color with its name on it, portholes a light runs
+// along while it works (blinking amber while it asks you something, dark while idle), a pulse up its pylon into it
+// while it works, and its beacon (`lamp`) on its far side
+const POD_TALL = 17;
+const PYLON = 3;
+const POD_SHADES = [
+	'#a8b2c6',
+	'#9aa5bb',
+	'#8a95ac',
+	'#9aa5bb',
+	'#7d889e',
+	'#66718a',
+	'#56607a',
+	'#4a546c',
+	'#434d63',
+	'#3c455a',
+	'#363e51',
+	'#30384a',
+	'#2a3142',
+	'#242a39',
+	'#1e2330',
+	'#1a1f2b',
+	'#161a24',
+];
+
 const drawModule = (ctx, { left, right, base, out, section, color, lamp, time }) => {
-	const belly = out > 0;
-	// `h` rows from `from` rows out from the hull, as a rect's top and height
-	const band = (x, from, w, h, fill) => rect(ctx, x, out < 0 ? base - from - h : base + from, w, h, fill);
-	const name = belly ? 7 : 2;
-	const tall = name + 7;
+	const top = out < 0 ? base - PYLON - POD_TALL : base + PYLON;
 	const width = right - left;
+	const middle = Math.round((left + right) / 2);
+	const hue = section.hue ?? 200;
 
-	// Its struts to the hull, and its casing: outlined, its outermost row narrower for a bevel
-	for (const x of [left + 4, right - 6]) {
-		band(x, 0, 2, 2, PALETTE.k);
-		band(x, 0, 1, 2, PALETTE.l);
+	// Its pylon: two struts and the conduit between them, a pulse running out along it while it works
+	const [from, to] = out < 0 ? [top + POD_TALL, base] : [base, top];
+
+	for (const x of [left + 6, right - 8]) {
+		rect(ctx, x, from, 3, to - from, PALETTE.k);
+		rect(ctx, x + 1, from, 1, to - from, PALETTE.l);
 	}
-	band(left, 2, width, tall - 1, PALETTE.k);
-	band(left + 1, tall + 1, width - 2, 1, PALETTE.k);
-	band(left + 1, 3, width - 2, tall - 2, PALETTE.m);
-	band(left + 1, 3, width - 2, 1, belly ? PALETTE.l : PALETTE.d);
-	band(left + 1, tall, width - 2, 1, belly ? PALETTE.d : PALETTE.l);
-	// Its band in its color, its name on it under the belly
-	band(left + 1, 4, width - 2, name, color);
-	if (belly)
-		pixelText(ctx, moduleName(section, width - 4), (left + right) / 2, base + 4 + name, {
-			color: section.idle ? PALETTE.m : PALETTE.k,
-			align: 'center',
-			max: width - 4,
-		});
-	// Its lights: a light running along them while it works, blinking amber while it asks, dark while idle
-	const cells = Math.max(1, Math.floor((width - 4) / 3));
-	const run = Math.floor(time * 8) % (cells + 3);
+	rect(ctx, middle - 1, from, 3, to - from, PALETTE.k);
+	rect(ctx, middle, from, 1, to - from, section.working ? `hsl(${hue} 70% 55%)` : PALETTE.d);
+	if (section.working) {
+		const step = Math.floor(time * 10) % PYLON;
 
-	for (let cell = 0; cell < cells; cell++) {
+		rect(ctx, middle, out < 0 ? base - 1 - step : base + step, 1, 1, PALETTE.W);
+	}
+
+	// Its capsule, rounded at its ends and lit from above
+	for (let row = 0; row < POD_TALL; row++) {
+		const inset = (row === 0 || row === POD_TALL - 1 ? 3 : 0) || (row === 1 || row === POD_TALL - 2 ? 1 : 0);
+
+		rect(ctx, left + inset, top + row, width - inset * 2, 1, PALETTE.k);
+		rect(ctx, left + inset + 1, top + row, width - inset * 2 - 2, 1, POD_SHADES[row]);
+	}
+	// Its nose cones, a seam where each meets the body
+	for (const [x, seam] of [
+		[left + 1, left + 4],
+		[right - 4, right - 5],
+	]) {
+		rect(ctx, x, top + 3, 3, POD_TALL - 6, '#2a3142');
+		rect(ctx, x, top + 3, 3, 1, '#56607a');
+		rect(ctx, seam, top + 1, 1, POD_TALL - 2, PALETTE.k);
+	}
+	// Its band, its name on it
+	const band = { x: left + 5, y: top + 6, w: width - 10, h: 9 };
+
+	rect(ctx, band.x, band.y, band.w, band.h, color);
+	rect(ctx, band.x, band.y, band.w, 1, section.idle ? color : `hsl(${hue} 55% 66%)`);
+	rect(ctx, band.x, band.y + band.h, band.w, 1, PALETTE.k);
+	pixelText(ctx, moduleName(section, band.w - 2), middle, band.y + band.h - 1, {
+		color: section.idle ? PALETTE.m : PALETTE.k,
+		align: 'center',
+		max: band.w - 2,
+	});
+
+	// Its portholes over the band
+	const ports = Math.max(1, Math.floor((band.w - 1) / 3));
+	const run = Math.floor(time * 8) % (ports + 3);
+
+	for (let port = 0; port < ports; port++) {
 		const lit =
-			(section.idle && PALETTE.d) ||
-			(section.asking && (Math.floor(time * 3 + cell) % 2 ? PALETTE.y : PALETTE.Y)) ||
-			(section.working && Math.abs(cell - run) <= 1 && `hsl(${section.hue ?? 200} 85% 72%)`) ||
-			`hsl(${section.hue ?? 200} 40% 34%)`;
+			(section.idle && '#141821') ||
+			(section.asking && (Math.floor(time * 3 + port) % 2 ? PALETTE.y : PALETTE.Y)) ||
+			(section.working && Math.abs(port - run) <= 1 && `hsl(${hue} 90% 76%)`) ||
+			`hsl(${hue} 45% 38%)`;
 
-		band(left + 3 + cell * 3, name + 5, 2, 2, lit);
+		rect(ctx, band.x + 1 + port * 3, top + 3, 2, 2, lit);
 	}
-	// Its fins, at its ends
-	for (const x of [left - 3, right]) {
-		band(x, 4, 3, tall - 4, PALETTE.k);
-		band(x + 1, 5, 1, tall - 6, PALETTE.l);
-	}
-	// Its lamp: atop an antenna off its back, or in a housing under its belly
+
+	// Its beacon, on its far side from the hull
 	if (!lamp) return;
-	if (belly) {
-		band(Math.round((left + right) / 2) - 2, tall + 2, 5, 2, PALETTE.k);
-		band(Math.round((left + right) / 2) - 1, tall + 2, 3, 1, lamp);
 
-		return;
-	}
-	band(right - 4, tall + 2, 1, 4, PALETTE.k);
-	band(right - 5, tall + 6, 3, 2, PALETTE.k);
-	band(right - 4, tall + 6, 1, 1, lamp);
+	const beacon = out < 0 ? top - 2 : top + POD_TALL;
+
+	rect(ctx, middle - 2, beacon, 5, 2, PALETTE.k);
+	rect(ctx, middle - 1, out < 0 ? beacon : beacon + 1, 3, 1, lamp);
 };
 
 // The hull and what's on it: the engines, a fuel tank for each account, each project's section, the comms dish and
@@ -719,9 +757,9 @@ export const drawHull = (
 		for (const housing of section.housings ?? [])
 			if (housing.top || housing.bottom)
 				drawModule(ctx, {
-					left: Math.round((housing.part.x + 0.3) * UNIT.x),
-					right: Math.round((housing.part.x + housing.part.w - 0.3) * UNIT.x),
-					base: housing.top ? shape.top : shape.bottom + 1,
+					left: Math.round((housing.part.x + 0.12) * UNIT.x),
+					right: Math.round((housing.part.x + housing.part.w - 0.12) * UNIT.x),
+					base: housing.top ? shape.top : shape.bottom + 2,
 					out: housing.top ? -1 : 1,
 					section,
 					color,
