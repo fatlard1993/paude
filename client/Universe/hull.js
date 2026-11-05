@@ -505,16 +505,13 @@ const FUEL = '#f0b43c';
 // Each tank's own color, in its fuel and along its pipe to each reactor it feeds
 export const TANK_COLORS = [FUEL, '#5fd39a', '#c99bf0', '#f08a6a'];
 
-// How far apart tanks side by side on the hull stand, in art pixels
-const TANK_PITCH = 64;
-
 // A fuel tank on the hull, `at` where it meets it: fuel running down its line as fast as it's burned (`flow`, 0 to
 // 1), its sight glass filled to `level` (0 to 1), striped where that's not known, flashing red once empty
 
 // The color of what's left of a limit: the tank's own while there's plenty, amber getting low, red nearly out
 const leftColor = (left, color) => (left < 0.2 && PALETTE.r) || (left < 0.5 && PALETTE.y) || color;
 
-const drawTank = (ctx, at, { level, gauges, flow, empty, color = FUEL }, { time, below }) => {
+export const drawTank = (ctx, at, { level, gauges, flow, empty, color = FUEL }, { time, below = false }) => {
 	const cradle = 4;
 	const tall = 12;
 	const half = 28;
@@ -589,12 +586,66 @@ const drawTank = (ctx, at, { level, gauges, flow, empty, color = FUEL }, { time,
 	}
 };
 
+// Where the hull's back and belly run, in art pixels
+export const hullEdges = building => {
+	const { shape } = hullImage(building);
+
+	return { top: shape.top, bottom: shape.bottom };
+};
+
+// The refuel ship, `at` the hull over a tank it fills, `t` through its visit: in from astern and above, settled on the
+// hull with its hose let down into it while it pumps, and away astern again. A stubby tanker, its fuel drum banded
+// in the tank's color, its cockpit forward, its engine aft.
+export const drawTanker = (ctx, at, t, { color = FUEL, time }) => {
+	const ease = u => u * u * (3 - 2 * u);
+	const away = (t < 0.25 && 1 - ease(t / 0.25)) || (t > 0.8 && ease((t - 0.8) / 0.2)) || 0;
+	const x = Math.round(at.x - away * 260);
+	const y = Math.round(at.y - 14 - away * 70);
+	const pumping = t > 0.3 && t < 0.78;
+
+	// Its hose down to the hull, fuel pulsing along it while it pumps
+	if (t > 0.25 && t < 0.8) {
+		const hose = Math.min(1, (t - 0.25) / 0.05, (0.8 - t) / 0.05);
+		const reach = Math.round((at.y - (y + 6)) * hose);
+
+		rect(ctx, x - 1, y + 6, 3, reach, PALETTE.k);
+		rect(ctx, x, y + 6, 1, reach, PALETTE.l);
+		if (pumping) rect(ctx, x, y + 6 + (Math.floor(time * 16) % Math.max(1, reach)), 1, 2, color);
+		rect(ctx, x - 2, at.y - 1, 5, 2, PALETTE.k);
+		rect(ctx, x - 1, at.y - 1, 3, 1, pumping ? color : PALETTE.d);
+	}
+	// Its engine aft, flaring while it moves
+	const flare = away > 0.02 ? 4 + (Math.floor(time * 20) % 3) : 1;
+
+	rect(ctx, x - 17 - flare, y + 2, flare, 3, PALETTE.Y);
+	rect(ctx, x - 17 - flare + 1, y + 3, Math.max(1, flare - 1), 1, PALETTE.W);
+	// Its hull and drum: outlined, lit along the top, the drum banded in the fuel's color
+	rect(ctx, x - 17, y - 2, 30, 10, PALETTE.k);
+	rect(ctx, x - 16, y - 1, 28, 8, PALETTE.m);
+	rect(ctx, x - 16, y - 1, 28, 1, PALETTE.l);
+	rect(ctx, x - 12, y - 5, 18, 4, PALETTE.k);
+	rect(ctx, x - 11, y - 4, 16, 3, '#56607a');
+	for (const band of [x - 9, x - 3, x + 3]) rect(ctx, band, y - 4, 2, 3, color);
+	rect(ctx, x - 16, y + 4, 28, 1, color);
+	// Its cockpit forward, and its landing struts down while it's settled
+	rect(ctx, x + 9, y, 6, 5, PALETTE.k);
+	rect(ctx, x + 10, y + 1, 4, 3, '#7fd6ff');
+	rect(ctx, x + 10, y + 1, 1, 1, '#e0f6ff');
+	if (away < 0.02)
+		for (const leg of [x - 13, x + 8]) {
+			rect(ctx, leg, y + 8, 1, at.y - y - 8, PALETTE.k);
+			rect(ctx, leg - 1, at.y - 1, 3, 1, PALETTE.k);
+		}
+	// Its beacon
+	rect(ctx, x - 2, y - 6, 2, 1, Math.floor(time * 2) % 2 ? '#ff4a3a' : '#5a1a16');
+};
+
 // The hull and what's on it: the engines, a fuel tank for each account, each project's section, the comms dish and
 // masts, the hangar's doors, running lights
 export const drawHull = (
 	ctx,
 	layout,
-	{ time, engines = [], comms, hangarOpen, tanks = [], sections = [], pace = 1, drift = 0 },
+	{ time, engines = [], comms, hangarOpen, sections = [], pace = 1, drift = 0 },
 ) => {
 	const image = hullImage(layout.building);
 	const { shape } = image;
@@ -657,16 +708,6 @@ export const drawHull = (
 					history: section.history,
 				});
 	}
-	// A tank for each account the engines draw on, over engineering, on its back and under its belly by turns
-	tanks.forEach((tank, index) => {
-		const below = index % 2 === 1;
-		const x =
-			Math.round((layout.engineering.x + layout.engineering.w / 2) * UNIT.x) + Math.floor(index / 2) * TANK_PITCH;
-		const at = below ? { x, y: shape.bottom + 12 } : { x, y: shape.top - 1 };
-
-		drawTank(ctx, at, { ...tank, color: TANK_COLORS[index % TANK_COLORS.length] }, { time, below });
-		tank.at = { x, y: below ? at.y + 9 : at.y - 10 };
-	});
 
 	// The ship's dish on its back, over the first machine's web
 	const room = Object.values(layout.systems).find(({ key }) => key === 'dish');
@@ -810,12 +851,12 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, systems 
 					(busy ? `hsl(${hue} 75% 62%)` : `hsl(${hue} 25% 26%)`);
 				const [from, to] = corners(art, room);
 
-				// Fuel from its account's tank: in through the hull, along inside it to a riser by the bay's back wall, and to
-				// the reactor
+				// Fuel from its account's tank: out of its foot (`y`, or in through the hull at its edge), along to a riser
+				// by the bay's back wall, and to the reactor
 				if (engine.feed) {
-					const { tank, below, x: through, color } = engine.feed;
+					const { tank, below, x: through, y: out, color } = engine.feed;
 					const pipe = from.x + 3 + tank * 3;
-					const edge = below ? to.y - 3 - tank : from.y + 3 + tank;
+					const edge = out ?? (below ? to.y - 3 - tank : from.y + 3 + tank);
 					const into = at.y - REACTOR.into;
 					const run = [
 						...(through === undefined ? [] : [[through, edge, pipe, edge]]),

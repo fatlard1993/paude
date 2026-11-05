@@ -1749,3 +1749,29 @@ test("a tank with the account's limits known gauges what's left of each, and is 
 		level: null,
 	});
 });
+
+test('a tank that reads fuller than it did is sent a refuel ship, its gauge rising from where it was as it pumps; none on first sight', () => {
+	const engine = left => ({
+		key: 'here',
+		fuel: {
+			account: 'a',
+			burned: 0,
+			rate: 0,
+			usage: { session: { percent: 100 - left }, week: { percent: 10 }, models: [], ago: 0 },
+		},
+	});
+	const made = new Ship();
+
+	made.refuelled(tanksOf([engine(20)]));
+	expect(made.refuels).toEqual([]);
+
+	made.refuelled(tanksOf([engine(18)]));
+	expect(made.refuels).toEqual([]);
+
+	const [tank] = made.refuelled(tanksOf([engine(100)]));
+
+	expect(made.refuels).toMatchObject([{ key: 'a', index: 0, time: 0 }]);
+	expect(made.tankShown(tank).gauges.session).toBeCloseTo(0.18);
+	made.refuels[0].time = 0.75;
+	expect(made.tankShown(tank).gauges.session).toBeCloseTo(1);
+});

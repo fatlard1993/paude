@@ -18,6 +18,9 @@ import {
 	drawSystem,
 	drawTransporter,
 	drawHullCover,
+	drawTanker,
+	drawTank,
+	hullEdges,
 	drawTug,
 } from './hull';
 import {
@@ -161,6 +164,12 @@ const MOST = { papers: 8, crates: 6, canisters: 6, cans: 12, smallGreys: 4, bots
 // A lounger's empties pile up, one more every half hour since its session's prompt cache went cold
 const CAN_MS = 30 * 60_000;
 const HAUL_SECONDS = 6;
+// How long a refuel ship's visit takes, and how much fuller a tank must read than it did to have been refuelled (a
+// usage limit's window rolling over)
+const REFUEL_SECONDS = 9;
+const REFUELLED = 0.04;
+// How far above the last a tank stands on the rack over the reactors, in art pixels
+const TANK_RACK = 17;
 // Something said in a session's chat shows over its speaker this long
 const SPOKE_MS = 90_000;
 // How fast what the work made travels the ship
@@ -765,6 +774,7 @@ export default class Ship {
 	workers = new Map();
 	walkers = new Map();
 	haulers = [];
+	refuels = [];
 	// The shared systems, each from every engine's appliances, and the hold's cargo
 	systems = new Map();
 	engineSystems = new Map();
@@ -1062,7 +1072,7 @@ export default class Ship {
 		this.bays = this.layout.bays;
 		for (const bay of this.bays) bay.built ??= built.get(bay.name);
 		this.engines = this.layout.engines;
-		this.tanks = tanksOf(this.engines);
+		this.tanks = this.refuelled(tanksOf(this.engines));
 		this.crew = answers.reduce(
 			(all, { crew }) => {
 				all.busy.push(...(crew?.busy ?? []));
@@ -1659,6 +1669,8 @@ export default class Ship {
 		}
 		this.parcels = this.parcels.filter(({ path, tube }) => tube || path.length);
 		for (const hauler of this.haulers) hauler.time += seconds / HAUL_SECONDS;
+		for (const refuel of this.refuels) refuel.time += seconds / REFUEL_SECONDS;
+		this.refuels = this.refuels.filter(({ time }) => time < 1);
 		this.haulers = this.haulers.filter(({ time }) => time < 1);
 
 		const goal = this.goal();
@@ -1811,7 +1823,6 @@ export default class Ship {
 			time: this.time,
 			// The sky's stream in art pixels, so the window's stars move with the sky's
 			drift: this.drift / this.camera.zoom,
-			tanks: this.tanks,
 			engines: this.engines.map((engine, index) => ({
 				y: this.thrusterAt(index),
 				hue: engine.hue ?? 215,
@@ -1838,8 +1849,10 @@ export default class Ship {
 		});
 		for (const mast of masts)
 			if (mast.at) this.hits.push({ ...this.toScreen(mast.at), r: 6 * this.camera.zoom, kind: 'system', system: mast });
-		for (const tank of this.tanks)
-			if (tank.at) this.hits.push({ ...this.toScreen(tank.at), r: 9 * this.camera.zoom, kind: 'fuel', tank });
+		this.tanks.forEach((tank, index) => {
+			tank.at = { ...this.tankAt(index), y: this.tankAt(index).y - 10 };
+			this.hits.push({ ...this.toScreen(tank.at), r: 9 * this.camera.zoom, kind: 'fuel', tank });
+		});
 
 		clipToShip(ctx, this.layout);
 		const movers = [...this.walkers.values(), ...[...this.workers.values()].filter(worker => this.walking(worker))];
@@ -1859,6 +1872,15 @@ export default class Ship {
 		standing.push(
 			// The streams' trunk in the bay's inner wall, behind its units
 			{ y: this.layout.engineering.y + 0.001, draw: () => this.drawTrunk(ctx) },
+			// Its account's tanks on their rack against the bay's back wall, over the reactors
+			...this.tanks.map((tank, index) => ({
+				y: this.tankSpot().y,
+				draw: () =>
+					drawTank(ctx, this.tankAt(index), this.tankShown(tank), {
+						time: this.time,
+						color: TANK_COLORS[index % TANK_COLORS.length],
+					}),
+			})),
 			...drawEngineering(ctx, art, label, this.layout.engineering, {
 				time: this.time,
 				systems: Object.values(this.layout.systems),
@@ -1876,8 +1898,8 @@ export default class Ship {
 								? undefined
 								: {
 										tank,
-										below: tank % 2 === 1,
-										x: this.tanks[tank].at?.x,
+										x: this.tankAt(tank).x,
+										y: this.tankAt(tank).y - 1,
 										color: TANK_COLORS[tank % TANK_COLORS.length],
 									},
 					};
@@ -2038,6 +2060,7 @@ export default class Ship {
 		this.drawSelection(ctx);
 		ctx.restore();
 		for (const hauler of this.haulers) this.drawHauler(ctx, hauler);
+		for (const refuel of this.refuels) this.drawRefuel(ctx, refuel);
 		this.drawTugFlight(ctx);
 		for (const worker of this.workers.values()) if (worker.seat) this.drawMarker(ctx, worker);
 		this.drawLabels(ctx, ratio);
@@ -4863,6 +4886,69 @@ export default class Ship {
 		ctx.translate(-at.x, -at.y);
 		draw();
 		ctx.restore();
+	}
+
+	// Where the tanks stand in the engine bay, in world units: against its back wall, over the reactors' column
+	tankSpot() {
+		const { engineering } = this.layout;
+		const reactor = this.engines[0]?.reactor ?? { x: engineering.x + 1.5 };
+
+		return { x: reactor.x, y: engineering.y + (engineering.face ?? FACE) + 0.35 };
+	}
+
+	// The `index`th tank's foot, in art pixels: each on the rack over the last
+	tankAt(index) {
+		const at = this.art(this.tankSpot());
+
+		return { x: at.x, y: at.y - index * TANK_RACK };
+	}
+
+	// The tanks as they read now, each that reads fuller than it did (a limit's window rolled over) sent a refuel ship
+	// to fill it from where it was; none on first sight
+	refuelled(tanks) {
+		const keyOf = tank => tank.account ?? 'unknown';
+
+		tanks.forEach((tank, index) => {
+			const was = this.lastTanks?.get(keyOf(tank));
+
+			if (was?.level != null && tank.level != null && tank.level > was.level + REFUELLED)
+				this.refuels.push({ key: keyOf(tank), index, from: was, time: 0 });
+		});
+		this.lastTanks = new Map(tanks.map(tank => [keyOf(tank), { level: tank.level, gauges: tank.gauges }]));
+
+		return tanks;
+	}
+
+	// A tank as its gauge shows it: while a refuel ship fills it, rising from where it was to where it is as it pumps
+	tankShown(tank) {
+		const refuel = this.refuels.find(({ key }) => key === (tank.account ?? 'unknown'));
+
+		if (!refuel) return tank;
+
+		const pumped = Math.max(0, Math.min(1, (refuel.time - 0.3) / 0.45));
+		const toward = (from, to) => (from ?? to) + (to - (from ?? to)) * pumped;
+
+		return {
+			...tank,
+			level: toward(refuel.from.level, tank.level),
+			gauges: tank.gauges && {
+				session: toward(refuel.from.gauges?.session, tank.gauges.session),
+				week: toward(refuel.from.gauges?.week, tank.gauges.week),
+			},
+			flow: Math.max(tank.flow, pumped > 0 && pumped < 1 ? 1 : 0),
+		};
+	}
+
+	// A refuel ship on its visit, settled on the hull over the tank it fills
+	drawRefuel(ctx, { index, time }) {
+		if (!this.layout.building) return;
+
+		const { top } = hullEdges(this.layout.building);
+
+		drawTanker(ctx, { x: this.tankAt(index).x, y: top }, time, {
+			color: TANK_COLORS[index % TANK_COLORS.length],
+			time: this.time,
+		});
 	}
 
 	// A push: the pod lifted off its cradle, its clamps blinking, then dropped out through the hatch in the belly and
