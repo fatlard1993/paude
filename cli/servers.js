@@ -8,7 +8,7 @@ import { serverApi } from '../shared/serverClient';
 const START_TIMEOUT_MS = 10_000;
 
 // local-token in the data folder logs this user in without a password
-const LOCAL_URL = process.env.PAUDE_LOCAL_URL ?? 'http://127.0.0.1:8044';
+export const LOCAL_URL = process.env.PAUDE_LOCAL_URL ?? 'http://127.0.0.1:8044';
 const DATA_DIR = process.env.PAUDE_DATA ?? path.join(os.homedir(), '.paude');
 const TOKEN_FILE = path.join(DATA_DIR, 'local-token');
 const SERVER_ENTRY = path.join(import.meta.dir, '..', 'server', 'index.js');

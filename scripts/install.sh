@@ -273,3 +273,8 @@ fi
 
 curl -sf "http://127.0.0.1:$PORT/api/auth" | grep -q '"passwordSet":true' ||
 	say "No password yet; only this machine can log in until you run: cd $APP && bun run set-password"
+
+if command -v tailscale >/dev/null 2>&1 || [ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]; then
+	if command -v paude >/dev/null 2>&1; then PAUDE=paude; else PAUDE="$BUN $APP/bin/paude.js"; fi
+	say "Tailscale is here: $PAUDE tailscale puts this paude on your tailnet with HTTPS, for every device on it"
+fi

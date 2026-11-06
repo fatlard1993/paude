@@ -1,10 +1,12 @@
 import { existsSync } from 'fs';
 import path from 'path';
 
+import { serverSettings } from '../server/serverSettings';
 import { showsImages } from './graphics';
 import readSelection from './selection';
 import { bold, dim, green, orange } from './screen';
 import { allServers, api, localStatus } from './servers';
+import { tailnetDetail, tailnetSelf } from './tailscale';
 
 const REPO = path.join(import.meta.dir, '..');
 
@@ -40,6 +42,7 @@ const KITTY = Boolean(process.env.KITTY_WINDOW_ID) || process.env.TERM === 'xter
 // What works here and what doesn't, each with what to do about it
 const checks = async () => {
 	const local = await localStatus();
+	const tailnet = tailnetSelf();
 	const rows = [
 		['Bun', true, Bun.version],
 		[
@@ -65,6 +68,7 @@ const checks = async () => {
 			existsSync(path.join(REPO, 'client/build/index.html')) ? 'built' : 'run bun run build in the paude folder',
 		],
 		["This machine's paude", local.ok, local.detail],
+		['Tailscale', Boolean(tailnet?.running), tailnetDetail(tailnet, (await serverSettings()).publicUrl)],
 		['Images in the terminal', showsImages() && (has('magick') || has('convert')), imageDetail()],
 		[
 			'Commenting on a selection',

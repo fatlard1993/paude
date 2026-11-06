@@ -51,7 +51,17 @@ That installs to `~/.paude-server` and runs a user service (a launchd agent on m
 | `--claude`         | `claude` on the PATH | the Claude Code executable                 |
 | `--preview-port`   | `--port` + 1         | where shared services and files are served |
 
-Logins need HTTPS: the login cookie is `Secure`, which browsers accept only over https or on localhost. Put a TLS proxy in front instead of exposing the port. With Caddy and no domain name, Let's Encrypt can certify the server's IP address:
+Logins need HTTPS: the login cookie is `Secure`, which browsers accept only over https or on localhost. Don't expose the port; put something in front that does the TLS.
+
+On a [Tailscale](https://tailscale.com) tailnet, that's one command:
+
+```sh
+paude tailscale
+```
+
+Tailscale Serve then fronts this paude at `https://<machine>.<tailnet>.ts.net` and its shares at the same name on port 8444, with a certificate every device on the tailnet trusts already, phones included. Invite and share links carry that address whichever address you made them from (it's kept as `publicUrl` in `~/.config/paude/server.json`), so a guest on the tailnet can open them from anywhere. `paude doctor` shows the address, and `paude tailscale off` takes it down. The tailnet needs HTTPS certificates turned on (in the admin console, under DNS), and on Linux your user has to be allowed to run `tailscale serve`: `sudo tailscale set --operator=$USER`. From another machine on the tailnet, `paude login https://<machine>.<tailnet>.ts.net`.
+
+Without a tailnet, put a TLS proxy in front. With Caddy and no domain name, Let's Encrypt can certify the server's IP address:
 
 ```
 203.0.113.7 {
@@ -99,7 +109,7 @@ A paude on your own network behind Caddy's `tls internal` has a certificate from
 
 ## Sharing
 
-What a session runs and makes can be opened from any device logged in to paude, at its own address on the preview port (8444 behind Caddy): `https://<host>:8444/s/<name>/`. The share button in a session's bar lists them, with links to open or copy, and buttons to rename (its address) or stop each. A service is named for its project and port (`shop-5173`) until it's renamed.
+What a session runs and makes can be opened from any device logged in to paude, at its own address on the preview port (8444 behind Tailscale or Caddy): `https://<host>:8444/s/<name>/`. The share button in a session's bar lists them, with links to open or copy, and buttons to rename (its address) or stop each. A service is named for its project and port (`shop-5173`) until it's renamed.
 
 - **Services.** A server the session starts (a dev server Claude runs, or one from its terminal) is found once it listens and shared while it does. Any other port on the machine can be forwarded by hand. An app's own absolute paths (`/assets/app.js`) and WebSockets (a dev server's live reload) work without telling it about the `/s/<name>/` prefix.
 - **Files.** A file in the project to download, or a folder as a zip.

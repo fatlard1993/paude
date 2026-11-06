@@ -11,6 +11,7 @@ import attachSession from '../cli/attach';
 import { forget, nameServer, normalizeUrl, resolveServer, saveToken } from '../shared/credentials';
 import { allServers, api, ensureLocalServer, stopLocalServer } from '../cli/servers';
 import doctor from '../cli/doctor';
+import tailscale from '../cli/tailscale';
 import pickSession from '../cli/picker';
 import startWatchAlerts from '../cli/watchAlerts';
 import { loadPrefs, savePrefs } from '../cli/prefs';
@@ -47,6 +48,7 @@ paude --url <url>        pick from that server only
 paude --url <url> -s <id>  attach straight to a session there
 paude stop               stop this machine's background paude (after an update, say)
 paude doctor             what works on this machine, and what to install for the rest
+paude tailscale [off]    put this machine's paude on your tailnet with HTTPS, as https://<machine>.<tailnet>.ts.net
 paude serve              run this machine's paude in the foreground instead (--projects, --host, --port, --data, --claude)`;
 
 // An invite link (https://host/#/join/<token>) logs its guest in without a password
@@ -292,6 +294,7 @@ try {
 	} else if (command === 'stop') {
 		console.log((await stopLocalServer()) ? "Stopped this machine's paude." : "This machine's paude isn't running.");
 	} else if (command === 'doctor') await doctor();
+	else if (command === 'tailscale') await tailscale(process.argv.slice(3));
 	else if (command === 'add') await add(process.argv.slice(3));
 	else if (command === 'remove') await remove(process.argv.slice(3));
 	else if (command === 'serve') await serve(process.argv.slice(3));
