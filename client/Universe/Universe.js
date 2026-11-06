@@ -893,7 +893,7 @@ export default class Universe extends View {
 	}
 
 	// How long it lasts, picked from a menu by the pressed button, or by the panel when its key was pressed: running, it
-	// can be kept warm or kept going; stopped, only ordinary or short-lived
+	// can be kept warm, kept going or fabled; stopped, only ordinary or short-lived
 	lifetimeMenu(worker, event) {
 		const { session } = worker;
 		const box = this.focus.getBoundingClientRect();

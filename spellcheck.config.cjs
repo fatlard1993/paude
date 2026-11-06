@@ -96,6 +96,7 @@ module.exports = {
 		'stashes',
 		'upstream',
 		'rebase',
+		'resumable',
 		'rebasing',
 		'refname',
 		'nobracket',

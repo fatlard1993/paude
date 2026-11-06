@@ -1,11 +1,11 @@
 import { afterAll, expect, test } from 'bun:test';
 
-import { goingOn } from './keepWarm';
+import { fabledOn, goingOn, monitorOf } from './keepWarm';
 import { UNDO_MS, lastSwitch, lifetimeOf, switchLifetime } from './lifetime';
 
 // Every test file in a run shares briefSessions; a session left brief here gets swept in its tests
 afterAll(() =>
-	Promise.all(['switched', 'walked-back', 'unchanged', 'going'].map(id => switchLifetime(id, 'ordinary'))),
+	Promise.all(['switched', 'walked-back', 'unchanged', 'going', 'fabled'].map(id => switchLifetime(id, 'ordinary'))),
 );
 
 test('a switch by hand keeps what it was for an hour, to put back', async () => {
@@ -41,4 +41,24 @@ test('keeping going is kept warm besides, and switching to warm stops it going',
 	await switchLifetime('going', 'warm');
 	expect(lifetimeOf('going')).toBe('warm');
 	expect(goingOn('going')).toBe(false);
+});
+
+test('fabled keeps going with a monitor of its own, for longer; switching to going keeps the monitor to put back, ordinary lets it go', async () => {
+	await switchLifetime('fabled', 'fabled');
+	expect(lifetimeOf('fabled')).toBe('fabled');
+	expect(goingOn('fabled')).toBe(true);
+	expect(fabledOn('fabled')).toBe(true);
+
+	const { monitor } = monitorOf('fabled');
+
+	expect(monitor).toBeTruthy();
+	await switchLifetime('fabled', 'going');
+	expect(lifetimeOf('fabled')).toBe('going');
+	expect(fabledOn('fabled')).toBe(false);
+	expect(monitorOf('fabled').monitor).toBe(monitor);
+	await switchLifetime('fabled', 'fabled');
+	expect(monitorOf('fabled').monitor).toBe(monitor);
+	await switchLifetime('fabled', 'ordinary');
+	expect(lifetimeOf('fabled')).toBe('ordinary');
+	expect(monitorOf('fabled')).toBeNull();
 });

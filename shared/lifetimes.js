@@ -14,6 +14,13 @@ export const LIFETIMES = {
 		detail:
 			'kept warm, and kept working toward your goal while anything useful is left that needs nothing from you, 12 hours from your last message',
 	},
+	fabled: {
+		label: 'Fabled',
+		icon: 'binoculars',
+		mark: '🔭',
+		detail:
+			'kept going by a Fable monitor of its own that follows the whole run and reads the repository, with more room before it waits for you, 24 hours from your last message',
+	},
 	brief: {
 		label: 'Short-lived',
 		icon: 'hourglass-half',
@@ -23,6 +30,6 @@ export const LIFETIMES = {
 };
 
 // Those kept warm while you're away
-export const WARM_LIFETIMES = ['warm', 'going'];
+export const WARM_LIFETIMES = ['warm', 'going', 'fabled'];
 
 export const clockTime = at => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });

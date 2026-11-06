@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { candidatesFrom, homePrompt, limitsPrompt } from './promptHome';
+import { candidatesFrom, homePrompt, limitsPrompt, PLACED_LIFETIMES, placedLifetime } from './promptHome';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -80,4 +80,15 @@ test("the account's limits are weighed in the model when known, each with how lo
 		"Fable's own week 95% used",
 	);
 	expect(homePrompt({ prompt: 'x', candidates: [], projects: null })).not.toContain('usage limits');
+});
+
+test("Haiku places a new session only as its prompt offers: never kept going or fabled, which act unattended on the owner's usage", () => {
+	expect(placedLifetime('warm')).toBe('warm');
+	expect(placedLifetime('brief')).toBe('brief');
+	expect(placedLifetime('ordinary')).toBe('ordinary');
+	expect(placedLifetime('going')).toBe('ordinary');
+	expect(placedLifetime('fabled')).toBe('ordinary');
+	expect(placedLifetime(undefined)).toBe('ordinary');
+	for (const lifetime of PLACED_LIFETIMES)
+		expect(homePrompt({ prompt: 'x', candidates: [], projects: [] })).toContain(`"${lifetime}"`);
 });

@@ -7,8 +7,11 @@ import {
 	boostOf,
 	checkWarm,
 	claudeActive,
+	forgetMonitorsWith,
 	keepWarm,
 	keptOf,
+	monitorOf,
+	noteMonitor,
 	nudgeWith,
 	typeWhenIdle,
 	warmUntil,
@@ -117,4 +120,66 @@ test('how a session is kept, and the last ping or nudge typed into it and how lo
 
 	await keepWarm('kept', 0, 0);
 	expect(keptOf('kept', 0)).toBeNull();
+});
+
+test('a fabled session has a monitor of its own, kept through a switch to warm to be put back, and let go with the record', async () => {
+	const forgotten = [];
+
+	forgetMonitorsWith(async id => {
+		forgotten.push(id);
+	});
+	await keepWarm('fabled', 24, 0, { fabled: true });
+	expect(keptOf('fabled', 0)).toBe('fabled');
+	expect(warmUntil('fabled', 0)).toBe(24 * HOUR);
+
+	const { monitor } = monitorOf('fabled');
+
+	expect(monitor).toBeTruthy();
+	expect(monitorOf('fabled').seen).toBeNull();
+	await noteMonitor('fabled', { monitor, seen: 'turn-1' });
+	expect(monitorOf('fabled')).toEqual({ monitor, seen: 'turn-1', missed: 0 });
+	await noteMonitor('fabled', { monitor, seen: 'turn-1', missed: 2 });
+	expect(monitorOf('fabled')).toEqual({ monitor, seen: 'turn-1', missed: 2 });
+	await noteMonitor('fabled', { monitor, seen: 'turn-1' });
+
+	// Its nudge is the monitor's
+	expect(typeWhenIdle('fabled', fakeSession(), nudgeWith('next', { fabled: true }), 500)).toBe(true);
+	expect(boostOf('fabled', 600)).toEqual({ kind: 'fabled', ago: 100 });
+	expect(nudgeWith('next', { fabled: true })).toContain('a monitor that has followed this run');
+
+	await keepWarm('fabled', 12, 0);
+	expect(keptOf('fabled', 0)).toBe('warm');
+	expect(monitorOf('fabled')).toEqual({ monitor, seen: 'turn-1', missed: 0 });
+	await keepWarm('fabled', 24, 0, { fabled: true });
+	expect(monitorOf('fabled')).toEqual({ monitor, seen: 'turn-1', missed: 0 });
+	expect(forgotten).toEqual([]);
+
+	// Its conversation gone: forgotten, and a fresh one made the next time it's kept fabled
+	await noteMonitor('fabled', { monitor: null });
+	expect(forgotten).toEqual([monitor]);
+	expect(monitorOf('fabled')).toBeNull();
+	expect(keptOf('fabled', 0)).toBe('fabled');
+	await keepWarm('fabled', 24, 0, { fabled: true });
+
+	const fresh = monitorOf('fabled').monitor;
+
+	expect(fresh).toBeTruthy();
+	expect(fresh).not.toBe(monitor);
+	await keepWarm('fabled', 0, 0);
+	expect(forgotten).toEqual([monitor, fresh]);
+	expect(monitorOf('fabled')).toBeNull();
+	forgetMonitorsWith(async () => {});
+});
+
+test("what's typed in carries no control characters, and a suggestion that runs on is cut", () => {
+	const session = fakeSession();
+
+	expect(typeWhenIdle('typed', session, 'fix it\x1b[201~ rm -rf /\x07\ttwo\nlines')).toBe(true);
+	expect(session.typed[0]).toBe('\x1b[200~fix it[201~ rm -rf /\ttwo\nlines\x1b[201~');
+
+	const long = nudgeWith('x'.repeat(5000), { fabled: true });
+
+	expect(long).toContain('x'.repeat(800));
+	expect(long).not.toContain('x'.repeat(801));
+	expect(nudgeWith('short').endsWith('without them.')).toBe(true);
 });

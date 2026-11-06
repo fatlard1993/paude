@@ -604,7 +604,7 @@ export const universe = async identity => {
 				talk,
 				age: Date.now() - session.startedAt,
 				limit: limitOf(session.id) ?? undefined,
-				// 'warm', 'going' or none
+				// 'warm', 'going', 'fabled' or none
 				keeping: keptOf(session.id) ?? undefined,
 				lifetime: lifetimeOf(session.id),
 				boost: boostOf(session.id) ?? undefined,

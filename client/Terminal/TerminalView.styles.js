@@ -350,9 +350,13 @@ export const TopBar = styled(
 			color: ${colors.light(colors.warning)};
 		}
 
-		/* A session that keeps going says so: it acts on its own while you're away */
+		/* A session that keeps going says so: it acts on its own while you're away; fabled, a Fable monitor drives it */
 		.tool.lifetime.going {
 			color: ${colors.light(colors.green)};
+		}
+
+		.tool.lifetime.fabled {
+			color: ${colors.lighter(colors.purple)};
 		}
 
 		/* The lever names what it switches, and what it was before the last switch while that can be put back */

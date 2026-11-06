@@ -27,16 +27,6 @@ import { canBrowse, canNote, canType, identity } from '../identity';
 import { tintsOf } from '../../shared/hues';
 import tokens from '../../shared/tokenCount';
 import withoutPointerReporting from '../../shared/pointerReporting';
-import { claudePointer, wheelToClaude } from './claudePointer';
-import claudeKeys from './claudeKeys';
-import {
-	besideSelection,
-	clickToClaude,
-	forkButtons,
-	forkFromMarker,
-	gpuRenderer,
-	touchToClaude,
-} from './claudeTerminal';
 import { NOTE_TYPES } from '../../shared/protocol';
 import { showNotification } from '../notify';
 import { recall, remember } from '../storage';
@@ -47,6 +37,16 @@ import { AskingCard, showAsking, showLimit } from '../Asking';
 import { ghostButton } from '../Bar';
 import { LIFETIMES, WARM_LIFETIMES, clockTime } from '../../shared/lifetimes';
 import { updateTabTitle } from '../tabTitle';
+import {
+	besideSelection,
+	clickToClaude,
+	forkButtons,
+	forkFromMarker,
+	gpuRenderer,
+	touchToClaude,
+} from './claudeTerminal';
+import claudeKeys from './claudeKeys';
+import { claudePointer, wheelToClaude } from './claudePointer';
 import { acceptFiles } from './fileDrop';
 import { linkFilePaths, linkUrls } from './linkProviders';
 import attach from './attach';
@@ -1142,7 +1142,7 @@ export default class TerminalView extends View {
 
 		this.meter = body?.meter ?? null;
 		this.showMeter();
-		// Kept warm (or going) until a cutoff that each real prompt moves on, and that can pass
+		// Kept warm (or going, or fabled) until a cutoff that each real prompt moves on, and that can pass
 		if (body?.lifetime && (body.warmUntil || WARM_LIFETIMES.includes(this.lifetime)))
 			this.showLifetime(body.lifetime, body.warmUntil, this.switched);
 		if (!this.meterTick) {
@@ -1257,7 +1257,7 @@ export default class TerminalView extends View {
 				: []),
 			{
 				label: `Lifetime: ${LIFETIMES[this.lifetime].label}`,
-				detail: 'ordinary, kept warm, keeps going, or short-lived',
+				detail: 'ordinary, kept warm, keeps going, fabled, or short-lived',
 				onPress: () => this.openLifetime(),
 			},
 		]);
@@ -1279,6 +1279,7 @@ export default class TerminalView extends View {
 		this.lifetimeWas.textContent = was ? ` ${was.label}` : '';
 		this.lifetimeButton.classList.toggle('active', WARM_LIFETIMES.includes(lifetime));
 		this.lifetimeButton.classList.toggle('going', lifetime === 'going');
+		this.lifetimeButton.classList.toggle('fabled', lifetime === 'fabled');
 		this.lifetimeButton.classList.toggle('brief', lifetime === 'brief');
 		this.lifetimeButton.dataset.menuLabel = `Lifetime: ${label}`;
 		if (until) this.lifetimeButton.dataset.menuDetail = `until ${until}`;
@@ -1317,7 +1318,7 @@ export default class TerminalView extends View {
 		if (!response?.ok)
 			return new Notify({
 				intent: 'danger',
-				content: "Couldn't change it (only a running session stays warm or keeps going)",
+				content: "Couldn't change it (only a running session stays warm, keeps going or is fabled)",
 			});
 		this.showLifetime(body.lifetime, body.warmUntil, body.switched);
 	}

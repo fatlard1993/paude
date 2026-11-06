@@ -2,7 +2,6 @@ import { limitsOf } from './accountLimits';
 import { meterOf } from './cacheMeter';
 import askHaiku, { jsonIn } from './haiku';
 import { isNudge } from './keepWarm';
-import { LIFETIMES } from './lifetime';
 import { MODEL_NAMES, MODELS } from '../shared/models';
 import { listProjects } from './projects';
 import { ownedRemotes, remoteApi } from './remotes';
@@ -22,6 +21,11 @@ const CHANGED_FILES = 10;
 const PROMPT_CHARACTERS = 160;
 // The keep-warm pings and keep-going nudges say nothing of what a session is about
 const KEEP_WARM_PING = /^keep-?warm ping/i;
+// What Haiku may pick for how long a new session lasts: the ones its prompt offers. Keeping going (and fabled, going
+// with a Fable monitor) acts unattended on the owner's usage, so those are only ever chosen by hand.
+export const PLACED_LIFETIMES = ['ordinary', 'warm', 'brief'];
+
+export const placedLifetime = said => (PLACED_LIFETIMES.includes(said) ? said : 'ordinary');
 
 const clip = text =>
 	String(text ?? '')
@@ -198,11 +202,7 @@ export const findHome = async ({ prompt, project, identity, remotes = false }) =
 		fresh: {
 			project: fresh?.name ?? null,
 			remote: fresh?.remote,
-			// Keeping going acts unattended on the owner's usage: only ever chosen by hand
-			lifetime:
-				LIFETIMES.includes(reply.fresh?.lifetime) && reply.fresh.lifetime !== 'going'
-					? reply.fresh.lifetime
-					: 'ordinary',
+			lifetime: placedLifetime(reply.fresh?.lifetime),
 			model: MODEL_NAMES.includes(reply.fresh?.model) ? reply.fresh.model : 'default',
 			modelWhy: MODEL_NAMES.includes(reply.fresh?.model) ? String(reply.fresh?.modelWhy ?? '') : '',
 			why: String(reply.fresh?.why ?? ''),

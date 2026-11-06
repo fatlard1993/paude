@@ -117,8 +117,8 @@ const worktreeNameFor = text => {
 // { id: null, worktree, files, warning }, and joining that worktree is starting Claude in it anyway.
 const HEARTBEAT_MS = 5000;
 
-// A new session, kept warm, kept going or short-lived from the start when asked, on the model asked for: mode is
-// 'warm', 'going', 'brief' or anything else for none, model one of MODEL_NAMES or anything else for the default.
+// A new session, kept warm, kept going, fabled or short-lived from the start when asked, on the model asked for: mode
+// is 'warm', 'going', 'fabled', 'brief' or anything else for none, model one of MODEL_NAMES or anything else for the default.
 // Whoever starts it watches its project from then on, unless they turned that off themselves
 const startWith = async (folder, text, { mode, model, identity, project } = {}) => {
 	const known = MODEL_NAMES.includes(model) ? model : undefined;
@@ -574,16 +574,17 @@ const sessionsRoutes = async (request, server) => {
 		});
 	}
 
-	// How long the session lasts, changed: kept warm (whose pings spend the owner's usage), short-lived, or ordinary
+	// How long the session lasts, changed: kept warm, going or fabled (whose pings and nudges spend the owner's usage),
+	// short-lived, or ordinary
 	match = requestMatch('PUT', '/api/sessions/:id/lifetime', request);
 	if (match) {
 		if (!identity.owner) return new Response('Only the owner sets how long a session lasts', { status: 403 });
 
 		const { lifetime } = await request.json();
 
-		if (!LIFETIMES.includes(lifetime)) return new Response('Ordinary, warm, going or brief', { status: 400 });
+		if (!LIFETIMES.includes(lifetime)) return new Response('Ordinary, warm, going, fabled or brief', { status: 400 });
 		if (WARM_LIFETIMES.includes(lifetime) && !runningSession(match.id))
-			return new Response('Only a running session stays warm or keeps going', { status: 409 });
+			return new Response('Only a running session stays warm, keeps going or is fabled', { status: 409 });
 
 		return Response.json({
 			lifetime: await switchLifetime(match.id, lifetime),

@@ -1,11 +1,45 @@
 import { afterAll, expect, test } from 'bun:test';
 
-import { MOST_IDLE, MOST_NUDGES, holdBefore, keepGoing, promptFor, settledSoFar } from './keepGoing';
-import { claudeActive, isNudge, keepWarm, nudgeWith, warmUntil } from './keepWarm';
+import { MOST_IDLE as FABLED_IDLE, MOST_NUDGES as FABLED_NUDGES } from './fabled';
+import {
+	MOST_IDLE,
+	MOST_MISSED,
+	MOST_NUDGES,
+	holdBefore,
+	keepGoing,
+	promptFor,
+	resumeKeepingGoing,
+	settledSoFar,
+} from './keepGoing';
+import {
+	askingSessions,
+	claudeActive,
+	isNudge,
+	keepWarm,
+	monitorOf,
+	noteAsking,
+	noteMonitor,
+	nudgeWith,
+	warmUntil,
+} from './keepWarm';
 
 const NUDGE = nudgeWith('');
 
-const ids = ['going', 'only-warm', 'typing', 'held', 'gone', 'no', 'hooks', 'thoughts'];
+const ids = [
+	'going',
+	'only-warm',
+	'typing',
+	'held',
+	'gone',
+	'no',
+	'hooks',
+	'thoughts',
+	'fabled',
+	'lost',
+	'room',
+	'resumed',
+	'resumed-fabled',
+];
 
 afterAll(() => Promise.all(ids.map(id => keepWarm(id, 0))));
 
@@ -30,6 +64,15 @@ const going = (session, turns = [turn('fix the build')], decisions = []) => ({
 	decisionsOf: async () => ({ decisions }),
 });
 const says = answer => async () => answer;
+// A monitor's answer, as askMonitor reports one
+const verdict = (answer, outcome = {}) => ({
+	answer,
+	delivered: true,
+	resumable: true,
+	usage: { turns: 1, cacheRead: 0, cacheWrite: 0, input: 0, output: 0, cost: 0, ms: 0 },
+	why: '',
+	...outcome,
+});
 
 test('a session that keeps going is told what Haiku says to do next', async () => {
 	const session = fakeSession();
@@ -340,4 +383,199 @@ test('thoughts the person drops in while Claude works are asks Haiku is shown, i
 		'<asked>\nfix the hull\n</asked>\n<asked>\n(added while Claude worked) the fuel tank would look better inside\n</asked>\n<asked>\n(added while Claude worked) cards should show staleness\n</asked>',
 	);
 	expect(prompt).not.toContain(`<asked>\n${NUDGE}`);
+});
+
+test('a fabled session asks its monitor: briefed on the run at its first look, told only what happened since after', async () => {
+	const session = fakeSession();
+	const asked = [];
+	const askMonitor = async (monitor, cwd, prompt, { first }) => {
+		asked.push({ monitor, cwd, prompt, first });
+
+		return verdict('{"go": true, "next": "Check the diff."}');
+	};
+	const turns = [{ ...turn('fix the build'), id: 't1' }];
+
+	await keepWarm('fabled', 24, Date.now(), { fabled: true });
+	expect(await keepGoing('fabled', 'Fixed it.', { ...going(session, turns), askMonitor, ask: says('') })).toBe(true);
+	expect(asked[0]).toMatchObject({ first: true, cwd: '/work', monitor: monitorOf('fabled').monitor });
+	expect(asked[0].prompt).toContain('<asked>\nfix the build\n</asked>');
+	expect(asked[0].prompt).toContain('Fixed it.');
+	expect(session.typed[0]).toContain(
+		'a monitor that has followed this run and read the repository; weigh it against what you know before following it: Check the diff.',
+	);
+	expect(monitorOf('fabled').seen).toBe('t1');
+
+	const later = [
+		...turns,
+		{ ...turn(NUDGE, true, 'Checked the diff.'), id: 't2', added: ['also the README'] },
+		{ ...turn(NUDGE), id: 't3' },
+	];
+
+	expect(await keepGoing('fabled', 'Did the README.', { ...going(session, later), askMonitor, ask: says('') })).toBe(
+		true,
+	);
+	expect(asked[1].first).toBe(false);
+	expect(asked[1].monitor).toBe(asked[0].monitor);
+	expect(asked[1].prompt).toContain('Since you last looked:');
+	expect(asked[1].prompt).toContain('The person added while Claude worked: also the README');
+	expect(asked[1].prompt).toContain('Nudged, Claude ended its turn after 3 tool calls: Checked the diff.');
+	expect(asked[1].prompt).not.toContain('fix the build');
+	expect(asked[1].prompt).toContain('Did the README.');
+	expect(monitorOf('fabled').seen).toBe('t3');
+});
+
+test("a monitor whose conversation can't be carried on is forgotten and a fresh one briefed at the next turn end; one that only failed to answer is kept", async () => {
+	const session = fakeSession();
+	const asked = [];
+	let outcome = verdict('', { delivered: false, resumable: false });
+	const askMonitor = async (monitor, cwd, prompt, { first }) => {
+		asked.push({ monitor, first });
+
+		return outcome;
+	};
+	const turns = [
+		{ ...turn('fix the build'), id: 't1' },
+		{ ...turn(NUDGE), id: 't2' },
+	];
+
+	await keepWarm('lost', 24, Date.now(), { fabled: true });
+
+	const { monitor } = monitorOf('lost');
+
+	await noteMonitor('lost', { monitor, seen: 't1' });
+	// Gone: forgotten, Claude carries on with the plain nudge meanwhile
+	expect(await keepGoing('lost', 'Done.', { ...going(session, turns), askMonitor })).toBe(true);
+	expect(asked[0]).toEqual({ monitor, first: false });
+	expect(session.typed[0]).toContain('carry on toward what the person asked for');
+	expect(session.typed[0]).not.toContain('A suggestion');
+	expect(monitorOf('lost')).toBeNull();
+
+	// A fresh one, briefed; its brief ran out of rounds, so it has still seen up to this turn and is carried on next time
+	outcome = verdict('', { delivered: true, resumable: true });
+	expect(await keepGoing('lost', 'Done.', { ...going(session, turns), askMonitor })).toBe(true);
+	expect(asked[1].first).toBe(true);
+	expect(asked[1].monitor).not.toBe(monitor);
+	expect(monitorOf('lost')).toEqual({ monitor: asked[1].monitor, seen: 't2', missed: 0 });
+
+	// A hiccup that never reached it (out of usage, too slow): kept as it was, the delta told again next time; but one
+	// gone in words the ask doesn't know would be tried forever, so a few misses in a row give it up
+	outcome = verdict('', { delivered: false, resumable: true });
+	const later = [...turns, { ...turn(NUDGE), id: 't3' }];
+
+	for (let miss = 1; miss < MOST_MISSED; miss++) {
+		expect(await keepGoing('lost', 'Done.', { ...going(session, later), askMonitor })).toBe(true);
+		expect(asked.at(-1)).toEqual({ monitor: asked[1].monitor, first: false });
+		expect(monitorOf('lost')).toEqual({ monitor: asked[1].monitor, seen: 't2', missed: miss });
+	}
+	// An ask that gets through starts the count over
+	outcome = verdict('{"go": true}', { delivered: true, resumable: true });
+	expect(await keepGoing('lost', 'Done.', { ...going(session, later), askMonitor })).toBe(true);
+	expect(monitorOf('lost')).toEqual({ monitor: asked[1].monitor, seen: 't3', missed: 0 });
+	outcome = verdict('', { delivered: false, resumable: true });
+	for (let miss = 0; miss < MOST_MISSED; miss++)
+		expect(await keepGoing('lost', 'Done.', { ...going(session, later), askMonitor })).toBe(true);
+	expect(monitorOf('lost')).toBeNull();
+	await keepWarm('lost', 24, Date.now(), { fabled: true });
+
+	// A first look that fails outright made nothing worth keeping: a new id next time
+	await noteMonitor('lost', { monitor: null });
+	outcome = verdict('', { delivered: false, resumable: false });
+	expect(await keepGoing('lost', 'Done.', { ...going(session, later), askMonitor })).toBe(true);
+	expect(asked.at(-1).first).toBe(true);
+	expect(monitorOf('lost')).toBeNull();
+});
+
+test("a fabled session has more room than Haiku's caps before it waits for the person", async () => {
+	const session = fakeSession();
+	let asked = 0;
+	const askMonitor = async () => {
+		asked += 1;
+
+		return verdict('{"go": true}');
+	};
+	const capped = [turn('fix the build'), ...Array.from({ length: MOST_NUDGES }, () => turn(NUDGE))];
+	const idle = [turn('fix the build'), ...Array.from({ length: MOST_IDLE }, () => turn(NUDGE, false))];
+
+	await keepWarm('room', 24, Date.now(), { fabled: true });
+	expect(await keepGoing('room', 'Next I would…', { ...going(session, capped), askMonitor })).toBe(true);
+	expect(await keepGoing('room', 'Next I would…', { ...going(session, idle), askMonitor })).toBe(true);
+	expect(asked).toBe(2);
+
+	const room = { most: FABLED_NUDGES, idle: FABLED_IDLE };
+
+	expect(FABLED_NUDGES).toBeGreaterThan(MOST_NUDGES);
+	expect(FABLED_IDLE).toBeGreaterThan(MOST_IDLE);
+	expect(holdBefore([turn('fix'), ...Array.from({ length: FABLED_NUDGES }, () => turn(NUDGE))], room)).toContain(
+		'in a row',
+	);
+	expect(holdBefore([turn('fix'), ...Array.from({ length: FABLED_IDLE }, () => turn(NUDGE, false))], room)).toContain(
+		'next to nothing',
+	);
+});
+
+test("a turn end being answered is noted until it's answered, and a server that starts with one noted answers it from the transcript", async () => {
+	const session = fakeSession();
+	let release;
+	const held = new Promise(resolve => {
+		release = resolve;
+	});
+	const turns = [{ ...turn('fix the build', true, 'Fixed the build.'), id: 't1' }];
+
+	await keepWarm('resumed', 12, Date.now(), { going: true });
+	expect(askingSessions()).not.toContain('resumed');
+
+	const answering = keepGoing('resumed', 'Fixed the build.', { ...going(session, turns), ask: () => held });
+
+	await Bun.sleep(1);
+	expect(askingSessions()).toContain('resumed');
+	release('{"go": true, "next": "Run the tests."}');
+	expect(await answering).toBe(true);
+	expect(askingSessions()).not.toContain('resumed');
+
+	// As a restart leaves it: noted, never answered
+	await noteAsking('resumed', 't1');
+
+	const answered = [];
+	const resumed = await resumeKeepingGoing({
+		sessionOf: () => session,
+		turnsOf: async () => turns,
+		answer: async (id, reply) => {
+			answered.push({ id, reply });
+
+			return true;
+		},
+	});
+
+	expect(resumed).toEqual(['resumed']);
+	expect(answered).toEqual([{ id: 'resumed', reply: 'Fixed the build.' }]);
+
+	// One with nothing to answer from (no reply in its transcript), or no longer running, is let be
+	await noteAsking('resumed', 't1');
+	expect(
+		await resumeKeepingGoing({ sessionOf: () => session, turnsOf: async () => [], answer: async () => true }),
+	).toEqual([]);
+	expect(askingSessions()).not.toContain('resumed');
+	await noteAsking('resumed', 't1');
+	expect(await resumeKeepingGoing({ sessionOf: () => undefined, answer: async () => true })).toEqual([]);
+	expect(askingSessions()).not.toContain('resumed');
+});
+
+test('a monitor asked again about a turn it already saw is told its verdict was lost, not that a turn ended', async () => {
+	const session = fakeSession();
+	const prompts = [];
+	const askMonitor = async (monitor, cwd, prompt) => {
+		prompts.push(prompt);
+
+		return verdict('{"go": true, "next": "Run the tests."}');
+	};
+	const turns = [
+		{ ...turn('fix the build'), id: 't1' },
+		{ ...turn(NUDGE, true, 'Ran them.'), id: 't2' },
+	];
+
+	await keepWarm('resumed-fabled', 24, Date.now(), { fabled: true });
+	await noteMonitor('resumed-fabled', { monitor: monitorOf('resumed-fabled').monitor, seen: 't2' });
+	expect(await keepGoing('resumed-fabled', 'Ran them.', { ...going(session, turns), askMonitor })).toBe(true);
+	expect(prompts[0]).toContain('your last verdict never reached Claude');
+	expect(prompts[0]).not.toContain('A nudged turn ended');
 });

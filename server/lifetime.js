@@ -3,13 +3,15 @@ import path from 'path';
 import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
 import { isBrief, keepSession, markBrief } from './briefSessions';
-import { DEFAULT_HOURS, goingOn, keepWarm, warmUntil } from './keepWarm';
+import { HOURS as FABLED_HOURS } from './fabled';
+import { DEFAULT_HOURS, fabledOn, goingOn, keepWarm, warmUntil } from './keepWarm';
 
 // How long a session lasts: 'ordinary' (until it's deleted), 'warm' (kept warm while you're away), 'going' (kept warm,
-// and nudged on while its replies leave work undone: keepGoing), or 'brief' (deleted once its cache lets go with
-// nobody in it). Set when it starts, and changed whenever.
-export const LIFETIMES = ['ordinary', 'warm', 'going', 'brief'];
-export const WARM_LIFETIMES = ['warm', 'going'];
+// and nudged on while its replies leave work undone: keepGoing), 'fabled' (kept going by a Fable monitor of its own,
+// with more room and for longer: fabled), or 'brief' (deleted once its cache lets go with nobody in it). Set when it
+// starts, and changed whenever.
+export const LIFETIMES = ['ordinary', 'warm', 'going', 'fabled', 'brief'];
+export const WARM_LIFETIMES = ['warm', 'going', 'fabled'];
 // A switch made by hand stays on show this long, to be put back: the hour Claude's cache holds a conversation, inside
 // which putting it back finds things as they were. { [sessionId]: { was, at } }
 export const UNDO_MS = 60 * 60 * 1000;
@@ -25,7 +27,7 @@ export const initLifetime = async dataDir => {
 };
 
 export const lifetimeOf = id => {
-	if (warmUntil(id)) return goingOn(id) ? 'going' : 'warm';
+	if (warmUntil(id)) return (fabledOn(id) && 'fabled') || (goingOn(id) && 'going') || 'warm';
 
 	return isBrief(id) ? 'brief' : 'ordinary';
 };
@@ -38,9 +40,15 @@ export const lastSwitch = (id, now = Date.now()) => {
 };
 
 export const setLifetime = async (id, lifetime) => {
-	await keepWarm(id, WARM_LIFETIMES.includes(lifetime) ? DEFAULT_HOURS : 0, Date.now(), {
-		going: lifetime === 'going',
-	});
+	await keepWarm(
+		id,
+		(lifetime === 'fabled' && FABLED_HOURS) || (WARM_LIFETIMES.includes(lifetime) && DEFAULT_HOURS) || 0,
+		Date.now(),
+		{
+			going: lifetime === 'going',
+			fabled: lifetime === 'fabled',
+		},
+	);
 	if (lifetime === 'brief') await markBrief(id);
 	else await keepSession(id);
 

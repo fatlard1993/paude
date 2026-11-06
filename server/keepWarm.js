@@ -20,13 +20,19 @@ export const PING = 'keep-warm ping from paude: reply with only "·" and no tool
 // goal, or failing that, something useful toward it. Said to be paude's, not the person's, so neither Claude nor what
 // reads the transcript later takes it as the person agreeing to what was proposed.
 const NUDGE_MARK = 'keep-going nudge from paude, not the person:';
-// next is Haiku's, from only the end of Claude's reply: a suggestion for Claude to weigh against all it knows
-export const nudgeWith = next =>
+// next is a suggestion for Claude to weigh against all it knows: Haiku's, from only the end of Claude's reply, or a
+// fabled session's monitor's, which has followed the run and read the repository
+// A suggestion is a sentence or two; one that runs on is cut, since it's typed into Claude's prompt
+const NEXT_CHARACTERS = 800;
+
+export const nudgeWith = (next, { fabled = false } = {}) =>
 	[
 		NUDGE_MARK,
 		'carry on toward what the person asked for.',
 		next?.trim() &&
-			`A suggestion from a reader who saw only the end of your last reply, so check it against what you know before following it: ${next.trim()}`,
+			(fabled
+				? `A suggestion from a monitor that has followed this run and read the repository; weigh it against what you know before following it: ${next.trim().slice(0, NEXT_CHARACTERS)}`
+				: `A suggestion from a reader who saw only the end of your last reply, so check it against what you know before following it: ${next.trim().slice(0, NEXT_CHARACTERS)}`),
 		"If the goal's next step is done or waits on them, do the most useful thing toward it that doesn't: check the work end to end, cover the edge cases, fix rough edges you noticed, look for the same fault elsewhere. Leave any question for them standing in your reply, not answered for them, and never push, deploy, release, post, delete, or run anything against other machines, services or people without them.",
 	]
 		.filter(Boolean)
@@ -40,13 +46,17 @@ export const isNudge = prompt =>
 const ENTER_AFTER_MS = 300;
 
 let file;
-// { [sessionId]: { hours, until, going } }: going, it also keeps going on its own (keepGoing)
+// { [sessionId]: { hours, until, going, fabled, monitor, seen, missed, asking } }: going, it also keeps going on its
+// own (keepGoing), `asking` the turn whose end it's still answering, for a server that restarts meanwhile to answer it;
+// fabled, with a Fable monitor of its own (fabled), `monitor` its conversation's id, `seen` the last turn it was told
+// of and `missed` how many asks in a row never reached it. The monitor is kept through a switch to warm or going, to be
+// put back, and goes with the record.
 let warm = {};
 // When Claude last did anything (any hook), per session; a ping is due PING_AFTER_MS after
 const lastTurnAt = new Map();
 // Sessions whose turn now is a ping, so it isn't news to anyone watching
 const pinged = new Set();
-// The last ping or nudge typed into each: { [sessionId]: { kind: 'warm' | 'going', at } }
+// The last ping or nudge typed into each: { [sessionId]: { kind: 'warm' | 'going' | 'fabled', at } }
 const boosts = new Map();
 
 const save = () => writeJsonFile(file, () => warm);
@@ -57,15 +67,79 @@ export const warmUntil = (id, now = Date.now()) => (warm[id]?.until > now ? warm
 
 export const goingOn = (id, now = Date.now()) => Boolean(warmUntil(id, now) && warm[id].going);
 
-export const keepWarm = async (id, hours, now = Date.now(), { going = false } = {}) => {
+export const fabledOn = (id, now = Date.now()) => Boolean(goingOn(id, now) && warm[id].fabled);
+
+// A fabled session's monitor conversation, the last turn it was told of, and how many asks in a row never reached it:
+// { monitor, seen, missed }
+export const monitorOf = id =>
+	warm[id]?.monitor ? { monitor: warm[id].monitor, seen: warm[id].seen ?? null, missed: warm[id].missed ?? 0 } : null;
+
+// What's done with a monitor's conversation once its record lets go of it: fabled deletes it. Registered rather than
+// imported, since it runs Claude and that pulls this module in
+let forgetMonitor = async () => {};
+
+export const forgetMonitorsWith = forget => {
+	forgetMonitor = forget;
+};
+
+// The monitor was told up to this turn, or missed another ask; `monitor` null forgets it (its conversation gone), for a
+// new one to be briefed
+export const noteMonitor = async (id, { monitor, seen = null, missed = 0 }) => {
+	if (!warm[id]) return;
+	if (monitor) {
+		const { missed: _, ...rest } = warm[id];
+
+		warm[id] = { ...rest, monitor, seen, ...(missed ? { missed } : {}) };
+	} else {
+		const { monitor: gone, seen: _, missed: __, ...rest } = warm[id];
+
+		warm[id] = rest;
+		await forgetMonitor(gone);
+	}
+	if (file) await save();
+};
+
+// A session that keeps going is answering the end of turn `turnId` (null once answered): saved, so a server that
+// restarts meanwhile knows to answer it
+export const noteAsking = async (id, turnId) => {
+	if (!warm[id] || (warm[id].asking ?? null) === (turnId ?? null)) return;
+	if (turnId) warm[id] = { ...warm[id], asking: turnId };
+	else {
+		const { asking: _, ...rest } = warm[id];
+
+		warm[id] = rest;
+	}
+	if (file) await save();
+};
+
+// The sessions whose turn end was being answered when the server last stopped
+export const askingSessions = () => Object.keys(warm).filter(id => warm[id].asking && goingOn(id));
+
+const letGo = id => {
+	const { monitor } = warm[id] ?? {};
+
+	delete warm[id];
+	if (monitor) forgetMonitor(monitor).catch(() => {});
+};
+
+export const keepWarm = async (id, hours, now = Date.now(), { going = false, fabled = false } = {}) => {
 	if (hours > 0) {
 		const kept = Math.min(hours, MAX_HOURS);
+		const { monitor, seen, missed } = warm[id] ?? {};
 
-		warm[id] = { hours: kept, until: now + kept * HOUR_MS, ...(going && { going }) };
+		warm[id] = {
+			hours: kept,
+			until: now + kept * HOUR_MS,
+			...((going || fabled) && { going: true }),
+			...(fabled && { fabled: true, monitor: monitor ?? crypto.randomUUID() }),
+			...(!fabled && monitor && { monitor }),
+			...(monitor && seen && { seen }),
+			...(monitor && missed && { missed }),
+		};
 		if (!lastTurnAt.has(id)) lastTurnAt.set(id, now);
-	} else delete warm[id];
+	} else letGo(id);
 	console.log(
-		`Keep ${going ? 'going' : 'warm'} ${id}: ${hours > 0 ? `on until ${new Date(warm[id].until).toISOString()}` : 'off'}`,
+		`Keep ${(fabled && 'fabled') || (going && 'going') || 'warm'} ${id}: ${hours > 0 ? `on until ${new Date(warm[id].until).toISOString()}` : 'off'}`,
 	);
 	if (file) await save();
 
@@ -77,7 +151,7 @@ export const stopKeepingWarm = async id => {
 	pinged.delete(id);
 	if (!(id in warm)) return;
 	console.log(`Keep warm ${id}: off, the session ended`);
-	delete warm[id];
+	letGo(id);
 	if (file) await save();
 };
 
@@ -100,15 +174,20 @@ export const claudeActive = (id, { hook_event_name: event, prompt } = {}, now = 
 	return pinged.has(id);
 };
 
+// Control characters have no place in a prompt: an escape could end the paste early and hand the rest to the terminal.
+// Tabs and newlines stay; a paste keeps them as text.
+const isControl = code => (code < 32 && code !== 9 && code !== 10) || (code >= 127 && code <= 159);
+const withoutControls = text => [...String(text)].filter(character => !isControl(character.charCodeAt(0))).join('');
+
 // Typed in only when Claude is idle with an empty prompt box: paude's own prompt must neither answer a question Claude
 // asked nor run into what someone is halfway through typing. Whether it was.
 export const typeWhenIdle = (id, session, text, now = Date.now()) => {
 	if (session.busy || statusOf(id) !== 'ready' || session.promptDraft() !== '') return false;
 
-	session.typeIn(`\x1b[200~${text}\x1b[201~`);
+	session.typeIn(`\x1b[200~${withoutControls(text)}\x1b[201~`);
 	setTimeout(() => session.typeIn('\r'), ENTER_AFTER_MS);
 	if (text === PING) boosts.set(id, { kind: 'warm', at: now });
-	else if (isNudge(text)) boosts.set(id, { kind: 'going', at: now });
+	else if (isNudge(text)) boosts.set(id, { kind: fabledOn(id, now) ? 'fabled' : 'going', at: now });
 
 	return true;
 };
@@ -120,8 +199,9 @@ export const boostOf = (id, now = Date.now()) => {
 	return boost ? { kind: boost.kind, ago: now - boost.at } : null;
 };
 
-// How it's kept: 'going' (warm, and nudged on), 'warm', or null
-export const keptOf = (id, now = Date.now()) => (goingOn(id, now) && 'going') || (warmUntil(id, now) && 'warm') || null;
+// How it's kept: 'fabled' (going, with a Fable monitor of its own), 'going' (warm, and nudged on), 'warm', or null
+export const keptOf = (id, now = Date.now()) =>
+	(fabledOn(id, now) && 'fabled') || (goingOn(id, now) && 'going') || (warmUntil(id, now) && 'warm') || null;
 
 // Not typed now: tried again next check
 const ping = (id, session, now) => {
@@ -145,7 +225,7 @@ export const checkWarm = async (sessionOf, now = Date.now()) => {
 		if (!lastTurnAt.has(id)) lastTurnAt.set(id, now);
 		if (until <= now || !session) {
 			console.log(`Keep warm ${id}: off, ${session ? 'past its cutoff' : 'not running'}`);
-			delete warm[id];
+			letGo(id);
 			changed = true;
 		} else if (now - lastTurnAt.get(id) >= PING_AFTER_MS && ping(id, session, now)) pings.push(id);
 	}

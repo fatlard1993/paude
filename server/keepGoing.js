@@ -3,12 +3,31 @@ import { statusOf } from './activity';
 import { waitingToAsk } from './claudeInbox';
 import { noteCrew } from './crew';
 import { sessionDecisions } from './decisions';
-import { goingOn, isNudge, nudgeWith, typeWhenIdle } from './keepWarm';
+import {
+	MOST_IDLE as FABLED_IDLE,
+	MOST_NUDGES as FABLED_NUDGES,
+	askMonitor as askFabledMonitor,
+	briefFor,
+	deltaFor,
+	forgetMonitor,
+	usageWords,
+} from './fabled';
+import {
+	askingSessions,
+	fabledOn,
+	goingOn,
+	isNudge,
+	monitorOf,
+	noteAsking,
+	noteMonitor,
+	nudgeWith,
+	typeWhenIdle,
+} from './keepWarm';
 import { runningSession } from './sessions/running';
 import { sessionTurns, startAndEnd } from './timeline';
 
 // A session that keeps going doesn't stop doing something while there's anything useful left that needs nothing from
-// the person: after each turn Haiku names what Claude should do next, the goal's next step or something useful toward
+// the person: after each turn Haiku (or, fabled, the session's own monitor) names what Claude should do next, the goal's next step or something useful toward
 // it, and paude types that in. It waits only when everything useful left needs them. It's kept warm too, and stops with
 // it: hours from the person's last real prompt, which a nudge doesn't move.
 
@@ -42,18 +61,23 @@ const sinceTheirs = turns => turns.slice(Math.max(0, turns.findLastIndex(spoke))
 
 const nudgedRun = turns => sinceTheirs(turns).filter(turn => isNudge(turn.prompt));
 
-// Why it waits for the person before asking Haiku, or null when it may go on
-export const holdBefore = turns => {
+// Why it waits for the person before asking, or null when it may go on; a fabled session has more room
+export const holdBefore = (turns, { most = MOST_NUDGES, idle: mostIdle = MOST_IDLE } = {}) => {
 	const run = nudgedRun(turns);
 
-	if (run.length >= MOST_NUDGES) return `${MOST_NUDGES} nudges in a row`;
+	if (run.length >= most) return `${most} nudges in a row`;
 
 	let idle = 0;
 
 	while (idle < run.length && run.at(-1 - idle).steps.length <= SLIGHT) idle += 1;
 
-	return idle >= MOST_IDLE ? `${MOST_IDLE} nudged turns in a row did next to nothing` : null;
+	return idle >= mostIdle ? `${mostIdle} nudged turns in a row did next to nothing` : null;
 };
+
+const FABLED_ROOM = { most: FABLED_NUDGES, idle: FABLED_IDLE };
+// Asks in a row that never reached a fabled session's monitor before it's given up as gone, whatever Claude Code said:
+// a conversation lost in words the ask doesn't know would otherwise be tried forever
+export const MOST_MISSED = 3;
 
 const ASKED_PROMPTS = 4;
 
@@ -114,7 +138,7 @@ export const promptFor = (reply, asked, earlier = [], settled = []) =>
 		'A person is away from a Claude Code session and wants it to keep working toward their goal the whole time they are gone, never sitting idle while anything useful is left to do. Claude just ended a turn. Say what Claude should do next.',
 		'',
 		'Pick, in this order:',
-		"0. Anything the person asked for that neither the latest reply nor the earlier ones show done, the oldest first: a message asking for several things is often answered for only some of them, and the person drops thoughts and findings in while Claude works, to be taken up whenever there is time. Each of those is work left until a reply shows it done or the person sets it aside; a thought that only needs their call is a question for them, not work.",
+		'0. Anything the person asked for that neither the latest reply nor the earlier ones show done, the oldest first: a message asking for several things is often answered for only some of them, and the person drops thoughts and findings in while Claude works, to be taken up whenever there is time. Each of those is work left until a reply shows it done or the person sets it aside; a thought that only needs their call is a question for them, not work.',
 		'1. The next step toward the goal: what the reply names as left or offers to do next ("I\'d take those next", "a good next step if you want it" count as accepted), rough edges it noticed in its own work, work the session put off that nothing since shows done (unless it was put off until the person says), or the plain next step of the plan.',
 		'2. If that step waits on the person (a question to them, a choice between real alternatives, a credential, a restart only they can do), or on background work Claude started, then work that is useful toward the goal and does not depend on it: another part of the goal, or the parts of the open choice that are the same either way.',
 		'3. If the goal looks done, something that makes it better done: check it end to end the way the person will use it, check it holds to what the session decided (each decision and direction kept, nothing it rejected crept back in), cover edge cases and failure paths, review the change as a stranger would, look for the same fault elsewhere, tighten what it touched.',
@@ -146,6 +170,55 @@ export const promptFor = (reply, asked, earlier = [], settled = []) =>
 		'Reply with only a JSON object: {"go": true or false, "next": "what Claude should do next, one or two sentences spoken to Claude, specific to this work", "why": "one plain sentence"}.',
 	].join('\n');
 
+// The turns since the monitor was last told of one, for its delta: each by who prompted it and how it ended; the one it
+// was told of gone (compacted away) leaves only the latest
+const sinceSeen = (turns, seen) => {
+	const at = turns.findIndex(turn => turn.id === seen);
+	const since = at === -1 ? turns.slice(-1) : turns.slice(at + 1);
+
+	return since.map((turn, index) => ({
+		theirs: theirs(turn),
+		asked: turn.asked ?? turn.prompt ?? '',
+		added: turn.added,
+		said: turn.said,
+		steps: turn.steps?.length ?? 0,
+		last: index === since.length - 1,
+	}));
+};
+
+// A fabled session's verdict, from its monitor: briefed on the goal and the run so far at its first look, told what
+// happened since at each later one. The monitor has seen up to this turn once the prompt reached its conversation,
+// answered or not (a look that ran out of rounds still read the delta); a conversation that can't be carried on is
+// forgotten, for a fresh one to be briefed at the next turn end; any other failure keeps it as it was, to try again.
+// The verdict's JSON text, or '' for none.
+const askFabled = async (id, session, reply, turns, settled, askMonitor) => {
+	const { monitor, seen } = monitorOf(id) ?? { monitor: crypto.randomUUID(), seen: null };
+	const first = !seen;
+	const prompt = first
+		? briefFor({ cwd: session.cwd, asked: lastAsked(turns), settled, earlier: runSoFar(turns), reply })
+		: deltaFor({ since: sinceSeen(turns, seen), settled, reply });
+	const { answer, delivered, resumable, usage, why } = await askMonitor(monitor, session.cwd, prompt, { first });
+	const missed = delivered ? 0 : (monitorOf(id)?.missed ?? 0) + 1;
+
+	// Each ask on its own line, so the log says what the monitor cost and what went wrong when it gave no verdict
+	if (delivered)
+		console.log(
+			`Keep fabled ${id}: monitor ${first ? 'briefed' : 'told'}${answer ? '' : `, no verdict (${why})`}: ${usageWords(usage)}`,
+		);
+	else console.log(`Keep fabled ${id}: the ask never reached the monitor (${why}), ${missed} of ${MOST_MISSED}`);
+	if (!resumable || missed >= MOST_MISSED) {
+		console.log(
+			`Keep fabled ${id}: monitor forgotten, ${resumable ? `${missed} asks in a row never reached it` : why}; a fresh one is briefed at the next turn end`,
+		);
+		// The record's, and one made for this ask alone, which the record never held
+		await noteMonitor(id, { monitor: null });
+		await forgetMonitor(monitor);
+	} else if (delivered) await noteMonitor(id, { monitor, seen: turns.at(-1)?.id ?? seen });
+	else await noteMonitor(id, { monitor, seen, missed });
+
+	return answer;
+};
+
 // The latest turn end each session's keep-going is answering
 const turnEnds = new Map();
 
@@ -173,16 +246,17 @@ const notIdle = (id, session) => {
 	return session.busy || draft === null ? FINISHING : null;
 };
 
-// After a turn ends in a session that keeps going: told what to do next unless Haiku finds nothing useful left that
-// doesn't need the person. Without an answer from Haiku it's still told to carry on toward the goal. Typed in only
-// once Claude sits idle with an empty prompt box and nobody's message waiting to go in (whoever came back and started
-// typing has the session). A turn end another Stop hook turned back isn't the end: Claude answers the hook and ends
-// again, and only the later one is answered. Whether it was typed.
+// After a turn ends in a session that keeps going: told what to do next unless Haiku (or, fabled, its monitor) finds
+// nothing useful left that doesn't need the person. Without an answer it's still told to carry on toward the goal.
+// Typed in only once Claude sits idle with an empty prompt box and nobody's message waiting to go in (whoever came
+// back and started typing has the session). A turn end another Stop hook turned back isn't the end: Claude answers the
+// hook and ends again, and only the later one is answered. Whether it was typed.
 export const keepGoing = async (
 	id,
 	reply,
 	{
 		ask = text => askHaiku(text, 'deciding to keep going'),
+		askMonitor = askFabledMonitor,
 		sessionOf = runningSession,
 		// Whole: a session heavy with screenshots can hold the person's last prompts far back past the usual tail
 		turnsOf = (sessionId, cwd) => sessionTurns(sessionId, cwd, { whole: true }),
@@ -196,24 +270,56 @@ export const keepGoing = async (
 	turnEnds.set(id, ended);
 	if (!goingOn(id) || !session || !reply?.trim()) return false;
 
+	const fabled = fabledOn(id);
+	const kept = fabled ? 'fabled' : 'going';
 	const turns = await turnsOf(id, session.cwd);
-	const hold = holdBefore(turns);
+
+	// Answering this turn end, until it's answered: a server that restarts meanwhile takes it up (resumeKeepingGoing)
+	await noteAsking(id, turns.at(-1)?.id ?? 'the latest');
+	try {
+		return await answerTurnEnd(id, session, ended, reply, turns, fabled, kept, {
+			ask,
+			askMonitor,
+			sessionOf,
+			decisionsOf,
+			pause,
+		});
+	} finally {
+		// Only the latest turn end's answer stands; an earlier one finishing late mustn't mark the latest answered
+		if (turnEnds.get(id) === ended) await noteAsking(id, null);
+	}
+};
+
+const answerTurnEnd = async (
+	id,
+	session,
+	ended,
+	reply,
+	turns,
+	fabled,
+	kept,
+	{ ask, askMonitor, sessionOf, decisionsOf, pause },
+) => {
+	const hold = holdBefore(turns, fabled ? FABLED_ROOM : {});
 
 	if (hold) {
-		console.log(`Keep going ${id}: waiting for the person, ${hold}`);
+		console.log(`Keep ${kept} ${id}: waiting for the person, ${hold}`);
 
 		return false;
 	}
 
 	const { decisions } = await decisionsOf(id, session.cwd).catch(() => ({ decisions: [] }));
 	const within = new Set(lately(turns).map(turn => turn.id));
+	const settled = settledSoFar(decisions, within);
 	const verdict = jsonIn(
-		await ask(promptFor(reply, lastAsked(turns), runSoFar(turns), settledSoFar(decisions, within))),
+		fabled
+			? await askFabled(id, session, reply, turns, settled, askMonitor)
+			: await ask(promptFor(reply, lastAsked(turns), runSoFar(turns), settled)),
 	);
-	const why = verdict ? (verdict.why ?? 'no reason given') : 'no answer from Haiku';
+	const why = verdict ? (verdict.why ?? 'no reason given') : `no answer from ${fabled ? 'the monitor' : 'Haiku'}`;
 
 	if (verdict?.go === false) {
-		console.log(`Keep going ${id}: waiting (${why})`);
+		console.log(`Keep ${kept} ${id}: waiting (${why})`);
 
 		return false;
 	}
@@ -228,11 +334,38 @@ export const keepGoing = async (
 		out = look();
 	}
 	if (out === FINISHING) out = `Claude hadn't finished its turn after ${IDLE_WAIT_MS / 60_000} minutes`;
-	if (!out && !typeWhenIdle(id, session, nudgeWith(next))) out = 'Claude is busy, asking, or someone is typing';
+	if (!out && !typeWhenIdle(id, session, nudgeWith(next, { fabled })))
+		out = 'Claude is busy, asking, or someone is typing';
 
-	console.log(`Keep going ${id}: ${out ? `not sent, ${out}:` : 'on,'} ${next || 'toward the goal'} (${why})`);
+	console.log(`Keep ${kept} ${id}: ${out ? `not sent, ${out}:` : 'on,'} ${next || 'toward the goal'} (${why})`);
 	if (out) return false;
 	noteCrew('keeping a session going');
 
 	return true;
+};
+
+// After a server start: a session whose turn end was being answered when the last server stopped (an ask to Haiku or
+// the monitor takes seconds to minutes, and a restart kills it) is answered now, from the reply its transcript holds,
+// instead of sitting idle until the keep-warm ping. Those no longer running or kept are let be.
+export const resumeKeepingGoing = async ({
+	sessionOf = runningSession,
+	turnsOf = (sessionId, cwd) => sessionTurns(sessionId, cwd),
+	answer = keepGoing,
+} = {}) => {
+	const resumed = [];
+
+	for (const id of askingSessions()) {
+		const session = sessionOf(id);
+		const last = session && (await turnsOf(id, session.cwd).catch(() => [])).at(-1);
+
+		if (!last?.said) {
+			await noteAsking(id, null);
+			continue;
+		}
+		console.log(`Keep going ${id}: answering the turn end a restart interrupted`);
+		resumed.push(id);
+		answer(id, last.said).catch(error => console.error('Keeping going after a restart failed:', error));
+	}
+
+	return resumed;
 };

@@ -374,7 +374,7 @@ export default class Project extends View {
 	}
 
 	// How long the session lasts, as the session's own bar shows it: as the prompt's router suggested (or picked here),
-	// 'warm', 'going' or 'brief', anything else ordinary
+	// 'warm', 'going', 'fabled' or 'brief', anything else ordinary
 	pickLifetime(lifetime) {
 		this.lifetime = lifetime in LIFETIMES ? lifetime : 'ordinary';
 
