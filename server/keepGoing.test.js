@@ -492,11 +492,24 @@ test("a monitor whose conversation can't be carried on is forgotten and a fresh 
 	expect(monitorOf('lost')).toBeNull();
 	await keepWarm('lost', 24, Date.now(), { fabled: true });
 
-	// A first look that fails outright made nothing worth keeping: a new id next time
+	// A first look that fails outright made nothing worth keeping: a new id next time, and the folders Claude Code may
+	// have made for the one the record never held are removed too
 	await noteMonitor('lost', { monitor: null });
 	outcome = verdict('', { delivered: false, resumable: false });
-	expect(await keepGoing('lost', 'Done.', { ...going(session, later), askMonitor })).toBe(true);
+
+	const forgotten = [];
+
+	expect(
+		await keepGoing('lost', 'Done.', {
+			...going(session, later),
+			askMonitor,
+			forget: async id => {
+				forgotten.push(id);
+			},
+		}),
+	).toBe(true);
 	expect(asked.at(-1).first).toBe(true);
+	expect(forgotten).toEqual([asked.at(-1).monitor]);
 	expect(monitorOf('lost')).toBeNull();
 });
 

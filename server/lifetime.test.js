@@ -1,7 +1,8 @@
 import { afterAll, expect, test } from 'bun:test';
 
-import { fabledOn, goingOn, monitorOf } from './keepWarm';
-import { UNDO_MS, lastSwitch, lifetimeOf, switchLifetime } from './lifetime';
+import { fabledOn, goingOn, monitorOf, warmUntil } from './keepWarm';
+import { HOURS as FABLED_HOURS } from './fabled';
+import { UNDO_MS, WARM_LIFETIMES, lastSwitch, lifetimeOf, switchLifetime } from './lifetime';
 
 // Every test file in a run shares briefSessions; a session left brief here gets swept in its tests
 afterAll(() =>
@@ -44,10 +45,15 @@ test('keeping going is kept warm besides, and switching to warm stops it going',
 });
 
 test('fabled keeps going with a monitor of its own, for longer; switching to going keeps the monitor to put back, ordinary lets it go', async () => {
+	const before = Date.now();
+
 	await switchLifetime('fabled', 'fabled');
 	expect(lifetimeOf('fabled')).toBe('fabled');
 	expect(goingOn('fabled')).toBe(true);
 	expect(fabledOn('fabled')).toBe(true);
+	// Kept warm like the others (the router lets only a running session be), and for longer
+	expect(WARM_LIFETIMES).toContain('fabled');
+	expect(warmUntil('fabled')).toBeGreaterThanOrEqual(before + FABLED_HOURS * 60 * 60 * 1000);
 
 	const { monitor } = monitorOf('fabled');
 
