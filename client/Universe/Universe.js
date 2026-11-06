@@ -25,9 +25,10 @@ import { LIFETIMES, WARM_LIFETIMES } from '../../shared/lifetimes';
 import tokenCount from '../../shared/tokenCount';
 import confirmDialog, { confirmDeleteSession } from '../confirmDialog';
 import { sessionMenu } from '../sessionActions';
+import { PANELS } from '../Terminal/panels';
+import { recall, remember } from '../storage';
 import { LOCAL, shipsOf } from './shown';
 import olderPaude from './olderPaude';
-import { PANELS } from '../Terminal/panels';
 import { VERBS, dockCard } from './dock';
 import {
 	ROOMS,
@@ -47,7 +48,6 @@ import refusal from './reason';
 import { airlockCard } from './airlockCard';
 import { logCard, manifestCard, promptCard, replyCard } from './replyCard';
 import { arrivalOf } from './sidePanel';
-import { recall, remember } from '../storage';
 import Ship, { BEAM_SECONDS, BRIDGE, LOUNGE, sessionKey, triage, GROUP_SEPARATOR } from './scene';
 import { UNIT } from './station';
 import { FOCUS_WIDTH, Stage } from './universeStyle';
@@ -81,7 +81,7 @@ const place = spot => {
 const selectionOf = (target, view) => {
 	const worker =
 		(['worker', 'monitor'].includes(target?.kind) && target.worker) ||
-		(['talk', 'subagent'].includes(target?.kind) && view.workerOf(target.session)) ||
+		(['talk', 'subagent', 'watcher'].includes(target?.kind) && view.workerOf(target.session)) ||
 		(target?.kind === 'use' && view.workerOf(target.use.session));
 
 	if (worker)
@@ -584,6 +584,7 @@ export default class Universe extends View {
 				'cargo',
 				'commit',
 				'subagent',
+				'watcher',
 				'delivery',
 				'talk',
 				'processes',
@@ -653,6 +654,8 @@ export default class Universe extends View {
 			return this.dockOrReply(this.workerOf(target.session), 'notes');
 		if (target?.kind === 'subagent' && this.workerOf(target.session))
 			return this.dockOrReply(this.workerOf(target.session), 'tasks');
+		if (target?.kind === 'watcher' && this.workerOf(target.session))
+			return this.openWorker(this.workerOf(target.session));
 		if (target?.kind === 'processes') return this.openRack(target, point);
 		if (target?.kind === 'use' && this.workerOf(target.use.session))
 			return this.openWorker(this.workerOf(target.use.session));

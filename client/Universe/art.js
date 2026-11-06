@@ -248,6 +248,42 @@ const SMALL_GREY_WORK = [
 	'.kc.ck.',
 	'.kk.kk.',
 ];
+// A fabled session's monitor: a taller grey of another strain, long in the skull and the leg, that stands behind the
+// session's grey and follows its run; its collar in the session's color and its chest pip Fable's
+const WATCHER = [
+	'....kkk....',
+	'...kgggk...',
+	'..kgggggk..',
+	'..kgggggk..',
+	'..kgggggk..',
+	'..kgggggk..',
+	'..kgggggk..',
+	'.kgggggggk.',
+	'.kgggggggk.',
+	'.kWegggeWk.',
+	'.keegggeek.',
+	'..kegggek..',
+	'..kgggggk..',
+	'...kgggk...',
+	'....kgk....',
+	'....kgk....',
+	'..kkcccck..',
+	'.kgggggggk.',
+	'kgksgggGkGk',
+	'kgkggggGkGk',
+	'kgkggggGkGk',
+	'.kkgk.kGkk.',
+	'..kgk.kGk..',
+	'..kgk.kGk..',
+	'..kgk.kGk..',
+	'..kgk.kGk..',
+	'..kgk.kGk..',
+	'..kgk.kGk..',
+	'..kgk.kGk..',
+	'..kk...kk..',
+];
+// Pointing: its near arm off its side, drawn out toward what it points at by whoever draws it
+const WATCHER_POINT = WATCHER.map((row, index) => (index >= 18 && index <= 21 ? `..${row.slice(2)}` : row));
 const PAPER = ['kkkkkkk', 'kwwwwwk', 'klllllk', 'kkkkkkk'];
 const CRATE = ['kkkkkkkk', 'koooooOk', 'kokkkkOk', 'koOooOOk', 'kokkkkOk', 'kOOOOOOk', 'kkkkkkkk'];
 const CANISTER = ['.kkk.', 'kccck', 'kcWck', 'kccck', 'kccck', '.kkk.'];
@@ -395,6 +431,8 @@ const SPRITES = {
 	news: NEWS,
 	smallGrey: SMALL_GREY,
 	smallGreyWork: SMALL_GREY_WORK,
+	watcher: WATCHER,
+	watcherPoint: WATCHER_POINT,
 	paper: PAPER,
 	crate: CRATE,
 	canister: CANISTER,

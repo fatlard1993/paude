@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import Ship, { appliancesOf, bendAround, countdown, resting, risersFor, runsFor, tanksOf, triage } from './scene';
-import { clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats } from './plan';
+import { WATCHER_W, clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats } from './plan';
 import { SCREEN_RISE, UNIT, cableWeight } from './station';
 
 const session = changes => ({
@@ -798,6 +798,7 @@ test('a waiting session whose cache has gone cold rests in the lounge, unless it
 	expect(resting({ status: 'ready', context: cold, keeping: 'warm' })).toBe(false);
 	// As an older paude says it
 	expect(resting({ status: 'ready', context: cold, kept: 'going' })).toBe(false);
+	expect(resting({ status: 'ready', context: cold, keeping: 'fabled' })).toBe(false);
 	expect(resting({ status: 'waiting', context: cold })).toBe(false);
 	expect(resting({ status: 'ready' })).toBe(false);
 
@@ -1815,6 +1816,15 @@ test('a coffee given to a grey comes down the tube to its desk, and taken away g
 	expect(made.serving(worker)).toMatchObject({ give: undefined, take: 'warm' });
 	run(made, 2);
 	expect(made.serving(worker)).toBeNull();
+
+	// A fabled session's monitor keeps it: no drink on its console, so none comes down, and going's cup goes back up
+	made.update(keeping('going'));
+	run(made, 2);
+	made.update(keeping('fabled'));
+	expect(made.serving(worker)).toMatchObject({ give: undefined, take: 'going' });
+	run(made, 2);
+	made.update(keeping('fabled'));
+	expect(made.serving(worker)).toBeNull();
 });
 
 test("a tank with the account's limits known gauges what's left of each, and is as full as the one nearest running out", () => {
@@ -2156,4 +2166,88 @@ test('those sat at an island that has to move get up and walk to where it has go
 	run(made, 8);
 	expect(made.walking(worker)).toBe(false);
 	expect(made.islandRise('paude#0')).toBe(2);
+});
+
+test("a fabled session's monitor stands behind its grey, and points at the terminal while the session asks something", () => {
+	const kept = (keeping, status = 'ready') => [answer('here', [session({ status, keeping })], { projects: ['paude'] })];
+	const made = shipWith(kept('fabled'));
+	const [worker] = made.workers.values();
+	const drawn = [];
+	// Sprites are drawn through canvases the art makes; here, stand-ins
+	const canvasLike = () => ({ width: 0, height: 0, getContext: () => ({ fillStyle: '', fillRect: () => {} }) });
+	const hadDocument = 'document' in globalThis;
+
+	if (!hadDocument) globalThis.document = { createElement: canvasLike };
+
+	const ctx = {
+		fillStyle: '',
+		fillRect: () => {},
+		drawImage: (image, x, y) => drawn.push({ image, x, y }),
+		save: () => {},
+		restore: () => {},
+		translate: () => {},
+		scale: () => {},
+		beginPath: () => {},
+		rect: () => {},
+		clip: () => {},
+	};
+
+	run(made, 10);
+	expect(made.walking(worker)).toBe(false);
+
+	const parts = made.watcherParts(ctx, worker);
+
+	expect(parts).toHaveLength(1);
+	// Behind its grey: drawn before it
+	expect(parts[0].y).toBeLessThan(worker.seat.y - 0.12);
+	made.hits = [];
+	parts[0].draw();
+	expect(made.hits.find(hit => hit.kind === 'watcher')?.session).toBe(worker.session);
+	expect(drawn).toHaveLength(1);
+
+	made.update(kept('fabled', 'waiting'));
+	made.watcherParts(ctx, worker)[0].draw();
+	// The pointing arm is drawn on, pixel by pixel
+	expect(drawn).toHaveLength(2);
+	expect(drawn[1].image).not.toBe(drawn[0].image);
+
+	// A person walking the aisle behind it is drawn over the whole scene; the monitor is drawn again over them, and not
+	// over someone in front of it
+	const spot = made.watcherAt(worker);
+
+	made.watcherParts(ctx, worker)[0].draw();
+	const before = drawn.length;
+
+	made.drawWatchersOver(ctx, { x: spot.x, y: spot.y - 0.5 });
+	expect(drawn).toHaveLength(before + 1);
+	made.drawWatchersOver(ctx, { x: spot.x, y: spot.y + 0.5 });
+	made.drawWatchersOver(ctx, { x: spot.x + 2, y: spot.y - 0.5 });
+	expect(drawn).toHaveLength(before + 1);
+
+	made.update(kept('going'));
+	expect(made.watcherParts(ctx, worker)).toEqual([]);
+	if (!hadDocument) delete globalThis.document;
+});
+
+test("the island keeps room for a fabled session's monitor past its seat, so it isn't under the next seat's screen", () => {
+	const two = keeping => [
+		answer('here', [session({ keeping }), { ...session({}), id: 'b', title: 'B', key: 'here/b' }], {
+			projects: ['paude'],
+		}),
+	];
+	const plain = shipWith(two(undefined));
+	const [a, b] = [...plain.workers.values()].map(worker => worker.seat);
+	const fabled = shipWith(two('fabled'));
+	const [fa, fb] = [...fabled.workers.values()].map(worker => worker.seat);
+
+	expect(fb.x - fa.x).toBeCloseTo(b.x - a.x + WATCHER_W, 5);
+
+	const [watched] = fabled.workers.values();
+	const spot = fabled.watcherAt(watched);
+
+	// The next seat's screen begins 17 art pixels (0.85 units) before its seat; the monitor's body reaches 5 past its spot
+	expect(spot.x).toBeGreaterThan(fa.x + 0.3 + 0.3);
+	expect(fb.x - 0.85).toBeGreaterThan(spot.x + 0.25);
+	// Behind its grey
+	expect(spot.y).toBeLessThan(fa.y - 0.12);
 });

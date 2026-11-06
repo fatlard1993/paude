@@ -74,6 +74,9 @@ const ISLAND_SEATS_W = 6 * SEAT_W;
 // A subagent's small terminal beside its grey's seat, as many as are shown
 const SMALL_W = 0.8;
 const MOST_SMALL = 4;
+// Where a fabled session's monitor stands, past its grey's small terminals: a seat only as wide as a grey puts it
+// under the next seat's screen
+export const WATCHER_W = 0.7;
 const ISLAND_END = 0.3;
 const ISLAND_GAP = 0.6;
 
@@ -103,11 +106,16 @@ export const splitSeats = (keys, widthOf) => {
 // seats: [{ key, x, y }] }], and how far forward they reach
 // `stern`: how much of the bridge from its aft wall `from` is past, the risers' room, so where an island stood is kept
 // from the wall itself, and an island stays put as the risers' room grows unless it grows into it
-const islandsOf = (bays, { from, top, rows, lounge, agents = {}, pitch = BRIDGE_ROW, kept, stern = 0 }) => {
+const islandsOf = (
+	bays,
+	{ from, top, rows, lounge, agents = {}, watched = {}, pitch = BRIDGE_ROW, kept, stern = 0 },
+) => {
+	// A seat, with its small terminals and its monitor's standing room
+	const seatWidth = key => SEAT_W + Math.min(MOST_SMALL, agents[key] ?? 0) * SMALL_W + (watched[key] ? WATCHER_W : 0);
 	// One island for each project, in the order given (the order their conduits come to the bridge); one seating more
 	// than an island holds split into as few as hold it, its seats shared out evenly, so no row runs on for one project
 	const runs = bays.flatMap(({ name, hue, sessions = [] }) =>
-		splitSeats(sessions, key => SEAT_W + Math.min(MOST_SMALL, agents[key] ?? 0) * SMALL_W).map(keys => ({
+		splitSeats(sessions, seatWidth).map(keys => ({
 			name,
 			hue,
 			keys,
@@ -122,7 +130,7 @@ const islandsOf = (bays, { from, top, rows, lounge, agents = {}, pitch = BRIDGE_
 	for (let row = rows - covers; row < rows; row++) reach[row] = lounge.w + ISLAND_GAP;
 	// With fewer islands than rows left open, they spread evenly down the bridge
 	const open = Array.from({ length: rows }, (_, row) => row).filter(row => row < rows - covers);
-	const seatWidths = run => run.keys.map(key => SEAT_W + Math.min(MOST_SMALL, agents[key] ?? 0) * SMALL_W);
+	const seatWidths = run => run.keys.map(seatWidth);
 	const widthOf = run => ISLAND_END + seatWidths(run).reduce((sum, seat) => sum + seat, 0) + 0.3;
 	// More than the open rows: down the rows in order, as short a bridge as holds them all, each row starting from what's
 	// already in it (the lounge)
@@ -386,7 +394,16 @@ export const shortest = names => {
 // the materializer on the bridge); then each project's machine on one deck or the other. Engineering is as deep as both rows and
 // the spine, deeper still when it needs the room.
 // `kept`: the rows the bridge's islands stood in last time, by island key, so they stay in them
-export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents = {}, fleet = 0, kept } = {}) => {
+export const layOut = ({
+	bays = [],
+	engines = [],
+	lounge,
+	checkouts = 0,
+	agents = {},
+	watched = {},
+	fleet = 0,
+	kept,
+} = {}) => {
 	// A ship of a fleet has a transporter besides, on the bridge beside the materializer
 	const transporter = fleet ? TRANSPORTER_W : 0;
 	const system = ({ key, name }) => ({ kind: 'system', key, name, w: SYSTEM.w, d: SYSTEM.d });
@@ -481,6 +498,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 				rows: rowsAt(pitch),
 				lounge: loungeBlock,
 				agents,
+				watched,
 				pitch,
 				kept,
 				stern: sternRoom(inLine(placed)),
@@ -629,6 +647,7 @@ export const layOut = ({ bays = [], engines = [], lounge, checkouts = 0, agents 
 		rows: bridgeRows,
 		lounge: loungeBlock,
 		agents,
+		watched,
 		pitch: rowsApart,
 		kept,
 		stern,

@@ -362,6 +362,17 @@ const FLYOUTS = {
 			hint: 'Tokens as input-token equivalents; the level is an estimate',
 		};
 	},
+	watcher: ({ session }) => {
+		return {
+			title: 'Fable monitor',
+			rows: [
+				['follows', session.title || session.project],
+				['after each turn', 'reads the run and the repository, and says what Claude should do next'],
+				...(session.status === 'waiting' ? [['now', 'the session stopped to ask you something']] : []),
+			],
+			hint: 'Press for its session',
+		};
+	},
 	subagent: ({ session, task }) => {
 		return {
 			title: task || 'A subagent',

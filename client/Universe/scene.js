@@ -229,6 +229,15 @@ const TUBE_FRONT = 1e6;
 const SPARKLE_SECONDS = 1.2;
 // A small grey takes this long to bud from its grey's bench, or to go
 const SMALL_GREY_SECONDS = 0.7;
+// Where a fabled session's monitor stands: behind its grey's seat (far enough back to be drawn behind it) and past its
+// small terminals, in the room the island keeps for it (plan's WATCHER_W), in room units; and how long its pointing
+// arm is, in art pixels
+const WATCHER_ASIDE = 1.0;
+const WATCHER_BEHIND = 0.4;
+const WATCHER_REACH = 9;
+// How tall the monitor and a suited person stand, in art pixels
+const WATCHER_TALL = 30;
+const SUIT_TALL = 19;
 // A failed tool throws sparks for a moment and smokes a while after; a cube of compacted context takes this long to
 // go; a turn running this long steams, and this long glows hot
 const SPARK_SECONDS = 2.5;
@@ -296,8 +305,14 @@ const RANKS = [
 
 const rankOf = model => RANKS.find(([name]) => model?.includes(name))?.[1] ?? PALETTE.a;
 
-// 'warm', 'going' or none; paudes before `keeping` send it as `kept`
+// 'warm', 'going', 'fabled' or none; paudes before `keeping` send it as `kept`
 const keepingOf = session => session.keeping ?? session.kept;
+// The drink on its console: coffee kept warm, the giant cup kept going; fabled, its monitor keeps it and it has none
+const drinkOf = session => {
+	const keeping = keepingOf(session);
+
+	return keeping === 'fabled' ? undefined : keeping;
+};
 // One deleted once its cache lets go, sitting on the floor with a laptop rather than at its console
 const briefOf = worker => worker.session.lifetime === 'brief' && !worker.lounging && !worker.seat?.housing;
 // How far before its console's foot such a one sits
@@ -1115,8 +1130,8 @@ export default class Ship {
 				worker.compactedFrom = this.headOf(worker.session);
 			}
 			// Its coffee or giant cup given or taken: the tube brings it, or takes it away
-			if (worker && keepingOf(worker.session) !== keepingOf(session))
-				worker.serving = { at: this.time, give: keepingOf(session), take: keepingOf(worker.session) };
+			if (worker && drinkOf(worker.session) !== drinkOf(session))
+				worker.serving = { at: this.time, give: drinkOf(session), take: drinkOf(worker.session) };
 			if (worker) Object.assign(worker, { session, lounging, leaving: worker.vaporizedAt !== undefined });
 			if (worker) this.noteKeeping(worker, session);
 			else
@@ -1186,6 +1201,9 @@ export default class Ship {
 			engines: engines.filter(({ quiet }) => !quiet),
 			lounge: { count: Math.max(lounging.length, this.couchesHeld() * 2 - 1), sessions: lounging },
 			agents: Object.fromEntries([...this.workers].map(([key, worker]) => [key, worker.session.agents ?? 0])),
+			watched: Object.fromEntries(
+				[...this.workers].map(([key, worker]) => [key, keepingOf(worker.session) === 'fabled']),
+			),
 			checkouts: this.cargo.length,
 			fleet: this.fleet.length,
 		});
@@ -2330,7 +2348,10 @@ export default class Ship {
 		// Whoever's aboard over everything, as a game draws its people over the scenery: the bridge's aisles are too narrow
 		// to clear the consoles and screens about them
 		for (const walker of this.walkers.values())
-			if (walker.x !== undefined && !this.boarding(walker)) this.drawWalker(ctx, walker);
+			if (walker.x !== undefined && !this.boarding(walker)) {
+				this.drawWalker(ctx, walker);
+				this.drawWatchersOver(ctx, walker);
+			}
 
 		const cover = this.coverOf();
 
@@ -3392,7 +3413,8 @@ export default class Ship {
 					]
 				: []),
 			...this.smallGreyParts(ctx, worker),
-			...((keepingOf(session) || this.serving(worker)) && !walker.length
+			...this.watcherParts(ctx, worker),
+			...((drinkOf(session) || this.serving(worker)) && !walker.length
 				? [{ y: seat.y + 0.2, draw: () => this.drawPick(ctx, worker, at) }]
 				: []),
 			{
@@ -3953,6 +3975,121 @@ export default class Ship {
 		return parts.flat();
 	}
 
+	// A fabled session's monitor: a taller grey of another strain standing behind its grey's seat, a little to its side,
+	// following the run; when the session stops to ask something, it points at the terminal. Not while its grey is away
+	// from its seat, nor at a seat with no room behind it (a housing, the floor).
+	watcherParts(ctx, worker) {
+		const { session, seat } = worker;
+
+		if (
+			keepingOf(session) !== 'fabled' ||
+			!seat ||
+			seat.housing ||
+			worker.lounging ||
+			briefOf(worker) ||
+			this.walking(worker)
+		)
+			return [];
+
+		const spot = this.watcherAt(worker);
+
+		return [
+			{
+				y: spot.y,
+				draw: () => {
+					const at = this.art(spot);
+					const console = this.art({ x: seat.x, y: seat.y + 0.2 });
+
+					// Where it stands this frame, for whoever walks behind it to be hidden by it
+					worker.watcherDrawn = { x: at.x, y: at.y, consoleTop: console.y - CONSOLE_TALL, at: this.time };
+					this.drawWatcher(ctx, worker, at);
+					this.hits.push({
+						...this.toScreen({ x: at.x, y: at.y - 22 }),
+						r: 6 * this.camera.zoom,
+						kind: 'watcher',
+						session,
+					});
+				},
+			},
+		];
+	}
+
+	// The monitor with its feet at `at` (art pixels). The screen stands on the console's left; while the session asks, its
+	// near arm reaches toward it, bobbing as its grey waves
+	drawWatcher(ctx, worker, at) {
+		const { session, seat } = worker;
+		const console = this.art({ x: seat.x, y: seat.y + 0.2 });
+		const asking = session.status === 'waiting';
+		const colors = { c: `hsl(${session.hue ?? 200} 55% 55%)`, s: rankOf('fable') };
+
+		drawSprite(ctx, asking ? 'watcherPoint' : 'watcher', at.x, at.y, { colors });
+		if (asking) {
+			const bob = Math.floor(this.time * 3) % 2;
+
+			this.drawPointing(ctx, { x: at.x - 4, y: at.y - 13 + bob }, { x: console.x - 9, y: console.y - 24 });
+		}
+	}
+
+	// Whoever's aboard is drawn over the whole scene, since the bridge's aisles are too narrow to sort them among the
+	// consoles; but the aisle behind a seat row is where a monitor stands, so one with a person behind it is drawn again
+	// over them, only where they overlap and only above the console that hides its legs
+	drawWatchersOver(ctx, walker) {
+		const foot = this.art(walker);
+
+		for (const worker of this.workers.values()) {
+			const drawn = worker.watcherDrawn;
+
+			if (!drawn || drawn.at !== this.time) continue;
+			if (foot.y >= drawn.y || foot.y <= drawn.y - WATCHER_TALL || Math.abs(foot.x - drawn.x) >= 12) continue;
+
+			const top = Math.max(foot.y - SUIT_TALL, drawn.y - WATCHER_TALL);
+			const bottom = Math.min(foot.y, drawn.consoleTop);
+
+			if (bottom <= top) continue;
+			ctx.save();
+			ctx.beginPath();
+			ctx.rect(foot.x - 6, top, 13, bottom - top);
+			ctx.clip();
+			this.drawWatcher(ctx, worker, drawn);
+			ctx.restore();
+		}
+	}
+
+	// Where a grey's monitor stands: behind the seat, past the small terminals its grey has out
+	watcherAt(worker) {
+		const { seat, session } = worker;
+		const smalls = Math.min(MOST.smallGreys, Math.max(0, Number(session.agents) || 0));
+
+		return { x: seat.x + WATCHER_ASIDE + smalls * 0.8, y: seat.y + 0.2 - WATCHER_BEHIND };
+	}
+
+	// An arm out from `from` toward `to`, as far as it reaches: outlined, with a fingertip
+	drawPointing(ctx, from, to) {
+		const across = to.x - from.x;
+		const down = to.y - from.y;
+		const length = Math.hypot(across, down) || 1;
+		const steps = Math.ceil(WATCHER_REACH / 2);
+		const along = step => ({
+			x: Math.round(from.x + (across / length) * step * 2),
+			y: Math.round(from.y + (down / length) * step * 2),
+		});
+
+		for (let step = 0; step <= steps; step++) {
+			const { x, y } = along(step);
+
+			rect(ctx, x - 1, y - 1, 4, 4, PALETTE.k);
+		}
+		for (let step = 0; step <= steps; step++) {
+			const { x, y } = along(step);
+
+			rect(ctx, x, y, 2, 2, PALETTE.g);
+		}
+
+		const tip = along(steps + 1);
+
+		rect(ctx, tip.x, tip.y, 1, 1, PALETTE.W);
+	}
+
 	// The verdict that matters most of several sessions' (whether what each changed was tested since), or null
 	static worstVerdict(sessions) {
 		return VERDICTS.find(state => sessions.some(({ tested }) => tested?.state === state)) ?? null;
@@ -4403,7 +4540,7 @@ export default class Ship {
 	drawSip(ctx, worker, at, neck) {
 		const spot = { x: at.x + 2, y: neck - 1 };
 
-		if (keepingOf(worker.session) === 'warm') {
+		if (drinkOf(worker.session) === 'warm') {
 			for (let step = 0; step < 3; step++)
 				rect(ctx, spot.x + step, spot.y - step, 3, 3, step === 1 ? '#e8e2d6' : PALETTE.k);
 			rect(ctx, spot.x + 3, spot.y + 2, 1, 3, PALETTE.a);
@@ -4491,7 +4628,7 @@ export default class Ship {
 		if (this.drinking(worker)) return;
 
 		const serving = this.serving(worker);
-		const kind = serving ? (serving.give ?? serving.take) : keepingOf(worker.session);
+		const kind = serving ? (serving.give ?? serving.take) : drinkOf(worker.session);
 		const spot = { x: at.x + 12, y: at.y - 7 };
 		// The cup stands back on the desk's top, behind the mug's place at its front edge; each one's top, where the
 		// nozzle holds it
@@ -4674,7 +4811,7 @@ export default class Ship {
 				rect(ctx, can.x, can.y, 1, 1, PALETTE.g);
 			}
 		}
-		if (!watching && !walking && worker.seat && keepingOf(session) && this.drinking(worker))
+		if (!watching && !walking && worker.seat && drinkOf(session) && this.drinking(worker))
 			this.drawSip(ctx, worker, at, neck);
 		if (thinking) this.drawConcentrating(ctx, { x: at.x, top, w, h, seed: worker.seed });
 		if (dozing) {
