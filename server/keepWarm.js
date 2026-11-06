@@ -82,6 +82,14 @@ export const forgetMonitorsWith = forget => {
 	forgetMonitor = forget;
 };
 
+// And what keeps a fabled session's monitor warm when the session is pinged: its conversation read from the cache too,
+// so a verdict after an idle hour isn't a fresh read of all of it. Registered for the same reason.
+let warmMonitor = async () => {};
+
+export const warmMonitorsWith = warmer => {
+	warmMonitor = warmer;
+};
+
 // The monitor was told up to this turn, or missed another ask; `monitor` null forgets it (its conversation gone), for a
 // new one to be briefed
 export const noteMonitor = async (id, { monitor, seen = null, missed = 0 }) => {
@@ -209,6 +217,11 @@ const ping = (id, session, now) => {
 
 	noteCrew('keeping a session warm');
 	lastTurnAt.set(id, now);
+	// Its monitor has been as quiet: asked only at turn ends, and the last of those is what the ping counts from
+	if (fabledOn(id, now) && warm[id].monitor)
+		warmMonitor(id, warm[id].monitor, session.cwd).catch(error =>
+			console.error(`Keeping ${id}'s monitor warm failed:`, error),
+		);
 
 	return true;
 };

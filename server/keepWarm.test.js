@@ -14,6 +14,7 @@ import {
 	noteMonitor,
 	nudgeWith,
 	typeWhenIdle,
+	warmMonitorsWith,
 	warmUntil,
 } from './keepWarm';
 
@@ -182,4 +183,28 @@ test("what's typed in carries no control characters, and a suggestion that runs 
 	expect(long).toContain('x'.repeat(800));
 	expect(long).not.toContain('x'.repeat(801));
 	expect(nudgeWith('short').endsWith('without them.')).toBe(true);
+});
+
+test("a fabled session's ping pings its monitor too, so its conversation stays cached alongside the session's", async () => {
+	const warmed = [];
+
+	warmMonitorsWith(async (id, monitor, cwd) => {
+		warmed.push({ id, monitor, cwd });
+	});
+	try {
+		const session = { ...fakeSession(), cwd: '/work' };
+
+		await keepWarm('fabled-pinged', 24, 0, { fabled: true });
+		expect(await checkWarm(only('fabled-pinged', session), PING_AFTER_MS)).toEqual(['fabled-pinged']);
+		expect(warmed).toEqual([{ id: 'fabled-pinged', monitor: monitorOf('fabled-pinged').monitor, cwd: '/work' }]);
+
+		// Only kept warm or going: no monitor to ping
+		await keepWarm('only-pinged', 12, 0, { going: true });
+		await checkWarm(only('only-pinged', fakeSession()), PING_AFTER_MS);
+		expect(warmed).toHaveLength(1);
+		await keepWarm('fabled-pinged', 0, 0);
+		await keepWarm('only-pinged', 0, 0);
+	} finally {
+		warmMonitorsWith(async () => {});
+	}
 });

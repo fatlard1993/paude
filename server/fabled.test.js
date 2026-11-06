@@ -6,6 +6,7 @@ import os from 'os';
 import path from 'path';
 
 import {
+	MONITOR_PING,
 	MOST_TURNS,
 	briefFor,
 	deltaFor,
@@ -36,6 +37,12 @@ test('the monitor runs on Fable, carrying its conversation on, reading the proje
 	expect(first[first.indexOf('--append-system-prompt') + 1]).toBe(rulesFor('/work/app'));
 	// The rules tell it the budget the command holds it to, and that budget covers the sweep they ask for
 	expect(first[first.indexOf('--max-turns') + 1]).toBe(String(MOST_TURNS));
+	// A ping of the monitor is one round, carrying its conversation on
+	const ping = monitorCommand('m1', '/work/app', { first: false, turns: 1 });
+
+	expect(ping[ping.indexOf('--max-turns') + 1]).toBe('1');
+	expect(ping.slice(ping.indexOf('--resume'))).toEqual(['--resume', 'm1']);
+	expect(MONITOR_PING).toContain('no tool calls');
 	expect(rulesFor('/work/app')).toContain(`at most ${MOST_TURNS} rounds of tool calls per verdict`);
 	expect(MOST_TURNS).toBeGreaterThanOrEqual(10);
 	expect(rulesFor('/work/app')).toContain('you run nothing and change nothing there');
@@ -135,7 +142,7 @@ test("how an ask ended: answered, delivered but unanswered (out of rounds), not 
 		why: '',
 	});
 	expect(usageWords(result({}).usage)).toBe(
-		'3 rounds, 64900 cached + 12 fresh in, 2286 newly cached, 180 out, $0.1234, 17s',
+		'3 rounds, 64900 cached + 12 fresh in, 2286 newly cached, 180 out, $0.1234 in all, 17s',
 	);
 	// The look ran out of rounds: the delta reached it, the transcript stays resumable, there's just no verdict
 	expect(result({ subtype: 'error_max_turns', is_error: true, result: '' })).toMatchObject({

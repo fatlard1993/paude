@@ -2,7 +2,7 @@ import { mkdir, rm } from 'fs/promises';
 import path from 'path';
 
 import { crewJob } from './crew';
-import { forgetMonitorsWith } from './keepWarm';
+import { forgetMonitorsWith, warmMonitorsWith } from './keepWarm';
 import { sessionEnvironment } from './sessions/PtySession';
 import { claudeCommand } from './sessions/running';
 import { claudeHome } from './sessions/transcript';
@@ -37,6 +37,24 @@ export const initFabled = async dataDir => {
 	folder = path.join(dataDir, 'monitors');
 	await mkdir(folder, { recursive: true });
 	forgetMonitorsWith(forgetMonitor);
+	warmMonitorsWith(warmMonitor);
+};
+
+// What a monitor is asked to keep its conversation in Claude's cache: answered in a word, no tools, as the session's
+// own keep-warm ping is
+export const MONITOR_PING = 'keep-warm ping from paude: reply with only "·" and no tool calls, no JSON';
+
+// The monitor's conversation read from the cache so it stays there, alongside the session it follows: a verdict after
+// an idle hour otherwise reads the whole conversation fresh. Logged with what it cost; a failure costs nothing but the
+// log line, since the next ask carries the conversation on either way.
+export const warmMonitor = async (sessionId, monitor, cwd) => {
+	const { delivered, usage, why } = await crewJob('keeping a monitor warm', () =>
+		ask(monitor, cwd, MONITOR_PING, { first: false, turns: 1 }),
+	);
+
+	console.log(`Keep fabled ${sessionId}: monitor ${delivered ? `pinged: ${usageWords(usage)}` : `not pinged (${why})`}`);
+
+	return delivered;
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -119,7 +137,7 @@ export const rulesFor = cwd =>
 // How the monitor runs: on Fable, carrying its conversation on (started with `first`), none of the owner's settings
 // (their hooks, permissions, MCP servers), reading the project and nothing more (no shell: a git read's flags can write
 // files, so the checkout's state is given to it instead), within MOST_TURNS rounds of tool calls per verdict
-export const monitorCommand = (id, cwd, { first }) => [
+export const monitorCommand = (id, cwd, { first, turns = MOST_TURNS }) => [
 	claudeCommand(),
 	'-p',
 	'--model',
@@ -133,7 +151,7 @@ export const monitorCommand = (id, cwd, { first }) => [
 	'--add-dir',
 	cwd,
 	'--max-turns',
-	String(MOST_TURNS),
+	String(turns),
 	'--append-system-prompt',
 	rulesFor(cwd),
 	...(first ? ['--session-id', id] : ['--resume', id]),
@@ -155,8 +173,9 @@ const usageOf = result => ({
 	ms: result.duration_ms ?? 0,
 });
 
+// The envelope's cost is the conversation's so far, not this verdict's: said as such
 export const usageWords = ({ turns, cacheRead, cacheWrite, input, output, cost, ms }) =>
-	`${turns} ${turns === 1 ? 'round' : 'rounds'}, ${cacheRead} cached + ${input} fresh in, ${cacheWrite} newly cached, ${output} out, $${cost.toFixed(4)}, ${Math.round(ms / 1000)}s`;
+	`${turns} ${turns === 1 ? 'round' : 'rounds'}, ${cacheRead} cached + ${input} fresh in, ${cacheWrite} newly cached, ${output} out, $${cost.toFixed(4)} in all, ${Math.round(ms / 1000)}s`;
 
 // What an ask came to, from how Claude Code ended: { answer, delivered, resumable, usage, why }. The answer is the
 // verdict's text, '' for none. `delivered` says the prompt reached the conversation (a result came back, even one
@@ -207,11 +226,11 @@ export const outcomeOf = ({ exitCode, out, err, first, killed = false }) => {
 export const askMonitor = (id, cwd, prompt, { first = false } = {}) =>
 	crewJob('watching a session', () => ask(id, cwd, prompt, { first }));
 
-const ask = async (id, cwd, prompt, { first }) => {
+const ask = async (id, cwd, prompt, { first, turns = MOST_TURNS }) => {
 	if (!folder) return outcomeOf({ exitCode: 1, out: '', err: 'the monitors folder is not set up', first });
 	await mkdir(monitorHome(id), { recursive: true });
 
-	const child = Bun.spawn(monitorCommand(id, cwd, { first }), {
+	const child = Bun.spawn(monitorCommand(id, cwd, { first, turns }), {
 		cwd: monitorHome(id),
 		env: sessionEnvironment(),
 		stdin: new TextEncoder().encode(prompt),
