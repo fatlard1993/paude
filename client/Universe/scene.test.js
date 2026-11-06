@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test';
 import Ship, { appliancesOf, bendAround, countdown, resting, risersFor, runsFor, tanksOf, triage } from './scene';
 import { WATCHER_W, clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats } from './plan';
 import { SCREEN_RISE, UNIT, cableWeight, floor, setTrim, walls } from './station';
-import { drawTransporter } from './hull';
+import { drawTransporter, shuttleAt } from './hull';
 
 const session = changes => ({
 	id: 'a',
@@ -1912,6 +1912,54 @@ test('the one opening the view comes aboard by shuttle once the ship is in, and 
 	expect(made.settled()).toBe(true);
 	expect(made.joinGoal()).toBeNull();
 	expect(shipWith([answer('here', [session()], { projects: ['paude'] })]).settled()).toBe(true);
+});
+
+test('coming aboard, the view is held on the shuttle, drawn back to the whole ship, in over the airlock, and only then flown where it was asked', () => {
+	const me = { key: 'me', name: 'chase', role: 'owner', sessions: [] };
+	const made = new Ship();
+
+	made.resize(1600, 900);
+	made.sealed = true;
+	made.update([{ ...answer('here', [session()], { projects: ['paude'] }), people: [me] }]);
+	made.viewer = 'me';
+	made.open();
+	// Opened centered on their shuttle's hull, far off in warp, close up; the hand can't take the view from it
+	made.step(1 / 60, false);
+	const far = shuttleAt(made.shuttleDock(), 1);
+
+	expect(made.camera.x).toBeCloseTo(far.x - 1, 0);
+	expect(made.camera.y).toBeCloseTo(far.y - 4, 0);
+	expect(made.camera.zoom).toBeGreaterThanOrEqual(4);
+	made.pan(300, 300);
+	made.zoom(0.5, { x: 0, y: 0 });
+	expect(made.camera.x).toBeCloseTo(far.x - 1, 0);
+	expect(made.flying).toBe(true);
+	// The ship pulled in under it, the view drawn back to all of it
+	run(made, 5.5);
+	const { joinAt } = made;
+
+	made.joinAt = undefined;
+	const whole = made.goal();
+
+	made.joinAt = joinAt;
+	expect(made.camera.zoom).toBe(whole.zoom);
+	// In over the airlock as they walk the tube and step out; asked to look at the bay meanwhile, it waits
+	run(made, 2);
+	const dock = made.shuttleDock();
+
+	expect(made.camera.x).toBeCloseTo(dock.x, 0);
+	expect(made.camera.y).toBeCloseTo(dock.y + 8, 0);
+	expect(made.camera.zoom).toBeGreaterThan(whole.zoom);
+	made.look('paude');
+	run(made, 1.5);
+	expect(made.joinGoal()).not.toBeNull();
+	expect(made.camera.x).toBeCloseTo(dock.x, 0);
+	// Stepped out: flown to the bay
+	run(made, 3);
+	expect(made.joinGoal()).toBeNull();
+	expect(made.looking).toBe('paude');
+	expect(made.camera.x).toBeCloseTo(made.goal().x, 0);
+	expect(made.camera.zoom).toBe(made.goal().zoom);
 });
 
 test('someone coming aboard waits at the airlock till they are down its shuttle tube; going, the shuttle takes them once its tube is down', () => {

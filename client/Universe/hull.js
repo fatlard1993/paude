@@ -601,9 +601,14 @@ export const hullEdges = building => {
 // theirs. A small white craft striped in their color, its cockpit forward.
 export const SHUTTLE_HOVER = 20;
 
+// Where a shuttle hangs `away` from its dock, in art pixels: its hull's bottom, over the hatch
+export const shuttleAt = (dock, away) => ({
+	x: Math.round(dock.x + away * 240),
+	y: Math.round(dock.y - SHUTTLE_HOVER - away * 90),
+});
+
 export const drawShuttle = (ctx, dock, { away, tube, walker, hue, time }) => {
-	const x = Math.round(dock.x + away * 240);
-	const y = Math.round(dock.y - SHUTTLE_HOVER - away * 90);
+	const { x, y } = shuttleAt(dock, away);
 	const stripe = `hsl(${hue ?? 200} 60% 55%)`;
 
 	// Its tube down to the hull: glass in a frame, someone in it on their way through

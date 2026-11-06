@@ -19,6 +19,7 @@ import {
 	drawTransporter,
 	drawHullCover,
 	drawShuttle,
+	shuttleAt,
 	drawTanker,
 	drawTank,
 	hullEdges,
@@ -81,9 +82,10 @@ const ABOARD_SECONDS = 6;
 const SHUTTLE = { fly: 1.6, tube: 0.6, walk: 1.6, retract: 0.5 };
 // The one opening the view comes aboard as the ship comes in: in warp, just their shuttle among the streaking stars,
 // close up (`warp`); the ship pulling in under it as the view draws back to all of it (the ship's own coming in,
-// ENTER_SECONDS); its plating shimmering as the shuttle settles on it (`settle`); then its tube and their walk. How
-// much closer than the whole ship the view starts, in zoom.
-const JOIN = { warp: 1.2, settle: 1.2, closer: 3, tubeCloser: 2, opened: 2.6, stepped: 1.7 };
+// ENTER_SECONDS); its plating shimmering as the shuttle settles on it (`settle`); then its tube and their walk, and
+// their step out of the airlock (`stepped`, after they've walked the tube), the view in close over it. How much closer
+// than the whole ship the view starts, in zoom, and how much closer it comes in over the airlock.
+const JOIN = { warp: 1.2, settle: 1.2, closer: 3, tubeCloser: 2, stepped: 1.7 };
 // How long the view watches the one looking walk out from the airlock before what's to be focused on opening is, in
 // seconds: long enough to see them clear it, not the whole way to where they belong
 const WALK_IN_MOST = 1.4;
@@ -962,13 +964,13 @@ export default class Ship {
 		return { x: x * this.camera.zoom + offset.x, y: y * this.camera.zoom + offset.y };
 	}
 
-	// Where the view would frame what's looked at (or the point flown to): flown to only while `flying`
+	// Where the view would frame what's looked at (or the point flown to): flown to only while `flying`, except coming
+	// aboard, which the view is told the whole way; anything asked of it meanwhile waits till they've stepped aboard
 	goal() {
-		if (this.flyingTo) return this.flyingTo;
-
 		const joining = this.joinGoal();
 
 		if (joining) return joining;
+		if (this.flyingTo) return this.flyingTo;
 
 		const room = this.roomOf(this.looking);
 		const { left, right, top, bottom } = room
@@ -994,41 +996,38 @@ export default class Ship {
 		return { x: (from.x + to.x) / 2 + aside / 2 / zoom, y: (from.y + to.y) / 2, zoom };
 	}
 
-	// Coming aboard as the ship comes in, the view tells it: on the shuttle close up in warp, drawn back step by step to
-	// the whole ship as it pulls in and shimmers, drawn in on the airlock as its tube comes down and they walk it, and
-	// back out to the whole ship as it opens and they step out; null once that's done, or for anyone not coming aboard
+	// Coming aboard as the ship comes in, the view tells it: centered on the shuttle close up in warp, drawn back from
+	// it to the whole ship as that pulls in under it and shimmers, drawn in on the airlock as the shuttle's tube comes
+	// down, they walk it and step out; null once they have, or for anyone not coming aboard
 	joinGoal() {
 		if (this.joinAt === undefined || !this.layout?.building || !this.airlock) return null;
 
 		const since = this.time - this.joinAt;
 		const shuttle = this.shuttles.find(({ join }) => join);
-		const boarded = (shuttle ? this.approachOf(shuttle) : 0) + SHUTTLE.tube + SHUTTLE.walk;
 
-		if (since >= boarded + JOIN.opened) return null;
+		if (!shuttle || since >= this.approachOf(shuttle) + SHUTTLE.tube + SHUTTLE.walk + JOIN.stepped) return null;
 
 		this.joinAt = undefined;
 		const whole = this.goal();
 
 		this.joinAt = this.time - since;
 
-		const dock = { x: this.art(this.airlock).x, y: hullEdges(this.layout.building).top };
+		const dock = this.shuttleDock();
 		const pulled = JOIN.warp + ENTER_SECONDS;
 
-		// Over its tube while they walk it, and on through the airlock as its door opens on them, the plating fading
-		// round them and they step out; then the whole ship again
+		// Settled on the hull: over its tube while they walk it, and on through the airlock as its door opens on them, the
+		// plating fading round them and they step out
 		if (since >= pulled + JOIN.settle)
-			return since < boarded + JOIN.stepped
-				? { x: dock.x, y: dock.y + 8, zoom: Math.min(ZOOMS.most, whole.zoom + JOIN.tubeCloser) }
-				: whole;
+			return { x: dock.x, y: dock.y + 8, zoom: Math.min(ZOOMS.most, whole.zoom + JOIN.tubeCloser) };
 		if (since >= pulled) return whole;
 
-		const away = shuttle ? 1 - 0.65 * Math.max(0, Math.min(1, (since - JOIN.warp) / ENTER_SECONDS)) : 0;
-		const near = { x: dock.x + away * 240, y: dock.y - 14 - away * 90 };
+		// On the shuttle's hull itself, where it's drawn, and back from it to the whole ship as that pulls in
+		const at = shuttleAt(dock, this.shuttleState(shuttle).away);
 		const back = Math.max(0, Math.min(1, (since - JOIN.warp) / ENTER_SECONDS));
 
 		return {
-			x: near.x + (whole.x - near.x) * back,
-			y: near.y + (whole.y - near.y) * back,
+			x: mix(at.x - 1, whole.x, back),
+			y: mix(at.y - 4, whole.y, back),
 			// Drawn back smoothly rather than a step at a time, ending on the whole ship's own zoom
 			zoom: Math.min(ZOOMS.most, whole.zoom + JOIN.closer * (1 - back) ** 2),
 		};
@@ -1086,8 +1085,9 @@ export default class Ship {
 		this.flying = true;
 	}
 
-	// By hand: the view is the hand's from here, and nothing flies it until asked
+	// By hand: the view is the hand's from here, and nothing flies it until asked; not while coming aboard
 	pan(across, down) {
+		if (this.joinGoal()) return;
 		this.flying = false;
 		this.flyingTo = null;
 		this.camera.x -= across / this.camera.zoom;
@@ -1099,7 +1099,7 @@ export default class Ship {
 		const before = this.camera.zoom;
 		const zoom = Math.max(ZOOMS.least, Math.min(ZOOMS.most, before + (factor > 1 ? 1 : -1)));
 
-		if (zoom === before) return;
+		if (zoom === before || this.joinGoal()) return;
 		this.flying = false;
 		this.flyingTo = null;
 		this.camera.x += (x - this.width / 2) * (1 / before - 1 / zoom);
@@ -1907,6 +1907,8 @@ export default class Ship {
 
 			if (joining) Object.assign(joining, { at: this.time, join: true });
 			this.joinAt = joining ? this.time : undefined;
+			// Opening on their shuttle, not flown to it
+			if (joining) Object.assign(this.camera, this.joinGoal() ?? {});
 		}
 		if (this.openWanted && this.arrived() && !this.joining()) this.open();
 		// The ship under way: space streams past astern, faster the more was delivered in the last hour
@@ -1978,9 +1980,11 @@ export default class Ship {
 		this.haulers = this.haulers.filter(({ time }) => time < 1);
 
 		// The frame is worked out every step (it says whether the bridge's panel fits beside the ship); the view flies
-		// to it only while asked, and is the hand's once it's there
-		const goal = this.goal();
+		// to it only while asked, and is the hand's once it's there; coming aboard, it's flown the whole way
+		const joining = this.joinGoal();
+		const goal = joining ?? this.goal();
 
+		if (joining) this.flying = true;
 		if (goal && this.flying) {
 			const ease = calm ? 1 : Math.min(1, seconds * EASE);
 
@@ -1991,7 +1995,11 @@ export default class Ship {
 			this.camera.zoom = Math.abs(zoom - goal.zoom) < 0.01 ? goal.zoom : zoom;
 			for (const measure of ['x', 'y']) this.camera[measure] = mix(this.camera[measure], goal[measure], ease);
 			// Flown there: free to roam from it
-			if (this.camera.zoom === goal.zoom && Math.hypot(this.camera.x - goal.x, this.camera.y - goal.y) < 0.5) {
+			if (
+				!joining &&
+				this.camera.zoom === goal.zoom &&
+				Math.hypot(this.camera.x - goal.x, this.camera.y - goal.y) < 0.5
+			) {
 				this.flyingTo = null;
 				this.flying = false;
 			}
@@ -6001,17 +6009,18 @@ export default class Ship {
 		});
 	}
 
-	// A shuttle as it is at this point of its visit, docked over the airlock on the hull's back
-	drawShuttleOf(ctx, shuttle) {
+	// Where the shuttles dock: over the airlock on the hull's back, in art pixels
+	shuttleDock() {
+		return { x: this.art(this.airlock).x, y: hullEdges(this.layout.building).top };
+	}
+
+	// A shuttle at this point of its visit: how far off its dock it is (`away`, 0 to 1), how far down its tube is, and
+	// how far down it someone is (null for nobody): where it's flown in, its tube let down, someone walking it, drawn
+	// back, flown off
+	shuttleState(shuttle) {
 		const age = this.shuttleAge(shuttle);
-
-		if (age === null || !this.layout.building || !this.airlock) return;
-
 		const { fly, tube, walk: down, retract } = SHUTTLE;
 		const ease = u => Math.max(0, Math.min(1, u)) ** 2 * (3 - 2 * Math.max(0, Math.min(1, u)));
-		const dock = { x: this.art(this.airlock).x, y: hullEdges(this.layout.building).top };
-		// Through its visit: where it's flown in, its tube let down, someone walking it, drawn back, flown off
-		let state;
 
 		if (shuttle.kind === 'in') {
 			const approach = this.approachOf(shuttle);
@@ -6023,24 +6032,32 @@ export default class Ship {
 					0.35 * ease((age - JOIN.warp - ENTER_SECONDS) / JOIN.settle)
 				: 1 - ease(age / fly);
 
-			state = {
+			return {
 				away: coming + ease((left - retract) / fly),
 				tube: Math.min(ease((age - approach) / tube), 1 - ease(left / retract)),
 				walker: age >= approach + tube && left < 0 ? (age - approach - tube) / down : null,
 			};
-		} else {
-			const climbed = shuttle.climbAt === undefined ? -Infinity : this.time - shuttle.climbAt;
-			const after = climbed - down;
-
-			state = {
-				away: 1 - ease(age / fly) + ease((after - retract) / fly),
-				tube: Math.min(ease((age - fly) / tube), climbed === -Infinity ? 1 : 1 - ease(after / retract)),
-				walker: climbed >= 0 && climbed < down ? 1 - climbed / down : null,
-			};
 		}
+
+		const climbed = shuttle.climbAt === undefined ? -Infinity : this.time - shuttle.climbAt;
+		const after = climbed - down;
+
+		return {
+			away: 1 - ease(age / fly) + ease((after - retract) / fly),
+			tube: Math.min(ease((age - fly) / tube), climbed === -Infinity ? 1 : 1 - ease(after / retract)),
+			walker: climbed >= 0 && climbed < down ? 1 - climbed / down : null,
+		};
+	}
+
+	// A shuttle as it is at this point of its visit, docked over the airlock on the hull's back
+	drawShuttleOf(ctx, shuttle) {
+		if (this.shuttleAge(shuttle) === null || !this.layout.building || !this.airlock) return;
+
+		const dock = this.shuttleDock();
+
 		// Come in with the ship, it holds its place on screen as the ship slides in under it
 		if (shuttle.join) dock.x -= this.entryShift() / this.camera.zoom;
-		drawShuttle(ctx, dock, { ...state, hue: shuttle.hue, time: this.time });
+		drawShuttle(ctx, dock, { ...this.shuttleState(shuttle), hue: shuttle.hue, time: this.time });
 	}
 
 	// The bay doors in the belly, each eased open while something's passing through it and shut again after: the
