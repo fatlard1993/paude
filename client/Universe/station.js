@@ -168,6 +168,14 @@ const floors = new Map();
 // A bare room's deck: open grating over the dark of the ship's insides
 const BARE_FLOOR = { base: '#0a0d14', alt: '#141a25' };
 
+// The ship's color, set before it's drawn (setTrim): a band on every girder and a line along every deck's front edge,
+// so which ship you're aboard reads from any room, not only from the stripe outside
+let trim = null;
+
+export const setTrim = hue => {
+	trim = Number.isFinite(hue) ? `hsl(${hue} 55% 48%)` : null;
+};
+
 export const floor = (ctx, art, room, colors = BARE_FLOOR) => {
 	const [from, to] = corners(art, room);
 	const [w, h] = [to.x - from.x, to.y - from.y];
@@ -191,6 +199,7 @@ export const floor = (ctx, art, room, colors = BARE_FLOOR) => {
 		floors.set(key, canvas);
 	}
 	ctx.drawImage(floors.get(key), from.x, from.y);
+	if (trim) rect(ctx, from.x, to.y - 1, w, 1, trim);
 };
 
 // A far wall's face and its shadow, painted once for each width, height, catwalks through it and where it starts on
@@ -328,6 +337,7 @@ export const walls = (ctx, art, label, room, { name, color }) => [
 				rect(ctx, x, from.y, 3, to.y - from.y, PALETTE.k);
 				rect(ctx, x + 1, from.y, 1, to.y - from.y, PALETTE.m);
 				for (let y = from.y + 4; y < to.y; y += 8) rect(ctx, x, y, 3, 1, PALETTE.d);
+				if (trim) rect(ctx, x, from.y + 1, 3, 2, trim);
 			}
 			if (!name || room.unsigned) return;
 			label(name, art({ x: room.x + room.w / 2, y: room.y }), {

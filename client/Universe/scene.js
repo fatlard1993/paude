@@ -62,6 +62,7 @@ import {
 	SCREEN_RISE,
 	cableStep,
 	cableWeight,
+	setTrim,
 } from './station';
 
 const TAU = Math.PI * 2;
@@ -1824,11 +1825,12 @@ export default class Ship {
 		}
 	}
 
-	// The person `key` walks onto the transporter's pad, in a hurry, and beams away, `then` called once they're gone;
-	// false when there's no transporter or they're not aboard, so they go at once
-	beamOut(key, then) {
+	// The person `key` walks onto the transporter's pad, in a hurry, and beams away in the color of the ship they're off
+	// to (`hue`), `then` called once they're gone; false when there's no transporter or they're not aboard, so they go
+	// at once
+	beamOut(key, then, hue = null) {
 		if (!this.layout.transporter || !this.walkers.has(key)) return false;
-		this.departing = { key, then, since: this.time };
+		this.departing = { key, then, since: this.time, hue };
 		this.board();
 		this.look('transporter');
 
@@ -2062,6 +2064,7 @@ export default class Ship {
 	// Each frame: the sky and its stars on the screen, then the world in art pixels, every one a square of `zoom`
 	// screen pixels
 	draw(ctx, ratio = 1) {
+		setTrim(this.own?.hue);
 		this.hits = [];
 		ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
 		ctx.imageSmoothingEnabled = false;
@@ -2265,6 +2268,8 @@ export default class Ship {
 					time: this.time,
 					ships: this.fleet,
 					beaming: beam >= 0 && beam < 1 ? beam : null,
+					// Beaming out, the beam is the color of the ship being gone to; beaming in, this ship's
+					hue: this.departing?.hue ?? this.own?.hue ?? null,
 				}),
 			);
 		}
@@ -3521,6 +3526,7 @@ export default class Ship {
 				time: this.time,
 				plans: Boolean(this.systems.get('tower')?.active),
 				airlockOpen: this.airlockOpen,
+				ship: this.own && { name: this.own.name, hue: this.own.hue },
 			}),
 		];
 	}

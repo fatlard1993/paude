@@ -317,6 +317,7 @@ export default class Universe extends View {
 				needs: needed.filter(({ need }) => need === 'asking').length,
 				news: needed.filter(({ need }) => need === 'unread').length,
 				working: (ship.sessions ?? []).filter(({ status }) => status === 'working').length,
+				hue: groups.get(key)[0]?.hue,
 			};
 		};
 		const hear = () => {
@@ -408,7 +409,7 @@ export default class Universe extends View {
 		};
 
 		clearTimeout(this.beaming);
-		if (me && from.beamOut(me.key, arrive)) return;
+		if (me && from.beamOut(me.key, arrive, ship.own?.hue)) return;
 		from.beamAt = from.time;
 		this.beaming = setTimeout(arrive, BEAM_SECONDS * 1000);
 	}
@@ -1704,6 +1705,8 @@ export default class Universe extends View {
 
 			return {
 				...flyout,
+				// Bordered in the ship's own color, as the ship is trimmed in it
+				hue: aboard.own?.hue,
 				rows: [
 					...this.healthRows(),
 					...flyout.rows,
@@ -1851,8 +1854,11 @@ export default class Universe extends View {
 		this.focusPainted = painted;
 
 		const open = element('button', 'summary');
+		// Named and colored as the ship, so folded it still says which ship this is
+		const title = element('strong', 'title', aboard.own?.name || 'Bridge');
 
-		open.append(element('strong', 'title', 'Bridge'), element('span', 'line', line));
+		if (Number.isFinite(aboard.own?.hue)) title.style.color = `hsl(${aboard.own.hue} 60% 68%)`;
+		open.append(title, element('span', 'line', line));
 		open.title = 'Open the bridge';
 		open.addEventListener('click', () => ((this.bridgeOpen = true), this.paintFocus()));
 		this.focus.replaceChildren(open);

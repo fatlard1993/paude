@@ -2,7 +2,8 @@ import { expect, test } from 'bun:test';
 
 import Ship, { appliancesOf, bendAround, countdown, resting, risersFor, runsFor, tanksOf, triage } from './scene';
 import { WATCHER_W, clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats } from './plan';
-import { SCREEN_RISE, UNIT, cableWeight } from './station';
+import { SCREEN_RISE, UNIT, cableWeight, floor, setTrim, walls } from './station';
+import { drawTransporter } from './hull';
 
 const session = changes => ({
 	id: 'a',
@@ -2250,4 +2251,77 @@ test("the island keeps room for a fabled session's monitor past its seat, so it 
 	expect(fb.x - 0.85).toBeGreaterThan(spot.x + 0.25);
 	// Behind its grey
 	expect(spot.y).toBeLessThan(fa.y - 0.12);
+});
+
+// A canvas that remembers each filled rectangle's color
+const recordingContext = () => {
+	const fills = [];
+	const ctx = {
+		fillStyle: '',
+		globalAlpha: 1,
+		fillRect: () => fills.push(ctx.fillStyle),
+		drawImage: () => {},
+		save: () => {},
+		restore: () => {},
+		beginPath: () => {},
+		rect: () => {},
+		clip: () => {},
+	};
+
+	return { ctx, fills };
+};
+
+test("the ship's color trims every room: a band on each girder and a line along each deck's front edge, once set", () => {
+	const art = ({ x, y }) => ({ x: Math.round(x * UNIT.x), y: Math.round(y * UNIT.y) });
+	const room = { x: 1, y: 1, w: 4, d: 2, hull: {}, name: 'Hold' };
+	const hadDocument = 'document' in globalThis;
+
+	if (!hadDocument)
+		globalThis.document = {
+			createElement: () => ({ width: 0, height: 0, getContext: () => ({ fillStyle: '', fillRect: () => {} }) }),
+		};
+	try {
+		setTrim(120);
+
+		const trimmed = recordingContext();
+
+		walls(trimmed.ctx, art, () => {}, room, { name: 'Hold', color: '#fff' }).forEach(part => part.draw());
+		floor(trimmed.ctx, art, room);
+		expect(trimmed.fills.filter(color => color === 'hsl(120 55% 48%)')).toHaveLength(3);
+
+		setTrim(null);
+
+		const plain = recordingContext();
+
+		walls(plain.ctx, art, () => {}, room, { name: 'Hold', color: '#fff' }).forEach(part => part.draw());
+		floor(plain.ctx, art, room);
+		expect(plain.fills.some(color => color.startsWith('hsl(120'))).toBe(false);
+	} finally {
+		if (!hadDocument) delete globalThis.document;
+	}
+});
+
+test("the transporter's beam is the color of the ship being gone to, and its console lights each ship in its own", () => {
+	const art = ({ x, y }) => ({ x: Math.round(x * UNIT.x), y: Math.round(y * UNIT.y) });
+	const room = { x: 2, y: 2, w: 3, d: 2, hull: {}, name: 'Transporter', within: true };
+	const ships = [
+		{ key: 'vps', name: 'vps', hue: 200 },
+		{ key: 'wb', name: 'workbook', hue: 40, working: true },
+	];
+	const beaming = recordingContext();
+
+	drawTransporter(beaming.ctx, art, () => {}, room, { time: 0, ships, beaming: 0.5, hue: 200 }).forEach(part =>
+		part.draw?.(),
+	);
+	expect(beaming.fills).toContain('hsl(200 70% 76%)');
+	// An idle ship's light is its color; a working one's says so instead
+	expect(beaming.fills).toContain('hsl(200 50% 42%)');
+	expect(beaming.fills).not.toContain('hsl(40 50% 42%)');
+
+	const idle = recordingContext();
+
+	drawTransporter(idle.ctx, art, () => {}, room, { time: 0, ships, beaming: null, hue: null }).forEach(part =>
+		part.draw?.(),
+	);
+	expect(idle.fills).not.toContain('hsl(200 70% 76%)');
 });

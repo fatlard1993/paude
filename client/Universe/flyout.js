@@ -437,7 +437,8 @@ const FLYOUTS = {
 		const people = [...ship.walkers.values()].map(({ name }) => name);
 
 		return {
-			title: 'Bridge',
+			title: ship.own?.name ? `Bridge of ${ship.own.name}` : 'Bridge',
+			hue: ship.own?.hue,
 			rows: [
 				['aboard', people.join(', ') || 'nobody'],
 				['terminals open', String(ship.screens.length)],

@@ -1451,12 +1451,14 @@ const drawNotice = (ctx, at, { count, color, mark }, label) => {
 	label(String(count), { x, y: y + 6 }, { color, size: 1, align: 'center' });
 };
 
-// The transporter: a pad beaming someone to or from another ship (`beaming`, 0 to 1), a console with a light for each
-// other ship (`ships`), and over it a notice while any of them has something for you
-export const drawTransporter = (ctx, art, label, room, { time, ships = [], beaming = null }) => {
+// The transporter: a pad beaming someone to or from another ship (`beaming`, 0 to 1, its beam in that ship's color,
+// `hue`: the one you're going to, or this one as you arrive), a console with a light for each other ship (`ships`) in
+// its color, and over it a notice while any of them has something for you
+export const drawTransporter = (ctx, art, label, room, { time, ships = [], beaming = null, hue = null }) => {
 	if (!room.within) floor(ctx, art, room);
 
 	const pad = clonerAt(room);
+	const beam = Number.isFinite(hue) ? `hsl(${hue} 70% 76%)` : '#c9b6ff';
 	// What the other ships have for you: those asking something first, then news
 	const needs = ships.reduce((sum, { needs: count = 0 }) => sum + count, 0);
 	const news = ships.reduce((sum, { news: count = 0 }) => sum + count, 0);
@@ -1494,18 +1496,11 @@ export const drawTransporter = (ctx, art, label, room, { time, ships = [], beami
 				for (const side of [-1, 1]) {
 					rect(ctx, x + side * 12 - 1, at.y - 22, 3, 22, PALETTE.k);
 					rect(ctx, x + side * 12, at.y - 21, 1, 20, PALETTE.l);
-					rect(
-						ctx,
-						x + side * 12,
-						at.y - 23,
-						1,
-						2,
-						beaming !== null || Math.floor(time * 2) % 2 ? '#c9b6ff' : PALETTE.p,
-					);
+					rect(ctx, x + side * 12, at.y - 23, 1, 2, beaming !== null || Math.floor(time * 2) % 2 ? beam : PALETTE.p);
 				}
 				if (beaming !== null) {
 					ctx.globalAlpha = 0.25 + 0.5 * Math.sin(beaming * Math.PI);
-					rect(ctx, x - 9, at.y - 30, 19, 30, '#c9b6ff');
+					rect(ctx, x - 9, at.y - 30, 19, 30, beam);
 					for (let spark = 0; spark < 10; spark++)
 						rect(
 							ctx,
@@ -1526,6 +1521,7 @@ export const drawTransporter = (ctx, art, label, room, { time, ships = [], beami
 						(ship.needs && (blink ? PALETTE.y : PALETTE.Y)) ||
 						(ship.news && PALETTE.b) ||
 						(ship.working && PALETTE.t) ||
+						(Number.isFinite(ship.hue) && `hsl(${ship.hue} 50% 42%)`) ||
 						PALETTE.d;
 
 					rect(ctx, at.x + 12 + (index % 3) * 3, at.y - 18 + Math.floor(index / 3) * 3, 2, 2, color);
@@ -1809,13 +1805,17 @@ export const drawLounge = (ctx, art, label, lounge, { time, lifted = [], gone = 
 
 // The bridge: its floor and name, consoles along its back wall, one lit blue while a session plans, and in the wall at
 // its forward end the airlock, open while someone's at it (`airlockOpen`), its lamp red
-export const drawBridge = (ctx, art, label, bridge, { time, plans, airlockOpen = false }) => {
+// `ship`: its name and color, which sign the bridge, since the bridge is the one room that is the ship's own
+export const drawBridge = (ctx, art, label, bridge, { time, plans, airlockOpen = false, ship = null }) => {
 	floor(ctx, art, bridge);
 
 	const airlock = airlockAt(bridge);
 
 	return [
-		...walls(ctx, art, label, bridge, { name: bridge.name, color: PALETTE.w }),
+		...walls(ctx, art, label, bridge, {
+			name: ship?.name || bridge.name,
+			color: Number.isFinite(ship?.hue) ? `hsl(${ship.hue} 60% 70%)` : PALETTE.w,
+		}),
 		{
 			y: bridge.y + 0.01,
 			draw: () => {
