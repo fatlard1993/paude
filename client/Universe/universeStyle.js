@@ -649,9 +649,11 @@ export const Stage = styled(
 			font-size: 0.85em;
 		}
 
-		.projects-list .project-row button {
+		.projects-list .project-row .actions {
 			grid-column: 2;
 			grid-row: 1 / span 2;
+			display: flex;
+			gap: ${space.xs};
 		}
 
 		.dock > .body > .scrolling {

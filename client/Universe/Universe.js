@@ -10,6 +10,7 @@ import {
 	markSeen,
 	openRemote,
 	setLifetime,
+	setProjectWatching,
 	setRemoteWatching,
 	setWatching,
 	sessionElsewhere,
@@ -744,6 +745,29 @@ export default class Universe extends View {
 		this.poll();
 	}
 
+	// Watched, a project stays aboard with nothing running in it, every session in it watched, new ones too; not
+	// watched, it's aboard only while one of its sessions is
+	watchBayAction(bay) {
+		return {
+			label: bay.watching ? 'Stop watching' : 'Watch',
+			detail: bay.watching
+				? 'It leaves the ship once nothing runs in it'
+				: 'It stays aboard, and every session in it is watched, new ones too',
+			onPress: () => this.watchBay(bay, !bay.watching),
+		};
+	}
+
+	// On every engine the project is on: a project of one name on two paudes is one bay
+	async watchBay(bay, watching) {
+		const answers = await Promise.all(
+			bay.engines.map(({ remote }) => setProjectWatching(bay.name, watching, remote?.url)),
+		);
+
+		if (answers.some(({ response }) => !response?.ok))
+			return new Notify({ intent: 'warning', content: `Couldn't ${watching ? 'watch' : 'unwatch'} ${bay.name}.` });
+		this.poll();
+	}
+
 	// What's selected: a worker or a deck, ringed on the ship; a worker or an engine has its own card in the panel
 	select(selected) {
 		const same = selectionKey(selected) === selectionKey(this.selected);
@@ -910,6 +934,7 @@ export default class Universe extends View {
 		const remotes = bay.engines.filter(({ remote }) => remote);
 		const on = name => (bay.engines.length > 1 ? ` on ${name}` : '');
 		const anchor = this.aboard.screen({ x: bay.x + bay.w / 2, y: bay.y + bay.d / 2 });
+		const watch = this.watchBayAction(bay);
 
 		const worker = [...this.aboard.workers.values()].find(
 			({ session }) => session.project === bay.name && !session.engine.remote && session.status !== 'stopped',
@@ -940,6 +965,7 @@ export default class Universe extends View {
 					]
 				: []),
 			{ label: 'Look closer', hotkey: 'z', run: () => this.aboard.look(bay.name) },
+			{ label: watch.label, hotkey: 'w', run: watch.onPress },
 			...(local
 				? [
 						{
@@ -971,6 +997,7 @@ export default class Universe extends View {
 				onPress: () => this.newPrompt(bay.name, point),
 			},
 			{ label: 'Look closer', onPress: () => this.aboard.look(bay.name) },
+			this.watchBayAction(bay),
 			...(local
 				? [
 						{
@@ -1105,6 +1132,7 @@ export default class Universe extends View {
 								remotes: only ? [] : remotes,
 								onStart: project => (this.closeDock(), this.newPrompt(project)),
 								onOpenThere: (remote, project) => this.openProject({ name: remote.name, remote }, project),
+								onWatched: () => this.poll(),
 							}),
 							foldersPane({
 								onAdded: names => this.added(names),

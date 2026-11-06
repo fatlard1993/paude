@@ -10,7 +10,10 @@ import {
 	getProjects,
 	getRecentSessions,
 	getRemoteSessions,
-	markProjectLink, setProjectWatching } from '../api';
+	markProjectLink,
+	setProjectWatching,
+	setRemoteWatching,
+} from '../api';
 import { button, element } from '../dom';
 import { sessionCard } from '../Layout';
 import SessionBrowser from '../SessionBrowser';
@@ -70,6 +73,21 @@ export const listDock = ({ title, about, entries, open, onClose }) => {
 	return card;
 };
 
+// What can be done to a session on another paude from here: watched there, or not, as its owner
+const remoteSessionMenu = (session, changed) => [
+	{ heading: session.title || session.project || 'A new session' },
+	{
+		label: session.watching ? 'Stop watching' : 'Watch',
+		detail: session.watching ? '' : 'Show whether it works, waits or is ready, and what happened since you looked',
+		onPress: async () => {
+			const { response } = await setRemoteWatching(session.remote.url, session.id, !session.watching);
+
+			if (!response?.ok) return new Notify({ intent: 'danger', content: 'Could not change watching.' });
+			changed();
+		},
+	},
+];
+
 // Sessions, newest first, to search and manage as on home: this paude's and `remotes`', or one project's here. A
 // session pressed goes to `onPick`, so it's read and woken from the universe.
 export const sessionsPane = ({ project, remotes = [], local = true, onPick, changed }) => ({
@@ -116,7 +134,10 @@ export const sessionsPane = ({ project, remotes = [], local = true, onPick, chan
 					when,
 					server: session.remote?.name,
 					onOpen: () => onPick(session),
-					...(session.remote ? {} : { menu: () => sessionMenu(session, () => browser.reload()) }),
+					menu: () =>
+						session.remote
+							? remoteSessionMenu(session, () => (browser.reload(), changed?.()))
+							: sessionMenu(session, () => browser.reload()),
 				}),
 			bulk: picked => bulkActions(picked, () => (browser.reload(), changed?.())),
 		});
@@ -127,26 +148,53 @@ export const sessionsPane = ({ project, remotes = [], local = true, onPick, chan
 	},
 });
 
-// Every project to start a session in, newest work first: this paude's to start here, the other paudes' to open there
-export const projectsPane = ({ remotes = [], onStart, onOpenThere }) => ({
+// Every project to start a session in, newest work first: this paude's to start here, the other paudes' to open
+// there; each watched from here, or not, so it comes aboard without a session starting. `onWatched` once one is.
+export const projectsPane = ({ remotes = [], onStart, onOpenThere, onWatched }) => ({
 	key: 'projects',
 	label: 'Projects',
 	make: appendTo => {
 		const elem = element('div', 'pane scrolling projects-list');
-		const row = ({ name, sessionCount = 0, lastActivity, server }, action) => {
+		const watchButton = project =>
+			button(
+				project.watching ? 'Stop watching' : 'Watch',
+				async () => {
+					const watching = !project.watching;
+					const { response } = await setProjectWatching(project.name, watching, project.remote?.url);
+
+					if (!response?.ok)
+						return new Notify({ intent: 'danger', content: `Could not change watching ${project.name}.` });
+					// The other paude's list was read when it was last visited, so its copy is told
+					if (project.remote) project.remote.projects.find(({ name }) => name === project.name).watching = watching;
+					await refresh();
+					onWatched?.();
+				},
+				{
+					className: 'variant-flat',
+					title: project.watching
+						? 'It leaves the ship once nothing runs in it'
+						: 'It comes aboard, and every session in it is watched, new ones too',
+				},
+			);
+		const row = (project, action) => {
+			const { name, sessionCount = 0, lastActivity, server, watching } = project;
 			const line = element('div', 'project-row');
 			const about = [
 				server,
 				sessionCount ? `${sessionCount} session${sessionCount === 1 ? '' : 's'}` : 'never worked in',
 				lastActivity && relativeTime(lastActivity),
+				watching && 'watched',
 			]
 				.filter(Boolean)
 				.join(' · ');
+			const actions = element('span', 'actions');
 
-			line.append(element('strong', '', name), element('span', 'about', about), action);
+			actions.append(action, watchButton(project));
+			line.append(element('strong', '', name), element('span', 'about', about), actions);
 
 			return line;
 		};
+
 		const refresh = async () => {
 			const { body } = await getProjects();
 			const localProjects = [...(body ?? [])].sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0));
