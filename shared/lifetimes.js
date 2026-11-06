@@ -19,7 +19,7 @@ export const LIFETIMES = {
 		icon: 'binoculars',
 		mark: '🔭',
 		detail:
-			'kept going by a Fable monitor of its own that follows the whole run and reads the repository, with more room before it waits for you, 24 hours from your last message',
+			'kept going by a Fable monitor of its own that follows the whole run and reads the repository, with more room before it waits for you, 24 hours from your last message; each of its verdicts is a Fable turn on your usage',
 	},
 	brief: {
 		label: 'Short-lived',
