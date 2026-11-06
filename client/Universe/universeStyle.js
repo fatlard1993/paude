@@ -516,6 +516,7 @@ export const Stage = styled(
 
 		.focus .title .fold {
 			float: right;
+			margin: -4px -6px 0 ${space.sm};
 		}
 
 		.focus {
@@ -659,5 +660,112 @@ export const Stage = styled(
 		.dock > .body > .scrolling {
 			overflow-y: auto;
 		}
+		/* On a phone one drawer up from the bottom holds the card, the dock and the reply cards, whichever are up: the
+		   dock's glass with a rounded top edge and a handle along it, each thing inside a plain block */
+		@media ${media.phone} {
+			.drawer {
+				position: absolute;
+				right: 0;
+				bottom: 0;
+				left: 0;
+				z-index: 3;
+				display: flex;
+				flex-direction: column;
+				gap: ${space.sm};
+				height: var(--drawer, 55%);
+				max-height: calc(100% - 24px);
+				padding: ${space.lg} ${space.md} calc(${space.sm} + env(safe-area-inset-bottom, 0px));
+				box-sizing: border-box;
+				border: 1px solid ${colors.border};
+				border-bottom: none;
+				border-radius: ${radius.lg} ${radius.lg} 0 0;
+				background: ${colors.alpha(colors.black, 0.5)};
+				backdrop-filter: blur(6px) saturate(140%);
+				-webkit-backdrop-filter: blur(6px) saturate(140%);
+				box-shadow: 0 -8px 32px ${colors.alpha(colors.vantablack, 0.45)};
+				overflow: hidden;
+			}
+
+			.drawer > .grip {
+				position: absolute;
+				top: 0;
+				right: 0;
+				left: 0;
+				height: 16px;
+				cursor: ns-resize;
+				touch-action: none;
+			}
+
+			.drawer > .grip::after {
+				content: '';
+				position: absolute;
+				top: 5px;
+				left: 50%;
+				width: 40px;
+				height: 4px;
+				margin-left: -20px;
+				border-radius: ${radius.pill};
+				background: ${colors.alpha(colors.white, 0.35)};
+			}
+
+			/* Only the folded summary in it: a pill in the corner, no handle */
+			.drawer.folded {
+				right: auto;
+				bottom: 8px;
+				left: 8px;
+				height: auto;
+				padding: ${space.sm} ${space.md};
+				border-bottom: 1px solid ${colors.border};
+				border-radius: ${radius.lg};
+				box-shadow: none;
+			}
+
+			.drawer.folded > .grip {
+				display: none;
+			}
+
+			.drawer .focus,
+			.drawer .dock,
+			.drawer .reply-card {
+				position: static;
+				width: auto;
+				max-width: none;
+				max-height: none;
+				min-height: 0;
+				padding: 0;
+				border: none;
+				border-radius: 0;
+				background: none;
+				box-shadow: none;
+				backdrop-filter: none;
+				-webkit-backdrop-filter: none;
+			}
+
+			.drawer .focus {
+				flex: 0 1 auto;
+				overflow-y: auto;
+			}
+
+			.drawer .focus.folded {
+				width: auto;
+				max-width: none;
+				overflow: visible;
+			}
+
+			.drawer .dock {
+				flex: 1 1 auto;
+				overflow: hidden;
+			}
+
+			.drawer .dock > .grip {
+				display: none;
+			}
+
+			.drawer .reply-card {
+				flex: 1 1 auto;
+				overflow-y: auto;
+			}
+		}
+
 	`,
 );

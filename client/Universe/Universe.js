@@ -1,4 +1,4 @@
-import { Notify, View } from '@vanilla-bean/components';
+import { Notify, View, theme } from '@vanilla-bean/components';
 import { relativeTime } from '@vanilla-bean/components/utils/date';
 
 import {
@@ -127,22 +127,30 @@ const FOCUS_KEPT = 'paude-universe-focus';
 // The width the docks were last dragged to, kept for this browser (where it can be: storage can be off)
 const DOCK_WIDTH = 'paude-universe-dock-width';
 const DOCK_LEAST = 360;
+// On a phone the dock is a drawer up from the bottom, dragged taller or shorter instead; its height kept apart
+const DOCK_HEIGHT = 'paude-universe-dock-height';
+const DOCK_SHORTEST = 160;
 // How long a session just placed is waited for to come aboard, to open its side panel on it
 const ARRIVING_MS = 60_000;
 
-const savedDockWidth = () => {
+const onPhone = () => window.matchMedia?.(theme.media.phone).matches ?? false;
+
+const savedDockSize = key => {
 	try {
-		return Number(localStorage.getItem(DOCK_WIDTH)) || null;
+		return Number(localStorage.getItem(key)) || null;
 	} catch {
 		return null;
 	}
 };
 
 // A dock dragged wider or narrower by a grip along its left edge, and opened at the width it was last left at; once
-// sized by hand (`data-sized`), what's in it fits itself to that rather than sizing the dock
+// sized by hand (`data-sized`), what's in it fits itself to that rather than sizing the dock. On a phone it's a drawer
+// instead: see drawerHandle.
 const resizable = card => {
+	if (onPhone()) return;
+
 	const grip = element('div', 'grip');
-	const saved = savedDockWidth();
+	const saved = savedDockSize(DOCK_WIDTH);
 
 	grip.title = 'Drag to resize';
 	if (saved) {
@@ -174,6 +182,40 @@ const resizable = card => {
 		grip.addEventListener('pointerup', up, { once: true });
 	});
 	card.append(grip);
+};
+
+// On a phone one drawer up from the bottom holds the card, the dock and the reply cards; a handle along its top drags
+// it taller or shorter (the stage's --drawer), and the height is kept apart from the width kept for wide windows. The
+// handle, to be put in the drawer.
+const drawerHandle = (card, stage) => {
+	const grip = element('div', 'grip');
+
+	grip.title = 'Drag to resize';
+	grip.addEventListener('pointerdown', down => {
+		down.preventDefault();
+		grip.setPointerCapture(down.pointerId);
+
+		const bottom = card.getBoundingClientRect().bottom;
+		const most = stage.clientHeight - 24;
+		const move = event => {
+			const height = Math.round(Math.max(DOCK_SHORTEST, Math.min(most, bottom - event.clientY)));
+
+			stage.style.setProperty('--drawer', `${height}px`);
+		};
+		const up = () => {
+			grip.removeEventListener('pointermove', move);
+			try {
+				localStorage.setItem(DOCK_HEIGHT, String(parseInt(stage.style.getPropertyValue('--drawer'), 10) || ''));
+			} catch {
+				// Kept for this visit only
+			}
+		};
+
+		grip.addEventListener('pointermove', move);
+		grip.addEventListener('pointerup', up, { once: true });
+	});
+
+	return grip;
 };
 
 // What a selection is, to tell one from another
@@ -230,9 +272,21 @@ export default class Universe extends View {
 		this.tip.dataset.augmentedUi = FRAME.small;
 		this.tip.style.display = 'none';
 		this.focus = element('div', 'focus');
-		this.focus.dataset.augmentedUi = FRAME.large;
+		// On a phone the card is a drawer, not a framed card
+		if (!onPhone()) this.focus.dataset.augmentedUi = FRAME.large;
 		this.focus.style.display = 'none';
-		this.stage.elem.append(this.canvas, this.focus, this.tip);
+		// On a phone, one drawer up from the bottom holds the card, the dock and the reply cards, whichever are up,
+		// dragged taller or shorter by its handle; its height as last dragged
+		if (onPhone()) {
+			this.drawer = element('div', 'drawer');
+			this.drawer.append(drawerHandle(this.drawer, this.stage.elem), this.focus);
+			this.drawer.style.display = 'none';
+
+			const drawer = savedDockSize(DOCK_HEIGHT);
+
+			if (drawer) this.stage.elem.style.setProperty('--drawer', `${drawer}px`);
+		}
+		this.stage.elem.append(this.canvas, this.drawer ?? this.focus, this.tip);
 		// A ship for each subscription; `aboard` the one on the stage
 		this.ships = new Map([['', this.makeShip()]]);
 		this.aboard = this.ships.get('');
@@ -554,6 +608,7 @@ export default class Universe extends View {
 			if (this.card) this.closeCard();
 			else if (this.dock) this.closeDock();
 			else if (this.selected) this.select(null);
+			else if (this.focused?.kind === 'bridge' && !this.focus.classList.contains('folded')) this.dismissFocus();
 			else this.aboard.look('all');
 		};
 
@@ -1191,7 +1246,7 @@ export default class Universe extends View {
 
 		resizable(card);
 		this.dock = { card, key };
-		this.stage.elem.append(card);
+		this.house(card);
 
 		return card.opened();
 	}
@@ -1288,7 +1343,7 @@ export default class Universe extends View {
 
 			resizable(card);
 			this.dock = { card, key: `session:${session.key}` };
-			this.stage.elem.append(card);
+			this.house(card);
 
 			return card.opened();
 		}
@@ -1356,6 +1411,7 @@ export default class Universe extends View {
 		this.dock?.card.remove();
 		this.dock = null;
 		this.focusPainted = null;
+		this.tendDrawer();
 	}
 
 	// A prompt placed as from home: anywhere, or in `project`
@@ -1391,12 +1447,28 @@ export default class Universe extends View {
 
 	openCard(card, anchor, { focus = true } = {}) {
 		this.closeCard();
-		card.dataset.augmentedUi = FRAME.large;
+		if (!onPhone()) card.dataset.augmentedUi = FRAME.large;
 		this.card = { card, anchor };
-		this.stage.elem.append(card);
+		this.house(card);
 		this.placeCard();
 		card.opened?.();
 		if (focus) card.querySelector('textarea')?.focus({ preventScroll: true });
+	}
+
+	// A dock or a card put on the stage: into the drawer on a phone
+	house(card) {
+		(this.drawer ?? this.stage.elem).append(card);
+		this.tendDrawer();
+	}
+
+	// The drawer shows while anything is in it; with only the folded summary, it's a pill in the corner
+	tendDrawer() {
+		if (!this.drawer) return;
+
+		const shown = this.focus.style.display !== 'none';
+
+		this.drawer.style.display = shown || this.dock || this.card ? '' : 'none';
+		this.drawer.classList.toggle('folded', !this.dock && !this.card && this.focus.classList.contains('folded'));
 	}
 
 	workerOf(session) {
@@ -1482,6 +1554,7 @@ export default class Universe extends View {
 		this.card?.card.dispose?.();
 		this.card?.card.remove();
 		this.card = null;
+		this.tendDrawer();
 	}
 
 	// Beside what it came from, following it as it moves, kept inside the stage
@@ -1489,9 +1562,10 @@ export default class Universe extends View {
 		place(this.cardSpot());
 	}
 
-	// Where the card goes, measured before anything's moved, so a frame lays the page out once
+	// Where the card goes, measured before anything's moved, so a frame lays the page out once; on a phone it's a drawer,
+	// placed by its style
 	cardSpot() {
-		if (!this.card) return null;
+		if (!this.card || onPhone()) return null;
 
 		const { card, worker } = this.card;
 		const point = worker?.screen ?? this.card.anchor;
@@ -1767,6 +1841,7 @@ export default class Universe extends View {
 			this.focus.style.display = 'none';
 			this.focusCommands = [];
 			this.focusPainted = null;
+			this.tendDrawer();
 
 			return;
 		}
@@ -1777,7 +1852,9 @@ export default class Universe extends View {
 		const tight = whole && focus.kind === 'bridge' && this.aboard.tight;
 
 		this.paintedTight = this.aboard.tight;
-		if (tight && !this.bridgeOpen) return this.paintSummary(focus);
+		// Folded to the summary: too narrow a window unless it's been opened, or closed by hand wherever there's room
+		if (whole && focus.kind === 'bridge' && (tight ? !this.bridgeOpen : this.bridgeFolded))
+			return this.paintSummary(focus);
 
 		const { title, rows = [], items = [], commands = [], hue, titleHue } = this.focusOf(focus);
 		const painted = JSON.stringify([
@@ -1820,17 +1897,25 @@ export default class Universe extends View {
 
 		tone(this.focus, heading, hue, titleHue);
 		this.focus.classList.remove('folded');
-
-		if (tight)
-			heading.append(
-				button('', () => ((this.bridgeOpen = false), this.paintFocus()), {
-					icon: 'compress',
-					title: 'Fold to a summary',
-					className: 'icon-only variant-flat fold',
-				}),
-			);
+		// Closed: whatever was selected is let go, and the bridge's panel folds to its summary, which opens it again
+		heading.append(
+			button('', () => this.dismissFocus(), {
+				icon: 'xmark',
+				title: 'Close (Esc)',
+				className: 'icon-only variant-flat fold',
+			}),
+		);
 		this.focus.replaceChildren(heading, table, ...(items.length ? [list] : []), ...(commands.length ? [verbs] : []));
 		this.focus.style.display = '';
+		this.tendDrawer();
+	}
+
+	// The card closed: nothing selected, and the bridge's panel folded to its summary line until that's pressed
+	dismissFocus() {
+		this.bridgeOpen = false;
+		this.bridgeFolded = true;
+		if (this.selected) this.select(null);
+		this.paintFocus();
 	}
 
 	// The bridge's panel folded to a line: its health at a glance, pressed to open
@@ -1860,10 +1945,11 @@ export default class Universe extends View {
 		if (Number.isFinite(aboard.own?.hue)) title.style.color = `hsl(${aboard.own.hue} 60% 68%)`;
 		open.append(title, element('span', 'line', line));
 		open.title = 'Open the bridge';
-		open.addEventListener('click', () => ((this.bridgeOpen = true), this.paintFocus()));
+		open.addEventListener('click', () => ((this.bridgeOpen = true), (this.bridgeFolded = false), this.paintFocus()));
 		this.focus.replaceChildren(open);
 		this.focus.classList.add('folded');
 		this.focus.style.display = '';
+		this.tendDrawer();
 	}
 
 	// Against the room's right edge, following it as the camera moves, inside the stage
