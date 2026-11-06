@@ -69,6 +69,38 @@ test('no login, a login file that is not JSON, or one that is null: not known, n
 	expect(asked).not.toHaveBeenCalled();
 });
 
+test("on a Mac with no login file, the keychain's Claude Code item is the login; elsewhere it isn't asked", async () => {
+	const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+	const keychain = JSON.stringify({ claudeAiOauth: { accessToken: 'kept', expiresAt: now + 1e9 } });
+	const spawned = spyOn(Bun, 'spawn').mockImplementation(() => ({
+		stdout: new Blob([keychain]).stream(),
+		exited: Promise.resolve(0),
+		exitCode: 0,
+	}));
+
+	try {
+		await login('null');
+		answering(ANSWER);
+		Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+		expect(await limitsOf(later())).toBeNull();
+		expect(spawned).not.toHaveBeenCalled();
+
+		Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+		expect(await limitsOf(later())).toMatchObject({ session: { percent: 40 } });
+		expect(spawned.mock.calls[0][0]).toEqual([
+			'security',
+			'find-generic-password',
+			'-s',
+			'Claude Code-credentials',
+			'-w',
+		]);
+		expect(asked.mock.calls[0][1].headers.authorization).toBe('Bearer kept');
+	} finally {
+		Object.defineProperty(process, 'platform', platform);
+		spawned.mockRestore();
+	}
+});
+
 test('an expired login is not sent', async () => {
 	answering(ANSWER);
 	await login(JSON.stringify({ claudeAiOauth: { accessToken: 'old', expiresAt: now - MINUTE } }));

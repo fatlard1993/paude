@@ -15,10 +15,29 @@ const TIMEOUT_MS = 10 * 1000;
 
 let last = { at: 0, heard: 0, value: null, failed: false };
 
-// Claude Code's login: in its config folder when one's set, else in ~/.claude (on a Mac it's in the keychain instead)
+// On a Mac, Claude Code keeps its login in the keychain, as this item's password
+const KEYCHAIN_SERVICE = 'Claude Code-credentials';
+
+const keychainLogin = async () => {
+	try {
+		const child = Bun.spawn(['security', 'find-generic-password', '-s', KEYCHAIN_SERVICE, '-w'], {
+			stdout: 'pipe',
+			stderr: 'ignore',
+		});
+		const [said] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+
+		return child.exitCode === 0 ? JSON.parse(said) : null;
+	} catch {
+		return null;
+	}
+};
+
+// Claude Code's login: in its config folder when one's set, else in ~/.claude; on a Mac with none there, its keychain
 const tokenOf = async (now = Date.now()) => {
 	const folder = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
-	const login = (await readJsonFile(path.join(folder, '.credentials.json'), {}))?.claudeAiOauth;
+	const login =
+		(await readJsonFile(path.join(folder, '.credentials.json'), {}))?.claudeAiOauth ??
+		(process.platform === 'darwin' ? (await keychainLogin())?.claudeAiOauth : null);
 
 	return login?.accessToken && (!login.expiresAt || login.expiresAt > now) ? login.accessToken : null;
 };
