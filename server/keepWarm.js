@@ -49,8 +49,8 @@ let file;
 // { [sessionId]: { hours, until, going, fabled, monitor, seen, missed, asking } }: going, it also keeps going on its
 // own (keepGoing), `asking` the turn whose end it's still answering, for a server that restarts meanwhile to answer it;
 // fabled, with a Fable monitor of its own (fabled), `monitor` its conversation's id, `seen` the last turn it was told
-// of and `missed` how many asks in a row never reached it. The monitor is kept through a switch to warm or going, to be
-// put back, and goes with the record.
+// of and `missed` how many asks in a row brought no verdict. The monitor is kept through a switch to warm or going, to
+// be put back, and goes with the record.
 let warm = {};
 // When Claude last did anything (any hook), per session; a ping is due PING_AFTER_MS after
 const lastTurnAt = new Map();
@@ -69,8 +69,8 @@ export const goingOn = (id, now = Date.now()) => Boolean(warmUntil(id, now) && w
 
 export const fabledOn = (id, now = Date.now()) => Boolean(goingOn(id, now) && warm[id].fabled);
 
-// A fabled session's monitor conversation, the last turn it was told of, and how many asks in a row never reached it:
-// { monitor, seen, missed }
+// A fabled session's monitor conversation, the last turn it was told of, and how many asks in a row brought no
+// verdict: { monitor, seen, missed }
 export const monitorOf = id =>
 	warm[id]?.monitor ? { monitor: warm[id].monitor, seen: warm[id].seen ?? null, missed: warm[id].missed ?? 0 } : null;
 

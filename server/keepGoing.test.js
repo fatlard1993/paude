@@ -450,30 +450,45 @@ test("a monitor whose conversation can't be carried on is forgotten and a fresh 
 	expect(session.typed[0]).not.toContain('A suggestion');
 	expect(monitorOf('lost')).toBeNull();
 
-	// A fresh one, briefed; its brief ran out of rounds, so it has still seen up to this turn and is carried on next time
+	// A fresh one, briefed; its brief ran out of rounds, so it has still seen up to this turn and is carried on next time,
+	// and that counts as an ask without a verdict
 	outcome = verdict('', { delivered: true, resumable: true });
 	expect(await keepGoing('lost', 'Done.', { ...going(session, turns), askMonitor })).toBe(true);
 	expect(asked[1].first).toBe(true);
 	expect(asked[1].monitor).not.toBe(monitor);
-	expect(monitorOf('lost')).toEqual({ monitor: asked[1].monitor, seen: 't2', missed: 0 });
+	expect(monitorOf('lost')).toEqual({ monitor: asked[1].monitor, seen: 't2', missed: 1 });
 
-	// A hiccup that never reached it (out of usage, too slow): kept as it was, the delta told again next time; but one
-	// gone in words the ask doesn't know would be tried forever, so a few misses in a row give it up
-	outcome = verdict('', { delivered: false, resumable: true });
+	// A verdict starts the count over
 	const later = [...turns, { ...turn(NUDGE), id: 't3' }];
 
-	for (let miss = 1; miss < MOST_MISSED; miss++) {
-		expect(await keepGoing('lost', 'Done.', { ...going(session, later), askMonitor })).toBe(true);
-		expect(asked.at(-1)).toEqual({ monitor: asked[1].monitor, first: false });
-		expect(monitorOf('lost')).toEqual({ monitor: asked[1].monitor, seen: 't2', missed: miss });
-	}
-	// An ask that gets through starts the count over
 	outcome = verdict('{"go": true}', { delivered: true, resumable: true });
 	expect(await keepGoing('lost', 'Done.', { ...going(session, later), askMonitor })).toBe(true);
 	expect(monitorOf('lost')).toEqual({ monitor: asked[1].monitor, seen: 't3', missed: 0 });
+
+	// A hiccup that never reached it (out of usage, too slow): kept as it was, the delta told again next time; but one
+	// gone in words the ask doesn't know would be tried forever, so a few asks in a row without a verdict give it up
 	outcome = verdict('', { delivered: false, resumable: true });
-	for (let miss = 0; miss < MOST_MISSED; miss++)
+	for (let miss = 1; miss < MOST_MISSED; miss++) {
 		expect(await keepGoing('lost', 'Done.', { ...going(session, later), askMonitor })).toBe(true);
+		expect(asked.at(-1)).toEqual({ monitor: asked[1].monitor, first: false });
+		expect(monitorOf('lost')).toEqual({ monitor: asked[1].monitor, seen: 't3', missed: miss });
+	}
+	expect(await keepGoing('lost', 'Done.', { ...going(session, later), askMonitor })).toBe(true);
+	expect(monitorOf('lost')).toBeNull();
+
+	// So does one that answers every ask with no verdict (out of rounds each time): it would otherwise drive Claude on
+	// plain nudges to the cap
+	await keepWarm('lost', 24, Date.now(), { fabled: true });
+
+	const fresh = monitorOf('lost').monitor;
+
+	outcome = verdict('', { delivered: true, resumable: true });
+	for (let miss = 1; miss <= MOST_MISSED; miss++) {
+		expect(await keepGoing('lost', 'Done.', { ...going(session, later), askMonitor })).toBe(true);
+		expect(session.typed.at(-1)).toContain('carry on toward what the person asked for');
+		expect(session.typed.at(-1)).not.toContain('A suggestion');
+		if (miss < MOST_MISSED) expect(monitorOf('lost')).toEqual({ monitor: fresh, seen: 't3', missed: miss });
+	}
 	expect(monitorOf('lost')).toBeNull();
 	await keepWarm('lost', 24, Date.now(), { fabled: true });
 

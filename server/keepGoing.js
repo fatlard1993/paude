@@ -75,8 +75,9 @@ export const holdBefore = (turns, { most = MOST_NUDGES, idle: mostIdle = MOST_ID
 };
 
 const FABLED_ROOM = { most: FABLED_NUDGES, idle: FABLED_IDLE };
-// Asks in a row that never reached a fabled session's monitor before it's given up as gone, whatever Claude Code said:
-// a conversation lost in words the ask doesn't know would otherwise be tried forever
+// Asks of a fabled session's monitor in a row that brought no verdict (never reached it, or reached it and it ran out
+// of rounds) before it's given up and a fresh one briefed: a conversation lost in words the ask doesn't know, or one
+// that can no longer answer within its rounds, would otherwise drive Claude on plain nudges to the cap
 export const MOST_MISSED = 3;
 
 const ASKED_PROMPTS = 4;
@@ -188,9 +189,9 @@ const sinceSeen = (turns, seen) => {
 
 // A fabled session's verdict, from its monitor: briefed on the goal and the run so far at its first look, told what
 // happened since at each later one. The monitor has seen up to this turn once the prompt reached its conversation,
-// answered or not (a look that ran out of rounds still read the delta); a conversation that can't be carried on is
-// forgotten, for a fresh one to be briefed at the next turn end; any other failure keeps it as it was, to try again.
-// The verdict's JSON text, or '' for none.
+// answered or not (a look that ran out of rounds still read the delta). A conversation that can't be carried on, or
+// MOST_MISSED asks in a row without a verdict, is forgotten, for a fresh one to be briefed at the next turn end; any
+// other failure keeps it as it was, to try again. The verdict's JSON text, or '' for none.
 const askFabled = async (id, session, reply, turns, settled, askMonitor) => {
 	const { monitor, seen } = monitorOf(id) ?? { monitor: crypto.randomUUID(), seen: null };
 	const first = !seen;
@@ -198,7 +199,7 @@ const askFabled = async (id, session, reply, turns, settled, askMonitor) => {
 		? briefFor({ cwd: session.cwd, asked: lastAsked(turns), settled, earlier: runSoFar(turns), reply })
 		: deltaFor({ since: sinceSeen(turns, seen), settled, reply });
 	const { answer, delivered, resumable, usage, why } = await askMonitor(monitor, session.cwd, prompt, { first });
-	const missed = delivered ? 0 : (monitorOf(id)?.missed ?? 0) + 1;
+	const missed = answer ? 0 : (monitorOf(id)?.missed ?? 0) + 1;
 
 	// Each ask on its own line, so the log says what the monitor cost and what went wrong when it gave no verdict
 	if (delivered)
@@ -208,12 +209,12 @@ const askFabled = async (id, session, reply, turns, settled, askMonitor) => {
 	else console.log(`Keep fabled ${id}: the ask never reached the monitor (${why}), ${missed} of ${MOST_MISSED}`);
 	if (!resumable || missed >= MOST_MISSED) {
 		console.log(
-			`Keep fabled ${id}: monitor forgotten, ${resumable ? `${missed} asks in a row never reached it` : why}; a fresh one is briefed at the next turn end`,
+			`Keep fabled ${id}: monitor forgotten, ${resumable ? `${missed} asks in a row brought no verdict` : why}; a fresh one is briefed at the next turn end`,
 		);
 		// The record's, and one made for this ask alone, which the record never held
 		await noteMonitor(id, { monitor: null });
 		await forgetMonitor(monitor);
-	} else if (delivered) await noteMonitor(id, { monitor, seen: turns.at(-1)?.id ?? seen });
+	} else if (delivered) await noteMonitor(id, { monitor, seen: turns.at(-1)?.id ?? seen, missed });
 	else await noteMonitor(id, { monitor, seen, missed });
 
 	return answer;
