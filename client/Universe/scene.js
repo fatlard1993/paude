@@ -778,6 +778,11 @@ export const runsFor = ends => {
 const RISER_GAP = 2;
 // How far into the lounge, from its back wall, its couches start, in world units: a droid by the wall is clear of them
 const LOUNGE_FURNISHED = 0.6;
+// A lounger moving to another couch: how far before its row it walks (the aisle), how far in from the lounge's side it
+// goes along when the rows differ, in world units, and how high it hops off one couch and onto the other, in art pixels
+const COUCH_HOP = 0.55;
+const LOUNGE_SIDE = 0.4;
+const HOP_PIXELS = 6;
 // How many times the risers of a bridge with too many to try every order are gone over, pairs swapped
 const SWAP_PASSES = 4;
 
@@ -1206,13 +1211,26 @@ export default class Ship {
 			}),
 		);
 		// A place held for one gone from it (its dust still there) seats nobody
-		this.lounge?.sessions.forEach((key, index) =>
-			Object.assign(this.workers.get(key) ?? {}, {
-				seat: loungeSeatAt(this.lounge, index),
-				bay: this.lounge,
-				room: this.lounge,
-			}),
-		);
+		this.lounge?.sessions.forEach((key, index) => {
+			const worker = this.workers.get(key);
+			const seat = loungeSeatAt(this.lounge, index);
+			// The couch it sat on last, as drawn: its seat here was just set to its island's, as every session's is
+			const shown = worker?.seatShown;
+
+			// Its couch changed under it as one before it got up: it hops down and scoots over to the one it has now
+			if (
+				worker?.lounging &&
+				shown &&
+				!shown.bridge &&
+				!this.moved &&
+				!worker.trip &&
+				!worker.leaving &&
+				!this.walking(worker) &&
+				(seat.x !== shown.x || seat.y !== shown.y)
+			)
+				worker.trip = { from: { x: shown.x, y: shown.y }, room: this.lounge, scoot: true };
+			Object.assign(worker ?? {}, { seat, bay: this.lounge, room: this.lounge });
+		});
 		// Islands that had to move: those sat at them get up and walk to where they've gone, rather than gliding there
 		const stood = this.islandSpots ?? new Map();
 
@@ -1307,7 +1325,9 @@ export default class Ship {
 			// Where it was walking to is gone with the old plan; a new one still comes out of the materializer, and one
 			// stopped or woken sets off from its old room's door, or from the hall where that room was
 			if (this.moved) worker.path = [];
+			if (this.moved && worker.trip?.scoot) worker.trip = null;
 			if (this.moved && worker.trip && !worker.trip.fromSeat) worker.trip = this.tripAfterMoving(worker.trip);
+			if (this.moved || worker.trip || worker.arriving) worker.scoot = undefined;
 			if (worker.arriving && this.layout.materializer) {
 				const cloner = clonerAt(this.layout.materializer);
 
@@ -1318,6 +1338,19 @@ export default class Ship {
 					step: 0,
 				});
 				this.chargedAt = -Infinity;
+			} else if (worker.trip?.scoot) {
+				const path = this.scootPath(worker.trip.from, place);
+
+				Object.assign(worker, worker.trip.from, {
+					path,
+					scoot: {
+						legs: path.length,
+						off: { from: worker.trip.from, to: path[0] },
+						on: { from: path.at(-2), to: place },
+					},
+					facing: 1,
+					step: 0,
+				});
 			} else if (worker.trip)
 				Object.assign(worker, worker.trip.from, {
 					path: this.route(worker.trip.from, worker.trip.room, place, worker.room),
@@ -1329,6 +1362,41 @@ export default class Ship {
 			}
 			Object.assign(worker, { arriving: false, trip: null });
 		}
+	}
+
+	// From one couch to another: down off it into the aisle before its row, along it, and up onto the new one; to
+	// another row by the lounge's nearer side, where no couch stands in the way
+	scootPath(from, to) {
+		const { lounge } = this;
+		const aisle = y => y + COUCH_HOP;
+
+		if (Math.abs(from.y - to.y) < 0.01) return [{ x: from.x, y: aisle(from.y) }, { x: to.x, y: aisle(to.y) }, to];
+
+		const side = from.x < lounge.x + lounge.w / 2 ? lounge.x + LOUNGE_SIDE : lounge.x + lounge.w - LOUNGE_SIDE;
+
+		return [
+			{ x: from.x, y: aisle(from.y) },
+			{ x: side, y: aisle(from.y) },
+			{ x: side, y: aisle(to.y) },
+			{ x: to.x, y: aisle(to.y) },
+			to,
+		];
+	}
+
+	// How far through a hop a scooting lounger is, 0 to 1: off its couch on its first leg, onto the new one on its last;
+	// null between, or not scooting
+	hopOf(worker) {
+		const { scoot, path } = worker;
+
+		if (!scoot || !path?.length) return null;
+
+		const leg = (path.length === scoot.legs && scoot.off) || (path.length === 1 && scoot.on) || null;
+
+		if (!leg) return null;
+
+		const length = Math.hypot(leg.to.x - leg.from.x, leg.to.y - leg.from.y);
+
+		return length ? Math.min(1, Math.hypot(worker.x - leg.from.x, worker.y - leg.from.y) / length) : 1;
 	}
 
 	tripAfterMoving({ room }) {
@@ -1799,9 +1867,11 @@ export default class Ship {
 					seconds,
 				);
 		this.tendTravel();
-		for (const worker of this.workers.values())
+		for (const worker of this.workers.values()) {
 			if (worker.path?.length && (calm || this.time - (worker.madeAt ?? -Infinity) >= MAKE_SECONDS))
 				walk(worker, calm ? Infinity : WORKER_SPEED * seconds, seconds);
+			if (!worker.path?.length) worker.scoot = undefined;
+		}
 		this.tendShuttles();
 
 		for (const parcel of this.parcels) {
@@ -4423,7 +4493,9 @@ export default class Ship {
 	standingAt(worker) {
 		const walking = this.walking(worker);
 		const at = this.art(walking ? worker : this.placeOf(worker));
+		const hop = walking ? this.hopOf(worker) : null;
 
+		if (hop !== null) at.y -= Math.round(Math.sin(hop * Math.PI) * HOP_PIXELS);
 		if (!walking && !worker.seat?.housing) at.y -= (worker.lounging && 4) || (briefOf(worker) && -2) || 10;
 
 		return at;

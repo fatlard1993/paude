@@ -2007,6 +2007,57 @@ test('a couch more needed is dropped out of the tube; one no longer needed is za
 	expect(loungeCount()).toBe(2);
 });
 
+test('a lounger whose couch moves up as one before it gets up hops down and scoots over to it, rather than appearing there; to another row by the side', () => {
+	const resting = ids => [
+		answer(
+			'here',
+			['a', 'b', 'c', 'd', 'e'].map(id => session({ id, status: ids.includes(id) ? 'stopped' : 'working' })),
+			{ projects: ['paude'] },
+		),
+	];
+	const made = shipWith(resting(['a', 'b', 'c']));
+
+	run(made, 30);
+
+	const c = made.workers.get('here/c');
+	const was = { ...made.placeOf(c) };
+
+	expect(made.walking(c)).toBe(false);
+	made.update(resting(['a', 'c']));
+
+	const now = made.placeOf(c);
+
+	expect(now).not.toEqual(was);
+	// Off from where it sat, down into the aisle, along, and up onto the couch it has now
+	expect([c.x, c.y]).toEqual([was.x, was.y]);
+	expect(c.path).toEqual([{ x: was.x, y: was.y + 0.55 }, { x: now.x, y: now.y + 0.55 }, now]);
+	// The one before it, whose couch didn't move, stays put
+	expect(made.walking(made.workers.get('here/a'))).toBe(false);
+	// Mid-hop it's off the ground
+	run(made, 0.1);
+	expect(made.hopOf(c)).toBeGreaterThan(0);
+	expect(made.standingAt(c).y).toBeLessThan(made.art(c).y);
+	run(made, 30);
+	expect(made.walking(c)).toBe(false);
+	expect(made.hopOf(c)).toBe(null);
+	expect(Math.hypot(c.x - now.x, c.y - now.y)).toBeLessThan(0.01);
+
+	// Five resting fill a row and start a second; the first of the second row, its couch gone up a row, goes round by
+	// the lounge's side rather than through the couches
+	made.update(resting(['a', 'b', 'c', 'd', 'e']));
+	run(made, 40);
+
+	const e = made.workers.get('here/e');
+	const seatedAt = { ...made.placeOf(e) };
+
+	made.update(resting(['b', 'c', 'd', 'e']));
+	expect(made.placeOf(e).y).toBeLessThan(seatedAt.y);
+	expect(e.path).toHaveLength(5);
+	expect(e.path[1].x).toBeCloseTo(made.lounge.x + 0.4, 5);
+	expect(e.path[1].y).toBeCloseTo(seatedAt.y + 0.55, 5);
+	expect(e.path[2].y).toBeCloseTo(made.placeOf(e).y + 0.55, 5);
+});
+
 test('islands stay where they stood as others come and go, unless they no longer fit there', () => {
 	const projects = ['one', 'two', 'three', 'four'];
 	const crew = names => [
