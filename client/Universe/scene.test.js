@@ -2225,9 +2225,50 @@ test("a fabled session's monitor stands behind its grey, and points at the termi
 	made.drawWatchersOver(ctx, { x: spot.x + 2, y: spot.y - 0.5 });
 	expect(drawn).toHaveLength(before + 1);
 
+	// No longer fabled: it walks back to the materializer and is gone
 	made.update(kept('going'));
+	expect(made.watcherParts(ctx, worker)).toHaveLength(1);
+	run(made, 90);
 	expect(made.watcherParts(ctx, worker)).toEqual([]);
 	if (!hadDocument) delete globalThis.document;
+});
+
+test('a session turned fabled gets its monitor out of the materializer, walking to its place; turned back, it walks there and is beamed away', () => {
+	const kept = keeping => [answer('here', [session({ status: 'ready', keeping })], { projects: ['paude'] })];
+	const made = shipWith(kept(undefined));
+	const [worker] = made.workers.values();
+
+	expect(made.layout.materializer).toBeTruthy();
+	expect(worker.watcher).toBeUndefined();
+
+	made.update(kept('fabled'));
+
+	const cloner = clonerAt(made.layout.materializer);
+
+	expect(worker.watcher).toBeTruthy();
+	expect(worker.watcher.x).toBeCloseTo(cloner.x, 5);
+	expect(worker.watcher.y).toBeCloseTo(cloner.y, 5);
+	expect(worker.watcher.path.length).toBeGreaterThan(0);
+	expect(worker.watcher.path.at(-1)).toEqual(made.watcherAt(worker));
+	expect(worker.watcher.madeAt).toBe(made.time);
+
+	run(made, 90);
+	expect(worker.watcher.path).toHaveLength(0);
+	expect(worker.watcher.x).toBeCloseTo(made.watcherAt(worker).x, 5);
+	expect(worker.watcher.y).toBeCloseTo(made.watcherAt(worker).y, 5);
+
+	made.update(kept('warm'));
+	expect(worker.watcher.leaving).toBe(true);
+	expect(worker.watcher.path.at(-1)).toEqual(cloner);
+	run(made, 90);
+	expect(worker.watcher).toBeUndefined();
+
+	// Fabled at first sight, it's simply there
+	const first = shipWith(kept('fabled'));
+	const [seen] = first.workers.values();
+
+	expect(seen.watcher.path).toHaveLength(0);
+	expect(seen.watcher.madeAt).toBeUndefined();
 });
 
 test("the island keeps room for a fabled session's monitor past its seat, so it isn't under the next seat's screen", () => {

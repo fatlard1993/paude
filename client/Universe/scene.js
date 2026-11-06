@@ -236,9 +236,10 @@ const SMALL_GREY_SECONDS = 0.7;
 const WATCHER_ASIDE = 1.0;
 const WATCHER_BEHIND = 0.4;
 const WATCHER_REACH = 9;
-// How tall the monitor and a suited person stand, in art pixels
+// How tall the monitor and a suited person stand, in art pixels; the monitor's footprint for what it walks behind
 const WATCHER_TALL = 30;
 const SUIT_TALL = 19;
+const WATCHER_SIZE = { half: 6, tall: WATCHER_TALL };
 // A failed tool throws sparks for a moment and smokes a while after; a cube of compacted context takes this long to
 // go; a turn running this long steams, and this long glows hot
 const SPARK_SECONDS = 2.5;
@@ -1133,6 +1134,7 @@ export default class Ship {
 			// Its coffee or giant cup given or taken: the tube brings it, or takes it away
 			if (worker && drinkOf(worker.session) !== drinkOf(session))
 				worker.serving = { at: this.time, give: drinkOf(session), take: drinkOf(worker.session) };
+			if (worker) this.noteWatcher(worker, session);
 			if (worker) Object.assign(worker, { session, lounging, leaving: worker.vaporizedAt !== undefined });
 			if (worker) this.noteKeeping(worker, session);
 			else
@@ -1145,6 +1147,8 @@ export default class Ship {
 					path: [],
 					// New since its engine first answered, it's made in the materializer and walks to its place
 					arriving: this.answered.has(session.engine.key) && !lounging,
+					// Fabled from the start: its monitor is made and walks with it, or is simply there at first sight
+					watcherDue: keepingOf(session) === 'fabled' ? this.watcherDueFor(session) : null,
 				});
 			Object.assign(this.workers.get(session.key), {
 				faultAt: session.faultAgo === undefined ? null : this.time - session.faultAgo / 1000,
@@ -1359,6 +1363,8 @@ export default class Ship {
 			if (!worker.seat || worker.leaving) continue;
 
 			const place = this.placeOf(worker);
+
+			this.sendWatcher(worker);
 
 			// Where it was walking to is gone with the old plan; a new one still comes out of the materializer, and one
 			// stopped or woken sets off from its old room's door, or from the hall where that room was
@@ -1940,6 +1946,7 @@ export default class Ship {
 			if (worker.path?.length && (calm || this.time - (worker.madeAt ?? -Infinity) >= MAKE_SECONDS))
 				walk(worker, calm ? Infinity : WORKER_SPEED * seconds, seconds);
 			if (!worker.path?.length) worker.scoot = undefined;
+			this.walkWatcher(worker, calm, seconds);
 		}
 		this.tendShuttles();
 
@@ -3985,9 +3992,18 @@ export default class Ship {
 	// following the run; when the session stops to ask something, it points at the terminal. Not while its grey is away
 	// from its seat, nor at a seat with no room behind it (a housing, the floor).
 	watcherParts(ctx, worker) {
-		const { session, seat } = worker;
+		const { session, seat, watcher } = worker;
 
+		// On its way from the materializer, or back to it: drawn where it is, over everything a walker is drawn over
+		if (watcher && (watcher.path.length || watcher.leaving))
+			return [
+				{
+					y: this.behindFurniture(watcher, this.furniture(), WATCHER_SIZE) ? watcher.y : TUBE_FRONT - 0.0016,
+					draw: () => this.drawWatcherWalking(ctx, worker),
+				},
+			];
 		if (
+			!watcher ||
 			keepingOf(session) !== 'fabled' ||
 			!seat ||
 			seat.housing ||
@@ -4057,6 +4073,101 @@ export default class Ship {
 			ctx.rect(foot.x - 6, top, 13, bottom - top);
 			ctx.clip();
 			this.drawWatcher(ctx, worker, drawn);
+			ctx.restore();
+		}
+	}
+
+	// A session turned fabled gets its monitor: made in the materializer and walked to its place, as a new grey is (or
+	// simply there, before this engine has answered once). One no longer fabled walks back to the materializer and is
+	// beamed away.
+	noteWatcher(worker, session) {
+		const was = keepingOf(worker.session) === 'fabled';
+		const now = keepingOf(session) === 'fabled';
+
+		if (now && !was && !worker.watcher) worker.watcherDue = this.watcherDueFor(session);
+		if (now && worker.watcher?.leaving) {
+			// Fabled again before it had gone: it turns round
+			worker.watcher.leaving = false;
+			worker.watcher.goneAt = undefined;
+			worker.watcher.path = [];
+			worker.watcherDue = 'back';
+		}
+		if (!now && was && worker.watcher && !worker.watcher.leaving) {
+			worker.watcherDue = null;
+			worker.watcher.leaving = true;
+			worker.watcher.path = this.layout.materializer
+				? this.route(worker.watcher, worker.room, clonerAt(this.layout.materializer), this.layout.materializer)
+				: [];
+		}
+		if (!now && !worker.watcher) worker.watcherDue = null;
+	}
+
+	// How a monitor arrives: made in the materializer once its engine has answered before, simply there at first sight
+	watcherDueFor(session) {
+		return this.answered.has(session.engine.key) ? 'made' : 'there';
+	}
+
+	// Its monitor set off or put in place, once the seat it stands behind is known
+	sendWatcher(worker) {
+		const { watcherDue: due } = worker;
+		const spot = this.watcherAt(worker);
+
+		if (this.moved && worker.watcher && !worker.watcher.leaving) Object.assign(worker.watcher, spot, { path: [] });
+		if (!due) return;
+		worker.watcherDue = null;
+		if (due === 'made' && this.layout.materializer) {
+			const cloner = clonerAt(this.layout.materializer);
+
+			worker.watcher = {
+				...cloner,
+				path: this.route(cloner, this.layout.materializer, spot, worker.room),
+				madeAt: this.time,
+				facing: 1,
+				step: 0,
+				leaving: false,
+			};
+		} else if (due === 'back' && worker.watcher)
+			Object.assign(worker.watcher, { path: this.route(worker.watcher, worker.room, spot, worker.room), step: 0 });
+		else worker.watcher = { ...spot, path: [], facing: 1, step: 0, leaving: false };
+	}
+
+	// Its monitor walks its path once made; one leaving, back at the materializer, is beamed away and gone
+	walkWatcher(worker, calm, seconds) {
+		const { watcher } = worker;
+
+		if (!watcher) return;
+		if (watcher.path.length && (calm || this.time - (watcher.madeAt ?? -Infinity) >= MAKE_SECONDS))
+			walk(watcher, calm ? Infinity : WORKER_SPEED * seconds, seconds);
+		if (watcher.leaving && !watcher.path.length) {
+			watcher.goneAt ??= this.time;
+			if (calm || this.time - watcher.goneAt >= MAKE_SECONDS) worker.watcher = undefined;
+		}
+	}
+
+	// The monitor on its feet: stepping along with a small bob, in the materializer's beam while it's made or unmade
+	drawWatcherWalking(ctx, worker) {
+		const { watcher, session } = worker;
+		const at = this.art(watcher);
+		const making = (this.time - (watcher.madeAt ?? -Infinity)) / MAKE_SECONDS;
+		const unmaking = watcher.goneAt === undefined ? -1 : (this.time - watcher.goneAt) / MAKE_SECONDS;
+		const colors = { c: `hsl(${session.hue ?? 200} 55% 55%)`, s: rankOf('fable') };
+
+		if (making < 1 || unmaking >= 0) {
+			const strength = unmaking >= 0 ? Math.min(1, unmaking) : 1 - making / 2;
+
+			this.drawBeam(ctx, at, strength);
+			ctx.save();
+			ctx.beginPath();
+			ctx.rect(at.x - 20, at.y - Math.round(WATCHER_TALL * Math.min(1, making)), 40, WATCHER_TALL + 1);
+			ctx.clip();
+			ctx.globalAlpha = unmaking >= 0 ? Math.max(0, 1 - unmaking) : 1;
+		}
+
+		const bob = watcher.path.length && Math.floor(watcher.step * 2) % 2 ? 1 : 0;
+
+		drawSprite(ctx, 'watcher', at.x, at.y - bob, { colors, flip: watcher.facing < 0 });
+		if (making < 1 || unmaking >= 0) {
+			ctx.globalAlpha = 1;
 			ctx.restore();
 		}
 	}
