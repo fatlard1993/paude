@@ -484,6 +484,9 @@ export const placePrompt = async ({ prompt, project, startFresh, onArrive, onSen
 	body.elem.querySelector('button.place')?.focus();
 };
 
+// Home's prompt, kept until sent; the universe's new prompt, placed as from home, is the same one
+export const HOME_PROMPT_KEY = 'paude.prompt';
+
 // A prompt carried from home to the project page it starts in, there to pick its worktree
 const DRAFT_KEY = 'paude.draft.';
 

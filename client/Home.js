@@ -26,7 +26,7 @@ import { breadcrumbs } from './Breadcrumbs';
 import { button, element } from './dom';
 import { Bar, ghostButton } from './Bar';
 import { Empty, Scroll, sessionCard } from './Layout';
-import { composeBox, placePrompt } from './PromptHome';
+import { composeBox, HOME_PROMPT_KEY, placePrompt } from './PromptHome';
 
 // The project list's last row: pressed, it opens into the folder's path
 const AddFolder = styled(
@@ -151,7 +151,7 @@ export default class Home extends View {
 			actions: [
 				{ label: 'Find where it goes', onPress: () => placePrompt({ prompt: prompt.value.trim(), onSent: sent }) },
 			],
-			keep: 'paude.prompt',
+			keep: HOME_PROMPT_KEY,
 		});
 	}
 

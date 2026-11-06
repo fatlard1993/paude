@@ -721,6 +721,41 @@ test(
 );
 
 test(
+	"a prompt typed in the universe's card is still there after the card closes or the page reloads, and on home",
+	async () => {
+		const server = servers.turns;
+		const { browser, page } = await openBrowser('dom');
+		const openCard = async () => {
+			await page.keyboard.press('n');
+			await page.waitForSelector('.reply-card textarea');
+
+			return page.$eval('.reply-card textarea', area => area.value);
+		};
+
+		try {
+			await page.goto(await server.loginLink(''));
+			await page.waitForSelector('textarea');
+			await page.evaluate(() => (window.location.hash = '#/universe'));
+			await page.waitForSelector('.focus button.summary, .focus .verbs', { timeout: 20_000 });
+			expect(await openCard()).toBe('');
+			await page.type('.reply-card textarea', 'look over the tests');
+			await page.keyboard.press('Escape');
+			await page.waitForSelector('.reply-card', { hidden: true });
+			expect(await openCard()).toBe('look over the tests');
+			await page.reload();
+			await page.waitForSelector('.focus button.summary, .focus .verbs', { timeout: 20_000 });
+			expect(await openCard()).toBe('look over the tests');
+			await page.evaluate(() => (window.location.hash = '#/'));
+			await page.waitForSelector('textarea');
+			expect(await page.$eval('textarea', area => area.value)).toBe('look over the tests');
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
 	"the files viewer shows a file's history and blame; Claude drafts the commit message",
 	async () => {
 		const server = servers.turns;

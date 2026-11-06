@@ -6,8 +6,10 @@ import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { sendPrompt, sendRemotePrompt } from '../api';
 import { AskingCard, showAsking } from '../Asking';
 import { button, element } from '../dom';
-import { placePrompt } from '../PromptHome';
+import { HOME_PROMPT_KEY, placePrompt } from '../PromptHome';
+import { forget, recall, remember } from '../storage';
 import refusal from './reason';
+import { sessionKey } from './scene';
 import { afterReply } from './sidePanel';
 
 // Claude's markdown, sanitized as a file's is: nothing that could pass for a form of paude's own
@@ -36,9 +38,11 @@ export const heading = (title, about, onClose, { close = 'Close (Esc)', buttons 
 	return head;
 };
 
-const composer = ({ placeholder, send, actions }) => {
+// A box to write to Claude in, Enter sending it. What's typed is kept in this browser under `keep` until sent() says it
+// went, so the card closing (a press elsewhere, Escape, a reload) doesn't lose it. { form, sent }
+const composer = ({ placeholder, send, actions, keep }) => {
 	const form = element('form', 'answer');
-	const text = element('textarea');
+	const text = Object.assign(element('textarea'), { value: recall(keep) });
 	let sending = false;
 	// One send at a time: a second Enter while the first is on its way would send it again
 	const submit = async () => {
@@ -55,6 +59,7 @@ const composer = ({ placeholder, send, actions }) => {
 
 	text.placeholder = placeholder;
 	text.rows = 2;
+	text.addEventListener('input', () => (text.value ? remember(keep, text.value) : forget(keep)));
 	text.addEventListener('keydown', event => {
 		if (event.key === 'Enter' && !event.shiftKey) {
 			event.preventDefault();
@@ -76,7 +81,7 @@ const composer = ({ placeholder, send, actions }) => {
 	row.append(...buttons);
 	form.append(text, row);
 
-	return form;
+	return { form, sent: () => forget(keep) };
 };
 
 // One session's reply, beside its worker. `session` is as the last answer had it.
@@ -111,31 +116,31 @@ export const replyCard = ({ session, onOpen, onSent, onClose, note }) => {
 		card.append(asking.elem);
 	}
 
-	card.append(
-		composer({
-			placeholder: session.status === 'waiting' ? 'Or type to Claude' : 'Reply to Claude',
-			send: async text => {
-				const { body, response } = engine.remote
-					? await sendRemotePrompt(engine.remote.url, session.id, text)
-					: await sendPrompt(session.id, text);
+	const box = composer({
+		keep: `paude.reply.${sessionKey(engine.key, session.id)}`,
+		placeholder: session.status === 'waiting' ? 'Or type to Claude' : 'Reply to Claude',
+		send: async text => {
+			const { body, response } = engine.remote
+				? await sendRemotePrompt(engine.remote.url, session.id, text)
+				: await sendPrompt(session.id, text);
 
-				const { close, wake } = afterReply(session, Boolean(response?.ok));
+			const { close, wake } = afterReply(session, Boolean(response?.ok));
 
-				if (!close)
-					return new Notify({
-						intent: 'danger',
-						content: refusal(`Could not send that to ${engine.name}`, body),
-					});
+			if (!close)
+				return new Notify({
+					intent: 'danger',
+					content: refusal(`Could not send that to ${engine.name}`, body),
+				});
 
-				new Notify({ intent: 'success', content: 'Sent', timeout: 2000 });
-				onClose();
-				if (wake) onSent?.();
-			},
-			actions: [
-				button('Open session', onOpen, { icon: 'up-right-from-square', className: 'variant-flat' }),
-			],
-		}),
-	);
+			new Notify({ intent: 'success', content: 'Sent', timeout: 2000 });
+			box.sent();
+			onClose();
+			if (wake) onSent?.();
+		},
+		actions: [button('Open session', onOpen, { icon: 'up-right-from-square', className: 'variant-flat' })],
+	});
+
+	card.append(box.form);
 
 	return card;
 };
@@ -146,7 +151,8 @@ export const replyCard = ({ session, onOpen, onSent, onClose, note }) => {
 export const promptCard = ({ project, projects = [], onSent, onArrive, onClose }) => {
 	const card = element('div', 'reply-card');
 	const where = element('select', 'where');
-	const about = () => (where.value ? 'paude finds the session it carries on there, or starts one' : 'paude finds where it goes');
+	const about = () =>
+		where.value ? 'paude finds the session it carries on there, or starts one' : 'paude finds where it goes';
 	const head = heading(project ? `New prompt in ${project}` : 'New prompt', about(), onClose);
 
 	where.append(
@@ -159,24 +165,24 @@ export const promptCard = ({ project, projects = [], onSent, onArrive, onClose }
 	where.title = 'Where it goes';
 	where.addEventListener('change', () => (head.querySelector('.about').textContent = about()));
 
-	card.append(
-		head,
-		where,
-		composer({
-			placeholder: 'What should Claude do?',
-			send: text =>
-				placePrompt({
-					prompt: text,
-					project: where.value || undefined,
-					onArrive,
-					onSent: () => {
-						onSent?.();
-						onClose();
-					},
-				}),
-			actions: [],
-		}),
-	);
+	const box = composer({
+		keep: HOME_PROMPT_KEY,
+		placeholder: 'What should Claude do?',
+		send: text =>
+			placePrompt({
+				prompt: text,
+				project: where.value || undefined,
+				onArrive,
+				onSent: () => {
+					box.sent();
+					onSent?.();
+					onClose();
+				},
+			}),
+		actions: [],
+	});
+
+	card.append(head, where, box.form);
 
 	return card;
 };
