@@ -563,7 +563,7 @@ export const drawTank = (ctx, at, { level, gauges, flow, empty, color = FUEL }, 
 		rect(ctx, at.x + band, top + 1, 1, 1, '#b5bfd2');
 	}
 	// Its gauge: with the account's limits known, what's left of the five hours over what's left of the week, each with
-	// its quarters marked; else one bar, the estimate, or dim while nothing's known
+	// its quarters marked; else one bar, the estimate, or grey hatching over an empty glass while nothing's known
 	const glass = { x: at.x - 13, y: top + 3, w: 27, h: 6 };
 	const bar = (y, h, left) => rect(ctx, glass.x, y, Math.round(glass.w * left), h, leftColor(left, color));
 
@@ -577,9 +577,8 @@ export const drawTank = (ctx, at, { level, gauges, flow, empty, color = FUEL }, 
 		for (let quarter = 1; quarter < 4; quarter++)
 			rect(ctx, glass.x + Math.round((glass.w * quarter) / 4), glass.y, 1, glass.h, 'rgba(0, 0, 0, 0.5)');
 	} else if (level === null) {
-		ctx.globalAlpha = 0.3;
-		rect(ctx, glass.x, glass.y, glass.w, glass.h, color);
-		ctx.globalAlpha = 1;
+		for (let x = 0; x < glass.w; x++)
+			for (let y = 0; y < glass.h; y++) if ((x + y) % 4 < 2) rect(ctx, glass.x + x, glass.y + y, 1, 1, PALETTE.m);
 	} else bar(glass.y, glass.h, level);
 	rect(ctx, glass.x, glass.y, glass.w, 1, 'rgba(255, 255, 255, 0.25)');
 	// Its end caps lit as what's left of the limit nearest running out
