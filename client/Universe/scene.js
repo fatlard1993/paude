@@ -117,6 +117,10 @@ const CRANE_WANDER = 0.3;
 // How far under the hopper a part hangs on the crane's hook as it's carried, in world units
 const HOOK_HANG = 0.6;
 const HAUL_LIFT = 0.08;
+// A pod whose cradle changed (one before it gone): how long it takes sliding over to its new one, and how high it
+// hovers on the way, in art pixels
+const SLIDE_SECONDS = 0.9;
+const SLIDE_PIXELS = 3;
 // How far a jettisoned pod falls away under the ship and is left aft of it by the end of its push, in world units, and
 // how much smaller it's gone with the distance
 const JETTISON = { down: 14, aft: 10, shrink: 0.7 };
@@ -608,6 +612,21 @@ const systemsOf = (engines, keyOf = (engine, appliance) => appliance.key) => {
 		]),
 	);
 };
+
+// Where something in a row of cradles is shown at `time`, sliding from the cradle it had (`slide`: { from, at }) to
+// the one it has now (`index`): its cradle as a fraction, and how far it's lifted on the way, 0 to 1
+export const slidOf = (slide, index, time) => {
+	const t = slide ? Math.min(1, (time - slide.at) / SLIDE_SECONDS) : 1;
+
+	if (t >= 1) return { index, lift: 0 };
+
+	const eased = t < 0.5 ? 2 * t * t : 1 - (2 - 2 * t) ** 2 / 2;
+
+	return { index: slide.from + (index - slide.from) * eased, lift: Math.sin(t * Math.PI) };
+};
+
+// A pull request's pod in the hangar, by its place in the row
+const deliverySpotAt = (hangar, index) => ({ x: hangar.x + 0.55 + index * 0.6, y: hangar.y + hangar.d - 0.35 });
 
 // Someone along their path as far as `budget` takes them, facing the way they go
 const walk = (mover, budget, seconds) => {
@@ -1459,6 +1478,36 @@ export default class Ship {
 				if (before > checkout.unpushed)
 					this.haulers.push({ crates: before - checkout.unpushed, time: 0, pod: this.cargo.length - 1, project });
 			}
+		this.deliveries = this.cargo.filter(({ pullRequest }) => pullRequest?.state === 'OPEN').slice(0, 3);
+		this.noteRow(
+			'hold',
+			this.cargo.map(({ key }) => key),
+		);
+		this.noteRow(
+			'hangar',
+			this.deliveries.map(({ key }) => key),
+		);
+	}
+
+	// A row of cradles as it is now, by what's in each: whatever had another cradle last time (one before it gone)
+	// slides over from where it's shown, rather than appearing in its new one
+	noteRow(name, keys) {
+		const row = ((this.rows ??= {})[name] ??= { slots: new Map(), slides: new Map() });
+
+		keys.forEach((key, index) => {
+			const had = row.slots.get(key);
+
+			if (had !== undefined && had !== index)
+				row.slides.set(key, { from: slidOf(row.slides.get(key), had, this.time).index, at: this.time });
+		});
+		row.slots = new Map(keys.map((key, index) => [key, index]));
+		for (const [key, slide] of row.slides)
+			if (!row.slots.has(key) || this.time - slide.at >= SLIDE_SECONDS) row.slides.delete(key);
+	}
+
+	// Where `key` in the row `name` is shown now, at cradle `index`: { index, lift } as slidOf gives them
+	cradleOf(name, key, index) {
+		return slidOf(this.rows?.[name]?.slides.get(key), index, this.time);
 	}
 
 	checkoutOf(session) {
@@ -5050,46 +5099,46 @@ export default class Ship {
 
 		if (!hangar) return [];
 
-		return this.cargo
-			.filter(({ pullRequest }) => pullRequest?.state === 'OPEN')
-			.slice(0, 3)
-			.map((checkout, index) => {
-				const spot = { x: hangar.x + 0.55 + index * 0.6, y: hangar.y + hangar.d - 0.35 };
-				const { checks, draft } = checkout.pullRequest;
+		return (this.deliveries ?? []).map((checkout, index) => {
+			const { index: cradle, lift } = this.cradleOf('hangar', checkout.key, index);
+			const spot = deliverySpotAt(hangar, cradle);
+			const { checks, draft } = checkout.pullRequest;
 
-				return {
-					y: spot.y,
-					draw: () => {
-						const at = this.art(spot);
-						const light =
-							(draft && PALETTE.l) ||
-							(checks.failing && PALETTE.r) ||
-							(checks.pending && (Math.floor(this.time * 2) % 2 ? PALETTE.y : PALETTE.Y)) ||
-							PALETTE.t;
+			return {
+				y: spot.y,
+				draw: () => {
+					const at = this.art(spot);
 
-						rect(ctx, at.x - 5, at.y - 10, 11, 10, PALETTE.k);
-						rect(ctx, at.x - 4, at.y - 9, 9, 8, PALETTE.l);
-						rect(ctx, at.x - 4, at.y - 6, 9, 1, PALETTE.m);
-						rect(ctx, at.x - 1, at.y - 12, 3, 2, light);
-						rect(ctx, at.x - 6, at.y, 13, 1, PALETTE.Y);
-						if (this.camera.zoom >= 4)
-							this.labels.push({
-								text: `#${checkout.pullRequest.number}`,
-								at: { x: at.x, y: at.y - 12 },
-								color: light,
-								align: 'center',
-								size: 1,
-								gap: -6,
-							});
-						this.hits.push({
-							...this.toScreen({ x: at.x, y: at.y - 5 }),
-							r: 6 * this.camera.zoom,
-							kind: 'delivery',
-							checkout,
+					at.y -= Math.round(lift * SLIDE_PIXELS);
+					const light =
+						(draft && PALETTE.l) ||
+						(checks.failing && PALETTE.r) ||
+						(checks.pending && (Math.floor(this.time * 2) % 2 ? PALETTE.y : PALETTE.Y)) ||
+						PALETTE.t;
+
+					rect(ctx, at.x - 5, at.y - 10, 11, 10, PALETTE.k);
+					rect(ctx, at.x - 4, at.y - 9, 9, 8, PALETTE.l);
+					rect(ctx, at.x - 4, at.y - 6, 9, 1, PALETTE.m);
+					rect(ctx, at.x - 1, at.y - 12, 3, 2, light);
+					rect(ctx, at.x - 6, at.y, 13, 1, PALETTE.Y);
+					if (this.camera.zoom >= 4)
+						this.labels.push({
+							text: `#${checkout.pullRequest.number}`,
+							at: { x: at.x, y: at.y - 12 },
+							color: light,
+							align: 'center',
+							size: 1,
+							gap: -6,
 						});
-					},
-				};
-			});
+					this.hits.push({
+						...this.toScreen({ x: at.x, y: at.y - 5 }),
+						r: 6 * this.camera.zoom,
+						kind: 'delivery',
+						checkout,
+					});
+				},
+			};
+		});
 	}
 
 	// Where each of paude's own jobs is done: a tour told and what's asked aside answered on the bridge, a prompt placed
@@ -5362,7 +5411,8 @@ export default class Ship {
 		return [
 			gantry,
 			...this.cargo.map((checkout, index) => {
-				const spot = holdSpotAt(hold, index);
+				const { index: cradle, lift } = this.cradleOf('hold', checkout.key, index);
+				const spot = holdSpotAt(hold, cradle);
 				const bay = this.bays.find(({ name }) => name === checkout.project);
 
 				return {
@@ -5370,6 +5420,7 @@ export default class Ship {
 					draw: () => {
 						const at = this.art(spot);
 
+						at.y -= Math.round(lift * SLIDE_PIXELS);
 						if (launching.has(index)) return;
 						this.drawPod(ctx, at, { hue: bay?.hue, crates: checkout.unpushed, sheets: checkout.changed });
 						this.drawPacking(ctx, at, checkout);
@@ -5451,7 +5502,8 @@ export default class Ship {
 		);
 		const goal =
 			(carrying && this.art(carrying).x) ||
-			(pressing >= 0 && this.art(holdSpotAt(hold, pressing)).x + 3) ||
+			(pressing >= 0 &&
+				this.art(holdSpotAt(hold, this.cradleOf('hold', this.cargo[pressing].key, pressing).index)).x + 3) ||
 			left + 8 + (right - left - 16) * (0.5 + 0.5 * Math.sin(this.time * CRANE_WANDER));
 
 		this.craneX ??= goal;

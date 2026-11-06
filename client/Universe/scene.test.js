@@ -363,6 +363,60 @@ test("what is staged to ship is in the shipping bay in the hull's bottom deck, a
 	made.cargo.forEach((_, index) => expect(inside(holdSpotAt(hold, index), hold)).toBe(true));
 });
 
+test('a pod whose cradle before it empties slides over to it, hovering a little on the way, in the hold and the hangar alike', () => {
+	const names = ['p0', 'p1', 'p2'];
+	const working = roots => [
+		{
+			...answer(
+				'here',
+				roots.map(name => session({ id: name, project: name, checkout: `/work/${name}` })),
+				{ projects: names },
+			),
+			checkouts: roots.map(name => ({
+				root: `/work/${name}`,
+				changed: 1,
+				unpushed: 0,
+				pullRequest: { state: 'OPEN', checks: {} },
+			})),
+		},
+	];
+	const made = new Ship();
+
+	made.resize(800, 600);
+	made.update(working(names));
+	run(made, 2);
+
+	const key = 'here:/work/p2';
+
+	expect(made.cradleOf('hold', key, 2)).toEqual({ index: 2, lift: 0 });
+
+	// The middle one's work is done: the last slides from its cradle to the middle one, lifted most half way
+	made.update(working(['p0', 'p2']));
+	expect(made.cargo.map(checkout => checkout.key)).toEqual(['here:/work/p0', key]);
+	expect(made.deliveries.map(checkout => checkout.key)).toEqual(['here:/work/p0', key]);
+	expect(made.cradleOf('hold', key, 1)).toEqual({ index: 2, lift: 0 });
+	run(made, 0.45);
+
+	const half = made.cradleOf('hold', key, 1);
+
+	expect(half.index).toBeGreaterThan(1);
+	expect(half.index).toBeLessThan(2);
+	expect(half.lift).toBeGreaterThan(0.95);
+	expect(made.cradleOf('hangar', key, 1).index).toBeCloseTo(half.index, 5);
+	// The first, its cradle kept, stays put
+	expect(made.cradleOf('hold', 'here:/work/p0', 0)).toEqual({ index: 0, lift: 0 });
+	run(made, 1);
+	expect(made.cradleOf('hold', key, 1)).toEqual({ index: 1, lift: 0 });
+	expect(made.cradleOf('hangar', key, 1)).toEqual({ index: 1, lift: 0 });
+
+	// Cut off mid-slide by another going, it carries on from where it's shown
+	made.update(working(['p1', 'p2']));
+	made.update(working(['p2']));
+	run(made, 0.45);
+	expect(made.cradleOf('hold', key, 0).index).toBeLessThan(1);
+	expect(made.cradleOf('hold', key, 0).index).toBeGreaterThan(0);
+});
+
 test("a reactor out of power counts down to the limit's reset, and says only LIMIT when Claude didn't say", () => {
 	const now = Date.UTC(2026, 9, 31, 12);
 
