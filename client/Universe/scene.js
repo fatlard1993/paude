@@ -253,10 +253,10 @@ const VAPOR_SECONDS = 1.6;
 const ASH = { lies: 2.5, down: 0.6, sucks: 1.4, up: 0.6 };
 const DUST_SECONDS = ASH.lies + ASH.down + ASH.sucks + ASH.up;
 // A couch dropped into the lounge by the tube: how long its nozzle takes to come down, the couch to fall out of it and
-// settle, and the nozzle to go back up; and one no longer needed, phasered by the last to get up from it: how long they
-// aim and fire, and it takes to crumble to ash, in seconds; how lately they must have got up to be the one
+// settle, and the nozzle to go back up; and one no longer needed, zapped by the emitter let down from the ceiling: how
+// long it takes to come down, fires while the couch crumbles to ash under its beam, and takes to go back up, in seconds
 const COUCH_DROP = { down: 0.5, fall: 0.45, settle: 0.25, up: 0.5 };
-const COUCH_BLAST = { aim: 1, crumble: 0.6, lately: 6 };
+const COUCH_ZAP = { down: 0.5, fire: 0.8, up: 0.5 };
 const DUST = { light: '#a7adb6', dark: '#6f7680' };
 
 // The giant cup's colors, its zap the dot on its band
@@ -1076,8 +1076,6 @@ export default class Ship {
 
 			// Its empties go with it from the lounge, so a pile is only ever since its cache last went cold
 			if (worker && !lounging) worker.cans = undefined;
-			// The last to get up from the lounge, to phaser a couch no longer needed
-			if (worker?.lounging && !lounging) this.lastUp = { key: session.key, at: this.time };
 			if (worker?.seat && worker.lounging !== lounging)
 				worker.trip = {
 					from: { x: worker.x ?? this.placeOf(worker).x, y: worker.y ?? this.placeOf(worker).y },
@@ -1148,13 +1146,16 @@ export default class Ship {
 			(engine, appliance) => `${engine.key}/${appliance.key}`,
 		);
 		this.loadCargo(answers);
+		// A couch no longer needed goes before the lounge is laid again: the lounge keeps its size until the couch's ash
+		// is sucked up, so the ship isn't moved round under the zapper and the tube
+		this.tendCouches(Math.ceil(Math.max(lounging.length, 1) / 2));
 		this.layout = layOut({
 			// Each island in the row it stood in last time
 			kept:
 				this.bridge?.islands && Object.fromEntries(this.bridge.islands.map(({ key, row, at }) => [key, { row, at }])),
 			bays: this.bays.map(bay => ({ ...bay, seated: bay.sessions.length })),
 			engines: engines.filter(({ quiet }) => !quiet),
-			lounge: { count: lounging.length, sessions: lounging },
+			lounge: { count: Math.max(lounging.length, this.couchesHeld() * 2 - 1), sessions: lounging },
 			agents: Object.fromEntries([...this.workers].map(([key, worker]) => [key, worker.session.agents ?? 0])),
 			checkouts: this.cargo.length,
 			fleet: this.fleet.length,
@@ -1184,7 +1185,6 @@ export default class Ship {
 		);
 		this.bridge = this.layout.bridge;
 		this.lounge = this.layout.lounge;
-		this.tendCouches();
 
 		// The rooms moved round as bays came and went: whoever was aboard is put straight where they're going
 		const plan = this.layout.rooms.map(({ name, x, y, w }) => `${name}@${x},${y},${w}`).join('|');
@@ -1788,11 +1788,7 @@ export default class Ship {
 				);
 		this.tendTravel();
 		for (const worker of this.workers.values())
-			if (
-				worker.path?.length &&
-				(calm || this.time - (worker.madeAt ?? -Infinity) >= MAKE_SECONDS) &&
-				!(worker.aimingUntil > this.time)
-			)
+			if (worker.path?.length && (calm || this.time - (worker.madeAt ?? -Infinity) >= MAKE_SECONDS))
 				walk(worker, calm ? Infinity : WORKER_SPEED * seconds, seconds);
 		this.tendShuttles();
 
@@ -4576,28 +4572,28 @@ export default class Ship {
 	}
 
 	// A heap of dust, `size` 0 to 1 of its full size
-	// The lounge's couches come and go with those resting there: one more needed is dropped out of the tube onto its
-	// place; one no longer needed is phasered to ash by the last to get up from it, if they got up lately, and its ash
-	// sucked up by the tube as any is
-	tendCouches() {
-		const needed = this.lounge ? Math.ceil(Math.max(this.lounge.count, 1) / 2) : 0;
+	// The lounge's couches come and go with those resting there, `needed` how many now: one more needed is dropped out
+	// of the tube onto its place; one no longer needed is zapped to ash by the emitter let down from the ceiling over
+	// it, and its ash sucked up by the tube as any is
+	tendCouches(needed) {
 		const had = this.couches ?? needed;
 
 		this.couchDrops ??= [];
-		this.couchBlasts ??= [];
+		this.couchZaps ??= [];
 		for (let index = had; index < needed; index++) this.couchDrops.push({ index, at: this.time });
-		for (let index = needed; index < had; index++) {
-			const seat = this.lastLounge && loungeSeatAt(this.lastLounge, index * 2);
-			const shooter =
-				this.lastUp && this.time - this.lastUp.at < COUCH_BLAST.lately && this.workers.get(this.lastUp.key);
-
-			if (!seat) continue;
-			if (shooter) shooter.aimingUntil = this.time + COUCH_BLAST.aim;
-			this.couchBlasts.push({ index, at: this.time, seat, shooter: shooter && this.lastUp.key });
-		}
+		for (let index = needed; index < had; index++) if (this.lounge) this.couchZaps.push({ index, at: this.time });
 		this.couchDrops = this.couchDrops.filter(({ index }) => index < needed);
 		this.couches = needed;
-		this.lastLounge = this.lounge && { ...this.lounge };
+	}
+
+	// How many couches the lounge must keep room for beyond those needed: up to the last still being zapped or lying in
+	// ash; none while nothing is
+	couchesHeld() {
+		return Math.max(
+			0,
+			...(this.couchZaps ?? []).map(({ index }) => index + 1),
+			...this.dust.map(({ couch }) => (couch === undefined ? 0 : couch + 1)),
+		);
 	}
 
 	// How high a couch hangs from the tube's nozzle before it drops, in art pixels: its top at the nozzle's mouth, let
@@ -4628,7 +4624,7 @@ export default class Ship {
 		return lifted;
 	}
 
-	// The nozzle bringing a couch, and couches being phasered and crumbling to ash
+	// The nozzle bringing a couch, and the emitter zapping couches to ash
 	couchParts(ctx) {
 		const { lounge } = this;
 
@@ -4638,9 +4634,6 @@ export default class Ship {
 		const { down, fall, settle, up } = COUCH_DROP;
 
 		this.couchDrops = (this.couchDrops ?? []).filter(({ at }) => this.time - at < down + fall + settle + up);
-		this.couchBlasts = (this.couchBlasts ?? []).filter(
-			({ at }) => this.time - at < COUCH_BLAST.aim + COUCH_BLAST.crumble,
-		);
 
 		return [
 			...this.couchDrops.map(({ index, at }) => {
@@ -4660,23 +4653,36 @@ export default class Ship {
 					draw: () => this.drawNozzle(ctx, middle.x, ceiling, Math.round(ceiling + (over - ceiling) * reach)),
 				};
 			}),
-			...this.couchBlasts.map(blast => ({ y: blast.seat.y + 0.2, draw: () => this.drawCouchBlast(ctx, blast) })),
+			...this.couchZaps.map(zap => {
+				const seat = loungeSeatAt(lounge, zap.index * 2);
+
+				return { y: seat.y + 0.2, draw: () => this.drawCouchZap(ctx, zap, seat, ceiling) };
+			}),
 		];
 	}
 
-	// A couch no longer needed: phasered by the last to get up from it, then crumbling, its ash left for the tube
-	drawCouchBlast(ctx, blast) {
-		const since = this.time - blast.at;
-		const at = this.art(blast.seat);
+	// A couch no longer needed: the emitter let down from the ceiling over it on the tube's nozzle, its beam crackling
+	// down at the couch while it crumbles away from its top, then drawn back up, the ash left for the tube
+	drawCouchZap(ctx, zap, seat, ceiling) {
+		const since = this.time - zap.at;
+		const at = this.art(seat);
 		const width = Math.round(COUCH_SEAT * UNIT.x * 2);
 		const left = at.x - Math.round(COUCH_SEAT * UNIT.x) / 2;
-		const shooter = blast.shooter && this.workers.get(blast.shooter);
-		const fabric =
-			since < COUCH_BLAST.aim
-				? 'hsl(14 38% 42%)'
-				: `hsl(14 ${Math.round(38 * (1 - (since - COUCH_BLAST.aim) / COUCH_BLAST.crumble))}% 30%)`;
-		const standing = since < COUCH_BLAST.aim ? 1 : Math.max(0, 1 - (since - COUCH_BLAST.aim) / COUCH_BLAST.crumble);
-		const tall = Math.round(19 * standing);
+		const middle = left + Math.floor(width / 2);
+		const { down, fire, up } = COUCH_ZAP;
+		const firing = since >= down && since < down + fire;
+		const burnt = Math.max(0, Math.min(1, (since - down) / fire));
+		const fabric = `hsl(14 ${Math.round(38 * (1 - burnt))}% ${Math.round(42 - 12 * burnt)}%)`;
+		const tall = Math.round(19 * (1 - burnt));
+		// How far down the emitter hangs, 0 to 1: let down to clear of the couch's top
+		const reach = (() => {
+			if (since < down) return since / down;
+			if (since < down + fire) return 1;
+
+			return Math.max(0, 1 - (since - down - fire) / up);
+		})();
+		const over = Math.max(ceiling + 6, at.y - 19 - 14);
+		const mouth = Math.round(ceiling + (over - ceiling) * reach);
 
 		// The couch, its back, cushions and arms, crumbling away from its top once hit
 		if (tall > 0) {
@@ -4695,9 +4701,9 @@ export default class Ship {
 			}
 			ctx.restore();
 		}
-		if (since >= COUCH_BLAST.aim)
+		if (burnt > 0)
 			for (let fleck = 0; fleck < 6; fleck++) {
-				const drift = (since - COUCH_BLAST.aim) * 14;
+				const drift = (since - down) * 14;
 
 				rect(
 					ctx,
@@ -4708,37 +4714,45 @@ export default class Ship {
 					DUST.light,
 				);
 			}
-		// The phaser's beam from the shooter's hand, crackling, while they fire
-		if (shooter && since > 0.35 && since < COUCH_BLAST.aim + 0.15) {
-			const hand = this.art({ x: shooter.x, y: shooter.y });
-			const from = { x: hand.x + (at.x > hand.x ? 4 : -4), y: hand.y - 12 };
-			const to = { x: left + width / 2, y: at.y - 9 };
-			const steps = Math.max(1, Math.round(Math.hypot(to.x - from.x, to.y - from.y) / 2));
+		if (reach <= 0) return;
+		// The emitter on the nozzle's end: a squat head, its lens lit red while it fires
+		this.drawNozzle(ctx, middle, ceiling, mouth - 3);
+		rect(ctx, middle - 5, mouth - 3, 11, 5, PALETTE.k);
+		rect(ctx, middle - 4, mouth - 2, 9, 3, PALETTE.m);
+		rect(ctx, middle - 4, mouth - 2, 9, 1, PALETTE.l);
+		rect(ctx, middle - 1, mouth + 1, 3, 1, firing ? '#ff6bf0' : '#5a1a16');
+		// Its beam down to the couch, crackling, while it fires
+		if (firing) {
+			const to = at.y - tall - 1;
 
-			rect(ctx, from.x - 1, from.y - 1, 3, 2, PALETTE.k);
-			rect(ctx, from.x, from.y, 2, 1, '#9aa5bb');
-			for (let step = 0; step <= steps; step++) {
-				const x = Math.round(from.x + ((to.x - from.x) * step) / steps);
-				const y = Math.round(from.y + ((to.y - from.y) * step) / steps + (Math.floor(this.time * 30 + step) % 3) - 1);
+			for (let y = mouth + 2; y <= to; y++) {
+				const x = middle + (Math.floor(this.time * 30 + y) % 3) - 1;
 
-				rect(ctx, x, y, 1, 1, step % 2 ? '#ffd0ff' : '#ff6bf0');
+				rect(ctx, x, y, 1, 1, y % 2 ? '#ffd0ff' : '#ff6bf0');
 			}
+			rect(ctx, middle - 2, to, 5, 1, Math.floor(this.time * 20) % 2 ? '#ffffff' : '#ff6bf0');
 		}
 	}
 
-	// A phasered couch gone to ash: its heap left on the floor where it stood, for the tube to suck up
+	// A zapped couch gone to ash: its heap left on the floor where it stood, for the tube to suck up; the zap over once
+	// the emitter is back up
 	ashCouches() {
-		for (const blast of this.couchBlasts ?? []) {
-			if (blast.ashed || this.time - blast.at < COUCH_BLAST.aim + COUCH_BLAST.crumble - 0.05) continue;
+		this.couchZaps = (this.couchZaps ?? []).filter(
+			({ at }) => this.time - at < COUCH_ZAP.down + COUCH_ZAP.fire + COUCH_ZAP.up,
+		);
+		for (const zap of this.couchZaps) {
+			if (zap.ashed || !this.lounge || this.time - zap.at < COUCH_ZAP.down + COUCH_ZAP.fire - 0.05) continue;
 
-			const at = this.art(blast.seat);
+			const seat = loungeSeatAt(this.lounge, zap.index * 2);
+			const at = this.art(seat);
 
-			blast.ashed = true;
+			zap.ashed = true;
 			this.dust.push({
 				x: at.x + Math.round(COUCH_SEAT * UNIT.x) / 2,
 				y: at.y + 2,
-				depth: blast.seat.y + 0.3,
+				depth: seat.y + 0.3,
 				at: this.time,
+				couch: zap.index,
 			});
 		}
 	}

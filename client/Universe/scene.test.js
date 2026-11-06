@@ -1528,7 +1528,12 @@ test('one deleted on a couch keeps its place till its dust has gone, the others 
 	expect(seatOf('here/a')).toEqual(a);
 	expect(seatOf('here/c')).toEqual(c);
 
+	// Its dust gone, the couch it freed is zapped, and the lounge keeps its size till that ash is gone too
 	run(made, 7);
+	made.update([answer('here', [stopped('a'), stopped('c')], { projects: ['paude'] })]);
+	expect(made.couchZaps).toMatchObject([{ index: 1 }]);
+	expect(made.layout.rooms.find(({ kind }) => kind === 'lounge').count).toBe(3);
+	run(made, 9);
 	made.update([answer('here', [stopped('a'), stopped('c')], { projects: ['paude'] })]);
 	expect(made.layout.rooms.find(({ kind }) => kind === 'lounge').count).toBe(2);
 });
@@ -1933,7 +1938,7 @@ test('the bay doors in the belly slide open while a push goes out through them a
 	expect(made.bayDoors).toEqual({ hold: 0, hangar: 0 });
 });
 
-test('a couch more needed is dropped out of the tube; one no longer needed is phasered by the last to get up, and its ash left for the tube', () => {
+test('a couch more needed is dropped out of the tube; one no longer needed is zapped from the ceiling, the lounge its size till its ash is sucked up', () => {
 	const resting = ids => [
 		answer(
 			'here',
@@ -1954,16 +1959,27 @@ test('a couch more needed is dropped out of the tube; one no longer needed is ph
 	run(made, 3);
 	expect(made.couchesLifted()[1] ?? 0).toBe(0);
 
-	// The one on it gets up: it's no longer needed, and they stop to phaser it
+	// The one on it gets up: it's no longer needed, and the emitter comes down for it; the lounge stays its size
+	const loungeCount = () => made.layout.rooms.find(({ kind }) => kind === 'lounge').count;
+
 	made.update(resting(['a', 'b']));
 	expect(made.couches).toBe(1);
-	expect(made.couchBlasts).toMatchObject([{ index: 1, shooter: 'here/c' }]);
-	expect(made.workers.get('here/c').aimingUntil).toBeGreaterThan(made.time);
+	expect(made.couchZaps).toMatchObject([{ index: 1 }]);
+	expect(loungeCount()).toBe(3);
 
 	const ashes = made.dust.length;
 
 	run(made, 2);
 	expect(made.dust.length).toBe(ashes + 1);
+	expect(made.dust.at(-1).couch).toBe(1);
+	made.update(resting(['a', 'b']));
+	expect(loungeCount()).toBe(3);
+
+	// Its ash sucked up, the lounge is laid for the one couch
+	run(made, 7);
+	made.update(resting(['a', 'b']));
+	expect(made.dust.some(({ couch }) => couch === 1)).toBe(false);
+	expect(loungeCount()).toBe(2);
 });
 
 test('islands stay where they stood as others come and go, unless they no longer fit there', () => {
