@@ -88,6 +88,9 @@ const lasted = age => {
 	return minutes < 60 ? plural(minutes, 'minute') : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 };
 
+// Which project a checkout is of, and on which paude
+const whereCheckout = checkout => [checkout.project, checkout.engineName].filter(Boolean).join(' on ');
+
 export const whereWorking = checkout =>
 	`${checkout.branch ?? 'no branch'}${checkout.trunk ? ' (the trunk)' : ''}${checkout.worktree ? `, a worktree at ${checkout.root}` : ''}`;
 
@@ -204,7 +207,10 @@ const FLYOUTS = {
 			title: session.title || session.project || 'A new session',
 			hue: ship.projectHues?.get(session.project),
 			titleHue: session.hue,
-			rows: [['screen', live(session) ? 'its terminal, as it is now' : 'not running here']],
+			rows: [
+				['where', [session.project, session.engine?.name].filter(Boolean).join(' on ')],
+				['screen', live(session) ? 'its terminal, as it is now' : 'not running here'],
+			],
 			hint: live(session) ? 'Press to open its terminal here' : 'Press to read its last reply',
 		};
 	},
@@ -253,13 +259,15 @@ const FLYOUTS = {
 			hint: several ? "Press to pick a session's ports and processes" : 'Press for its ports and processes',
 		};
 	},
-	delivery: target => {
+	delivery: (target, ship) => {
 		const { pullRequest, branch } = target.checkout;
 		const { passing, failing, pending } = pullRequest.checks;
 
 		return {
 			title: `#${pullRequest.number} ${pullRequest.title}`,
+			hue: ship.projectHues?.get(target.checkout.project),
 			rows: [
+				['project', whereCheckout(target.checkout)],
 				['branch', branch],
 				['state', pullRequest.draft ? 'a draft' : 'waiting for sign-off'],
 				['checks', `${passing} passing, ${failing} failing, ${pending} running`],
@@ -380,19 +388,22 @@ const FLYOUTS = {
 			hint: 'Press for its tasks',
 		};
 	},
-	commit: ({ commit, checkout }) => {
+	commit: ({ commit, checkout }, ship) => {
 		return {
 			title: commit.subject,
+			hue: ship.projectHues?.get(checkout.project),
 			rows: [
+				['project', whereCheckout(checkout)],
 				['commit', commit.short],
 				['branch', whereWorking(checkout)],
 			],
 			hint: 'Not pushed yet · press for its changes',
 		};
 	},
-	cargo: ({ checkout }) => {
+	cargo: ({ checkout }, ship) => {
 		return {
 			title: `${checkout.project}: changes`,
+			hue: ship.projectHues?.get(checkout.project),
 			rows: [
 				['changed', plural(checkout.changed, 'file')],
 				['to push', plural(checkout.unpushed, 'commit')],
