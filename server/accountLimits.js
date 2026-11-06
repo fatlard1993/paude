@@ -15,14 +15,18 @@ const TIMEOUT_MS = 10 * 1000;
 
 let last = { at: 0, heard: 0, value: null, failed: false };
 
-// On a Mac, Claude Code keeps its login in the keychain, as this item's password
+// On a Mac, Claude Code keeps its login in the keychain, as this item's password. The first read asks on the Mac's
+// screen whether to allow it, and blocks until answered: given up on in time, and asked again with the next ask
 const KEYCHAIN_SERVICE = 'Claude Code-credentials';
+const KEYCHAIN_MS = 5 * 1000;
 
 const keychainLogin = async () => {
 	try {
 		const child = Bun.spawn(['security', 'find-generic-password', '-s', KEYCHAIN_SERVICE, '-w'], {
 			stdout: 'pipe',
 			stderr: 'ignore',
+			timeout: KEYCHAIN_MS,
+			killSignal: 'SIGKILL',
 		});
 		const [said] = await Promise.all([new Response(child.stdout).text(), child.exited]);
 

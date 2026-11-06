@@ -94,7 +94,30 @@ test("on a Mac with no login file, the keychain's Claude Code item is the login;
 			'Claude Code-credentials',
 			'-w',
 		]);
+		expect(spawned.mock.calls[0][1]).toMatchObject({ timeout: 5000, killSignal: 'SIGKILL' });
 		expect(asked.mock.calls[0][1].headers.authorization).toBe('Bearer kept');
+	} finally {
+		Object.defineProperty(process, 'platform', platform);
+		spawned.mockRestore();
+	}
+});
+
+test('a keychain read that is killed for taking too long, or fails, is no login', async () => {
+	const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+	const spawned = spyOn(Bun, 'spawn').mockImplementation(() => ({
+		stdout: new Blob([]).stream(),
+		exited: Promise.resolve(null),
+		exitCode: null,
+		signalCode: 'SIGKILL',
+	}));
+
+	try {
+		await login('null');
+		answering(ANSWER);
+		Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+		expect(await limitsOf(later())).toBeNull();
+		expect(spawned).toHaveBeenCalledTimes(1);
+		expect(asked).not.toHaveBeenCalled();
 	} finally {
 		Object.defineProperty(process, 'platform', platform);
 		spawned.mockRestore();
