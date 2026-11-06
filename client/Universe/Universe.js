@@ -68,6 +68,8 @@ const LONGEST_FRAME_S = 0.1;
 const FRAME_MS = 1000 / 30;
 const DRAG_PX = 5;
 const WHEEL_ZOOM = 0.0015;
+// A pinch zooms a step each time the fingers' distance grows or shrinks by this much
+const PINCH_STEP = 1.2;
 
 const localName = () => serverName() ?? 'this machine';
 
@@ -519,19 +521,40 @@ export default class Universe extends View {
 		this.addCleanup('frames', () => cancelAnimationFrame(frame));
 	}
 
+	// One pointer drags the view, or taps what's under it, or holds for the menu; two fingers pan together and pinch to
+	// zoom, and neither of them taps or holds, so a second finger landing on a pan never opens anything
 	watchPointer() {
 		const at = event => {
 			const box = this.canvas.getBoundingClientRect();
 
 			return { x: event.clientX - box.left, y: event.clientY - box.top };
 		};
+		const pointers = new Map();
+		const pinchOf = () => {
+			const [a, b] = [...pointers.values()];
+
+			return { distance: Math.hypot(b.x - a.x, b.y - a.y), middle: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
+		};
 		let press = null;
+		let pinch = null;
 
 		this.canvas.addEventListener('pointerdown', event => {
 			const point = at(event);
 
-			press = { ...point, last: point, dragged: false };
 			this.canvas.setPointerCapture(event.pointerId);
+			pointers.set(event.pointerId, point);
+			if (pointers.size >= 2) {
+				// A second finger: whatever the first was about to do is off
+				clearTimeout(this.holding);
+				press = null;
+				pinch = pinchOf();
+				this.showTip(null);
+				this.canvas.classList.add('dragging');
+
+				return;
+			}
+			if (pinch) return;
+			press = { ...point, last: point, dragged: false };
 			// Held without moving, a touch opens the menu
 			if (event.pointerType === 'mouse') return;
 
@@ -539,7 +562,7 @@ export default class Universe extends View {
 
 			clearTimeout(this.holding);
 			this.holding = setTimeout(() => {
-				if (held.dragged || press !== held) return;
+				if (held.dragged || press !== held || pinch) return;
 				held.ordered = true;
 				this.openMenuAt(point, { x: event.clientX, y: event.clientY });
 			}, HOLD_MS);
@@ -551,6 +574,20 @@ export default class Universe extends View {
 		this.canvas.addEventListener('pointermove', event => {
 			const point = at(event);
 
+			if (pointers.has(event.pointerId)) pointers.set(event.pointerId, point);
+			if (pinch && pointers.size >= 2) {
+				const now = pinchOf();
+
+				this.aboard.pan(now.middle.x - pinch.middle.x, now.middle.y - pinch.middle.y);
+				// Each step of spread or squeeze is a step of zoom about the fingers' middle
+				if (now.distance / pinch.distance >= PINCH_STEP || now.distance / pinch.distance <= 1 / PINCH_STEP) {
+					this.aboard.zoom(now.distance > pinch.distance ? 2 : 0.5, now.middle);
+					pinch.distance = now.distance;
+				}
+				pinch.middle = now.middle;
+
+				return;
+			}
 			if (!press) {
 				if (event.pointerType === 'mouse') this.showTip(this.aboard.hit(point.x, point.y), point);
 
@@ -565,11 +602,35 @@ export default class Universe extends View {
 			press.last = point;
 		});
 		this.canvas.addEventListener('pointerleave', () => this.showTip(null));
-		this.canvas.addEventListener('pointerup', event => {
-			const { dragged, ordered, timer } = press ?? {};
 
-			clearTimeout(timer);
+		const lift = event => {
+			pointers.delete(event.pointerId);
+			// A pinch ends only once every finger is up, and taps nothing
+			if (pinch) {
+				if (pointers.size >= 2) pinch = pinchOf();
+				else if (pointers.size === 0) {
+					pinch = null;
+					this.canvas.classList.remove('dragging');
+				}
+
+				return null;
+			}
+
+			const was = press;
+
 			press = null;
+
+			return was;
+		};
+
+		this.canvas.addEventListener('pointerup', event => {
+			const was = lift(event);
+
+			if (!was) return;
+
+			const { dragged, ordered } = was;
+
+			clearTimeout(this.holding);
 			if (ordered) return;
 			this.canvas.classList.remove('dragging');
 			// Shift, Ctrl or Cmd held adds a session to those picked, or takes it away
@@ -578,8 +639,9 @@ export default class Universe extends View {
 					adding: event.shiftKey || event.ctrlKey || event.metaKey,
 				});
 		});
-		this.canvas.addEventListener('pointercancel', () => {
-			press = null;
+		this.canvas.addEventListener('pointercancel', event => {
+			lift(event);
+			clearTimeout(this.holding);
 			this.canvas.classList.remove('dragging');
 		});
 		this.canvas.addEventListener(
@@ -1958,7 +2020,8 @@ export default class Universe extends View {
 
 		if ((focus?.key ?? null) !== (this.focused?.key ?? null) || this.aboard.tight !== this.paintedTight)
 			this.paintFocus();
-		if (!this.focused) return null;
+		// In the drawer on a phone, placed by its style
+		if (!this.focused || this.drawer) return null;
 
 		const area = this.aboard.area(this.focused.room);
 		const { width, height } = this.stageSize ?? this.stage.elem.getBoundingClientRect();
