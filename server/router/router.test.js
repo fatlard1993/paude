@@ -15,6 +15,7 @@ import { initProjects, setProjectsRoot } from '../projects';
 import { allRunning, setClaudePath, startSession, stopSession } from '../sessions/running';
 import { setServerName } from '../serverSettings';
 import { initShares, shareNamed } from '../shares';
+import { saveToken } from '../../shared/credentials';
 import { readProgress } from '../../shared/progress';
 import app from '../server';
 
@@ -326,6 +327,48 @@ test("another paude's sessions and projects are relayed only for this machine's 
 	// Not one of its servers, or no address at all
 	expect((await call(`/api/remotes/at/${there}/api/sessions/a/links`, { token: tokens.local })).status).toBe(404);
 	expect((await call('/api/remotes/at/%E0%A4%A/api/sessions/a', { token: tokens.local })).status).toBe(404);
+});
+
+test('a file a session made on another paude comes through the relay as it is, with the headers that keep it so', async () => {
+	const far = Bun.serve({
+		port: 0,
+		fetch: request =>
+			new Response(new Uint8Array([137, 80, 78, 71]), {
+				headers: {
+					'content-type': 'image/png',
+					'content-disposition': `inline; filename*=UTF-8''shot.png`,
+					'content-security-policy': 'sandbox allow-scripts',
+					'x-content-type-options': 'nosniff',
+					'x-far-path': new URL(request.url).pathname + new URL(request.url).search,
+					'set-cookie': 'theirs=1',
+				},
+			}),
+	});
+
+	try {
+		const url = `http://127.0.0.1:${far.port}`;
+
+		await saveToken(url, 'far-token', undefined, { makeDefault: false });
+
+		const response = await call(
+			`/api/remotes/at/${encodeURIComponent(url)}/api/sessions/a/artifact?path=%2Ftmp%2Fshot.png`,
+			{
+				token: tokens.local,
+			},
+		);
+
+		expect(response.status).toBe(200);
+		expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([137, 80, 78, 71]);
+		expect(response.headers.get('content-type')).toBe('image/png');
+		expect(response.headers.get('content-disposition')).toBe(`inline; filename*=UTF-8''shot.png`);
+		expect(response.headers.get('content-security-policy')).toBe('sandbox allow-scripts');
+		expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+		// Only those: nothing else of the far end's reaches the browser
+		expect(response.headers.get('x-far-path')).toBeNull();
+		expect(response.headers.get('set-cookie')).toBeNull();
+	} finally {
+		far.stop(true);
+	}
 });
 
 test('a machine that shares its servers lists them for the owner password too, never for an invite', async () => {

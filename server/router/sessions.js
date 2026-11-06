@@ -355,10 +355,13 @@ const sessionsRoutes = async (request, server) => {
 				signal: AbortSignal.timeout(RELAY_MS),
 			});
 
-			return new Response(there.body, {
-				status: there.status,
-				headers: { 'content-type': there.headers.get('content-type') ?? 'application/json' },
-			});
+			// With the headers that keep a served file what it is: its name, its type as said, a made page sandboxed
+			const headers = { 'content-type': there.headers.get('content-type') ?? 'application/json' };
+
+			for (const name of ['content-disposition', 'content-security-policy', 'x-content-type-options'])
+				if (there.headers.has(name)) headers[name] = there.headers.get(name);
+
+			return new Response(there.body, { status: there.status, headers });
 		} catch (error) {
 			return new Response(error.message, { status: 502 });
 		}

@@ -260,6 +260,10 @@ export const nameSession = async (sessionId, name) =>
 export const rawFileUrl = (place, path, { download = false } = {}) =>
 	placeUrl(place, '/raw', { path, ...(download && { download: 1 }) });
 
+// A file a session made, served as it is; through the relay when the session is on another paude
+export const artifactUrl = (sessionId, path, { download = false } = {}) =>
+	placeUrl(sessionId, '/artifact', { path, ...(download && { download: 1 }) });
+
 export const getWatching = async () => await GET('/api/watching', { invalidateAfter: 0 });
 
 export const setWatching = async (sessionId, watching) =>

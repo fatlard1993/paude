@@ -10,6 +10,7 @@ import { ORDERS, describeFiles, orderFiles } from '../../shared/reviewOrder';
 import { extensionOf, kindOf, matchNames } from '../../shared/projectFiles';
 import searchPattern from '../../shared/searchPattern';
 import {
+	artifactUrl,
 	getChanges,
 	getDiffSet,
 	getGit,
@@ -32,7 +33,6 @@ import { forget, recall, remember } from '../storage';
 import confirmDialog from '../confirmDialog';
 import { button, closeButton, dragHandle, element } from '../dom';
 import { opensInViewer, viewImage } from '../imageViewer';
-import { artifactUrl } from './ArtifactsPanel';
 import renderDiffSet from './DiffView';
 import stepThrough from './tour';
 import Panel, { LINE_HEIGHT } from './FilesPanel.styles';

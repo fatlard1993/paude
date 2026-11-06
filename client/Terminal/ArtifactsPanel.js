@@ -1,4 +1,5 @@
 import { relativeTime } from '@vanilla-bean/components/utils/date';
+import { artifactUrl } from '../api';
 import { button, closeButton, element, icon } from '../dom';
 import { opensInViewer } from '../imageViewer';
 import Panel from './GitPanel.styles';
@@ -35,9 +36,6 @@ const MADE_BY = {
 
 const sizeOf = bytes =>
 	bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(bytes / 1024))}KB`;
-
-export const artifactUrl = (sessionId, file, { download = false } = {}) =>
-	`/api/sessions/${encodeURIComponent(sessionId)}/artifact?path=${encodeURIComponent(file)}${download ? '&download=1' : ''}`;
 
 // The things sessions made along the way, wherever they landed (a scratchpad, /tmp, an ignored folder): screenshots,
 // pages, scripts, data. Each opens as it is (a page in a sandbox), and says what it was for and when it was made. A
