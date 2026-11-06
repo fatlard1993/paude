@@ -58,6 +58,9 @@ const lastTurnAt = new Map();
 const pinged = new Set();
 // The last ping or nudge typed into each: { [sessionId]: { kind: 'warm' | 'going' | 'fabled', at } }
 const boosts = new Map();
+// When each fabled session's monitor last read its conversation (asked, or pinged), per session: it's kept warm on its own
+// clock, since the session's ping waits on Claude being idle and the monitor's cache doesn't
+const monitorReadAt = new Map();
 
 const save = () => writeJsonFile(file, () => warm);
 
@@ -82,8 +85,8 @@ export const forgetMonitorsWith = forget => {
 	forgetMonitor = forget;
 };
 
-// And what keeps a fabled session's monitor warm when the session is pinged: its conversation read from the cache too,
-// so a verdict after an idle hour isn't a fresh read of all of it. Registered for the same reason.
+// And what keeps a fabled session's monitor warm once it has been quiet long enough: its conversation read from the
+// cache, so a verdict after an idle hour isn't a fresh read of all of it. Registered for the same reason.
 let warmMonitor = async () => {};
 
 export const warmMonitorsWith = warmer => {
@@ -92,7 +95,8 @@ export const warmMonitorsWith = warmer => {
 
 // The monitor was told up to this turn, or missed another ask; `monitor` null forgets it (its conversation gone), for a
 // new one to be briefed
-export const noteMonitor = async (id, { monitor, seen = null, missed = 0 }) => {
+export const noteMonitor = async (id, { monitor, seen = null, missed = 0 }, now = Date.now()) => {
+	monitorReadAt.set(id, now);
 	if (!warm[id]) return;
 	if (monitor) {
 		const { missed: _, ...rest } = warm[id];
@@ -157,6 +161,7 @@ export const keepWarm = async (id, hours, now = Date.now(), { going = false, fab
 export const stopKeepingWarm = async id => {
 	lastTurnAt.delete(id);
 	pinged.delete(id);
+	monitorReadAt.delete(id);
 	if (!(id in warm)) return;
 	console.log(`Keep warm ${id}: off, the session ended`);
 	letGo(id);
@@ -217,11 +222,6 @@ const ping = (id, session, now) => {
 
 	noteCrew('keeping a session warm');
 	lastTurnAt.set(id, now);
-	// Its monitor has been as quiet: asked only at turn ends, and the last of those is what the ping counts from
-	if (fabledOn(id, now) && warm[id].monitor)
-		warmMonitor(id, warm[id].monitor, session.cwd).catch(error =>
-			console.error(`Keeping ${id}'s monitor warm failed:`, error),
-		);
 
 	return true;
 };
@@ -240,7 +240,21 @@ export const checkWarm = async (sessionOf, now = Date.now()) => {
 			console.log(`Keep warm ${id}: off, ${session ? 'past its cutoff' : 'not running'}`);
 			letGo(id);
 			changed = true;
-		} else if (now - lastTurnAt.get(id) >= PING_AFTER_MS && ping(id, session, now)) pings.push(id);
+		} else {
+			if (now - lastTurnAt.get(id) >= PING_AFTER_MS && ping(id, session, now)) pings.push(id);
+			// Its monitor on its own clock: pinged once it has been quiet this long, whether or not the session could be, since
+			// a session busy, asking or being typed into isn't pinged and its monitor's cache runs out regardless
+			if (fabledOn(id, now) && warm[id].monitor) {
+				if (!monitorReadAt.has(id)) monitorReadAt.set(id, now);
+				if (now - monitorReadAt.get(id) >= PING_AFTER_MS) {
+					monitorReadAt.set(id, now);
+					pings.push(`${id}'s monitor`);
+					warmMonitor(id, warm[id].monitor, session.cwd).catch(error =>
+						console.error(`Keeping ${id}'s monitor warm failed:`, error),
+					);
+				}
+			}
+		}
 	}
 	if (changed && file) await save();
 

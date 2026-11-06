@@ -185,7 +185,7 @@ test("what's typed in carries no control characters, and a suggestion that runs 
 	expect(nudgeWith('short').endsWith('without them.')).toBe(true);
 });
 
-test("a fabled session's ping pings its monitor too, so its conversation stays cached alongside the session's", async () => {
+test("a fabled session's monitor is pinged on its own clock once quiet long enough, even while the session itself can't be", async () => {
 	const warmed = [];
 
 	warmMonitorsWith(async (id, monitor, cwd) => {
@@ -195,13 +195,37 @@ test("a fabled session's ping pings its monitor too, so its conversation stays c
 		const session = { ...fakeSession(), cwd: '/work' };
 
 		await keepWarm('fabled-pinged', 24, 0, { fabled: true });
-		expect(await checkWarm(only('fabled-pinged', session), PING_AFTER_MS)).toEqual(['fabled-pinged']);
+		// First seen at the first check: counted from then
+		expect(await checkWarm(only('fabled-pinged', session), 1)).toEqual([]);
+		expect(warmed).toEqual([]);
+		// Quiet long enough: the session is pinged, and so is its monitor
+		expect(await checkWarm(only('fabled-pinged', session), PING_AFTER_MS + 1)).toEqual([
+			'fabled-pinged',
+			"fabled-pinged's monitor",
+		]);
 		expect(warmed).toEqual([{ id: 'fabled-pinged', monitor: monitorOf('fabled-pinged').monitor, cwd: '/work' }]);
+		// Not again until it has been quiet as long again
+		expect(await checkWarm(only('fabled-pinged', session), PING_AFTER_MS + 60_000)).toEqual([]);
+
+		// Asked at a turn end: that read counts, and the monitor's clock starts over from it while the session's runs on
+		await noteMonitor(
+			'fabled-pinged',
+			{ monitor: monitorOf('fabled-pinged').monitor, seen: 't1' },
+			PING_AFTER_MS + 120_000,
+		);
+		expect(await checkWarm(only('fabled-pinged', session), 2 * PING_AFTER_MS + 2)).toEqual(['fabled-pinged']);
+
+		// The session busy (or asking, or being typed into) isn't pinged; its monitor still is, once quiet long enough
+		session.busy = true;
+		expect(await checkWarm(only('fabled-pinged', session), 2 * PING_AFTER_MS + 120_001)).toEqual([
+			"fabled-pinged's monitor",
+		]);
+		expect(warmed).toHaveLength(2);
 
 		// Only kept warm or going: no monitor to ping
 		await keepWarm('only-pinged', 12, 0, { going: true });
 		await checkWarm(only('only-pinged', fakeSession()), PING_AFTER_MS);
-		expect(warmed).toHaveLength(1);
+		expect(warmed).toHaveLength(2);
 		await keepWarm('fabled-pinged', 0, 0);
 		await keepWarm('only-pinged', 0, 0);
 	} finally {
