@@ -10,6 +10,7 @@ import {
 	briefFor,
 	deltaFor,
 	forgetMonitor,
+	repoStateOf,
 	usageWords,
 } from './fabled';
 import {
@@ -192,12 +193,13 @@ const sinceSeen = (turns, seen) => {
 // answered or not (a look that ran out of rounds still read the delta). A conversation that can't be carried on, or
 // MOST_MISSED asks in a row without a verdict, is forgotten, for a fresh one to be briefed at the next turn end; any
 // other failure keeps it as it was, to try again. The verdict's JSON text, or '' for none.
-const askFabled = async (id, session, reply, turns, settled, askMonitor) => {
+const askFabled = async (id, session, reply, turns, settled, askMonitor, repoOf) => {
 	const { monitor, seen } = monitorOf(id) ?? { monitor: crypto.randomUUID(), seen: null };
 	const first = !seen;
+	const repo = await repoOf(session.cwd);
 	const prompt = first
-		? briefFor({ cwd: session.cwd, asked: lastAsked(turns), settled, earlier: runSoFar(turns), reply })
-		: deltaFor({ since: sinceSeen(turns, seen), settled, reply });
+		? briefFor({ cwd: session.cwd, asked: lastAsked(turns), settled, earlier: runSoFar(turns), reply, repo })
+		: deltaFor({ since: sinceSeen(turns, seen), settled, reply, repo });
 	const { answer, delivered, resumable, usage, why } = await askMonitor(monitor, session.cwd, prompt, { first });
 	const missed = answer ? 0 : (monitorOf(id)?.missed ?? 0) + 1;
 
@@ -258,6 +260,7 @@ export const keepGoing = async (
 	{
 		ask = text => askHaiku(text, 'deciding to keep going'),
 		askMonitor = askFabledMonitor,
+		repoOf = repoStateOf,
 		sessionOf = runningSession,
 		// Whole: a session heavy with screenshots can hold the person's last prompts far back past the usual tail
 		turnsOf = (sessionId, cwd) => sessionTurns(sessionId, cwd, { whole: true }),
@@ -281,6 +284,7 @@ export const keepGoing = async (
 		return await answerTurnEnd(id, session, ended, reply, turns, fabled, kept, {
 			ask,
 			askMonitor,
+			repoOf,
 			sessionOf,
 			decisionsOf,
 			pause,
@@ -299,7 +303,7 @@ const answerTurnEnd = async (
 	turns,
 	fabled,
 	kept,
-	{ ask, askMonitor, sessionOf, decisionsOf, pause },
+	{ ask, askMonitor, repoOf, sessionOf, decisionsOf, pause },
 ) => {
 	const hold = holdBefore(turns, fabled ? FABLED_ROOM : {});
 
@@ -314,7 +318,7 @@ const answerTurnEnd = async (
 	const settled = settledSoFar(decisions, within);
 	const verdict = jsonIn(
 		fabled
-			? await askFabled(id, session, reply, turns, settled, askMonitor)
+			? await askFabled(id, session, reply, turns, settled, askMonitor, repoOf)
 			: await ask(promptFor(reply, lastAsked(turns), runSoFar(turns), settled)),
 	);
 	const why = verdict ? (verdict.why ?? 'no reason given') : `no answer from ${fabled ? 'the monitor' : 'Haiku'}`;

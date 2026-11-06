@@ -10,17 +10,19 @@ import { startAndEnd } from './timeline';
 
 // A session that's fabled keeps going with a monitor of its own: one Fable conversation that follows the whole run,
 // briefed once on the goal and told after each turn only what happened since, so each verdict comes from a cached
-// read of what it already knows plus the delta. It may read the project (and its git history) to check the reply
-// against what's actually there, but never write to it: the session's Claude is editing the same checkout.
+// read of what it already knows plus the delta. It may read the project, and is given its latest commits and
+// uncommitted changes, to check the reply against what's actually there; it runs nothing and writes nothing there,
+// since the session's Claude is editing the same checkout.
 export const HOURS = 24;
 // Nudges in a row before it waits for the person, whatever the monitor says, and nudged turns in a row that did next
 // to nothing: more room than Haiku's, since the monitor sees the run whole and is told to stop one going nowhere
 export const MOST_NUDGES = 100;
 export const MOST_IDLE = 3;
 // How many rounds of tool calls a verdict may take (several calls go in one round): the first look reads CLAUDE.md and
-// AGENTS.md, the log and the diff, greps for siblings and opens the README section and a test or two, about ten; a
-// later one needs half that. Enough for the sweep the rules ask for, not for an investigation.
-export const MOST_TURNS = 16;
+// AGENTS.md, greps for siblings and opens the README section and a test or two, about eight, the commits and changes
+// having come in the brief; a later one needs half that. Enough for the sweep the rules ask for, not for an
+// investigation.
+export const MOST_TURNS = 12;
 const TIMEOUT_MS = 10 * 60_000;
 const REPLY_CHARACTERS = 6000;
 const ASKED_CHARACTERS = 2000;
@@ -55,11 +57,43 @@ export const forgetMonitor = async id => {
 	);
 };
 
-const gitReads = cwd => ['diff', 'log', 'status', 'show'].map(verb => `Bash(git -C ${cwd} ${verb}:*)`).join(',');
+// How many commits the monitor is shown, and how much of the status and diff stat
+const COMMITS_SHOWN = 12;
+const REPO_CHARACTERS = 3000;
+const GIT_TIMEOUT_MS = 10_000;
+
+const git = async (cwd, args) => {
+	try {
+		const child = Bun.spawn(['git', '-C', cwd, ...args], { stdout: 'pipe', stderr: 'ignore', timeout: GIT_TIMEOUT_MS });
+		const out = await new Response(child.stdout).text();
+
+		return (await child.exited) === 0 ? out.trim() : '';
+	} catch {
+		return '';
+	}
+};
+
+// The checkout as it stands, for the monitor's brief or delta: its latest commits and what's changed and not committed.
+// Given rather than fetched: the monitor runs no commands, so there's nothing it can write through. '' outside a
+// repository.
+export const repoStateOf = async cwd => {
+	const log = await git(cwd, ['log', '--oneline', `-${COMMITS_SHOWN}`]);
+
+	if (!log) return '';
+
+	const [status, stat] = await Promise.all([git(cwd, ['status', '--short']), git(cwd, ['diff', '--stat'])]);
+
+	return [
+		`Latest commits, newest first:\n${log}`,
+		status ? `Changed and not committed:\n${status}${stat ? `\n${stat}` : ''}` : 'Nothing changed and not committed.',
+	]
+		.join('\n\n')
+		.slice(0, REPO_CHARACTERS);
+};
 
 export const rulesFor = cwd =>
 	[
-		`You follow one Claude Code session for a person who is away from it. It works in ${cwd}, which you may read (Read, Grep, Glob) and whose git history you may look at with \`git -C ${cwd} diff|log|status|show\`; you change nothing there, since the session's Claude is editing it. The person wants the session to keep working toward their goal the whole time they are gone, never sitting idle while anything useful is left to do, and never deciding for them. After each turn you are told what happened and say what Claude should do next, or that it should wait for them.`,
+		`You follow one Claude Code session for a person who is away from it. It works in ${cwd}, which you may read (Read, Grep, Glob), and with each ask you are given its latest commits and what's changed and not committed; you run nothing and change nothing there, since the session's Claude is editing it. The person wants the session to keep working toward their goal the whole time they are gone, never sitting idle while anything useful is left to do, and never deciding for them. After each turn you are told what happened and say what Claude should do next, or that it should wait for them.`,
 		'',
 		'Pick, in this order:',
 		'0. Anything the person asked for that no reply shows done, the oldest first: a message asking for several things is often answered for only some of them, and the person drops thoughts in while Claude works, to be taken up whenever there is time. Each is work left until a reply shows it done or the person sets it aside; a thought that only needs their call is a question for them, not work.',
@@ -83,8 +117,8 @@ export const rulesFor = cwd =>
 	].join('\n');
 
 // How the monitor runs: on Fable, carrying its conversation on (started with `first`), none of the owner's settings
-// (their hooks, permissions, MCP servers), reading the project and its git history and nothing more, within MOST_TURNS
-// rounds of tool calls per verdict
+// (their hooks, permissions, MCP servers), reading the project and nothing more (no shell: a git read's flags can write
+// files, so the checkout's state is given to it instead), within MOST_TURNS rounds of tool calls per verdict
 export const monitorCommand = (id, cwd, { first }) => [
 	claudeCommand(),
 	'-p',
@@ -95,9 +129,7 @@ export const monitorCommand = (id, cwd, { first }) => [
 	'--setting-sources',
 	'',
 	'--tools',
-	'Read,Grep,Glob,Bash',
-	'--allowedTools',
-	gitReads(cwd),
+	'Read,Grep,Glob',
 	'--add-dir',
 	cwd,
 	'--max-turns',
@@ -196,13 +228,14 @@ const ask = async (id, cwd, prompt, { first }) => {
 const tagged = (tag, texts) => texts.map(text => `<${tag}>\n${text}\n</${tag}>`);
 
 // Its first look at the session: the goal and the run so far, as Haiku is shown them each time, then the latest reply
-export const briefFor = ({ cwd, asked, settled, earlier, reply }) =>
+export const briefFor = ({ cwd, asked, settled, earlier, reply, repo = '' }) =>
 	[
 		`The session works in ${cwd}. What the person asked for, oldest first:`,
 		...tagged(
 			'asked',
 			asked.map(text => text.slice(0, ASKED_CHARACTERS)),
 		),
+		...(repo ? ['', 'The checkout as it stands:', ...tagged('repository', [repo])] : []),
 		...(settled.length ? ['', 'What the session settled so far, newest first:', ...tagged('settled', settled)] : []),
 		...(earlier.length ? ['', 'How Claude ended its earlier turns, oldest first:', ...tagged('earlier', earlier)] : []),
 		'',
@@ -221,7 +254,7 @@ const nothingSince = since =>
 		? `A nudged turn ended after ${since.at(-1).steps ?? 0} tool calls.`
 		: 'Nothing: your last verdict never reached Claude (paude restarted, or could not type it in). Say again what Claude should do next.';
 
-export const deltaFor = ({ since, settled, reply }) => {
+export const deltaFor = ({ since, settled, reply, repo = '' }) => {
 	const happened = since.flatMap(turn => [
 		...(turn.theirs ? [`The person asked: ${turn.asked.slice(0, ASKED_CHARACTERS)}`] : []),
 		...(turn.added ?? []).map(added => `The person added while Claude worked: ${added.slice(0, ASKED_CHARACTERS)}`),
@@ -235,6 +268,7 @@ export const deltaFor = ({ since, settled, reply }) => {
 	return [
 		'Since you last looked:',
 		...tagged('happened', happened.length ? happened : [nothingSince(since)]),
+		...(repo ? ['', 'The checkout as it stands:', ...tagged('repository', [repo])] : []),
 		...(settled.length ? ['', 'What the session has settled, newest first:', ...tagged('settled', settled)] : []),
 		'',
 		"Claude's latest reply (its start and end, if long):",

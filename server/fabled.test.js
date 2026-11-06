@@ -15,6 +15,7 @@ import {
 	monitorHome,
 	monitorTranscripts,
 	outcomeOf,
+	repoStateOf,
 	rulesFor,
 	usageWords,
 } from './fabled';
@@ -27,17 +28,18 @@ test('the monitor runs on Fable, carrying its conversation on, reading the proje
 	expect(first.slice(first.indexOf('--session-id'))).toEqual(['--session-id', 'm1']);
 	expect(later.slice(later.indexOf('--resume'))).toEqual(['--resume', 'm1']);
 	expect(first[first.indexOf('--add-dir') + 1]).toBe('/work/app');
-	expect(first[first.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,Bash');
-	expect(first[first.indexOf('--allowedTools') + 1]).toBe(
-		'Bash(git -C /work/app diff:*),Bash(git -C /work/app log:*),Bash(git -C /work/app status:*),Bash(git -C /work/app show:*)',
-	);
+	// No shell: a git read's flags can write files, so the checkout's state is given to it instead
+	expect(first[first.indexOf('--tools') + 1]).toBe('Read,Grep,Glob');
+	expect(first).not.toContain('--allowedTools');
+	expect(first.join(' ')).not.toContain('Bash');
 	expect(first[first.indexOf('--setting-sources') + 1]).toBe('');
 	expect(first[first.indexOf('--append-system-prompt') + 1]).toBe(rulesFor('/work/app'));
 	// The rules tell it the budget the command holds it to, and that budget covers the sweep they ask for
 	expect(first[first.indexOf('--max-turns') + 1]).toBe(String(MOST_TURNS));
 	expect(rulesFor('/work/app')).toContain(`at most ${MOST_TURNS} rounds of tool calls per verdict`);
 	expect(MOST_TURNS).toBeGreaterThanOrEqual(10);
-	expect(rulesFor('/work/app')).toContain('git -C /work/app diff|log|status|show');
+	expect(rulesFor('/work/app')).toContain('you run nothing and change nothing there');
+	expect(rulesFor('/work/app')).not.toContain('git -C');
 	expect(rulesFor('/work/app')).toContain('Reply with only a JSON object');
 	// What it can look for that a reader of the reply alone can't
 	expect(rulesFor('/work/app')).toContain('siblings');
@@ -55,7 +57,10 @@ test('its brief is the goal and the run so far; a delta only what happened since
 		settled: ['Put off: the walk cycle.'],
 		earlier: ['After the person asked: The cans are done.'],
 		reply: `Done: the plates. ${'x'.repeat(20_000)} Left: the walk cycle.`,
+		repo: 'Latest commits, newest first:\nabc1234 the plates',
 	});
+
+	expect(brief).toContain('<repository>\nLatest commits, newest first:\nabc1234 the plates\n</repository>');
 
 	expect(brief).toContain('The session works in /work/app.');
 	expect(brief).toContain('<asked>\nmake the ship smaller\n</asked>\n<asked>\nkeep going\n</asked>');
@@ -84,6 +89,10 @@ test('its brief is the goal and the run so far; a delta only what happened since
 	// The latest turn's end is the reply, shown once
 	expect(delta.split('Tested.')).toHaveLength(2);
 	expect(delta).not.toContain('<settled>');
+	expect(delta).not.toContain('<repository>');
+	expect(deltaFor({ since: [], settled: [], reply: 'Ok.', repo: 'Nothing changed and not committed.' })).toContain(
+		'<repository>\nNothing changed and not committed.\n</repository>',
+	);
 	expect(deltaFor({ since: [{ theirs: false, steps: 1, last: true }], settled: [], reply: 'Ok.' })).toContain(
 		'A nudged turn ended after 1 tool calls.',
 	);
@@ -203,4 +212,15 @@ test("each monitor runs in a folder of its own, and forgetting it removes its fo
 
 test('nothing since its last look is told as a lost verdict', () => {
 	expect(deltaFor({ since: [], settled: [], reply: 'Ok.' })).toContain('your last verdict never reached Claude');
+});
+
+test("the checkout's state the monitor is given: its latest commits and what's changed and not committed; nothing outside a repository", async () => {
+	const here = await repoStateOf(path.resolve(import.meta.dir, '..'));
+
+	expect(here).toContain('Latest commits, newest first:\n');
+	expect(here).toMatch(/\n[0-9a-f]{7,} /);
+	expect(here).toMatch(/Changed and not committed:|Nothing changed and not committed\./);
+	expect(here.length).toBeLessThanOrEqual(3000);
+	expect(await repoStateOf(os.tmpdir())).toBe('');
+	expect(await repoStateOf('/nowhere/at/all')).toBe('');
 });
