@@ -249,7 +249,7 @@ const SMALL_GREY_WORK = [
 	'..kk.kk..',
 ];
 // A fabled session's monitor: a taller grey of another strain, long in the skull and the leg, that stands behind the
-// session's grey and follows its run; its collar in the session's color and its chest pip Fable's
+// session's grey and follows its run; its tall collar, up the neck, in the session's color and its chest pip Fable's
 const WATCHER = [
 	'....kkk....',
 	'...kgggk...',
@@ -265,8 +265,8 @@ const WATCHER = [
 	'..kegggek..',
 	'..kgggggk..',
 	'...kgggk...',
-	'....kgk....',
-	'....kgk....',
+	'...kcgck...',
+	'...kcgck...',
 	'..kkcccck..',
 	'.kgggggggk.',
 	'kgksgggGkGk',
