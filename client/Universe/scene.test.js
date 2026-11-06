@@ -1570,17 +1570,20 @@ test("a ship that's never sealed never comes in, nor is covered", () => {
 	expect(made.coverOf()).toBe(0);
 });
 
-test("an island gaining a seat grows to its new length over a moment rather than jumping, and a new project's island grows in from nothing", () => {
-	const made = shipWith([answer('here', [session()], { projects: ['paude', 'other'] })]);
+test("an island gaining a seat grows to its new length over a moment rather than jumping, and a new project's island rises out of the floor, its terminals after", () => {
+	const projects = ['paude', 'other', 'third'];
+	const made = shipWith([answer('here', [session(), session({ id: 'c', project: 'other' })], { projects })]);
 
 	run(made, 1);
 
 	const was = made.islandsShown.get('paude#0').w;
 
 	made.update([
-		answer('here', [session(), session({ id: 'b' }), session({ id: 'c', project: 'other' })], {
-			projects: ['paude', 'other'],
-		}),
+		answer(
+			'here',
+			[session(), session({ id: 'b' }), session({ id: 'c', project: 'other' }), session({ id: 'd', project: 'third' })],
+			{ projects },
+		),
 	]);
 
 	const goal = made.bridge.islands.find(({ name }) => name === 'paude').w;
@@ -1589,9 +1592,13 @@ test("an island gaining a seat grows to its new length over a moment rather than
 	run(made, 0.05);
 	expect(made.islandsShown.get('paude#0').w).toBeGreaterThan(was);
 	expect(made.islandsShown.get('paude#0').w).toBeLessThan(goal);
-	expect(made.islandsShown.get('other#0').w).toBeLessThan(made.bridge.islands.find(({ name }) => name === 'other').w);
+	// The new one at its whole length, rising: its console part way up, its terminals not yet
+	expect(made.islandRise('third#0')).toBeGreaterThan(0);
+	expect(made.islandRise('third#0')).toBeLessThan(1);
+	expect(made.islandRise('paude#0')).toBe(2);
 	run(made, 2);
 	expect(made.islandsShown.get('paude#0').w).toBeCloseTo(goal);
+	expect(made.islandRise('third#0')).toBe(2);
 });
 
 test('islands keep their rows as sessions come, go and grow: a new one goes into whichever row reaches least far', () => {
@@ -1982,4 +1989,25 @@ test('islands stay where they stood as others come and go, unless they no longer
 
 	for (const key of Object.keys(before)) expect(after[key]).toBe(before[key]);
 	expect(after['four#0']).toBeDefined();
+});
+
+test('those sat at an island that has to move get up and walk to where it has gone, rather than gliding with it', () => {
+	const projects = ['paude', 'other'];
+	const made = shipWith([answer('here', [session()], { projects })]);
+
+	run(made, 2);
+
+	const worker = made.workers.get('here/a');
+	const before = made.bridge.islands.find(({ name }) => name === 'paude').at;
+
+	// Another project's conduit widens the risers' room into the island: it has to move
+	made.update([answer('here', [session(), session({ id: 'c', project: 'other' })], { projects })]);
+	expect(made.bridge.islands.find(({ name }) => name === 'paude').at).not.toBe(before);
+	expect(made.walking(worker)).toBe(true);
+	expect(worker.seatGoal).toBeNull();
+	run(made, 0.3);
+	expect(made.islandRise('paude#0')).toBeLessThan(2);
+	run(made, 8);
+	expect(made.walking(worker)).toBe(false);
+	expect(made.islandRise('paude#0')).toBe(2);
 });

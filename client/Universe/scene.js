@@ -97,6 +97,10 @@ const TOSS_SECONDS = 0.7;
 const BERTH_GAP = 0.55;
 // The most sleds a project's rack of processes shows
 const RACK_SLEDS = 4;
+// How fast an island rises out of the floor, and then its terminals out of it, as a part of each a second; how tall
+// its console stands, in art pixels
+const ISLAND_RISE_RATE = 1.8;
+const CONSOLE_TALL = 14;
 // A top deck's machine's name, inside the hull under its ceiling: how far down it's drawn, and how far down the machine
 // starts to clear it, in art pixels
 const NAME_INSIDE = 9;
@@ -1204,7 +1208,16 @@ export default class Ship {
 				room: this.lounge,
 			}),
 		);
-		for (const worker of this.workers.values()) this.easeSeats(worker);
+		// Islands that had to move: those sat at them get up and walk to where they've gone, rather than gliding there
+		const stood = this.islandSpots ?? new Map();
+
+		this.islandSpots = new Map((this.bridge?.islands ?? []).map(island => [island.key, `${island.row}@${island.at}`]));
+
+		const relocated = new Set(
+			[...this.islandSpots].filter(([key, spot]) => stood.has(key) && stood.get(key) !== spot).map(([key]) => key),
+		);
+
+		for (const worker of this.workers.values()) this.easeSeats(worker, relocated);
 		this.send();
 		this.board();
 		this.launch();
@@ -1289,7 +1302,7 @@ export default class Ship {
 			// Where it was walking to is gone with the old plan; a new one still comes out of the materializer, and one
 			// stopped or woken sets off from its old room's door, or from the hall where that room was
 			if (this.moved) worker.path = [];
-			if (this.moved && worker.trip) worker.trip = this.tripAfterMoving(worker.trip);
+			if (this.moved && worker.trip && !worker.trip.fromSeat) worker.trip = this.tripAfterMoving(worker.trip);
 			if (worker.arriving && this.layout.materializer) {
 				const cloner = clonerAt(this.layout.materializer);
 
@@ -2219,7 +2232,22 @@ export default class Ship {
 	// A worker's seat and the console it left, moved by the layout, shown gliding there from where they were rather than
 	// jumping: each kept as the layout's, its place where it was shown, eased toward the layout's own each step. On the
 	// bridge only, and only from a place it was shown at; anywhere else, or new, it's there at once.
-	easeSeats(worker) {
+	easeSeats(worker, relocated = new Set()) {
+		// Its island moved: up from where it sat, to walk to where its seat has gone
+		const shownSeat = worker.seatShown;
+
+		if (
+			relocated.has(worker.seat?.island?.key) &&
+			shownSeat?.bridge &&
+			worker.room === this.bridge &&
+			!worker.lounging &&
+			!this.walking(worker)
+		) {
+			worker.trip = { from: { x: shownSeat.x + 0.3, y: shownSeat.y + 0.2 }, room: this.bridge, fromSeat: true };
+			worker.seatGoal = null;
+
+			return;
+		}
 		for (const [key, goalKey, shownKey] of [
 			['seat', 'seatGoal', 'seatShown'],
 			['homeSeat', 'homeGoal', 'homeShown'],
@@ -2265,36 +2293,86 @@ export default class Ship {
 		for (const [name, x] of placed) this.baysShown.set(name, toward(this.baysShown.get(name) ?? x, x));
 		for (const name of this.baysShown.keys()) if (!placed.has(name)) this.baysShown.delete(name);
 
-		// Islands by their key: a new one grows out from its end, one gone shrinks away; looked up afresh only when the
-		// layout changes
+		// Islands by their key: a new one rises out of the floor, its terminals then rising out of it; one that has to
+		// move sinks into the floor and rises again where it's going; one gone sinks away. Where only the bridge moved
+		// round, they glide with it. Looked up afresh only when the layout changes.
 		if (this.islandGoalsFor !== this.layout) {
 			this.islandGoalsFor = this.layout;
 			this.islandGoals = new Map((this.bridge?.islands ?? []).map(island => [island.key, island]));
 		}
 
 		const goals = this.islandGoals;
-
 		const first = !this.islandsShown;
+		const rising = seconds * ISLAND_RISE_RATE;
+		const along = island => island.x - (this.bridge?.x ?? 0);
 
 		this.islandsShown ??= new Map();
 		for (const [key, island] of goals) {
-			const shown = this.islandsShown.get(key) ?? { x: island.x, y: island.y, w: first ? island.w : 0 };
+			const shown = this.islandsShown.get(key) ?? {
+				x: island.x,
+				y: island.y,
+				w: island.w,
+				at: along(island),
+				row: island.row,
+				rise: first ? 2 : 0,
+			};
+			// Moved to another row or along its own, not just with its row as the rows spread or close up
+			const moving = Math.abs(shown.at - along(island)) > 0.05 || shown.row !== island.row;
 
-			this.islandsShown.set(
-				key,
+			if (moving) {
+				// Sinking where it was, then put where it's going to rise there
+				shown.rise = Math.max(0, shown.rise - rising * 1.5);
+				if (shown.rise === 0)
+					Object.assign(shown, { x: island.x, y: island.y, w: island.w, at: along(island), row: island.row });
+			} else {
 				Object.assign(shown, {
 					x: toward(shown.x, island.x),
 					y: toward(shown.y, island.y),
 					w: toward(shown.w, island.w),
-					island,
-				}),
-			);
+					at: along(island),
+					rise: Math.min(2, shown.rise + rising),
+				});
+			}
+			shown.island = island;
+			this.islandsShown.set(key, shown);
 		}
 		for (const [key, shown] of this.islandsShown) {
 			if (goals.has(key)) continue;
-			shown.w = toward(shown.w, 0);
-			if (shown.w < 0.05) this.islandsShown.delete(key);
+			shown.rise = Math.max(0, shown.rise - rising * 1.5);
+			if (shown.rise === 0) this.islandsShown.delete(key);
 		}
+	}
+
+	// How far an island has risen out of the floor, by its key: 0 sunk, 1 its console up, 2 its terminals up too
+	islandRise(key) {
+		return this.islandsShown?.get(key)?.rise ?? 2;
+	}
+
+	// A seat at an island as far up as it's risen: its console's front with the console, its terminal rising out of the
+	// console's top once that's up, and sunk with it below the floor
+	drawRisingSeat(ctx, at, options, key) {
+		const rise = key === undefined ? 2 : this.islandRise(key);
+
+		if (rise >= 2) return drawSeat(ctx, at, options);
+
+		const sunk = Math.round((1 - Math.min(1, rise)) * CONSOLE_TALL);
+		const lowered = Math.round((1 - Math.max(0, Math.min(1, rise - 1))) * SCREEN_RISE);
+		const top = at.y - CONSOLE_TALL + sunk;
+
+		for (const [from, to, drop] of [
+			[top, at.y + 4, sunk],
+			[at.y - SCREEN_RISE - 8, top, sunk + lowered],
+		]) {
+			if (to <= from) continue;
+			ctx.save();
+			ctx.beginPath();
+			ctx.rect(at.x - 30, from, 60, to - from);
+			ctx.clip();
+			drawSeat(ctx, { x: at.x, y: at.y + drop }, options);
+			ctx.restore();
+		}
+
+		return undefined;
 	}
 
 	// How far, in art pixels across, a project's machine is drawn from where the layout puts it while it glides there
@@ -3206,15 +3284,20 @@ export default class Ship {
 			{
 				y: seat.y + 0.14,
 				draw: () => {
-					drawSeat(ctx, at, {
-						screen: status,
-						engineColor,
-						time: this.time,
-						seed: worker.seed,
-						todos: session.todos,
-						frost: session.status === 'ready' && session.context?.warm === false,
-						bare: Boolean(floor),
-					});
+					this.drawRisingSeat(
+						ctx,
+						at,
+						{
+							screen: status,
+							engineColor,
+							time: this.time,
+							seed: worker.seed,
+							todos: session.todos,
+							frost: session.status === 'ready' && session.context?.warm === false,
+							bare: Boolean(floor),
+						},
+						seat.island?.key,
+					);
 					if (working && session.tool && worker.opacity >= 1) this.drawActivity(ctx, worker, facility, at);
 					if (worker.opacity >= 1) this.drawInstruments(ctx, worker, at);
 				},
@@ -3228,7 +3311,7 @@ export default class Ship {
 		const bridge = this.bridge;
 		// As shown, gliding to where the layout puts them; before the first step, where it puts them
 		const shownIslands = this.islandsShown?.size
-			? [...this.islandsShown.values()].map(({ x, y, w, island }) => ({ ...island, x, y, w }))
+			? [...this.islandsShown.values()].map(({ x, y, w, rise, island }) => ({ ...island, x, y, w, rise }))
 			: (bridge.islands ?? []);
 		const islands = shownIslands.map(island => ({
 			y: island.y + 0.139,
@@ -3236,8 +3319,17 @@ export default class Ship {
 				const from = this.art({ x: island.x, y: island.y + 0.2 });
 				const to = this.art({ x: island.x + island.w, y: 0 });
 				const color = island.hue === null || island.hue === undefined ? PALETTE.l : `hsl(${island.hue} 55% 50%)`;
+				// Risen out of the floor as far as it has: sunk below it and cut off at it
+				const sunk = Math.round((1 - Math.min(1, island.rise ?? 2)) * CONSOLE_TALL);
 
-				drawIsland(ctx, { from: from.x, to: to.x, y: from.y }, { color });
+				if (sunk >= CONSOLE_TALL) return;
+				ctx.save();
+				ctx.beginPath();
+				ctx.rect(from.x - 4, from.y - CONSOLE_TALL - 2, to.x - from.x + 8, CONSOLE_TALL + 6);
+				ctx.clip();
+				drawIsland(ctx, { from: from.x, to: to.x, y: from.y + sunk }, { color });
+				ctx.restore();
+				if (sunk > 0) return;
 
 				const bay = this.bays.find(({ name }) => name === island.name);
 
@@ -3811,13 +3903,18 @@ export default class Ship {
 			{
 				y: homeSeat.y + 0.14,
 				draw: () =>
-					drawSeat(ctx, at, {
-						screen: { ...screenOf(session), kind: session.status === 'stopped' ? 'off' : 'idle' },
-						engineColor: `hsl(${session.engine.hue ?? 215} 45% 50%)`,
-						time: this.time,
-						seed: worker.seed,
-						frost: session.status !== 'stopped',
-					}),
+					this.drawRisingSeat(
+						ctx,
+						at,
+						{
+							screen: { ...screenOf(session), kind: session.status === 'stopped' ? 'off' : 'idle' },
+							engineColor: `hsl(${session.engine.hue ?? 215} 45% 50%)`,
+							time: this.time,
+							seed: worker.seed,
+							frost: session.status !== 'stopped',
+						},
+						homeSeat.island?.key,
+					),
 			},
 		];
 	}
