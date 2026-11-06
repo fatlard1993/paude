@@ -172,14 +172,16 @@ export const promptFor = (reply, asked, earlier = [], settled = []) =>
 		'Reply with only a JSON object: {"go": true or false, "next": "what Claude should do next, one or two sentences spoken to Claude, specific to this work", "why": "one plain sentence"}.',
 	].join('\n');
 
-// The turns since the monitor was last told of one, for its delta: each by who prompted it and how it ended; the one it
-// was told of gone (compacted away) leaves only the latest
+// The turns since the monitor was last told of one, for its delta: each by who prompted it (the person, a nudge, or a
+// keep-warm ping, which is nobody's and did nothing) and how it ended; the one it was told of gone (compacted away)
+// leaves only the latest
 const sinceSeen = (turns, seen) => {
 	const at = turns.findIndex(turn => turn.id === seen);
 	const since = at === -1 ? turns.slice(-1) : turns.slice(at + 1);
 
 	return since.map((turn, index) => ({
 		theirs: theirs(turn),
+		ping: KEEP_WARM_PING.test(turn.prompt ?? '') || Boolean(turn.summary),
 		asked: turn.asked ?? turn.prompt ?? '',
 		added: turn.added,
 		said: turn.said,

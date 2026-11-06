@@ -245,8 +245,9 @@ export const briefFor = ({ cwd, asked, settled, earlier, reply, repo = '' }) =>
 		'What should Claude do next? Reply with only the JSON object.',
 	].join('\n');
 
-// What happened since it last looked: each turn since, by who prompted it (the person, or a nudge) and what the person
-// added while Claude worked, the latest reply whole, and what the session has settled. Nothing since (its last verdict
+// What happened since it last looked: each turn since, by who prompted it (the person, or a nudge; keep-warm pings
+// counted apart) and what the person added while Claude worked, the latest reply whole, and what the session has
+// settled. Nothing since (its last verdict
 // was lost before it reached Claude, to a restart or a failure to type it in) asks it again.
 // A nudged turn that only ended, or nothing at all since its last look
 const nothingSince = since =>
@@ -255,15 +256,24 @@ const nothingSince = since =>
 		: 'Nothing: your last verdict never reached Claude (paude restarted, or could not type it in). Say again what Claude should do next.';
 
 export const deltaFor = ({ since, settled, reply, repo = '' }) => {
-	const happened = since.flatMap(turn => [
-		...(turn.theirs ? [`The person asked: ${turn.asked.slice(0, ASKED_CHARACTERS)}`] : []),
-		...(turn.added ?? []).map(added => `The person added while Claude worked: ${added.slice(0, ASKED_CHARACTERS)}`),
-		...(turn.said && !turn.last
-			? [
-					`${turn.theirs ? 'Claude' : 'Nudged, Claude'} ended its turn after ${turn.steps} tool calls: ${turn.said.slice(0, SAID_CHARACTERS)}`,
-				]
-			: []),
-	]);
+	// Keep-warm pings are nobody's turns and did nothing: counted, not told as nudges that went nowhere
+	const pings = since.filter(turn => turn.ping).length;
+	const happened = since
+		.filter(turn => !turn.ping)
+		.flatMap(turn => [
+			...(turn.theirs ? [`The person asked: ${turn.asked.slice(0, ASKED_CHARACTERS)}`] : []),
+			...(turn.added ?? []).map(added => `The person added while Claude worked: ${added.slice(0, ASKED_CHARACTERS)}`),
+			...(turn.said && !turn.last
+				? [
+						`${turn.theirs ? 'Claude' : 'Nudged, Claude'} ended its turn after ${turn.steps} tool calls: ${turn.said.slice(0, SAID_CHARACTERS)}`,
+					]
+				: []),
+		]);
+
+	if (pings)
+		happened.push(
+			`${pings} keep-warm ${pings === 1 ? 'ping' : 'pings'} went by: paude pinging the idle session so Claude's cache holds it, each answered with a dot. Not nudges, and not Claude doing nothing when asked.`,
+		);
 
 	return [
 		'Since you last looked:',

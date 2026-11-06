@@ -607,3 +607,58 @@ test('a monitor asked again about a turn it already saw is told its verdict was 
 	expect(prompts[0]).toContain('your last verdict never reached Claude');
 	expect(prompts[0]).not.toContain('A nudged turn ended');
 });
+
+test('keep-warm pings between nudges reach the monitor as a count of pings, not as nudges that did nothing', async () => {
+	const session = fakeSession();
+	const prompts = [];
+	const askMonitor = async (monitor, cwd, prompt) => {
+		prompts.push(prompt);
+
+		return verdict('{"go": true, "next": "Carry on."}');
+	};
+	const ping = () => ({
+		...turn('keep-warm ping from paude: reply with only "·" and no tool calls', false, '·'),
+		id: 'p',
+	});
+	const turns = [
+		{ ...turn('fix the build'), id: 't1' },
+		{ ...turn(NUDGE, true, 'Fixed it.'), id: 't2' },
+		{ ...ping(), id: 'p1' },
+		{ ...ping(), id: 'p2' },
+		{ ...ping(), id: 'p3' },
+		{ ...turn(NUDGE), id: 't3' },
+	];
+
+	await keepWarm('pinged', 24, Date.now(), { fabled: true });
+	await noteMonitor('pinged', { monitor: monitorOf('pinged').monitor, seen: 't1' });
+	expect(await keepGoing('pinged', 'Tested it.', { ...going(session, turns), askMonitor })).toBe(true);
+	expect(prompts[0]).toContain('Nudged, Claude ended its turn after 3 tool calls: Fixed it.');
+	expect(prompts[0]).toContain('3 keep-warm pings went by');
+	expect(prompts[0]).not.toContain('after 0 tool calls: ·');
+	await keepWarm('pinged', 0);
+});
+
+test('a monitor whose last seen turn is gone from the transcript (compacted away) is told only the latest turn, not the whole run again', async () => {
+	const session = fakeSession();
+	const prompts = [];
+	const askMonitor = async (monitor, cwd, prompt) => {
+		prompts.push(prompt);
+
+		return verdict('{"go": true}');
+	};
+	const turns = [
+		{ ...turn('fix the build', true, 'Fixed the build.'), id: 't1' },
+		{ ...turn(NUDGE, true, 'Ran the tests.'), id: 't2' },
+		{ ...turn(NUDGE), id: 't3' },
+	];
+
+	await keepWarm('compacted', 24, Date.now(), { fabled: true });
+	await noteMonitor('compacted', { monitor: monitorOf('compacted').monitor, seen: 'gone-with-the-compaction' });
+	expect(await keepGoing('compacted', 'Wrote the README.', { ...going(session, turns), askMonitor })).toBe(true);
+	expect(prompts[0]).toContain('Since you last looked:');
+	expect(prompts[0]).toContain('Wrote the README.');
+	expect(prompts[0]).not.toContain('Fixed the build.');
+	expect(prompts[0]).not.toContain('Ran the tests.');
+	expect(monitorOf('compacted').seen).toBe('t3');
+	await keepWarm('compacted', 0);
+});

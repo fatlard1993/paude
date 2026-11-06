@@ -96,6 +96,20 @@ test('its brief is the goal and the run so far; a delta only what happened since
 	expect(deltaFor({ since: [{ theirs: false, steps: 1, last: true }], settled: [], reply: 'Ok.' })).toContain(
 		'A nudged turn ended after 1 tool calls.',
 	);
+	// Keep-warm pings are counted, never told as nudges that did nothing
+	const pinged = deltaFor({
+		since: [
+			{ theirs: false, ping: true, asked: 'keep-warm ping from paude', said: '·', steps: 0, last: false },
+			{ theirs: false, ping: true, asked: 'keep-warm ping from paude', said: '·', steps: 0, last: false },
+			{ theirs: false, asked: 'nudge', said: 'Fixed it.', steps: 4, last: true },
+		],
+		settled: [],
+		reply: 'Fixed it.',
+	});
+
+	expect(pinged).toContain('2 keep-warm pings went by');
+	expect(pinged).not.toContain('Nudged, Claude ended its turn after 0 tool calls');
+	expect(pinged).not.toContain('·');
 });
 
 test("how an ask ended: answered, delivered but unanswered (out of rounds), not delivered, or a conversation that can't go on, with what it cost", () => {
