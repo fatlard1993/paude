@@ -8,6 +8,7 @@ import Argi from 'argi-cli';
 
 import { ensureLocalToken, initAuth, initServerId, passwordIsSet } from './auth';
 import { initActivity } from './activity';
+import { initClaudeInbox } from './claudeInbox';
 import { curlMissing, loadHookSecret, setHookAddress } from './hookSettings';
 import { initNames } from './names';
 import { initNotes } from './notes';
@@ -116,6 +117,7 @@ if (!passwordIsSet()) {
 setClaudePath(options.claude);
 setHolderFolder(path.join(options.data, 'held'));
 await adoptHeldSessions();
+await initClaudeInbox(options.data);
 lastRun.stops.push(await initKeepWarm(options.data, runningSession));
 await initLifetime(options.data);
 await initSessionModels(options.data);

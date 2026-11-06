@@ -1,6 +1,9 @@
+import { mkdtempSync } from 'fs';
+import os from 'os';
+import path from 'path';
 import { expect, test } from 'bun:test';
 
-import { answerTo } from './claudeInbox';
+import { answerTo, askClaude, initClaudeInbox } from './claudeInbox';
 
 const prompt = text => ({ type: 'user', message: { role: 'user', content: text } });
 const said = text => ({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
@@ -41,4 +44,33 @@ test('not answered yet: not in the transcript, or nothing after it', () => {
 
 test('a turn of tools and no words answers empty', () => {
 	expect(answerTo([prompt(ASKED), tool(), result()], ASKED)).toBe('');
+});
+
+const inboxFile = dir => Bun.file(path.join(dir, 'claude-inbox.json')).json();
+
+test("a message waiting for Claude's prompt box is handed on to the next server, which types it in and waits for its answer", async () => {
+	const dir = mkdtempSync(path.join(os.tmpdir(), 'inbox-'));
+	const typed = [];
+	// Claude's box isn't on the screen yet, so the message waits; then the server restarts
+	const noBox = { promptDraft: () => null, typeIn: () => {} };
+	const box = { promptDraft: () => '', typeIn: data => typed.push(data) };
+
+	await initClaudeInbox(dir, id => (id === 'held' ? noBox : undefined));
+	await askClaude('held', { prompt: 'carry on', to: { commentId: 'c1' } });
+	expect(await inboxFile(dir)).toEqual({
+		held: { queue: [{ prompt: 'carry on', to: { commentId: 'c1' } }], asked: [] },
+	});
+
+	await initClaudeInbox(dir, id => (id === 'held' ? box : undefined));
+	expect(typed[0]).toContain('carry on');
+
+	const { held } = await inboxFile(dir);
+
+	expect(held.queue).toEqual([]);
+	expect(held.asked.map(({ prompt, to }) => ({ prompt, to }))).toEqual([
+		{ prompt: 'carry on', to: { commentId: 'c1' } },
+	]);
+	// One for a session the next server doesn't have is let go
+	await initClaudeInbox(dir, () => undefined);
+	expect(await inboxFile(dir)).toEqual({});
 });

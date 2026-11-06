@@ -2,7 +2,7 @@ import { anchorPlace } from '../../shared/attachText';
 import inputKind from '../../shared/inputKind';
 import { identityKey, markSeen, onActivity, recordChange, watchIfNew } from '../activity';
 import { credentialValid, identityOf } from '../auth';
-import { askClaude } from '../claudeInbox';
+import { answersGo, askClaude } from '../claudeInbox';
 import { keepShownText } from '../diffs';
 import { blobOf, hasObject, headCommit, inRepository, keepFile } from '../git';
 import { addChat, addComment, addReply, cleanAnchor, deleteComment, getNotes, react, setResolved } from '../notes';
@@ -127,15 +127,6 @@ const askFromNotes = async (socket, { kind, text, quote, anchor, commentId }) =>
 	await recordChange(session.id);
 
 	const thread = update.comment;
-	const answerAs = async answer => {
-		const answered = thread
-			? await addReply(session.id, 'Claude', { commentId: thread.id, text: answer }, 'claude', { fromClaude: true })
-			: await addChat(session.id, 'Claude', answer, { authorId: 'claude', fromClaude: true });
-
-		if (!answered) return;
-		runningSession(session.id)?.broadcast(answered);
-		await recordChange(session.id);
-	};
 
 	askClaude(session.id, {
 		prompt: promptFor({
@@ -145,9 +136,20 @@ const askFromNotes = async (socket, { kind, text, quote, anchor, commentId }) =>
 			quote: thread?.quote ?? quote,
 			anchor: thread?.anchor,
 		}),
-		answer: answerAs,
+		to: { commentId: thread?.id ?? null },
 	});
 };
+
+// Claude's answer to a message goes back where it was asked: the comment's thread, or the chat
+answersGo(async (sessionId, { commentId }, answer) => {
+	const answered = commentId
+		? await addReply(sessionId, 'Claude', { commentId, text: answer }, 'claude', { fromClaude: true })
+		: await addChat(sessionId, 'Claude', answer, { authorId: 'claude', fromClaude: true });
+
+	if (!answered) return;
+	runningSession(sessionId)?.broadcast(answered);
+	await recordChange(sessionId);
+});
 
 // Whoever is attached sees each change as it happens, so it never counts as unseen for them; a status change
 // (Claude asking something, or done) goes out to them as presence

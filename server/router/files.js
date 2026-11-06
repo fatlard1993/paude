@@ -360,7 +360,7 @@ const filesRoutes = async request => {
 
 		if (!decision) return new Response('That one is gone', { status: 404 });
 		if (!(await openSession(writing.id))) return new Response('Session not found', { status: 404 });
-		askClaude(writing.id, { prompt: writeDownPrompt(decision), answer: async () => {} });
+		askClaude(writing.id, { prompt: writeDownPrompt(decision) });
 
 		return new Response(null, { status: 204 });
 	}

@@ -535,7 +535,7 @@ const sessionsRoutes = async (request, server) => {
 		if (!String(text ?? '').trim()) return new Response('Nothing to send', { status: 400 });
 		if (!(await openSession(match.id))) return new Response('Session not found', { status: 404 });
 
-		askClaude(match.id, { prompt: String(text).trim(), answer: async () => {} });
+		askClaude(match.id, { prompt: String(text).trim() });
 
 		return new Response(null, { status: 204 });
 	}

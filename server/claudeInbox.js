@@ -1,5 +1,8 @@
+import path from 'path';
 import { delay } from '@vanilla-bean/components/utils/data';
 
+import readJsonFile from '../shared/readJsonFile';
+import writeJsonFile from '../shared/writeJsonFile';
 import { statusOf } from './activity';
 import { promptText } from './sessions/history';
 import { runningSession } from './sessions/running';
@@ -11,9 +14,18 @@ const ENTER_AFTER_MS = 300;
 // A message whose turn never shows up in the transcript (Claude cleared, or the session restarted) stops waiting
 const GIVE_UP_MS = 60 * 60 * 1000;
 
-// Per session: messages from chat and comments waiting to be typed into Claude, and those typed in, waiting for their
-// turn to end. Each is { prompt, answer: text => Promise }.
+// Per session: messages from chat, comments and prompts waiting to be typed into Claude, and those typed in, waiting
+// for their turn to end. Each is { prompt, to }, `to` where Claude's answer goes (as the answersGo handler takes it),
+// or nothing for one nobody reads back. Saved to a file as they change: a server restart (every save, in dev mode)
+// hands them on to the next server instead of dropping what was already accepted.
 const inboxes = new Map();
+let file = null;
+let sessionOf = runningSession;
+let sendAnswer = async () => {};
+
+const save = () =>
+	file &&
+	writeJsonFile(file, () => Object.fromEntries([...inboxes].map(([id, { queue, asked }]) => [id, { queue, asked }])));
 
 const inboxOf = id => {
 	if (!inboxes.has(id)) inboxes.set(id, { queue: [], asked: [], timer: null });
@@ -25,11 +37,15 @@ const inboxOf = id => {
 // permission prompt nor run into what someone is halfway through typing. While Claude works, Claude queues it.
 const deliver = id => {
 	const inbox = inboxes.get(id);
-	const session = runningSession(id);
+	const session = sessionOf(id);
 
 	if (!inbox) return;
 	clearTimeout(inbox.timer);
-	if (!session) return inboxes.delete(id);
+	if (!session) {
+		inboxes.delete(id);
+
+		return save();
+	}
 	if (!inbox.queue.length) return;
 
 	if (statusOf(id) === 'waiting' || session.promptDraft() !== '') {
@@ -44,14 +60,36 @@ const deliver = id => {
 	setTimeout(() => session.typeIn('\r'), ENTER_AFTER_MS);
 	inbox.asked.push({ ...message, at: Date.now() });
 	if (inbox.queue.length) inbox.timer = setTimeout(() => deliver(id), RETRY_MS);
+
+	return save();
 };
+
+// Where the messages wait between servers; the ones waiting are taken up again, for the sessions running (adopted
+// from the last server) and Claude's answers go to the answersGo handler as (sessionId, to, text)
+export const initClaudeInbox = async (dataDir, running = runningSession) => {
+	file = path.join(dataDir, 'claude-inbox.json');
+	sessionOf = running;
+	for (const inbox of inboxes.values()) clearTimeout(inbox.timer);
+	inboxes.clear();
+	for (const [id, { queue = [], asked = [] }] of Object.entries(await readJsonFile(file, {}))) {
+		inboxes.set(id, { queue, asked, timer: null });
+		deliver(id);
+	}
+
+	return save();
+};
+
+export const answersGo = answer => (sendAnswer = answer);
 
 // Someone's message waits to be typed into Claude
 export const waitingToAsk = id => Boolean(inboxes.get(id)?.queue.length);
 
-export const askClaude = (id, message) => {
-	inboxOf(id).queue.push(message);
+// Resolves once it's saved, typed in or waiting
+export const askClaude = (id, { prompt, to }) => {
+	inboxOf(id).queue.push({ prompt, ...(to && { to }) });
 	deliver(id);
+
+	return save();
 };
 
 const textOf = line =>
@@ -88,7 +126,7 @@ export const turnEnded = async id => {
 		await delay(wait);
 
 		const inbox = inboxes.get(id);
-		const session = runningSession(id);
+		const session = sessionOf(id);
 
 		if (!inbox?.asked.length || !session) return;
 
@@ -100,7 +138,9 @@ export const turnEnded = async id => {
 			if (answer === undefined && Date.now() - message.at < GIVE_UP_MS) continue;
 
 			inbox.asked = inbox.asked.filter(other => other !== message);
-			if (answer !== undefined) await message.answer(answer || '(Claude finished without writing an answer.)');
+			save();
+			if (answer !== undefined && message.to)
+				await sendAnswer(id, message.to, answer || '(Claude finished without writing an answer.)');
 		}
 
 		deliver(id);
