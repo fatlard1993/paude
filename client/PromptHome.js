@@ -1,6 +1,7 @@
 import { Dialog, Elem, isMac, Notify, styled } from '@vanilla-bean/components';
 
 import { tintsOf } from '../shared/hues';
+import { LIFETIMES } from '../shared/lifetimes';
 import { MODELS } from '../shared/models';
 import tokens from '../shared/tokenCount';
 import { createSession, findPromptHome, openRemote, sendPrompt, sendRemotePrompt, startRemoteSession } from './api';
@@ -286,12 +287,6 @@ const openThere = async (url, to) => {
 	return Boolean(response?.ok);
 };
 
-// What the lifetime suggested for a new session means
-const LIFETIME_NOTES = {
-	warm: 'Starts kept warm: pinged while you are away, so it comes back cached',
-	brief: "Starts short-lived: deleted once Claude's cache lets go of it with nobody in it",
-};
-
 // What sending there costs, from the session's cache meter
 const costOf = meter => {
 	if (!meter) return null;
@@ -337,9 +332,29 @@ const modelPicker = (suggested, why) => {
 	return { node, value: () => (select.value === 'default' ? undefined : select.value) };
 };
 
+// How long the new session lasts, Haiku's suggestion picked (ordinary when it made none): every lifetime, the ones that
+// act unattended on the owner's usage included, since this is the person choosing
+const lifetimePicker = suggested => {
+	const node = element('div', 'model');
+	const picking = element('label', 'pick');
+	const select = element('select');
+
+	for (const [lifetime, { label, detail }] of Object.entries(LIFETIMES)) {
+		const option = element('option', '', `${label}${lifetime === suggested ? ' (suggested)' : ''}: ${detail}`);
+
+		option.value = lifetime;
+		select.append(option);
+	}
+	select.value = suggested in LIFETIMES ? suggested : 'ordinary';
+	picking.append('Lasts', select);
+	node.append(picking);
+
+	return { node, value: () => select.value };
+};
+
 // Each place a prompt can go, as { heading, lines, accent, go, after }: the sessions it carries on, then a new session
-// in the project that fits, here or on another server, with the model it runs on to pick under it (`after`). go()
-// takes it there and resolves true once it's on its way.
+// in the project that fits, here or on another server, with the model it runs on and how long it lasts to pick under
+// it (`after`). go() takes it there and resolves true once it's on its way.
 const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive }) => {
 	const sessions = matches.map(({ session, remote, why, meter }) => ({
 		heading: 'Carries on',
@@ -364,9 +379,11 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive }
 		},
 	}));
 	const where = fresh.project ?? project;
-	const mode = /^(warm|brief)$/.test(fresh.lifetime ?? '') ? fresh.lifetime : undefined;
 	const model = modelPicker(fresh.model, fresh.modelWhy);
+	const lifetime = lifetimePicker(fresh.lifetime);
+	const after = element('div', 'pickers');
 
+	after.append(model.node, lifetime.node);
 	if (!where) return sessions;
 
 	return [
@@ -377,11 +394,12 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive }
 				element('div', 'name', `Start it in ${where}`),
 				element('div', 'where', fresh.remote?.name ?? serverName() ?? 'this machine'),
 				fresh.why && element('div', 'why', fresh.why),
-				mode && element('div', 'cost', LIFETIME_NOTES[mode]),
 			],
-			after: model.node,
+			after,
 			fresh: true,
 			go: async () => {
+				const mode = lifetime.value() === 'ordinary' ? undefined : lifetime.value();
+
 				if (fresh.remote) {
 					const { body, response } = await startRemoteSession(fresh.remote.url, where, prompt, mode, model.value());
 
@@ -390,7 +408,7 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive }
 
 					return await openThere(fresh.remote.url, { sessionId: body.id });
 				}
-				if (startFresh) return startFresh(where, fresh.lifetime, model.value());
+				if (startFresh) return startFresh(where, lifetime.value(), model.value());
 
 				const { body, response } = await createSession(where, prompt, undefined, mode, model.value());
 
