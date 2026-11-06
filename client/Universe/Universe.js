@@ -49,15 +49,12 @@ import { airlockCard } from './airlockCard';
 import { logCard, manifestCard, promptCard, replyCard } from './replyCard';
 import { arrivalOf } from './sidePanel';
 import Ship, { BEAM_SECONDS, BRIDGE, LOUNGE, sessionKey, triage, GROUP_SEPARATOR } from './scene';
-import { UNIT } from './station';
 import { FOCUS_WIDTH, Stage } from './universeStyle';
 
 // Panels framed as void-driller frames them, corners cut by augmented-ui
 const FRAME = { large: 'tl-clip tr-2-clip-x br-clip bl-2-clip-y border', small: 'tl-clip br-clip border' };
 
 const POLL_MS = 2000;
-// How far in a zoom by hand has to be for the room in the middle to have its panel
-const FOCUS_ZOOM = 4;
 const HOLD_MS = 550;
 const REMOTES_MS = 60_000;
 // How soon to ask again when the list of other paudes didn't come back
@@ -731,9 +728,9 @@ export default class Universe extends View {
 		this.tip.style.top = `${Math.max(8, Math.min(height - tip.height - 8, y + 14))}px`;
 	}
 
-	// A worker opens its reply, its monitor its terminal; the materializer opens a new
-	// prompt; a room is looked
-	// at closely, and again to look at it all. Anywhere else closes what's open, then looks at it all.
+	// A worker opens its reply, its monitor its terminal; the materializer opens a new prompt; a room, a deck or an engine
+	// makes the panel about it, and pressed again gives the panel back to the whole ship. Anywhere else closes what's
+	// open and gives the panel back to the ship. None of it moves the view: that stays where the hand put it.
 	press(point, mouse, { adding = false } = {}) {
 		const target = this.aboard.hit(point.x, point.y);
 		const { looking } = this.aboard;
@@ -748,7 +745,7 @@ export default class Universe extends View {
 		// Another ship's terminal: to the transporter with it picked, to beam over once confirmed
 		if (target?.kind === 'fleet') {
 			this.chosenShip = target.ship.key;
-			this.aboard.look('transporter');
+			this.aboard.look('transporter', { fly: false });
 			this.focusPainted = null;
 
 			return this.paintFocus();
@@ -780,18 +777,21 @@ export default class Universe extends View {
 		if (target?.kind === 'bridge' || target?.kind === 'lounge') {
 			const at = target.kind === 'bridge' ? BRIDGE : LOUNGE;
 
-			return this.aboard.look(looking === at ? 'all' : at);
+			return this.aboard.look(looking === at ? 'all' : at, { fly: false });
 		}
-		if (target?.kind === 'bay') return this.aboard.look(looking === target.bay.name ? 'all' : target.bay.name);
+		// A press says what the panel is about; the view stays where the hand put it (Look closer flies it)
+		if (target?.kind === 'bay')
+			return this.aboard.look(looking === target.bay.name ? 'all' : target.bay.name, { fly: false });
 		if (target?.room && (target.kind === 'system' || ROOMS[target.kind]))
-			return this.aboard.look(looking === target.room.name ? 'all' : target.room.name);
-		if (target?.kind === 'engine') return this.aboard.look(looking === target.engine.key ? 'all' : target.engine.key);
+			return this.aboard.look(looking === target.room.name ? 'all' : target.room.name, { fly: false });
+		if (target?.kind === 'engine')
+			return this.aboard.look(looking === target.engine.key ? 'all' : target.engine.key, { fly: false });
 		// No hover on a touch screen: a touch says what it landed on
 		if (target && !mouse) return this.showTip(target, point);
 		if (this.card) return this.closeCard();
 
 		this.select(null);
-		this.aboard.look('all');
+		this.aboard.look('all', { fly: false });
 	}
 
 	// A project's rack: the ports and processes of the session in it that runs some, or a pick of each that does
@@ -1674,7 +1674,6 @@ export default class Universe extends View {
 		// The whole ship has the bridge's panel, where the ship's health, what needs you and starting work are kept
 		if (!looking || looking === 'all')
 			return aboard.bridge ? { key: 'bridge', kind: 'bridge', room: aboard.bridge } : null;
-		if (looking === 'free') return this.roomAtMiddle();
 
 		const bay = aboard.bays.find(({ name }) => name === looking);
 
@@ -1687,29 +1686,6 @@ export default class Universe extends View {
 		const room = aboard.roomOf(looking);
 
 		return room?.kind ? { key: `room:${room.kind}:${room.name}`, kind: room.kind, room } : null;
-	}
-
-	// Zoomed in by hand, the room in the middle of the screen is the one looked at, once it's close enough to see into
-	roomAtMiddle() {
-		const { aboard } = this;
-
-		if (aboard.camera.zoom < FOCUS_ZOOM) return null;
-
-		const x = aboard.camera.x / UNIT.x;
-		const y = aboard.camera.y / UNIT.y;
-		const room = aboard.layout.rooms?.find(
-			({ x: left, y: top, w, d }) => x >= left && x <= left + w && y >= top && y <= top + d,
-		);
-
-		if (!room) return null;
-
-		const bay = !room.kind && aboard.bays.find(({ name }) => name === room.name);
-
-		if (bay) return { key: `bay:${bay.name}`, kind: 'bay', room: bay, bay };
-		if (room.kind === 'bridge') return { key: 'bridge', kind: 'bridge', room: aboard.bridge };
-		if (room.kind === 'lounge') return { key: 'lounge', kind: 'lounge', room: aboard.lounge };
-
-		return room.kind ? { key: `room:${room.kind}:${room.name}`, kind: room.kind, room } : null;
 	}
 
 	// What the panel beside a room says: the room's facts as its flyout has them, what's in it to pick, and its verbs

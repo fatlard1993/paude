@@ -900,7 +900,7 @@ export default class Ship {
 	// Each label's words and size for its place, as last worked out
 	fitted = new Map();
 	layout = layOut();
-	// 'all', a bay's name or an engine's key, or 'free' once dragged or zoomed by hand
+	// What's looked at: 'all', a bay's name, an engine's key or a room's name; the view is flown to it only when asked
 	looking = 'all';
 
 	resize(width, height) {
@@ -929,6 +929,8 @@ export default class Ship {
 
 	// The other ships of its fleet, as its transporter hears from them: [{ key, name, needs, news, working }]
 	fleet = [];
+	// Whether the view is on its way to its goal, or the hand's where it is
+	flying = true;
 	beamAt = -Infinity;
 	// Someone traveling by the transporter: aboard from another ship (`visitor`), gone to one (`away`, their key), walking
 	// to its pad to go (`departing`), and just beamed in (`arriving`)
@@ -960,8 +962,9 @@ export default class Ship {
 		return { x: x * this.camera.zoom + offset.x, y: y * this.camera.zoom + offset.y };
 	}
 
+	// Where the view would frame what's looked at (or the point flown to): flown to only while `flying`
 	goal() {
-		if (this.looking === 'free') return this.flyingTo ?? null;
+		if (this.flyingTo) return this.flyingTo;
 
 		const joining = this.joinGoal();
 
@@ -1046,13 +1049,16 @@ export default class Ship {
 		};
 	}
 
-	// Looking at the transporter, whoever is looking (`viewer`, their key aboard) walks onto its pad, ready to go
-	look(at) {
+	// What's looked at: what the panel is about, and where whoever is looking stands (at the transporter, they walk onto
+	// its pad, ready to go). The view flies to it only when asked (`fly`): a press on a room says what it's about and
+	// leaves the view where the hand put it; a look command, an arrival or Escape frame it.
+	look(at, { fly = true } = {}) {
 		const known = Boolean(this.roomOf(at));
 		const readying = this.roomOf(at)?.kind === 'transporter';
 
 		this.looking = known ? at : 'all';
 		this.flyingTo = null;
+		this.flying = fly;
 		if (readying !== Boolean(this.readying)) {
 			this.readying = readying;
 			if (this.layout) this.board();
@@ -1071,16 +1077,18 @@ export default class Ship {
 	}
 
 	// Somewhere particular, closely: a worker's seat
-	// Flown to, the view gliding there and drawing in rather than jumping; free to roam once there
+	// Flown to a point, the view gliding there and drawing in rather than jumping; free to roam once there. What's looked
+	// at is unchanged: the view and the panel are managed apart.
 	lookAt(point) {
 		const at = this.art(point);
 
-		this.looking = 'free';
 		this.flyingTo = { x: at.x, y: at.y - 10, zoom: Math.max(Math.round(this.camera.zoom), 4) };
+		this.flying = true;
 	}
 
+	// By hand: the view is the hand's from here, and nothing flies it until asked
 	pan(across, down) {
-		this.looking = 'free';
+		this.flying = false;
 		this.flyingTo = null;
 		this.camera.x -= across / this.camera.zoom;
 		this.camera.y -= down / this.camera.zoom;
@@ -1092,7 +1100,7 @@ export default class Ship {
 		const zoom = Math.max(ZOOMS.least, Math.min(ZOOMS.most, before + (factor > 1 ? 1 : -1)));
 
 		if (zoom === before) return;
-		this.looking = 'free';
+		this.flying = false;
 		this.flyingTo = null;
 		this.camera.x += (x - this.width / 2) * (1 / before - 1 / zoom);
 		this.camera.y += (y - this.height / 2) * (1 / before - 1 / zoom);
@@ -1969,9 +1977,11 @@ export default class Ship {
 		this.refuels = this.refuels.filter(({ time }) => time < 1);
 		this.haulers = this.haulers.filter(({ time }) => time < 1);
 
+		// The frame is worked out every step (it says whether the bridge's panel fits beside the ship); the view flies
+		// to it only while asked, and is the hand's once it's there
 		const goal = this.goal();
 
-		if (goal) {
+		if (goal && this.flying) {
 			const ease = calm ? 1 : Math.min(1, seconds * EASE);
 
 			// Its zoom eased there too, evenly however far (by its ratio), settling exactly on it once it's near
@@ -1981,12 +1991,10 @@ export default class Ship {
 			this.camera.zoom = Math.abs(zoom - goal.zoom) < 0.01 ? goal.zoom : zoom;
 			for (const measure of ['x', 'y']) this.camera[measure] = mix(this.camera[measure], goal[measure], ease);
 			// Flown there: free to roam from it
-			if (
-				goal === this.flyingTo &&
-				this.camera.zoom === goal.zoom &&
-				Math.hypot(this.camera.x - goal.x, this.camera.y - goal.y) < 0.5
-			)
+			if (this.camera.zoom === goal.zoom && Math.hypot(this.camera.x - goal.x, this.camera.y - goal.y) < 0.5) {
 				this.flyingTo = null;
+				this.flying = false;
+			}
 		}
 	}
 
