@@ -105,6 +105,22 @@ test('watching a project watches its sessions, the ones it gains too, and leads 
 	later.process.kill();
 });
 
+test('starting a session watches its project the first time; one turned off by hand, as app was above, stays off', async () => {
+	await mkdir(path.join(base, 'projects', 'fresh'), { recursive: true });
+	const start = async project =>
+		(await call(`/api/projects/${project}/sessions`, { token: tokens.owner, method: 'POST', body: {} })).json();
+	const watching = async name =>
+		(await (await call('/api/projects', { token: tokens.owner })).json()).find(project => project.name === name)
+			.watching;
+
+	const fresh = await start('fresh');
+	const again = await start('app');
+
+	expect(await watching('fresh')).toBe(true);
+	expect(await watching('app')).toBe(false);
+	await Promise.all([stopSession(fresh.id), stopSession(again.id)]);
+});
+
 test("git: reading takes the files role, changing takes the typing role, and a guest's own session only", async () => {
 	const status = `/api/sessions/${session.id}/git/status`;
 	const stage = { method: 'POST', body: { all: true } };

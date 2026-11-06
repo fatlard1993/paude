@@ -10,6 +10,7 @@ import {
 	setProjectWatching,
 	setWatching,
 	watchedBy,
+	watchProjectIfNew,
 	watchesAnyProject,
 	watchesProject,
 } from '../activity';
@@ -117,13 +118,15 @@ const worktreeNameFor = text => {
 const HEARTBEAT_MS = 5000;
 
 // A new session, kept warm, kept going or short-lived from the start when asked, on the model asked for: mode is
-// 'warm', 'going', 'brief' or anything else for none, model one of MODEL_NAMES or anything else for the default
-const startWith = async (folder, text, { mode, model } = {}) => {
+// 'warm', 'going', 'brief' or anything else for none, model one of MODEL_NAMES or anything else for the default.
+// Whoever starts it watches its project from then on, unless they turned that off themselves
+const startWith = async (folder, text, { mode, model, identity, project } = {}) => {
 	const known = MODEL_NAMES.includes(model) ? model : undefined;
 	const { id } = startSession(folder, text?.trim(), known);
 
 	await setModel(id, known);
 	if (LIFETIMES.includes(mode)) await setLifetime(id, mode);
+	await watchProjectIfNew(identity, project);
 
 	return id;
 };
@@ -673,7 +676,7 @@ const sessionsRoutes = async (request, server) => {
 					return { folder, files: start?.pr ? await pullRequestStartFiles(folder, start.pr) : [] };
 				},
 				text,
-				{ mode, model },
+				{ mode, model, identity, project: match.project },
 			);
 		}
 
@@ -687,7 +690,7 @@ const sessionsRoutes = async (request, server) => {
 			folder = joined.path;
 		}
 
-		return Response.json({ id: await startWith(folder, text, { mode, model }) });
+		return Response.json({ id: await startWith(folder, text, { mode, model, identity, project: match.project }) });
 	}
 
 	match = requestMatch('GET', '/api/sessions/:id/attach', request);
@@ -749,6 +752,8 @@ const sessionsRoutes = async (request, server) => {
 		if (typeof upToMessageId !== 'string') return new Response('Which message to fork after?', { status: 400 });
 
 		const { sessionId } = await forkSession(match.id, { dir: cwd, upToMessageId });
+
+		await watchProjectIfNew(identity, projectOf(cwd));
 
 		return Response.json({ id: sessionId });
 	}

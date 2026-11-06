@@ -101,18 +101,16 @@ export const markSeen = async (identity, sessionId) => {
 export const watchesProject = (identity, project) =>
 	Boolean(project && projectWatches[identityKey(identity)]?.[project]);
 
-export const watchesAnyProject = identity => Object.keys(projectWatches[identityKey(identity)] ?? {}).length > 0;
+export const watchesAnyProject = identity => Object.values(projectWatches[identityKey(identity)] ?? {}).some(Boolean);
 
-// Watching a project, or not, sets each of its sessions the same way; the ones it gains later follow the project
+// Watching a project, or not, sets each of its sessions the same way; the ones it gains later follow the project.
+// Turned off by hand, it's kept as off, so starting a session there doesn't turn it back on
 export const setProjectWatching = async (identity, project, watching, sessionIds) => {
 	const key = identityKey(identity);
 
 	if (!key) return;
 
-	const projects = (projectWatches[key] ??= {});
-
-	if (watching) projects[project] = true;
-	else delete projects[project];
+	(projectWatches[key] ??= {})[project] = watching;
 
 	for (const sessionId of sessionIds) {
 		const entry = (watches[key] ??= {})[sessionId] ?? { seen: record(sessionId).seq };
@@ -120,6 +118,16 @@ export const setProjectWatching = async (identity, project, watching, sessionIds
 		watches[key][sessionId] = { ...entry, watching };
 	}
 	await Promise.all([saveProjectWatches(), saveWatches()]);
+};
+
+// Starting a session in a project watches the project the first time, so what's started comes aboard and stays;
+// one turned off by hand stays off
+export const watchProjectIfNew = async (identity, project) => {
+	const key = identityKey(identity);
+
+	if (!key || !project || projectWatches[key]?.[project] !== undefined) return;
+	(projectWatches[key] ??= {})[project] = true;
+	await saveProjectWatches();
 };
 
 export const forgetProjectWatches = async project => {

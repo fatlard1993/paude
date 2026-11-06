@@ -12,7 +12,10 @@ import {
 	setStatus,
 	setWatching,
 	watchIfNew,
+	watchProjectIfNew,
 	watchedBy,
+	watchesAnyProject,
+	watchesProject,
 } from './activity';
 
 const owner = { owner: true };
@@ -97,4 +100,22 @@ test('a session only seen, never watched, is still watched the first time someon
 	await watchIfNew(owner, 's');
 
 	expect(watchedBy(owner)).toEqual(['s']);
+});
+
+test('starting a session in a project watches it the first time; one turned off by hand stays off', async () => {
+	await watchProjectIfNew(owner, 'app');
+	expect(watchesProject(owner, 'app')).toBe(true);
+	expect(activitySummary(owner, 'new', { ...running, project: 'app' }).watching).toBe(true);
+	// A guest's start watches it for them alone
+	expect(watchesProject(guest, 'app')).toBe(false);
+
+	await setProjectWatching(owner, 'app', false, []);
+	await watchProjectIfNew(owner, 'app');
+	expect(watchesProject(owner, 'app')).toBe(false);
+	expect(watchesAnyProject(owner)).toBe(false);
+
+	// Nothing to watch for nobody
+	await watchProjectIfNew({ owner: false }, 'app');
+	await watchProjectIfNew(owner, null);
+	expect(watchesAnyProject(owner)).toBe(false);
 });
