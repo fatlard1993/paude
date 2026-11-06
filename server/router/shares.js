@@ -6,12 +6,10 @@ import { requestMatch } from '@vanilla-bean/components/app';
 import { credentialOf, identityOf } from '../auth';
 import { isSecret } from '../files';
 import { may } from '../permissions';
+import { previewOrigin as previewOriginOf } from '../publicOrigin';
 import { serverSettings } from '../serverSettings';
 import { sessionRecord } from '../sessions/record';
 import { ShareError, addShare, removeShare, renameShare, sharesOf } from '../shares';
-
-// Behind Caddy, the preview listener's public port; Caddy's paude site is on 443, its preview site on this
-const PUBLIC_PREVIEW_PORT = 8444;
 
 let previewPort;
 
@@ -19,18 +17,8 @@ export const setPreviewPort = port => {
 	previewPort = port;
 };
 
-// Where this browser reaches shares: the preview listener itself when it reached paude directly (localhost:8044),
-// or the port in front of it when through a proxy. server.json's `previewPort` names that port when it isn't 8444.
-const previewOrigin = async request => {
-	const url = new URL(request.url);
-	const proto = request.headers.get('x-forwarded-proto') ?? url.protocol.replace(':', '');
-	const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? url.host;
-	const hostname = host.replace(/:\d+$/, '');
-	const direct = /:\d+$/.test(host) && !request.headers.get('x-forwarded-for');
-	const port = direct ? previewPort : ((await serverSettings()).previewPort ?? PUBLIC_PREVIEW_PORT);
-
-	return `${proto}://${hostname}:${port}`;
-};
+const previewOrigin = async request =>
+	previewOriginOf(request, { listenerPort: previewPort, settings: await serverSettings() });
 
 const withLinks = (shares, origin) =>
 	shares.map(share => ({ ...share, url: `${origin}/s/${encodeURIComponent(share.name)}/` }));

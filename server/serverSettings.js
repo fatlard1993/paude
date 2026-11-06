@@ -3,16 +3,19 @@ import { join } from 'path';
 
 import readJsonFile from '../shared/readJsonFile';
 import updateJsonFile from '../shared/updateJsonFile';
+import { cleanPublicUrl } from './publicOrigin';
 
 const MAX_NAME = 40;
 
 // This machine's paude settings live in ~/.config/paude, beside the paude command's own
 export const configFile = name => join(process.env.XDG_CONFIG_HOME ?? join(os.homedir(), '.config'), 'paude', name);
 
-// { "name": "laptop", "shareRemotes": true, "ownerName": "Alice" }. `name` is what browsers and other machines call this
-// server unless they name it themselves; `shareRemotes` lets a password login see the other servers this machine is
-// logged into, not just this machine's own logins; `ownerName` is what the owner goes by in chat and comments (this
-// machine's user name otherwise). Read each time, so a change needs no restart.
+// { "name": "laptop", "shareRemotes": true, "ownerName": "Alice", "publicUrl": "https://laptop.tail1234.ts.net" }.
+// `name` is what browsers and other machines call this server unless they name it themselves; `shareRemotes` lets a
+// password login see the other servers this machine is logged into, not just this machine's own logins; `ownerName`
+// is what the owner goes by in chat and comments (this machine's user name otherwise); `publicUrl` is the address
+// invite and share links carry, whichever address they were made from (paude tailscale sets it). Read each time, so
+// a change needs no restart.
 export const serverSettings = () => readJsonFile(configFile('server.json'), {}).catch(() => ({}));
 
 // This machine's own token, or the owner password where this machine shares them
@@ -31,6 +34,16 @@ export const setServerName = name =>
 		const next = { ...settings, name: cleanServerName(name) };
 
 		if (!next.name) delete next.name;
+
+		return next;
+	});
+
+// Where links made for other people point; null takes it back to the address each link was made from
+export const setPublicUrl = url =>
+	updateJsonFile(configFile('server.json'), {}, settings => {
+		const next = { ...settings, publicUrl: cleanPublicUrl(url) };
+
+		if (!next.publicUrl) delete next.publicUrl;
 
 		return next;
 	});

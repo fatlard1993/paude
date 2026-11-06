@@ -65,7 +65,7 @@ const renderPeople = async sessionId => {
 			return;
 		}
 
-		const link = `${window.location.origin}/#/join/${body.token}`;
+		const { link } = body;
 		const field = element('input');
 		const copy = element('button', '', 'Copy');
 

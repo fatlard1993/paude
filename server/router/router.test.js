@@ -13,7 +13,7 @@ import { initNames } from '../names';
 import { initNotes } from '../notes';
 import { initProjects, setProjectsRoot } from '../projects';
 import { allRunning, setClaudePath, startSession, stopSession } from '../sessions/running';
-import { setServerName } from '../serverSettings';
+import { setPublicUrl, setServerName } from '../serverSettings';
 import { initShares, shareNamed } from '../shares';
 import { saveToken } from '../../shared/credentials';
 import { readProgress } from '../../shared/progress';
@@ -381,6 +381,32 @@ test('a machine that shares its servers lists them for the owner password too, n
 		expect((await (await call('/api/auth', { token: tokens.comment })).json()).identity.remotes).toBeUndefined();
 	} finally {
 		await rm(path.join(process.env.XDG_CONFIG_HOME, 'paude', 'server.json'));
+	}
+});
+
+test('an invite link carries the public address when the server has one, else where the request came in', async () => {
+	const settings = path.join(process.env.XDG_CONFIG_HOME, 'paude', 'server.json');
+	const invite = { method: 'POST', token: tokens.owner, body: { name: 'Ryan', role: 'watch', hours: 1 } };
+	const headers = { 'x-forwarded-proto': 'https', 'x-forwarded-host': 'workbook.local', 'x-forwarded-for': '10.0.0.2' };
+
+	const local = await (await call(`/api/sessions/${session.id}/invites`, invite)).json();
+
+	expect(local.link).toBe(`${server.url}#/join/${local.token}`);
+
+	const proxied = await (await call(`/api/sessions/${session.id}/invites`, { ...invite, headers })).json();
+
+	expect(proxied.link).toBe(`https://workbook.local/#/join/${proxied.token}`);
+
+	await setPublicUrl('https://workbook.tail1234.ts.net/');
+
+	try {
+		const published = await (await call(`/api/sessions/${session.id}/invites`, { ...invite, headers })).json();
+
+		expect(published.link).toBe(`https://workbook.tail1234.ts.net/#/join/${published.token}`);
+		await setPublicUrl(null);
+		expect(await Bun.file(settings).json()).toEqual({});
+	} finally {
+		await rm(settings, { force: true });
 	}
 });
 

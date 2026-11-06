@@ -1,7 +1,7 @@
 import { requestMatch } from '@vanilla-bean/components/app';
 
 import { watchIfNew } from '../activity';
-import { mayListRemotes, ownerName, serverName } from '../serverSettings';
+import { mayListRemotes, ownerName, serverName, serverSettings } from '../serverSettings';
 import {
 	checkPassword,
 	createHandoff,
@@ -22,6 +22,7 @@ import {
 	setPassword,
 } from '../auth';
 import { ROLES, guestMayRequest } from '../permissions';
+import { publicOrigin } from '../publicOrigin';
 
 const OPEN_ROUTES = new Set(['/api/auth', '/api/login', '/api/tokens', '/api/join', '/api/handoff/redeem']);
 const INVITE_HOURS = [1, 24, 24 * 7];
@@ -160,7 +161,16 @@ const authRoutes = async request => {
 
 		const { invite, token } = await createInvite({ sessionId: match.id, name: cleanName, role, hours });
 
-		return Response.json({ id: invite.id, name: invite.name, role, expires: invite.expires, token });
+		// The link carries the server's public address, not this tab's: an invite made from a .local tab has to open from
+		// wherever the guest is
+		return Response.json({
+			id: invite.id,
+			name: invite.name,
+			role,
+			expires: invite.expires,
+			token,
+			link: `${publicOrigin(request, await serverSettings())}/#/join/${token}`,
+		});
 	}
 
 	match = requestMatch('DELETE', '/api/invites/:id', request);
