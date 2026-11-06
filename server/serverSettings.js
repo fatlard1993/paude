@@ -14,7 +14,7 @@ export const configFile = name => join(process.env.XDG_CONFIG_HOME ?? join(os.ho
 // `name` is what browsers and other machines call this server unless they name it themselves; `shareRemotes` lets a
 // password login see the other servers this machine is logged into, not just this machine's own logins; `ownerName`
 // is what the owner goes by in chat and comments (this machine's user name otherwise); `publicUrl` is the address
-// invite and share links carry, whichever address they were made from (paude tailscale sets it). Read each time, so
+// invite links carry, whichever address they were made from (paude tailscale sets it). Read each time, so
 // a change needs no restart.
 export const serverSettings = () => readJsonFile(configFile('server.json'), {}).catch(() => ({}));
 
@@ -38,7 +38,7 @@ export const setServerName = name =>
 		return next;
 	});
 
-// Where links made for other people point; null takes it back to the address each link was made from
+// Where invite links point; null takes it back to the address each link was made from
 export const setPublicUrl = url =>
 	updateJsonFile(configFile('server.json'), {}, settings => {
 		const next = { ...settings, publicUrl: cleanPublicUrl(url) };

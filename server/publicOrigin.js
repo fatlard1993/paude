@@ -26,19 +26,25 @@ export const requestOrigin = request => {
 	return `${proto}://${host}`;
 };
 
-// The address a link made for someone else carries: server.json's `publicUrl` where there is one, else where this
-// request came in. An invite made from a laptop's .local address has to open from wherever the guest is.
+// The address an invite link carries: server.json's `publicUrl` where there is one, else where this request came in.
+// An invite made from a laptop's .local address has to open from wherever the guest is.
 export const publicOrigin = (request, settings) => cleanPublicUrl(settings.publicUrl) ?? requestOrigin(request);
 
-// Where this browser reaches shares: the preview listener itself when it reached paude directly (localhost:8044),
-// else the preview port in front of the public address (server.json's `previewPort` when it isn't 8444)
+// Where this browser reaches shares, beside where it reached paude: the preview listener itself when it came in
+// directly (localhost:8044), else the preview port in front of the proxy it came through. A proxy on a port of its
+// own (workbook.local:9443) has its preview on the next port; one on 443 has it on server.json's `previewPort`, 8444
+// unless set. The viewer's own address, never `publicUrl`: a share is opened from the paude page beside it, so the
+// address that page was reached at is the one that works for them.
+const previewPortFor = (origin, { direct, listenerPort, settings }) => {
+	if (direct) return listenerPort;
+	if (origin.port) return Number(origin.port) + 1;
+
+	return settings.previewPort ?? PUBLIC_PREVIEW_PORT;
+};
+
 export const previewOrigin = (request, { listenerPort, settings }) => {
-	const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? new URL(request.url).host;
-	const direct = /:\d+$/.test(host) && !request.headers.get('x-forwarded-for');
+	const origin = new URL(requestOrigin(request));
+	const direct = Boolean(origin.port) && !request.headers.get('x-forwarded-for');
 
-	if (direct) return `${requestOrigin(request).replace(/:\d+$/, '')}:${listenerPort}`;
-
-	const { protocol, hostname } = new URL(publicOrigin(request, settings));
-
-	return `${protocol}//${hostname}:${settings.previewPort ?? PUBLIC_PREVIEW_PORT}`;
+	return `${origin.protocol}//${origin.hostname}:${previewPortFor(origin, { direct, listenerPort, settings })}`;
 };

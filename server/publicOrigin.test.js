@@ -30,22 +30,22 @@ test('a link for someone else carries the public address over where the request 
 	);
 });
 
-test('shares are reached on the preview listener directly, else on the preview port of the public address', () => {
+test('shares are reached beside where the viewer reached paude: the listener directly, else the port in front', () => {
 	const direct = request('http://localhost:8044/api/x', { host: 'localhost:8044' });
-	const viaProxy = request('http://127.0.0.1:8044/api/x', {
-		'x-forwarded-proto': 'https',
-		'x-forwarded-host': 'workbook.local',
-		'x-forwarded-for': '192.168.1.20',
-	});
+	const forwarded = host => ({ 'x-forwarded-proto': 'https', 'x-forwarded-host': host, 'x-forwarded-for': '10.0.0.2' });
+	const on443 = request('http://127.0.0.1:8044/api/x', forwarded('workbook.local'));
+	const onOwnPort = request('http://127.0.0.1:8044/api/x', forwarded('workbook.local:9443'));
 	const options = settings => ({ listenerPort: 8045, settings });
+	const tailnet = { publicUrl: 'https://workbook.tail1234.ts.net' };
 
 	expect(previewOrigin(direct, options({}))).toBe('http://localhost:8045');
-	expect(previewOrigin(direct, options({ publicUrl: 'https://workbook.tail1234.ts.net' }))).toBe(
-		'http://localhost:8045',
-	);
-	expect(previewOrigin(viaProxy, options({}))).toBe('https://workbook.local:8444');
-	expect(previewOrigin(viaProxy, options({ previewPort: 9444 }))).toBe('https://workbook.local:9444');
-	expect(previewOrigin(viaProxy, options({ publicUrl: 'https://workbook.tail1234.ts.net' }))).toBe(
-		'https://workbook.tail1234.ts.net:8444',
-	);
+	expect(previewOrigin(direct, options(tailnet))).toBe('http://localhost:8045');
+	expect(previewOrigin(on443, options({}))).toBe('https://workbook.local:8444');
+	expect(previewOrigin(on443, options({ previewPort: 9444 }))).toBe('https://workbook.local:9444');
+	// A LAN viewer keeps LAN links even when the server has a tailnet address; the tailnet viewer gets tailnet ones
+	expect(previewOrigin(on443, options(tailnet))).toBe('https://workbook.local:8444');
+	expect(previewOrigin(onOwnPort, options(tailnet))).toBe('https://workbook.local:9444');
+	expect(
+		previewOrigin(request('http://127.0.0.1:8044/api/x', forwarded('workbook.tail1234.ts.net')), options(tailnet)),
+	).toBe('https://workbook.tail1234.ts.net:8444');
 });
