@@ -246,7 +246,7 @@ const STEPS = ['', 'StepLeft', '', 'StepRight'];
 const ISLAND_HIT = 1e6;
 // Where each kind of stream runs from, in the order their packets are spaced along a shared conduit
 const STREAM_LANES = ['library', 'forge', 'reactor', 'dish', 'tower', 'outpost'];
-// How long a deleted session takes to crumble to dust, and how long its heap stays after
+// How long a deleted session takes to crumble to dust under the emitter's beam
 const VAPOR_SECONDS = 1.6;
 // A heap of ash where a deleted session crumbled: how long it lies before the tube's nozzle comes down for it, takes
 // coming down, takes sucking it up, and takes going back up, in seconds
@@ -257,6 +257,9 @@ const DUST_SECONDS = ASH.lies + ASH.down + ASH.sucks + ASH.up;
 // long it takes to come down, fires while the couch crumbles to ash under its beam, and takes to go back up, in seconds
 const COUCH_DROP = { down: 0.5, fall: 0.45, settle: 0.25, up: 0.5 };
 const COUCH_ZAP = { down: 0.5, fire: 0.8, up: 0.5 };
+// The same emitter let down over a deleted session's grey: it stands whole while the emitter comes down, crumbles
+// under its beam, and the emitter goes back up once nothing but its heap is left
+const GREY_ZAP = { down: 0.5, fire: VAPOR_SECONDS, up: 0.5 };
 const DUST = { light: '#a7adb6', dark: '#6f7680' };
 
 // The giant cup's colors, its zap the dot on its band
@@ -830,6 +833,8 @@ export default class Ship {
 	parcels = [];
 	// Heaps of dust where deleted sessions crumbled: { x, y, depth, at }
 	dust = [];
+	// The emitters over deleted sessions' greys: { key, x, top, floor, depth, at }
+	zaps = [];
 	// Each session's changes as of when they were read here, until the server says it's seen them too
 	read = new Map();
 	stars = [];
@@ -1758,7 +1763,13 @@ export default class Ship {
 		if (!calm) this.drift += seconds * STAR_SPEED * this.pace;
 
 		for (const [key, worker] of this.workers) {
-			const fade = worker.vaporizedAt === undefined ? seconds * 1.5 : seconds / VAPOR_SECONDS;
+			// Deleted, it waits whole for the emitter, then crumbles under its beam
+			const zapped = worker.vaporizedAt !== undefined;
+			const fade = (() => {
+				if (!zapped) return seconds * 1.5;
+
+				return this.time - worker.vaporizedAt < GREY_ZAP.down ? 0 : seconds / VAPOR_SECONDS;
+			})();
 
 			worker.opacity = worker.leaving ? worker.opacity - fade : Math.min(1, worker.opacity + seconds * 2);
 			if (worker.opacity > 0 || !worker.leaving) continue;
@@ -1773,6 +1784,7 @@ export default class Ship {
 			this.workers.delete(key);
 		}
 		this.dust = this.dust.filter(({ at }) => this.time - at < DUST_SECONDS);
+		this.zaps = this.zaps.filter(({ at }) => this.time - at < GREY_ZAP.down + GREY_ZAP.fire + GREY_ZAP.up);
 
 		for (const worker of this.workers.values()) this.tendSmallGreys(worker, calm);
 		this.tendCrew(seconds);
@@ -1837,15 +1849,15 @@ export default class Ship {
 		const walking = this.walking(worker);
 		const place = walking ? worker : this.placeOf(worker);
 		const ground = this.art(place);
+		const standing = this.standingAt(worker);
 		// Where its dust lands: on the desk before it at its console, on the cushion on a couch, else on the floor
 		const desk = !walking && !worker.lounging && !briefOf(worker) && !worker.seat?.housing;
 		const lift = (desk && -13) || (worker.lounging && !walking && -2) || 1;
+		const dustAt = { x: ground.x, y: ground.y + lift, depth: place.y + 0.3 };
 
-		Object.assign(worker, {
-			vaporizedAt: this.time,
-			leaving: true,
-			dustAt: { x: ground.x, y: ground.y + lift, depth: place.y + 0.3 },
-		});
+		Object.assign(worker, { vaporizedAt: this.time, leaving: true, dustAt });
+		// The emitter over it, outlasting the grey by its way back up
+		this.zaps.push({ key, x: standing.x, top: standing.y - 26, floor: dustAt.y, depth: dustAt.depth, at: this.time });
 	}
 
 	// Read here: its marker goes until something newer comes
@@ -2149,7 +2161,11 @@ export default class Ship {
 		if (this.bridge) standing.push(...this.bridgeParts(ctx, art, label));
 		if (this.lounge)
 			standing.push(
-				...drawLounge(ctx, art, label, this.lounge, { time: this.time, lifted: this.couchesLifted() }),
+				...drawLounge(ctx, art, label, this.lounge, {
+					time: this.time,
+					lifted: this.couchesLifted(),
+					gone: this.couchesGone(),
+				}),
 				...this.couchParts(ctx),
 			);
 		for (const room of this.layout.rooms.filter(({ kind }) => kind))
@@ -2176,6 +2192,7 @@ export default class Ship {
 			if (worker.crumble && worker.vaporizedAt !== undefined)
 				standing.push({ y: worker.dustAt.depth, draw: () => this.drawCrumbling(ctx, worker) });
 		for (const heap of this.dust) standing.push({ y: heap.depth, draw: () => this.drawAshSucked(ctx, heap) });
+		for (const zap of this.zaps) standing.push({ y: zap.depth + 0.01, draw: () => this.drawGreyZap(ctx, zap) });
 		for (const parcel of this.parcels)
 			standing.push({
 				// On the crane's hook, over the pods it's carried above
@@ -4401,20 +4418,31 @@ export default class Ship {
 		ctx.globalAlpha = 1;
 	}
 
+	// Where a worker's feet are in art pixels: where it walks, or at its place, raised off a seat's mark unless it sits
+	// in a housing
+	standingAt(worker) {
+		const walking = this.walking(worker);
+		const at = this.art(walking ? worker : this.placeOf(worker));
+
+		if (!walking && !worker.seat?.housing) at.y -= (worker.lounging && 4) || (briefOf(worker) && -2) || 10;
+
+		return at;
+	}
+
 	// The worker: its body, and over it a head sized by its context. Its state shows in how it carries on: typing at
 	// work, a thought bubble between tools, waving when asking, blinking when idle, dozing when stopped or waiting out a
 	// usage limit; on its feet walking somewhere.
 	drawWorker(ctx, worker) {
 		const { session } = worker;
 		const walking = this.walking(worker);
-		const at = this.art(walking ? worker : this.placeOf(worker));
+		const at = this.standingAt(worker);
 
-		if (!walking && !worker.seat?.housing) at.y -= (worker.lounging && 4) || (briefOf(worker) && -2) || 10;
 		worker.headX = at.x;
 
-		// Deleted: crumbling from the top down, its dust falling to a heap where it was
+		// Deleted: whole while the emitter comes down, then crumbling from the top down under its beam, its dust falling
+		// to a heap where it was
 		if (worker.vaporizedAt !== undefined && !worker.crumbling) {
-			const gone = Math.min(1, (this.time - worker.vaporizedAt) / VAPOR_SECONDS);
+			const gone = Math.max(0, Math.min(1, (this.time - worker.vaporizedAt - GREY_ZAP.down) / VAPOR_SECONDS));
 
 			worker.crumbling = true;
 			const top = at.y - 26;
@@ -4596,6 +4624,14 @@ export default class Ship {
 		);
 	}
 
+	// Which couches the lounge mustn't draw: those being zapped, each drawn crumbling by its zap, and those gone to ash
+	couchesGone() {
+		return new Set([
+			...(this.couchZaps ?? []).map(({ index }) => index),
+			...this.dust.map(({ couch }) => couch).filter(couch => couch !== undefined),
+		]);
+	}
+
 	// How high a couch hangs from the tube's nozzle before it drops, in art pixels: its top at the nozzle's mouth, let
 	// down just under the lounge's ceiling
 	couchHang(index) {
@@ -4669,20 +4705,10 @@ export default class Ship {
 		const width = Math.round(COUCH_SEAT * UNIT.x * 2);
 		const left = at.x - Math.round(COUCH_SEAT * UNIT.x) / 2;
 		const middle = left + Math.floor(width / 2);
-		const { down, fire, up } = COUCH_ZAP;
-		const firing = since >= down && since < down + fire;
+		const { down, fire } = COUCH_ZAP;
 		const burnt = Math.max(0, Math.min(1, (since - down) / fire));
 		const fabric = `hsl(14 ${Math.round(38 * (1 - burnt))}% ${Math.round(42 - 12 * burnt)}%)`;
 		const tall = Math.round(19 * (1 - burnt));
-		// How far down the emitter hangs, 0 to 1: let down to clear of the couch's top
-		const reach = (() => {
-			if (since < down) return since / down;
-			if (since < down + fire) return 1;
-
-			return Math.max(0, 1 - (since - down - fire) / up);
-		})();
-		const over = Math.max(ceiling + 6, at.y - 19 - 14);
-		const mouth = Math.round(ceiling + (over - ceiling) * reach);
 
 		// The couch, its back, cushions and arms, crumbling away from its top once hit
 		if (tall > 0) {
@@ -4714,24 +4740,56 @@ export default class Ship {
 					DUST.light,
 				);
 			}
+		this.drawEmitter(ctx, { middle, ceiling, over: at.y - 19 - 14, to: at.y - tall - 1, since, phases: COUCH_ZAP });
+	}
+
+	// The emitter let down over a deleted session's grey, wherever it stood: over its head while it crumbles under the
+	// beam, which follows the crumbling down to the heap
+	drawGreyZap(ctx, zap) {
+		const since = this.time - zap.at;
+		const room = this.roomAt({ x: zap.x / UNIT.x, y: zap.depth });
+		const ceiling = room ? this.art({ x: 0, y: room.y }).y + 2 : zap.top - 30;
+		const gone = Math.max(0, Math.min(1, (since - GREY_ZAP.down) / GREY_ZAP.fire));
+
+		this.drawEmitter(ctx, {
+			middle: zap.x,
+			ceiling,
+			over: zap.top - 14,
+			to: Math.round(zap.top + (zap.floor - zap.top) * gone) - 1,
+			since,
+			phases: GREY_ZAP,
+		});
+	}
+
+	// The emitter on the tube's nozzle, let down from `ceiling` to `over` (kept clear of the ceiling) in `phases.down`
+	// seconds: a squat head, its lens lit while it fires for `phases.fire`, its beam crackling down to `to`, then drawn
+	// back up over `phases.up`
+	drawEmitter(ctx, { middle, ceiling, over, to, since, phases: { down, fire, up } }) {
+		const firing = since >= down && since < down + fire;
+		// How far down it hangs, 0 to 1
+		const reach = (() => {
+			if (since < down) return since / down;
+			if (since < down + fire) return 1;
+
+			return Math.max(0, 1 - (since - down - fire) / up);
+		})();
+
 		if (reach <= 0) return;
-		// The emitter on the nozzle's end: a squat head, its lens lit red while it fires
+
+		const mouth = Math.round(ceiling + (Math.max(ceiling + 6, over) - ceiling) * reach);
+
 		this.drawNozzle(ctx, middle, ceiling, mouth - 3);
 		rect(ctx, middle - 5, mouth - 3, 11, 5, PALETTE.k);
 		rect(ctx, middle - 4, mouth - 2, 9, 3, PALETTE.m);
 		rect(ctx, middle - 4, mouth - 2, 9, 1, PALETTE.l);
 		rect(ctx, middle - 1, mouth + 1, 3, 1, firing ? '#ff6bf0' : '#5a1a16');
-		// Its beam down to the couch, crackling, while it fires
-		if (firing) {
-			const to = at.y - tall - 1;
+		if (!firing) return;
+		for (let y = mouth + 2; y <= to; y++) {
+			const x = middle + (Math.floor(this.time * 30 + y) % 3) - 1;
 
-			for (let y = mouth + 2; y <= to; y++) {
-				const x = middle + (Math.floor(this.time * 30 + y) % 3) - 1;
-
-				rect(ctx, x, y, 1, 1, y % 2 ? '#ffd0ff' : '#ff6bf0');
-			}
-			rect(ctx, middle - 2, to, 5, 1, Math.floor(this.time * 20) % 2 ? '#ffffff' : '#ff6bf0');
+			rect(ctx, x, y, 1, 1, y % 2 ? '#ffd0ff' : '#ff6bf0');
 		}
+		rect(ctx, middle - 2, to, 5, 1, Math.floor(this.time * 20) % 2 ? '#ffffff' : '#ff6bf0');
 	}
 
 	// A zapped couch gone to ash: its heap left on the floor where it stood, for the tube to suck up; the zap over once

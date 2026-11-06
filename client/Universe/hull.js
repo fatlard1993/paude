@@ -1705,14 +1705,17 @@ export const drawHangar = (ctx, art, label, room, { time, journey, launching = f
 };
 
 // The lounge: a TV and couches of two facing it, so whoever sits on one has their back to the viewer
-// `lifted`: how far up each couch still is (art pixels, by its index), dropping out of the tube onto its place
-export const drawLounge = (ctx, art, label, lounge, { time, lifted = [] }) => {
+// `lifted`: how far up each couch still is (art pixels, by its index), dropping out of the tube onto its place;
+// `gone`: the indices of couches not to draw, being zapped to ash (drawn crumbling by their zap) or lying in it
+export const drawLounge = (ctx, art, label, lounge, { time, lifted = [], gone = new Set() }) => {
 	floor(ctx, art, lounge);
 
 	const couches = [];
 
 	// One couch at least, waiting when nobody's on it
 	for (let index = 0; index < Math.max(lounge.count, 1); index += 2) {
+		if (gone.has(index / 2)) continue;
+
 		const first = art(loungeSeatAt(lounge, index));
 
 		couches.push({

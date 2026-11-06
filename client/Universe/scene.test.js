@@ -1181,6 +1181,28 @@ test('a stream leaves its engine-bay unit straight across into its lane of the t
 	expect(routed.at(-1).track.legs[2].to.y).not.toBe(outlet.y);
 });
 
+test('a deleted session stands whole while the emitter comes down over it, crumbles under its beam, and the emitter goes back up after', () => {
+	const made = shipWith([answer('here', [session(), session({ id: 'b' })], { projects: ['paude'] })]);
+
+	run(made, 2);
+	made.vaporize('here/b');
+	expect(made.zaps).toMatchObject([{ key: 'here/b' }]);
+	// Coming down: nothing of the grey has gone yet
+	run(made, 0.4);
+	expect(made.workers.get('here/b').opacity).toBe(1);
+	// Firing: it crumbles
+	run(made, 1);
+	expect(made.workers.get('here/b').opacity).toBeLessThan(1);
+	expect(made.workers.get('here/b').opacity).toBeGreaterThan(0);
+	// Crumbled: the grey is gone and its heap lies, the emitter still on its way up
+	run(made, 1);
+	expect(made.workers.has('here/b')).toBe(false);
+	expect(made.dust).toHaveLength(1);
+	expect(made.zaps).toHaveLength(1);
+	run(made, 0.5);
+	expect(made.zaps).toHaveLength(0);
+});
+
 test('a session deleted from here crumbles to a heap of dust, which stays a while after it is gone', () => {
 	const made = shipWith([answer('here', [session(), session({ id: 'b' })], { projects: ['paude'] })]);
 
@@ -1969,9 +1991,12 @@ test('a couch more needed is dropped out of the tube; one no longer needed is za
 
 	const ashes = made.dust.length;
 
+	// While zapped, and while its ash lies, the lounge leaves the couch out: its zap draws it crumbling, then nothing
+	expect([...made.couchesGone()]).toEqual([1]);
 	run(made, 2);
 	expect(made.dust.length).toBe(ashes + 1);
 	expect(made.dust.at(-1).couch).toBe(1);
+	expect([...made.couchesGone()]).toEqual([1]);
 	made.update(resting(['a', 'b']));
 	expect(loungeCount()).toBe(3);
 
