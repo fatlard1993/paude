@@ -2191,6 +2191,7 @@ test("a fabled session's monitor stands behind its grey, and points at the termi
 		beginPath: () => {},
 		rect: () => {},
 		clip: () => {},
+		createRadialGradient: () => ({ addColorStop: () => {} }),
 	};
 
 	run(made, 10);
@@ -2206,11 +2207,16 @@ test("a fabled session's monitor stands behind its grey, and points at the termi
 	expect(made.hits.find(hit => hit.kind === 'watcher')?.session).toBe(worker.session);
 	expect(drawn).toHaveLength(1);
 
+	// The session stops to ask: the monitor takes it in first, standing as it was with its skull aglow, then points
 	made.update(kept('fabled', 'waiting'));
 	made.watcherParts(ctx, worker)[0].draw();
-	// The pointing arm is drawn on, pixel by pixel
 	expect(drawn).toHaveLength(2);
-	expect(drawn[1].image).not.toBe(drawn[0].image);
+	expect(drawn[1].image).toBe(drawn[0].image);
+	run(made, 3);
+	made.watcherParts(ctx, worker)[0].draw();
+	// The pointing arm is drawn on, pixel by pixel
+	expect(drawn).toHaveLength(3);
+	expect(drawn[2].image).not.toBe(drawn[0].image);
 
 	// A person walking the aisle behind it is drawn over the whole scene; the monitor is drawn again over them, and not
 	// over someone in front of it

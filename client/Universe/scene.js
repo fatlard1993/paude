@@ -240,6 +240,10 @@ const WATCHER_REACH = 9;
 const WATCHER_TALL = 30;
 const SUIT_TALL = 19;
 const WATCHER_SIZE = { half: 6, tall: WATCHER_TALL };
+// When its session stops to ask something, the monitor takes it in first, its skull glowing as a thinking grey's does,
+// then raises its arm to point at the terminal: how long each takes, in seconds
+const WATCHER_THINK = 1.6;
+const WATCHER_RAISE = 0.5;
 // A failed tool throws sparks for a moment and smokes a while after; a cube of compacted context takes this long to
 // go; a turn running this long steams, and this long glows hot
 const SPARK_SECONDS = 2.5;
@@ -4039,16 +4043,22 @@ export default class Ship {
 	// The monitor with its feet at `at` (art pixels). The screen stands on the console's left; while the session asks, its
 	// near arm reaches toward it, bobbing as its grey waves
 	drawWatcher(ctx, worker, at) {
-		const { session, seat } = worker;
+		const { session, seat, watcher } = worker;
 		const console = this.art({ x: seat.x, y: seat.y + 0.2 });
 		const asking = session.status === 'waiting';
 		const colors = { c: `hsl(${session.hue ?? 200} 55% 55%)`, s: rankOf('fable') };
+		// Since the session stopped to ask: thinking it over first, then the arm rising, then pointing
+		const since = asking ? this.time - (watcher?.askedAt ?? -Infinity) : 0;
+		const thinking = asking && since < WATCHER_THINK;
+		const raised = asking && !thinking ? Math.min(1, (since - WATCHER_THINK) / WATCHER_RAISE) : 0;
 
-		drawSprite(ctx, asking ? 'watcherPoint' : 'watcher', at.x, at.y, { colors });
-		if (asking) {
-			const bob = Math.floor(this.time * 3) % 2;
+		drawSprite(ctx, asking && !thinking ? 'watcherPoint' : 'watcher', at.x, at.y, { colors });
+		if (thinking)
+			this.drawConcentrating(ctx, { x: at.x, top: at.y - WATCHER_TALL, w: 9, h: 16, seed: worker.seed ?? 0 });
+		if (raised > 0) {
+			const bob = raised === 1 && Math.floor(this.time * 3) % 2 ? 1 : 0;
 
-			this.drawPointing(ctx, { x: at.x - 4, y: at.y - 13 + bob }, { x: console.x - 9, y: console.y - 24 });
+			this.drawPointing(ctx, { x: at.x - 4, y: at.y - 13 + bob }, { x: console.x - 9, y: console.y - 24 }, raised);
 		}
 	}
 
@@ -4085,6 +4095,9 @@ export default class Ship {
 		const now = keepingOf(session) === 'fabled';
 
 		if (now && !was && !worker.watcher) worker.watcherDue = this.watcherDueFor(session);
+		// The session just stopped to ask something: the monitor takes it in, then points
+		if (worker.watcher && session.status === 'waiting' && worker.session.status !== 'waiting')
+			worker.watcher.askedAt = this.time;
 		if (now && worker.watcher?.leaving) {
 			// Fabled again before it had gone: it turns round
 			worker.watcher.leaving = false;
@@ -4125,10 +4138,11 @@ export default class Ship {
 				facing: 1,
 				step: 0,
 				leaving: false,
+				askedAt: this.time,
 			};
 		} else if (due === 'back' && worker.watcher)
 			Object.assign(worker.watcher, { path: this.route(worker.watcher, worker.room, spot, worker.room), step: 0 });
-		else worker.watcher = { ...spot, path: [], facing: 1, step: 0, leaving: false };
+		else worker.watcher = { ...spot, path: [], facing: 1, step: 0, leaving: false, askedAt: -Infinity };
 	}
 
 	// Its monitor walks its path once made; one leaving, back at the materializer, is beamed away and gone
@@ -4180,12 +4194,12 @@ export default class Ship {
 		return { x: seat.x + WATCHER_ASIDE + smalls * 0.8, y: seat.y + 0.2 - WATCHER_BEHIND };
 	}
 
-	// An arm out from `from` toward `to`, as far as it reaches: outlined, with a fingertip
-	drawPointing(ctx, from, to) {
+	// An arm out from `from` toward `to`, `reach` of the way (0 to 1): outlined, with a fingertip
+	drawPointing(ctx, from, to, reach = 1) {
 		const across = to.x - from.x;
 		const down = to.y - from.y;
 		const length = Math.hypot(across, down) || 1;
-		const steps = Math.ceil(WATCHER_REACH / 2);
+		const steps = Math.ceil((WATCHER_REACH * reach) / 2);
 		const along = step => ({
 			x: Math.round(from.x + (across / length) * step * 2),
 			y: Math.round(from.y + (down / length) * step * 2),
