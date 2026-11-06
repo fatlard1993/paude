@@ -27,6 +27,7 @@ import confirmDialog, { confirmDeleteSession } from '../confirmDialog';
 import { sessionMenu } from '../sessionActions';
 import { LOCAL, shipsOf } from './shown';
 import olderPaude from './olderPaude';
+import { PANELS } from '../Terminal/panels';
 import { VERBS, dockCard } from './dock';
 import {
 	ROOMS,
@@ -716,7 +717,7 @@ export default class Universe extends View {
 				detail: stopped ? 'Read its last reply, and answering takes it back up' : '',
 				onPress: () => this.openReply(worker),
 			},
-			...(live(session) ? [{ label: 'Live terminal', onPress: () => this.dockOrReply(worker, 'terminal') }] : []),
+			...(live(session) ? [{ label: PANELS.terminal.label, onPress: () => this.dockOrReply(worker, 'terminal') }] : []),
 			{
 				label: stopped ? 'Wake' : `Open session${remote ? ` on ${remote.name}` : ''}`,
 				detail: stopped ? 'In its side panel, on its terminal' : '',
@@ -871,13 +872,15 @@ export default class Universe extends View {
 				hotkey: 'r',
 				run: () => (stopped ? this.wake(worker) : this.openReply(worker)),
 			},
-			...(live(session) ? [{ label: 'Terminal', hotkey: 't', run: () => this.dockOrReply(worker, 'terminal') }] : []),
+			...(live(session)
+				? [{ label: PANELS.terminal.label, hotkey: 't', run: () => this.dockOrReply(worker, 'terminal') }]
+				: []),
 			// Another paude's session's panels are relayed through this one, all but its side shell
 			...VERBS.filter(({ key, allowed }) => key !== 'terminal' && allowed() && !(remote && key === 'shell')).map(
 				({ key, label, hotkey }) => ({ label, hotkey, run: () => this.openDock(worker, key) }),
 			),
 			{
-				label: session.watching ? 'Unwatch' : 'Watch',
+				label: session.watching ? 'Stop watching' : 'Watch',
 				hotkey: 'u',
 				run: () => this.watch(worker, !session.watching),
 			},
@@ -950,7 +953,7 @@ export default class Universe extends View {
 				? [
 						{ label: `Sessions${on(local.name)}`, hotkey: 'h', run: () => this.openProjectDock(bay.name, 'sessions') },
 						{
-							label: `Files${on(local.name)}`,
+							label: `${PANELS.files.label}${on(local.name)}`,
 							hotkey: 'f',
 							run: () =>
 								worker
@@ -960,8 +963,16 @@ export default class Universe extends View {
 											content: `Files are read through a session: start one in ${bay.name} first.`,
 										}),
 						},
-						{ label: `Links${on(local.name)}`, hotkey: 'l', run: () => this.openProjectDock(bay.name, 'links') },
-						{ label: `Made${on(local.name)}`, hotkey: 'm', run: () => this.openProjectDock(bay.name, 'artifacts') },
+						{
+							label: `${PANELS.links.label}${on(local.name)}`,
+							hotkey: 'l',
+							run: () => this.openProjectDock(bay.name, 'links'),
+						},
+						{
+							label: `${PANELS.artifacts.label}${on(local.name)}`,
+							hotkey: 'm',
+							run: () => this.openProjectDock(bay.name, 'artifacts'),
+						},
 					]
 				: []),
 			{ label: 'Look closer', hotkey: 'z', run: () => this.aboard.look(bay.name) },
@@ -1585,7 +1596,7 @@ export default class Universe extends View {
 					run: () => this.select(selectionOf({ kind: 'worker', worker }, this)),
 				})),
 				commands: [
-					{ label: 'Unwatch all', hotkey: 'u', run: () => this.unwatchAll(group) },
+					{ label: 'Stop watching all', hotkey: 'u', run: () => this.unwatchAll(group) },
 					...(identity()?.owner ? [{ label: 'Delete all', hotkey: 'x', run: () => this.removeAll(group) }] : []),
 					{ label: 'Clear', hotkey: 'c', run: () => this.select(null) },
 				],

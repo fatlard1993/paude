@@ -34,7 +34,7 @@ test("a message waits out a half-typed prompt, then Claude's answer comes back t
 		await page.click('.xterm-screen');
 		await page.keyboard.type('my draft');
 
-		const chat = await centerOf(page, '[title="Chat and comments"]');
+		const chat = await centerOf(page, '[title^="Chat"]');
 
 		await page.mouse.click(chat.x, chat.y);
 		await wait(500);

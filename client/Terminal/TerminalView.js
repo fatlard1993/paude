@@ -50,6 +50,7 @@ import { updateTabTitle } from '../tabTitle';
 import { acceptFiles } from './fileDrop';
 import { linkFilePaths, linkUrls } from './linkProviders';
 import attach from './attach';
+import { PANELS, panelTitle } from './panels';
 import { startCatchUp, trackLastSeen } from './catchUp';
 import KeyBar from './KeyBar';
 import { copySelection } from './copySelection';
@@ -185,8 +186,8 @@ export default class TerminalView extends View {
 
 		if (canBrowse()) {
 			this.filesButton = ghostButton(header, {
-				icon: 'folder-tree',
-				title: 'Project files',
+				icon: PANELS.files.icon,
+				title: panelTitle('files'),
 				className: 'tool',
 				onPress: () => this.toggleFiles(),
 			});
@@ -197,46 +198,46 @@ export default class TerminalView extends View {
 				onPress: () => this.askToOpen(),
 			});
 			this.activityButton = ghostButton(header, {
-				icon: 'clock-rotate-left',
-				title: 'Activity: what Claude did, turn by turn',
+				icon: PANELS.activity.icon,
+				title: panelTitle('activity'),
 				className: 'tool',
 				onPress: () => this.toggleActivity(),
 			});
 			this.tasksButton = ghostButton(header, {
-				icon: 'list-check',
-				title: "Tasks: the project's checks and tests, problems, and what's running",
+				icon: PANELS.tasks.icon,
+				title: panelTitle('tasks'),
 				className: 'tool',
 				onPress: () => this.toggleTasks(),
 			});
 			this.linksButton = ghostButton(header, {
-				icon: 'link',
-				title: 'Links: the docs, tickets, repos and servers that came up',
+				icon: PANELS.links.icon,
+				title: panelTitle('links'),
 				className: 'tool',
 				onPress: () => this.toggleLinks(),
 			});
 			this.artifactsButton = ghostButton(header, {
-				icon: 'shapes',
-				title: 'Artifacts: the screenshots, pages, scripts and data made along the way',
+				icon: PANELS.artifacts.icon,
+				title: panelTitle('artifacts'),
 				className: 'tool',
 				onPress: () => this.toggleArtifacts(),
 			});
 			this.decisionsButton = ghostButton(header, {
-				icon: 'scale-balanced',
-				title: "Decisions: what was settled here, and what isn't recorded anywhere",
+				icon: PANELS.decisions.icon,
+				title: panelTitle('decisions'),
 				className: 'tool',
 				onPress: () => this.toggleDecisions(),
 			});
 			this.gitButton = ghostButton(header, {
-				icon: 'code-branch',
-				title: 'Git: changes, history, branches',
+				icon: PANELS.git.icon,
+				title: panelTitle('git'),
 				className: 'tool',
 				onPress: () => this.toggleGit(),
 			});
 		}
 		if (canType()) {
 			this.shellButton = ghostButton(header, {
-				icon: 'terminal',
-				title: 'Terminal: a shell in this folder that ends when you close it',
+				icon: PANELS.shell.icon,
+				title: panelTitle('shell'),
 				className: 'tool',
 				onPress: () => this.toggleShell(),
 			});
@@ -274,8 +275,8 @@ export default class TerminalView extends View {
 			this.showLifetime('ordinary');
 		}
 		this.sharesButton = ghostButton(header, {
-			icon: 'share-nodes',
-			title: 'Shared: services this session runs, files and sites',
+			icon: PANELS.shares.icon,
+			title: panelTitle('shares'),
 			className: 'tool',
 			onPress: () => this.toggleShares(),
 		});
@@ -283,8 +284,8 @@ export default class TerminalView extends View {
 		this.sharedCount.style.display = 'none';
 		this.sharesButton.append(this.sharedCount);
 		this.notesToggle = ghostButton(header, {
-			icon: 'comments',
-			title: 'Chat and comments',
+			icon: PANELS.notes.icon,
+			title: panelTitle('notes'),
 			className: 'tool',
 			onPress: () => this.toggleNotes(),
 		});

@@ -742,7 +742,7 @@ test(
 			);
 			await press('.git .commit-box button', 'Commit');
 
-			await press('[title="Project files"]');
+			await press('[title^="Files"]');
 			await page.type('.files .bar input', 'notes.txt');
 			await wait(500);
 			await press('.files .entry', 'notes.txt');
@@ -780,7 +780,7 @@ test(
 		};
 
 		try {
-			await press('[title="Project files"]');
+			await press('[title^="Files"]');
 			await page.type('.files .bar input', 'app.js');
 			await wait(500);
 			await press('.files .entry', 'app.js');
@@ -848,7 +848,7 @@ test(
 		try {
 			Bun.spawnSync(['git', 'commit', '-q', '--allow-empty', '-m', 'before the change'], { cwd: server.project });
 			await Bun.write(`${server.project}/server/app.js`, original.replace('line 3', 'line three'));
-			await press('[title="Project files"]');
+			await press('[title^="Files"]');
 			await page.type('.files .bar input', 'app.js');
 			await wait(500);
 			await press('.files .entry', 'app.js');
@@ -907,7 +907,7 @@ test(
 		};
 
 		try {
-			await press('[title="Project files"]');
+			await press('[title^="Files"]');
 			await page.type('.files .bar input', 'app.js');
 			await wait(500);
 			await press('.files .entry', 'app.js');
@@ -1012,7 +1012,7 @@ test(
 		try {
 			Bun.spawnSync(['git', 'commit', '-q', '--allow-empty', '-m', 'before the change'], { cwd: server.project });
 			await Bun.write(`${server.project}/server/app.js`, original.replace('line 3', 'line three'));
-			await press('[title="Project files"]');
+			await press('[title^="Files"]');
 			await page.type('.files .bar input', 'app.js');
 			await wait(500);
 			await press('.files .entry', 'app.js');
@@ -1325,7 +1325,7 @@ test(
 		};
 
 		try {
-			await press('[title="Project files"]');
+			await press('[title^="Files"]');
 			await press('.files .bar button', 'Symbols');
 			await page.type('.files .bar input', 'Tot');
 			await wait(1000);
@@ -1527,7 +1527,7 @@ test(
 		};
 
 		try {
-			await press('[title="Project files"]');
+			await press('[title^="Files"]');
 			await press('.files .bar button', 'Contents');
 			await press('.files .list button', 'list the to-dos');
 			await eventually(async () =>
@@ -2468,7 +2468,7 @@ test(
 		const labels = () => page.$$eval('.files .list .entry .label', found => found.map(label => label.textContent));
 
 		try {
-			await press('[title="Project files"]');
+			await press('[title^="Files"]');
 			await press('.files .entry.folder', 'server');
 			await press('.files [title="New file or folder"]');
 			await press('[role=menu] li', 'New file');
@@ -2536,7 +2536,7 @@ test(
 			await page.goto(await server.loginLink(`/sessions/${id}`));
 			await page.waitForSelector('.xterm-screen');
 			await wait(1500);
-			await press('[title="Project files"]');
+			await press('[title^="Files"]');
 
 			// A rename picks the name short of its extension to type over
 			await menu('notes.md', 'Rename...');
@@ -2612,7 +2612,7 @@ test(
 			await page.goto(await server.loginLink(`/sessions/${id}`));
 			await page.waitForSelector('.xterm-screen');
 			await wait(1500);
-			await press('[title="Project files"]');
+			await press('[title^="Files"]');
 
 			await press('.files .list .entry', 'one.md');
 			await page.keyboard.down('Control');
@@ -2699,7 +2699,7 @@ test(
 			await page.goto(await server.loginLink(`/sessions/${id}`));
 			await page.waitForSelector('.xterm-screen');
 			await wait(1500);
-			await press('[title="Project files"]');
+			await press('[title^="Files"]');
 			await press('.files .list .entry', 'notes.txt');
 			await press('.files .head button', 'Edit');
 
@@ -2771,7 +2771,7 @@ test(
 			else await page.reload();
 			await page.waitForSelector('.xterm-screen');
 			await wait(1500);
-			await press('[title="Project files"]');
+			await press('[title^="Files"]');
 			await press('.files .list .entry', 'notes.js');
 		};
 
@@ -3009,17 +3009,17 @@ test(
 			await page.goto(await server.loginLink('/projects/demo'));
 			await wait(2500);
 
-			await press('[title="Project files"]');
+			await press('[title^="Files"]');
 			await eventually(async () => expect(await entries()).toContain('server•'));
 			await press('[title^="Git"]');
 			await eventually(async () => expect(await page.$eval('.git', panel => panel.textContent)).toContain('app.js'));
 
 			// Picked to start in, the worktree is where they open next, and a terminal opens in it
-			await press('[title="Project files"]');
+			await press('[title^="Files"]');
 			await press('[title^="Git"]');
 			await press('.variant-chip', 'main');
 			await press('[role=menu] li', 'Worktree side');
-			await press('[title="Project files"]');
+			await press('[title^="Files"]');
 			await press('[title^="Git"]');
 			await eventually(async () => expect(await entries()).toContain('only-here.txtU'));
 			await eventually(async () =>

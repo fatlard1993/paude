@@ -20,28 +20,29 @@ import FilesPanel from '../Terminal/FilesPanel';
 import GitPanel from '../Terminal/GitPanel';
 import LinksPanel from '../Terminal/LinksPanel';
 import NotesPanel from '../Terminal/NotesPanel';
+import { PANELS, panelTitle } from '../Terminal/panels';
 import SharesPanel from '../Terminal/SharesPanel';
 import SideShell from '../Terminal/SideShell';
 import TasksPanel from '../Terminal/TasksPanel';
 import TerminalPanel from './console';
 import { heading } from './replyCard';
 
-// What can be done to a session from the universe without leaving it, each the session page's own panel: its key, the
-// word on its button, its hotkey, and whether the viewer's role allows it
+// What can be done to a session from the universe without leaving it, each the session page's own panel under the
+// same name: its key, its hotkey, and whether the viewer's role allows it
 export const VERBS = [
 	// Its own terminal, while it has one running here
-	{ key: 'terminal', label: 'Terminal', hotkey: 't', allowed: () => true },
-	{ key: 'git', label: 'Changes', hotkey: 'g', allowed: canBrowse },
-	{ key: 'files', label: 'Files', hotkey: 'f', allowed: canBrowse },
-	{ key: 'notes', label: 'Chat', hotkey: 'c', allowed: () => true },
-	{ key: 'tasks', label: 'Tasks', hotkey: 'k', allowed: canBrowse },
-	{ key: 'activity', label: 'Activity', hotkey: 'a', allowed: canBrowse },
-	{ key: 'artifacts', label: 'Made', hotkey: 'm', allowed: canBrowse },
-	{ key: 'decisions', label: 'Decisions', hotkey: 'd', allowed: canBrowse },
-	{ key: 'links', label: 'Links', hotkey: 'l', allowed: canBrowse },
-	{ key: 'shares', label: 'Ports', hotkey: 'p', allowed: () => true },
-	{ key: 'shell', label: 'Shell', hotkey: 's', allowed: canType },
-];
+	{ key: 'terminal', hotkey: 't', allowed: () => true },
+	{ key: 'git', hotkey: 'g', allowed: canBrowse },
+	{ key: 'files', hotkey: 'f', allowed: canBrowse },
+	{ key: 'notes', hotkey: 'c', allowed: () => true },
+	{ key: 'tasks', hotkey: 'k', allowed: canBrowse },
+	{ key: 'activity', hotkey: 'a', allowed: canBrowse },
+	{ key: 'artifacts', hotkey: 'm', allowed: canBrowse },
+	{ key: 'decisions', hotkey: 'd', allowed: canBrowse },
+	{ key: 'links', hotkey: 'l', allowed: canBrowse },
+	{ key: 'shares', hotkey: 'p', allowed: () => true },
+	{ key: 'shell', hotkey: 's', allowed: canType },
+].map(verb => ({ ...verb, label: PANELS[verb.key].label }));
 
 // A session's panels docked beside the universe, one showing at a time, each built when first wanted and wired to the
 // others as on the session page; the chat on a connection of its own
@@ -74,7 +75,10 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose,
 		},
 	);
 	for (const { key, label, hotkey } of verbs) {
-		const tab = button(label, () => card.show(key), { className: 'variant-flat', title: `${label} (${hotkey})` });
+		const tab = button(label, () => card.show(key), {
+			className: 'variant-flat',
+			title: `${panelTitle(key)} (${hotkey})`,
+		});
 
 		tab.dataset.verb = key;
 		tabs.append(tab);

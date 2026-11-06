@@ -27,6 +27,7 @@ import { composeBox, placePrompt, takeDraft } from './PromptHome';
 import LinksPanel from './Terminal/LinksPanel';
 import ArtifactsPanel from './Terminal/ArtifactsPanel';
 import FilesPanel, { quickOpenMode } from './Terminal/FilesPanel';
+import { PANELS, panelTitle } from './Terminal/panels';
 import GitPanel from './Terminal/GitPanel';
 import TasksPanel from './Terminal/TasksPanel';
 import SideShell from './Terminal/SideShell';
@@ -152,8 +153,8 @@ export default class Project extends View {
 			key: 'paude.projectTab',
 			names: [
 				{ name: 'sessions', label: 'Sessions' },
-				{ name: 'links', label: 'Links' },
-				{ name: 'artifacts', label: 'Artifacts' },
+				{ name: 'links', label: PANELS.links.label },
+				{ name: 'artifacts', label: PANELS.artifacts.label },
 			],
 		});
 
@@ -220,10 +221,7 @@ export default class Project extends View {
 		};
 
 		this.toolButton = {};
-		tool('files', 'folder-tree', 'Project files');
-		tool('tasks', 'list-check', "Tasks: the project's checks and tests, problems, and what's running");
-		tool('git', 'code-branch', 'Git: changes, history, branches');
-		tool('shell', 'terminal', 'Terminal: a shell in this folder that ends when you close it');
+		for (const name of ['files', 'tasks', 'git', 'shell']) tool(name, PANELS[name].icon, panelTitle(name));
 	}
 
 	tools(body) {

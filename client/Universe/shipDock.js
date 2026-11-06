@@ -22,6 +22,7 @@ import mergedPages from '../../shared/mergedPages';
 import { matchesFilter } from '../../shared/sessionSearch';
 import ArtifactsPanel from '../Terminal/ArtifactsPanel';
 import LinksPanel from '../Terminal/LinksPanel';
+import { PANELS } from '../Terminal/panels';
 import { heading } from './replyCard';
 
 // A dock of panes for something bigger than a session (a project, the whole ship): the same frame as a session's,
@@ -369,7 +370,7 @@ export const foldersPane = ({ onAdded, machines = [] }) => ({
 export const projectPanes = project => [
 	{
 		key: 'links',
-		label: 'Links',
+		label: PANELS.links.label,
 		make: appendTo =>
 			new LinksPanel({
 				appendTo,
@@ -381,7 +382,7 @@ export const projectPanes = project => [
 	},
 	{
 		key: 'artifacts',
-		label: 'Made',
+		label: PANELS.artifacts.label,
 		make: appendTo =>
 			new ArtifactsPanel({
 				appendTo,
