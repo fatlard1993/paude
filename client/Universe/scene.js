@@ -3947,7 +3947,7 @@ export default class Ship {
 						const working = Math.floor(this.time * 4 + index) % 2;
 
 						drawSprite(ctx, working ? 'smallGreyWork' : 'smallGrey', at.x, at.y - (working ? 1 : 0), { colors });
-						if (working) rect(ctx, at.x - 2, at.y - 6, 5, 2, `hsl(${ACCENTS.hatchery} 80% 72%)`);
+						if (working) rect(ctx, at.x - 2, at.y - 5, 5, 2, `hsl(${ACCENTS.hatchery} 80% 72%)`);
 						if (born < 1) {
 							ctx.restore();
 							rect(ctx, at.x - 4, at.y - Math.round(11 * born), 9, 1, PALETTE.W);
