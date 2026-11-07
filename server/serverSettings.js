@@ -14,7 +14,8 @@ export const configFile = name => join(process.env.XDG_CONFIG_HOME ?? join(os.ho
 // `name` is what browsers and other machines call this server unless they name it themselves; `shareRemotes` lets a
 // password login see the other servers this machine is logged into, not just this machine's own logins; `ownerName`
 // is what the owner goes by in chat and comments (this machine's user name otherwise); `publicUrl` is the address
-// invite links carry, whichever address they were made from (paude tailscale sets it). Read each time, so
+// invite links carry, whichever address they were made from, and `previewPort` where shares are behind a proxy on 443
+// when that isn't 8444 (paude tailscale sets both). Read each time, so
 // a change needs no restart.
 export const serverSettings = () => readJsonFile(configFile('server.json'), {}).catch(() => ({}));
 
@@ -38,12 +39,14 @@ export const setServerName = name =>
 		return next;
 	});
 
-// Where invite links point; null takes it back to the address each link was made from
-export const setPublicUrl = url =>
+// Where invite links point, and the port shares are on behind it when that isn't 8444; null takes the address back
+// to the one each link is made from, and the port back to 8444
+export const setPublicUrl = (url, { previewPort = null } = {}) =>
 	updateJsonFile(configFile('server.json'), {}, settings => {
-		const next = { ...settings, publicUrl: cleanPublicUrl(url) };
+		const next = { ...settings, publicUrl: cleanPublicUrl(url), previewPort };
 
 		if (!next.publicUrl) delete next.publicUrl;
+		if (!next.previewPort) delete next.previewPort;
 
 		return next;
 	});

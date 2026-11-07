@@ -1,12 +1,12 @@
 import { existsSync } from 'fs';
 
-import { setPublicUrl } from '../server/serverSettings';
+import { serverSettings, setPublicUrl } from '../server/serverSettings';
 import { LOCAL_URL } from './servers';
 
 // The Mac app carries the command inside its bundle rather than on the PATH
 const MAC_APP_BINARY = '/Applications/Tailscale.app/Contents/MacOS/Tailscale';
-// Where paude is served on the tailnet, and where its shares are: the same ports Caddy would front, so the server's
-// share links need no setting
+// Where paude is served on the tailnet, and where its shares are unless --preview-port says otherwise: the same ports
+// Caddy would front, so the server's share links need no setting
 const PAUDE_PORT = 443;
 const PREVIEW_PORT = 8444;
 const RUN_TIMEOUT_MS = 20_000;
@@ -66,8 +66,18 @@ const serveFailure = err => {
 	return err;
 };
 
-// paude tailscale: Tailscale Serve fronts this machine's paude on 443 and its shares on 8444, with a certificate for
-// the machine's tailnet name, and the server's links carry that address. Off takes both down.
+// The share port a tailnet's policy allows, when it isn't 8444
+export const previewPortFlag = args => {
+	const at = args.indexOf('--preview-port');
+	const value = at === -1 ? null : Number(args[at + 1]);
+
+	if (value === null) return PREVIEW_PORT;
+
+	return Number.isInteger(value) && value > 0 && value < 65536 && value !== PAUDE_PORT ? value : NaN;
+};
+
+// paude tailscale: Tailscale Serve fronts this machine's paude on 443 and its shares on 8444 (or --preview-port), with
+// a certificate for the machine's tailnet name, and the server's invite links carry that address. Off takes both down.
 const tailscale = async args => {
 	const command = binary();
 
@@ -87,7 +97,9 @@ const tailscale = async args => {
 	if (args[0] === 'off') {
 		// A port that wasn't being served is already off; anything else tailscale objects to is said, and the links
 		// still go back to their own addresses
-		for (const port of [PAUDE_PORT, PREVIEW_PORT]) {
+		const previewPort = (await serverSettings()).previewPort ?? PREVIEW_PORT;
+
+		for (const port of [PAUDE_PORT, previewPort]) {
 			const result = run(command, ['serve', `--https=${port}`, 'off']);
 
 			if (!result.ok) console.error(`Tailscale wouldn't stop serving port ${port}: ${result.err}`);
@@ -98,10 +110,14 @@ const tailscale = async args => {
 		return console.log(`${url} no longer reaches this paude. Links use the address they're made from again.`);
 	}
 
+	const previewPort = previewPortFlag(args);
+
+	if (Number.isNaN(previewPort)) return console.error('--preview-port takes a port other than 443, such as 8443.');
+
 	const port = Number(new URL(LOCAL_URL).port || 80);
 	const served = [
 		[PAUDE_PORT, port],
-		[PREVIEW_PORT, port + 1],
+		[previewPort, port + 1],
 	];
 
 	for (const [from, to] of served) {
@@ -111,10 +127,10 @@ const tailscale = async args => {
 			return console.error(`Tailscale wouldn't serve port ${to} as ${url}:${from}: ${serveFailure(result.err)}`);
 	}
 
-	await setPublicUrl(url);
+	await setPublicUrl(url, { previewPort: previewPort === PREVIEW_PORT ? null : previewPort });
 
-	console.log(`This paude is on your tailnet at ${url}, its shares at ${url}:${PREVIEW_PORT}.`);
-	console.log('Invite and share links carry that address now, whichever address they are made from.');
+	console.log(`This paude is on your tailnet at ${url}, its shares at ${url}:${previewPort}.`);
+	console.log('Invite links carry that address now, whichever address they are made from.');
 	console.log(`From another machine on the tailnet: paude login ${url}`);
 	console.log('To take it down: paude tailscale off');
 };

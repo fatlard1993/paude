@@ -48,7 +48,7 @@ paude --url <url>        pick from that server only
 paude --url <url> -s <id>  attach straight to a session there
 paude stop               stop this machine's background paude (after an update, say)
 paude doctor             what works on this machine, and what to install for the rest
-paude tailscale [off]    put this machine's paude on your tailnet with HTTPS, as https://<machine>.<tailnet>.ts.net
+paude tailscale [off]    put this machine's paude on your tailnet with HTTPS, as https://<machine>.<tailnet>.ts.net; --preview-port <port> for shares when 8444 isn't allowed
 paude serve              run this machine's paude in the foreground instead (--projects, --host, --port, --data, --claude)`;
 
 // An invite link (https://host/#/join/<token>) logs its guest in without a password

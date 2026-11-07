@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { parseStatus, tailnetDetail } from './tailscale';
+import { parseStatus, previewPortFlag, tailnetDetail } from './tailscale';
 
 const status = (state, name) => JSON.stringify({ BackendState: state, Self: { DNSName: name } });
 
@@ -29,4 +29,12 @@ test('the doctor says what to do at each step from no tailscale to serving', () 
 	expect(tailnetDetail(tailnet, 'https://workbook.tail1234.ts.net')).toBe(
 		'serving this paude at https://workbook.tail1234.ts.net',
 	);
+});
+
+test('the share port is 8444 unless --preview-port names another, which may not be 443', () => {
+	expect(previewPortFlag([])).toBe(8444);
+	expect(previewPortFlag(['--preview-port', '8443'])).toBe(8443);
+	expect(previewPortFlag(['--preview-port', '443'])).toBeNaN();
+	expect(previewPortFlag(['--preview-port', 'lots'])).toBeNaN();
+	expect(previewPortFlag(['--preview-port'])).toBeNaN();
 });
