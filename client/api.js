@@ -279,6 +279,10 @@ export const getFeed = async (sessionId, after) =>
 		invalidateAfter: 0,
 	});
 
+// A text said by this paude's voice, for the arcade: { audio, words }, or 404 when it has none
+export const readAloud = async (sessionId, text) =>
+	await POST('/api/sessions/:id/speech', { urlParameters: { id: sessionId }, body: { text } });
+
 export const getAsking = async sessionId =>
 	await GET('/api/sessions/:id/asking', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 

@@ -27,6 +27,7 @@ const OWN_SESSION_ROUTES = [
 	'/asking',
 	'/answer',
 	'/prompt',
+	'/speech',
 	'/continue',
 	'/artifacts',
 	'/artifact',

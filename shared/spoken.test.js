@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { displayTokens, spokenText, wordsOf } from './speech';
+import { displayTokens, spokenText, wordsOf } from './spoken';
 
 describe('spokenText', () => {
 	test('drops what a voice would stumble on', () => {

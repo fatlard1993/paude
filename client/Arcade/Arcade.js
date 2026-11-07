@@ -380,6 +380,7 @@ export default class Arcade extends View {
 		const light = index => card?.words?.forEach((span, at) => span.classList.toggle('lit', at === index));
 
 		this.saying = speak(text, {
+			session: this.id,
 			onWord: light,
 			onEnd: () => {
 				light(-1);

@@ -30,6 +30,7 @@ import { sessionDecisions } from '../decisions';
 import { findHome, localCandidates } from '../promptHome';
 import { askClaude } from '../claudeInbox';
 import { ArcadeError, acceptTrust, createArcadeProject, folderName, openingPrompt } from '../arcade';
+import { SpeechError, readAloud } from '../speech';
 import { runTask } from '../tasks';
 import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
@@ -515,6 +516,20 @@ const sessionsRoutes = async (request, server) => {
 			return new Response('Not part of your invite', { status: 403 });
 
 		return Response.json({ asking: runningSession(match.id)?.asking() ?? null });
+	}
+
+	// A text said by this paude's voice, for anyone in the session; 404 when it has none, and the page uses its own
+	match = requestMatch('POST', '/api/sessions/:id/speech', request);
+	if (match) {
+		if (!identity.owner && identity.sessionId !== match.id)
+			return new Response('Not part of your invite', { status: 403 });
+
+		try {
+			return Response.json(await readAloud((await request.json()).text));
+		} catch (error) {
+			if (error instanceof SpeechError) return new Response(error.message, { status: error.status });
+			throw error;
+		}
 	}
 
 	match = requestMatch('POST', '/api/sessions/:id/answer', request);
