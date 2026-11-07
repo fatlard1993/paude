@@ -141,10 +141,8 @@ const DRINK_SECONDS = 6;
 // How long the tube's nozzle takes to bring a grey its coffee or its giant cup, or take them away: down from the ceiling, a
 // moment at the desk, and back up
 const SERVE_SECONDS = 1.6;
-// Thinking: how long a grey's skull takes to brighten and dim again, in seconds, and how far up from its chin its eyes
-// are, in art pixels, the same on every size of head
-const THINK_BREATH = 2.2;
-const EYES_UP = 6;
+// Thinking: how long a grey's thought bubble takes to drift up and back down, in seconds
+const THINK_DRIFT = 1.8;
 // The part of a drink spent lifting the cup to its mouth, and again setting it back
 const DRINK_LIFT = 0.15;
 const LIFT_SECONDS = DRINK_LIFT * DRINK_SECONDS;
@@ -5603,24 +5601,24 @@ export default class Ship {
 
 	// Thinking hard, on a head `w` by `h` with its top at `top` and its middle at `x`: its brow knit over its eyes, and
 	// its skull glowing softly, brightening and dimming slowly as it mulls it over
-	drawConcentrating(ctx, { x, top, w, h, seed }) {
-		const swell = 0.5 + 0.5 * Math.sin((this.time / THINK_BREATH + seed) * TAU);
-		const middle = top + (h - EYES_UP) / 2;
-		const glow = ctx.createRadialGradient(x, middle, 1, x, middle, w * 0.6);
+	// Thinking: a thought bubble up and to the right of its head (`top` its crown, `w` its width), two small bubbles
+	// leading to a cloud in which three dots come one after another, the whole drifting up and down a pixel
+	drawConcentrating(ctx, { x, top, w, seed }) {
+		const drift = Math.round(Math.sin((this.time / THINK_DRIFT + seed) * TAU));
+		const temple = x + Math.ceil(w / 2);
+		const cloud = { x: temple + 1, y: top - 14 + drift, w: 11, h: 7 };
+		const dots = Math.floor(this.time * 2.5 + seed * 3) % 3;
 
-		glow.addColorStop(0, `rgba(160, 232, 255, ${0.25 + swell * 0.3})`);
-		glow.addColorStop(1, 'rgba(160, 232, 255, 0)');
-		ctx.fillStyle = glow;
-		ctx.fillRect(x - w, middle - h, w * 2, h * 2);
-
-		// Each brow angled down toward the nose, just over its eye
-		const brow = top + h - EYES_UP - 1;
-
-		for (const side of [-1, 1]) {
-			rect(ctx, x + side * 4, brow - 1, 1, 1, PALETTE.k);
-			rect(ctx, x + side * 3, brow, 1, 1, PALETTE.k);
-			rect(ctx, x + side * 2, brow, 1, 1, PALETTE.k);
-		}
+		rect(ctx, temple, top - 2 + drift, 1, 1, PALETTE.W);
+		rect(ctx, temple + 2, top - 6 + drift, 2, 2, PALETTE.W);
+		// The cloud: a box with its corners off, rimmed in grey so it reads against a white screen too
+		rect(ctx, cloud.x + 1, cloud.y, cloud.w - 2, cloud.h, PALETTE.l);
+		rect(ctx, cloud.x, cloud.y + 1, cloud.w, cloud.h - 2, PALETTE.l);
+		rect(ctx, cloud.x + 1, cloud.y + 1, cloud.w - 2, cloud.h - 2, PALETTE.W);
+		rect(ctx, cloud.x + 2, cloud.y, cloud.w - 4, 1, PALETTE.W);
+		rect(ctx, cloud.x + 2, cloud.y + cloud.h - 1, cloud.w - 4, 1, PALETTE.W);
+		for (let dot = 0; dot < 3; dot++)
+			rect(ctx, cloud.x + 2 + dot * 3, cloud.y + 3, 2, 2, dot <= dots ? PALETTE.k : '#d8dde6');
 	}
 
 	// Eight points flying out and fading, `time` from 0 to 1
