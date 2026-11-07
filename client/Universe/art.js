@@ -284,6 +284,9 @@ const WATCHER = [
 ];
 // Pointing: its near arm off its side, drawn out toward what it points at by whoever draws it
 const WATCHER_POINT = WATCHER.map((row, index) => (index >= 18 && index <= 21 ? `..${row.slice(2)}` : row));
+// Walking: a foot lifted, the other planted, by turns with standing between, as a grey's
+const WATCHER_STEP_LEFT = WATCHER.with(-2, '..kkk.kGk..').with(-1, '.......kk..');
+const WATCHER_STEP_RIGHT = WATCHER.with(-2, '..kgk.kkk..').with(-1, '..kk.......');
 const PAPER = ['kkkkkkk', 'kwwwwwk', 'klllllk', 'kkkkkkk'];
 const CRATE = ['kkkkkkkk', 'koooooOk', 'kokkkkOk', 'koOooOOk', 'kokkkkOk', 'kOOOOOOk', 'kkkkkkkk'];
 const CANISTER = ['.kkk.', 'kccck', 'kcWck', 'kccck', 'kccck', '.kkk.'];
@@ -433,6 +436,8 @@ const SPRITES = {
 	smallGreyWork: SMALL_GREY_WORK,
 	watcher: WATCHER,
 	watcherPoint: WATCHER_POINT,
+	watcherStepLeft: WATCHER_STEP_LEFT,
+	watcherStepRight: WATCHER_STEP_RIGHT,
 	paper: PAPER,
 	crate: CRATE,
 	canister: CANISTER,

@@ -529,7 +529,10 @@ const trackOf = points => {
 // How far behind an island's console someone walks to or from its seats, and how far past its end they go round it,
 // in world units
 const BEHIND_CONSOLE = 0.15;
-const ROUND_ISLAND = 0.25;
+// Far enough past an island's aft end that a grey or its monitor, eleven art pixels wide, clears the console's end cap
+// (drawn four art pixels past the island) on its way round, rather than crossing it drawn in front and then popping
+// behind it
+const ROUND_ISLAND = 0.5;
 
 // The island on the bridge whose seat `point` is at, behind its console
 const islandAt = (bridge, point) =>
@@ -4174,7 +4177,7 @@ export default class Ship {
 		}
 	}
 
-	// The monitor on its feet: stepping along with a small bob, in the materializer's beam while it's made or unmade
+	// The monitor on its feet: stepping along as a grey does, in the materializer's beam while it's made or unmade
 	drawWatcherWalking(ctx, worker) {
 		const { watcher, session } = worker;
 		const at = this.art(watcher);
@@ -4193,9 +4196,9 @@ export default class Ship {
 			ctx.globalAlpha = unmaking >= 0 ? Math.max(0, 1 - unmaking) : 1;
 		}
 
-		const bob = watcher.path.length && Math.floor(watcher.step * 2) % 2 ? 1 : 0;
+		const stride = watcher.path.length ? STEPS[Math.floor(watcher.step) % STEPS.length] : '';
 
-		drawSprite(ctx, 'watcher', at.x, at.y - bob, { colors, flip: watcher.facing < 0 });
+		drawSprite(ctx, `watcher${stride}`, at.x, at.y, { colors, flip: watcher.facing < 0 });
 		if (making < 1 || unmaking >= 0) {
 			ctx.globalAlpha = 1;
 			ctx.restore();

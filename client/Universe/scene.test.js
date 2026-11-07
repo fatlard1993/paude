@@ -4,6 +4,7 @@ import Ship, { appliancesOf, bendAround, countdown, resting, risersFor, runsFor,
 import { WATCHER_W, clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats } from './plan';
 import { SCREEN_RISE, UNIT, cableWeight, floor, setTrim, walls } from './station';
 import { drawTransporter, shuttleAt } from './hull';
+import { spriteSize } from './art';
 
 const session = changes => ({
 	id: 'a',
@@ -2305,6 +2306,15 @@ test('a session turned fabled gets its monitor out of the materializer, walking 
 	expect(worker.watcher.path.length).toBeGreaterThan(0);
 	expect(worker.watcher.path.at(-1)).toEqual(made.watcherAt(worker));
 	expect(worker.watcher.madeAt).toBe(made.time);
+	// Round its island's aft end with its whole width clear of the console's end cap, then in behind the console
+	const { island } = worker.seat;
+	const climb = worker.watcher.path.findIndex(({ y }) => Math.abs(y - (island.y - 0.15)) < 1e-9);
+
+	expect(climb).toBeGreaterThan(0);
+	expect(worker.watcher.path[climb].x).toBe(worker.watcher.path[climb - 1].x);
+	expect(worker.watcher.path[climb].x).toBeLessThanOrEqual(island.x - 0.45);
+	// Striding as a grey does: a step sprite each way, the monitor's own size
+	for (const step of ['watcherStepLeft', 'watcherStepRight']) expect(spriteSize(step)).toEqual(spriteSize('watcher'));
 
 	run(made, 90);
 	expect(worker.watcher.path).toHaveLength(0);
