@@ -10,10 +10,11 @@ import { noteProjectActivity, projectOf, projectPath } from './projects';
 import { sessionRecord } from './sessions/record';
 import { allRunning, stopSession } from './sessions/running';
 import { forgetSessionShares } from './shares';
+import { runsOf, stopRun } from './tasks';
 import { releaseWorktree } from './worktrees';
 
-// A session gone for good: Claude ended, its transcript, chat and comments deleted, its invites revoked, its shares
-// stopped, and its worktree let go once no other session uses it. { released } (the worktree's fate, if it had one);
+// A session gone for good: Claude ended, the tasks it was running stopped, its transcript, chat and comments deleted,
+// its invites revoked, its shares stopped, and its worktree let go once no other session uses it. { released } (the worktree's fate, if it had one);
 // null for no such session.
 const removeSession = async id => {
 	const record = await sessionRecord(id);
@@ -25,6 +26,8 @@ const removeSession = async id => {
 	// Its project remembers it was active, even once nothing in it is left
 	await noteProjectActivity({ [projectOf(cwd)]: stored?.lastModified });
 	await stopSession(id);
+	// A server it ran as a task (a game's dev server) would otherwise outlive it
+	for (const run of runsOf(id)) if (run.code === undefined) await stopRun(id, run.id).catch(() => {});
 	// A session that never got a prompt has no transcript to delete
 	await deleteSession(id, { dir: cwd }).catch(error => {
 		if (!/not found/i.test(error.message)) throw error;
