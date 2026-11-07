@@ -149,8 +149,9 @@ export const sessionsPane = ({ project, remotes = [], local = true, onPick, chan
 	},
 });
 
-// Every project to start a session in, newest work first: this paude's to start here, the other paudes' to open
-// there; each watched from here, or not, so it comes aboard without a session starting. `onWatched` once one is.
+// Every project to start a session in, newest work first: this paude's started here, the other paudes' started there
+// from here (`onStart` with the paude) or opened there; each watched from here, or not, so it comes aboard without a
+// session starting. `onWatched` once one is.
 export const projectsPane = ({ remotes = [], onStart, onOpenThere, onWatched }) => ({
 	key: 'projects',
 	label: 'Projects',
@@ -213,6 +214,9 @@ export const projectsPane = ({ remotes = [], onStart, onOpenThere, onWatched }) 
 				...remoteProjects.map(project =>
 					row(
 						project,
+						button('Start a session', () => onStart(project.name, { url: project.remote.url, name: project.server }), {
+							className: 'variant-flat',
+						}),
 						button(`Open on ${project.server}`, () => onOpenThere(project.remote, project.name), {
 							className: 'variant-flat',
 						}),

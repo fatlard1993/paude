@@ -48,7 +48,7 @@ import refusal from './reason';
 import { airlockCard } from './airlockCard';
 import { logCard, manifestCard, promptCard, replyCard } from './replyCard';
 import { arrivalOf } from './sidePanel';
-import Ship, { BEAM_SECONDS, BRIDGE, LOUNGE, sessionKey, triage, GROUP_SEPARATOR } from './scene';
+import Ship, { BEAM_SECONDS, BRIDGE, LOUNGE, remoteOfBay, sessionKey, triage, GROUP_SEPARATOR } from './scene';
 import { FOCUS_WIDTH, Stage } from './universeStyle';
 
 // Panels framed as void-driller frames them, corners cut by augmented-ui
@@ -1262,7 +1262,7 @@ export default class Universe extends View {
 					? [
 							projectsPane({
 								remotes: only ? [] : remotes,
-								onStart: project => (this.closeDock(), this.newPrompt(project)),
+								onStart: (project, remote) => (this.closeDock(), this.newPrompt(project, undefined, remote)),
 								onOpenThere: (remote, project) => this.openProject({ name: remote.name, remote }, project),
 								onWatched: () => this.poll(),
 							}),
@@ -1477,11 +1477,16 @@ export default class Universe extends View {
 	}
 
 	// A prompt placed as from home: anywhere, or in `project`
-	newPrompt(project, anchor) {
+	// A new prompt, in `project` to begin with: one only another paude has starts a session there, and the card's choice
+	// of projects says which those are
+	newPrompt(project, anchor, remote) {
+		const projects = this.aboard.bays.map(bay => ({ name: bay.name, remote: remoteOfBay(bay) }));
+		const picked = project && (projects.find(({ name }) => name === project) ?? { name: project, remote });
+
 		this.openCard(
 			promptCard({
-				project,
-				projects: this.aboard.bays.map(({ name }) => name),
+				project: picked ? { ...picked, remote: picked.remote ?? remote } : undefined,
+				projects,
 				onSent: () => this.aboard.charge(),
 				onArrive: place => this.dockWhenAboard(place),
 				onClose: () => this.closeCard(),

@@ -313,6 +313,11 @@ const RANKS = [
 
 const rankOf = model => RANKS.find(([name]) => model?.includes(name))?.[1] ?? PALETTE.a;
 
+// The paude a deck's project is only on, as { url, name }: none when this paude has it too, since a prompt for it
+// is placed here then
+export const remoteOfBay = bay =>
+	bay?.engines?.length && bay.engines.every(({ remote }) => remote) ? bay.engines[0].remote : undefined;
+
 // 'warm', 'going', 'fabled' or none; paudes before `keeping` send it as `kept`
 const keepingOf = session => session.keeping ?? session.kept;
 // The drink on its console: coffee kept warm, the giant cup kept going; fabled, its monitor keeps it and it has none

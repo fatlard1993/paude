@@ -1,6 +1,16 @@
 import { expect, test } from 'bun:test';
 
-import Ship, { appliancesOf, bendAround, countdown, resting, risersFor, runsFor, tanksOf, triage } from './scene';
+import Ship, {
+	appliancesOf,
+	bendAround,
+	countdown,
+	remoteOfBay,
+	resting,
+	risersFor,
+	runsFor,
+	tanksOf,
+	triage,
+} from './scene';
 import { WATCHER_W, clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats } from './plan';
 import { SCREEN_RISE, UNIT, cableWeight, floor, setTrim, walls } from './station';
 import { drawTransporter, shuttleAt } from './hull';
@@ -2465,4 +2475,20 @@ test("the transporter's beam is the color of the ship being gone to, and its con
 		part.draw?.(),
 	);
 	expect(idle.fills).not.toContain('hsl(200 70% 76%)');
+});
+
+test("a deck's project only another paude has is started there: the deck says which paude, and none when this paude has it too", () => {
+	const vps = { url: 'https://vps', name: 'vps' };
+
+	expect(remoteOfBay({ engines: [{ key: 'https://vps', name: 'vps', remote: vps }] })).toBe(vps);
+	expect(
+		remoteOfBay({
+			engines: [
+				{ key: 'here', name: 'dellbook' },
+				{ key: 'https://vps', remote: vps },
+			],
+		}),
+	).toBeUndefined();
+	expect(remoteOfBay({ engines: [] })).toBeUndefined();
+	expect(remoteOfBay(undefined)).toBeUndefined();
 });

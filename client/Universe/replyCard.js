@@ -148,20 +148,35 @@ export const replyCard = ({ session, onOpen, onSent, onClose, note }) => {
 // A prompt placed as from home: paude finds the session it carries on or the project to start one in, or, a project
 // chosen (`project`, or one of `projects` picked in the card), the session there it carries on or a new one there; and
 // goes there: to `onArrive({ id, remote })` when given, else straight to its page
+// `projects`: [{ name, remote }], `remote` ({ url, name }) for one that is only on another paude, where the prompt then
+// starts a session; `project` the one picked to begin with
 export const promptCard = ({ project, projects = [], onSent, onArrive, onClose }) => {
 	const card = element('div', 'reply-card');
 	const where = element('select', 'where');
-	const about = () =>
-		where.value ? 'paude finds the session it carries on there, or starts one' : 'paude finds where it goes';
-	const head = heading(project ? `New prompt in ${project}` : 'New prompt', about(), onClose);
+	const choices = [...new Map([...(project ? [project] : []), ...projects].map(each => [each.name, each]))].map(
+		([, each]) => each,
+	);
+	const chosen = () => choices.find(({ name }) => name === where.value);
+	const about = () => {
+		if (!where.value) return 'paude finds where it goes';
+
+		return chosen()?.remote
+			? `starts a session there, on ${chosen().remote.name}`
+			: 'paude finds the session it carries on there, or starts one';
+	};
+	const head = heading(project ? `New prompt in ${project.name}` : 'New prompt', about(), onClose);
 
 	where.append(
 		Object.assign(element('option', '', 'Let paude find the project'), { value: '' }),
-		...[...new Set([...(project ? [project] : []), ...projects])]
-			.sort((a, b) => a.localeCompare(b))
-			.map(name => Object.assign(element('option', '', name), { value: name })),
+		...choices
+			.sort((a, b) => a.name.localeCompare(b.name))
+			.map(each =>
+				Object.assign(element('option', '', each.remote ? `${each.name} on ${each.remote.name}` : each.name), {
+					value: each.name,
+				}),
+			),
 	);
-	where.value = project ?? '';
+	where.value = project?.name ?? '';
 	where.title = 'Where it goes';
 	where.addEventListener('change', () => (head.querySelector('.about').textContent = about()));
 
@@ -172,6 +187,7 @@ export const promptCard = ({ project, projects = [], onSent, onArrive, onClose }
 			placePrompt({
 				prompt: text,
 				project: where.value || undefined,
+				remote: chosen()?.remote,
 				onArrive,
 				onSent: () => {
 					box.sent();

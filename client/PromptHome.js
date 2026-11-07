@@ -427,7 +427,9 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive }
 // gone to without asking, unless it's a new session, whose model is to pick. A new session here starts in the
 // project's own folder, or with startFresh(project, lifetime, model) when given (resolving true once started). onSent
 // once it's gone.
-export const placePrompt = async ({ prompt, project, startFresh, onArrive, onSent }) => {
+// `remote` ({ url, name }): the project is on that paude, so the prompt starts a session there without asking Haiku
+// where it goes; this paude can't place it among sessions it doesn't have
+export const placePrompt = async ({ prompt, project, remote, startFresh, onArrive, onSent }) => {
 	if (!prompt) return new Notify({ intent: 'warning', content: 'Say what Claude should do first' });
 
 	const body = new Placing({});
@@ -444,7 +446,21 @@ export const placePrompt = async ({ prompt, project, startFresh, onArrive, onSen
 
 	body.elem.replaceChildren(looking('Finding the sessions it carries on…'));
 
-	const { body: found, response } = await findPromptHome(prompt, project);
+	const { body: found, response } = remote
+		? {
+				body: {
+					matches: [],
+					fresh: {
+						project,
+						remote,
+						lifetime: 'ordinary',
+						model: 'default',
+						why: `${project} is a project on ${remote.name}`,
+					},
+				},
+				response: { ok: true },
+			}
+		: await findPromptHome(prompt, project);
 
 	if (closed) return;
 	if (!response?.ok) {
