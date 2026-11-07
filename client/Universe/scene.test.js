@@ -2290,11 +2290,14 @@ test('a couch more needed is dropped out of the tube; one no longer needed is za
 	made.update(resting(['a', 'b']));
 	expect(loungeCount()).toBe(3);
 
-	// Its ash sucked up, the lounge is laid for the one couch
+	// Its ash sucked up, the lounge still leaves the couch out until it's laid again, for the one couch
 	run(made, 7);
-	made.update(resting(['a', 'b']));
 	expect(made.dust.some(({ couch }) => couch === 1)).toBe(false);
+	expect(loungeCount()).toBe(3);
+	expect([...made.couchesGone()]).toEqual([1]);
+	made.update(resting(['a', 'b']));
 	expect(loungeCount()).toBe(2);
+	expect([...made.couchesGone()]).toEqual([]);
 });
 
 test('a lounger whose couch moves up as one before it gets up hops down and scoots over to it, rather than appearing there; to another row by the side', () => {

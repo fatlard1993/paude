@@ -5245,11 +5245,16 @@ export default class Ship {
 		);
 	}
 
-	// Which couches the lounge mustn't draw: those being zapped, each drawn crumbling by its zap, and those gone to ash
+	// Which couches the lounge mustn't draw: those being zapped, each drawn crumbling by its zap, those gone to ash, and
+	// any past those needed: its ash sucked up, the lounge is still laid with it until it's laid again
 	couchesGone() {
+		const laid = Math.ceil(Math.max(this.lounge?.count ?? 0, 1) / 2);
+		const needed = this.couches ?? laid;
+
 		return new Set([
 			...(this.couchZaps ?? []).map(({ index }) => index),
 			...this.dust.map(({ couch }) => couch).filter(couch => couch !== undefined),
+			...Array.from({ length: Math.max(0, laid - needed) }, (_, past) => needed + past),
 		]);
 	}
 
