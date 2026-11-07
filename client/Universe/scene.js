@@ -273,6 +273,9 @@ const VAPOR_SECONDS = 1.6;
 // coming down, takes sucking it up, and takes going back up, in seconds
 const ASH = { lies: 2.5, down: 0.6, sucks: 1.4, up: 0.6 };
 const DUST_SECONDS = ASH.lies + ASH.down + ASH.sucks + ASH.up;
+// Its heap sucked up, how long a deleted session's terminal takes to sink into its console before its seat goes and
+// the island is laid again without it
+const SEAT_SINK_SECONDS = 0.6;
 // A couch dropped into the lounge by the tube: how long its nozzle takes to come down, the couch to fall out of it and
 // settle, and the nozzle to go back up; and one no longer needed, zapped by the emitter let down from the ceiling: how
 // long it takes to come down, fires while the couch crumbles to ash under its beam, and takes to go back up, in seconds
@@ -1654,9 +1657,10 @@ export default class Ship {
 			}
 
 		// Gone to rest in the lounge, it keeps its seat at its project's island all the same: its terminal frosted over
-		// gone cold, switched off stopped
+		// gone cold, switched off stopped; deleted, it keeps it until its dust has gone
 		for (const [key, worker] of this.workers)
-			if (!worker.leaving || worker.opacity > 0) bayOf(worker.session.project ?? 'elsewhere').sessions.push(key);
+			if (!worker.leaving || worker.opacity > 0 || worker.ashedAt !== undefined)
+				bayOf(worker.session.project ?? 'elsewhere').sessions.push(key);
 		// Seated oldest first from the island's aft end, each newer one to the right of the last, so one coming aboard
 		// takes the end and nobody shifts along; its short-lived ones after them all, on the floor past the desk
 		for (const bay of bays.values())
@@ -1961,15 +1965,19 @@ export default class Ship {
 
 			worker.opacity = worker.leaving ? worker.opacity - fade : Math.min(1, worker.opacity + seconds * 2);
 			if (worker.opacity > 0 || !worker.leaving) continue;
-			// Its dust stays a while where it was
-			if (worker.vaporizedAt !== undefined && worker.dustAt)
-				this.dust.push({
-					...worker.dustAt,
-					hue: worker.session.hue,
-					at: this.time,
-					...(worker.lounging && { key }),
-				});
-			this.workers.delete(key);
+			if (worker.vaporizedAt === undefined) {
+				this.workers.delete(key);
+				continue;
+			}
+			// Crumbled: its dust, and its monitor's, stays a while where it was, and it keeps its seat until the dust has
+			// gone, so the island isn't laid again under the heaps and the emitters
+			if (worker.ashedAt === undefined) {
+				worker.ashedAt = this.time;
+				for (const heap of [worker.dustAt, worker.watcher?.dustAt].filter(Boolean))
+					this.dust.push({ ...heap, hue: worker.session.hue, at: this.time, ...(worker.lounging && { key }) });
+				worker.watcher = undefined;
+			}
+			if (this.time - worker.ashedAt >= DUST_SECONDS + SEAT_SINK_SECONDS) this.workers.delete(key);
 		}
 		this.dust = this.dust.filter(({ at }) => this.time - at < DUST_SECONDS);
 		this.zaps = this.zaps.filter(({ at }) => this.time - at < GREY_ZAP.down + GREY_ZAP.fire + GREY_ZAP.up);
@@ -2055,6 +2063,20 @@ export default class Ship {
 		Object.assign(worker, { vaporizedAt: this.time, leaving: true, dustAt });
 		// The emitter over it, outlasting the grey by its way back up
 		this.zaps.push({ key, x: standing.x, top: standing.y - 26, floor: dustAt.y, depth: dustAt.depth, at: this.time });
+		if (!this.watcherStands(worker)) return;
+
+		// Its monitor, standing behind it, crumbles under an emitter of its own, its dust to the desk beside its grey's
+		const foot = this.art(this.watcherAt(worker));
+
+		worker.watcher.dustAt = { ...dustAt, x: foot.x };
+		this.zaps.push({
+			key: `${key}|watcher`,
+			x: foot.x,
+			top: foot.y - WATCHER_TALL,
+			floor: dustAt.y,
+			depth: dustAt.depth,
+			at: this.time,
+		});
 	}
 
 	// Read here: its marker goes until something newer comes
@@ -2388,9 +2410,19 @@ export default class Ship {
 		standing.push(...this.tubeParts(ctx));
 		standing.push(...this.fleetParts(ctx));
 		// The deleted crumbling, over what they sat at, and their dust after, fading out in its last seconds
-		for (const worker of this.workers.values())
-			if (worker.crumble && worker.vaporizedAt !== undefined)
-				standing.push({ y: worker.dustAt.depth, draw: () => this.drawCrumbling(ctx, worker) });
+		for (const [key, worker] of this.workers) {
+			if (worker.vaporizedAt === undefined || worker.ashedAt !== undefined) continue;
+			if (worker.crumble)
+				standing.push({
+					y: worker.dustAt.depth,
+					draw: () => this.drawCrumbling(ctx, worker.crumble, worker.dustAt, key),
+				});
+			if (worker.watcher?.crumble)
+				standing.push({
+					y: worker.watcher.dustAt.depth,
+					draw: () => this.drawCrumbling(ctx, worker.watcher.crumble, worker.watcher.dustAt, `${key}|watcher`),
+				});
+		}
 		for (const heap of this.dust) standing.push({ y: heap.depth, draw: () => this.drawAshSucked(ctx, heap) });
 		for (const zap of this.zaps) standing.push({ y: zap.depth + 0.01, draw: () => this.drawGreyZap(ctx, zap) });
 		for (const parcel of this.parcels)
@@ -2564,10 +2596,19 @@ export default class Ship {
 		return this.islandsShown?.get(key)?.rise ?? 2;
 	}
 
+	// How far a seat's terminal stands out of its console, 0 to 2 as an island's rise: a deleted session's sinks back in
+	// once its heap is sucked up, before its seat goes
+	seatRise(worker) {
+		if (worker.ashedAt === undefined) return 2;
+
+		return 2 - Math.max(0, Math.min(1, (this.time - worker.ashedAt - DUST_SECONDS) / SEAT_SINK_SECONDS));
+	}
+
 	// A seat at an island as far up as it's risen: its console's front with the console, its terminal rising out of the
-	// console's top once that's up, and sunk with it below the floor
-	drawRisingSeat(ctx, at, options, key) {
-		const rise = key === undefined ? 2 : this.islandRise(key);
+	// console's top once that's up, and sunk with it below the floor; `own` the seat's own rise, when lower than its
+	// island's
+	drawRisingSeat(ctx, at, options, key, own = 2) {
+		const rise = Math.min(own, key === undefined ? 2 : this.islandRise(key));
 
 		if (rise >= 2) return drawSeat(ctx, at, options);
 
@@ -3429,6 +3470,26 @@ export default class Ship {
 		};
 		const walker = this.walking(worker) ? [{ y: walkingDepth(), draw: () => this.drawWorker(ctx, worker) }] : [];
 
+		// Crumbled to dust, it holds its seat until its heap is sucked up: its terminal switched off, nothing else of it
+		if (worker.ashedAt !== undefined) {
+			if (worker.lounging) return this.homeSeatParts(ctx, worker);
+			if (seat.floor) return [];
+
+			const desk = this.art({ x: seat.x, y: seat.y + 0.2 });
+			const dark = {
+				screen: { ...screen, kind: 'off' },
+				engineColor: `hsl(${session.engine.hue ?? 215} 45% 50%)`,
+				time: this.time,
+				seed: worker.seed,
+			};
+
+			return [
+				{
+					y: seat.y + 0.14,
+					draw: () => this.drawRisingSeat(ctx, desk, dark, seat.island?.key, this.seatRise(worker)),
+				},
+			];
+		}
 		if (worker.lounging)
 			return [...(walker.length ? walker : this.loungerParts(ctx, worker)), ...this.homeSeatParts(ctx, worker)];
 		const engineColor = `hsl(${session.engine.hue ?? 215} 45% 50%)`;
@@ -4081,16 +4142,7 @@ export default class Ship {
 					draw: () => this.drawWatcherWalking(ctx, worker),
 				},
 			];
-		if (
-			!watcher ||
-			keepingOf(session) !== 'fabled' ||
-			!seat ||
-			seat.housing ||
-			worker.lounging ||
-			briefOf(worker) ||
-			this.walking(worker)
-		)
-			return [];
+		if (!this.watcherStands(worker)) return [];
 
 		const spot = this.watcherAt(worker);
 
@@ -4101,6 +4153,7 @@ export default class Ship {
 					const at = this.art(spot);
 					const console = this.art({ x: seat.x, y: seat.y + 0.2 });
 
+					if (watcher.dustAt) return this.drawWatcherCrumbling(ctx, worker, at);
 					// Where it stands this frame, for whoever walks behind it to be hidden by it
 					worker.watcherDrawn = { x: at.x, y: at.y, consoleTop: console.y - CONSOLE_TALL, at: this.time };
 					this.drawWatcher(ctx, worker, at);
@@ -4113,6 +4166,40 @@ export default class Ship {
 				},
 			},
 		];
+	}
+
+	// Whether its monitor stands behind its seat: made and not on its way anywhere, its grey at a seat with room behind
+	// it (not a housing, nor the floor), not lounging or walking
+	watcherStands(worker) {
+		const { watcher, seat, session } = worker;
+
+		return Boolean(
+			watcher &&
+			!watcher.path.length &&
+			!watcher.leaving &&
+			keepingOf(session) === 'fabled' &&
+			seat &&
+			!seat.housing &&
+			!worker.lounging &&
+			!briefOf(worker) &&
+			!this.walking(worker),
+		);
+	}
+
+	// Deleted with its grey: whole while the emitter comes down, then crumbling from the top down under its beam, its
+	// dust falling to a heap on the desk
+	drawWatcherCrumbling(ctx, worker, at) {
+		const { watcher } = worker;
+		const gone = Math.max(0, Math.min(1, (this.time - worker.vaporizedAt - GREY_ZAP.down) / VAPOR_SECONDS));
+		const top = at.y - WATCHER_TALL;
+
+		watcher.crumble = { x: at.x, line: Math.round(top + (watcher.dustAt.y - top) * gone), gone };
+		ctx.save();
+		ctx.beginPath();
+		ctx.rect(at.x - 24, watcher.crumble.line, 48, 60);
+		ctx.clip();
+		this.drawWatcher(ctx, worker, at);
+		ctx.restore();
 	}
 
 	// The monitor with its feet at `at` (art pixels). The screen stands on the console's left; while the session asks, its
@@ -4389,6 +4476,7 @@ export default class Ship {
 							frost: session.status !== 'stopped',
 						},
 						homeSeat.island?.key,
+						this.seatRise(worker),
 					),
 			},
 		];
@@ -5042,14 +5130,13 @@ export default class Ship {
 		});
 	}
 
-	// A deleted worker's dust as it crumbles, `gone` 0 to 1: specks breaking off at the line eating down it and falling,
-	// and the heap they make growing on the floor
-	drawCrumbling(ctx, worker) {
-		const { x: middle, line, gone } = worker.crumble;
-		const floor = worker.dustAt.y;
+	// A deleted grey's (or its monitor's) dust as it crumbles, `gone` 0 to 1: specks breaking off at the line eating down
+	// it and falling, and the heap they make growing at `dustAt`; `seedKey` names it, so its specks fall their own way
+	drawCrumbling(ctx, { x: middle, line, gone }, dustAt, seedKey) {
+		const floor = dustAt.y;
 
 		for (let speck = 0; speck < 26; speck++) {
-			const seed = seeded(`${worker.session.key}|dust${speck}`);
+			const seed = seeded(`${seedKey}|dust${speck}`);
 			const start = (speck / 26) * 0.9;
 			const fall = (gone - start) / 0.35;
 
@@ -5061,7 +5148,7 @@ export default class Ship {
 
 			rect(ctx, x, y, 1, 1, speck % 3 ? DUST.light : DUST.dark);
 		}
-		this.drawDustHeap(ctx, worker.dustAt, gone);
+		this.drawDustHeap(ctx, dustAt, gone);
 	}
 
 	// A heap of dust, `size` 0 to 1 of its full size

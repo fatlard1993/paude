@@ -1299,13 +1299,54 @@ test('a deleted session stands whole while the emitter comes down over it, crumb
 	run(made, 1);
 	expect(made.workers.get('here/b').opacity).toBeLessThan(1);
 	expect(made.workers.get('here/b').opacity).toBeGreaterThan(0);
-	// Crumbled: the grey is gone and its heap lies, the emitter still on its way up
+	// Crumbled: nothing of the grey is left but its heap, the emitter still on its way up; it holds its seat, so the island
+	// isn't laid again under the heap
 	run(made, 1);
-	expect(made.workers.has('here/b')).toBe(false);
+	expect(made.workers.get('here/b').ashedAt).toBeDefined();
 	expect(made.dust).toHaveLength(1);
 	expect(made.zaps).toHaveLength(1);
+	expect(made.bays.find(({ name }) => name === 'paude').sessions).toContain('here/b');
+	expect(made.sessions.map(({ key }) => key)).toEqual(['here/a']);
 	run(made, 0.5);
 	expect(made.zaps).toHaveLength(0);
+	// The heap sucked up, its terminal sinks into the console, and only then does the seat go
+	run(made, 4.5);
+	const sinking = made.workers.get('here/b');
+
+	expect(made.seatRise(sinking)).toBeLessThan(2);
+	expect(made.seatRise(sinking)).toBeGreaterThan(1);
+	run(made, 1);
+	expect(made.workers.has('here/b')).toBe(false);
+	made.update([answer('here', [session()], { projects: ['paude'] })]);
+	expect(made.bays.find(({ name }) => name === 'paude').sessions).toEqual(['here/a']);
+});
+
+test('a fabled session deleted from here has its monitor zapped beside it, the two heaps lying on the desk together', () => {
+	const made = shipWith([
+		answer('here', [session(), session({ id: 'b', keeping: 'fabled' })], { projects: ['paude'] }),
+	]);
+
+	run(made, 10);
+	const worker = made.workers.get('here/b');
+
+	expect(made.watcherStands(worker)).toBe(true);
+	made.vaporize('here/b');
+	expect(made.zaps.map(({ key }) => key)).toEqual(['here/b', 'here/b|watcher']);
+	expect(worker.watcher.dustAt.y).toBe(worker.dustAt.y);
+	expect(worker.watcher.dustAt.x).not.toBe(worker.dustAt.x);
+	run(made, 2.5);
+	expect(worker.watcher).toBeUndefined();
+	expect(made.dust).toHaveLength(2);
+	// Deleted where no monitor stands (on the floor past the desk), only the grey is zapped
+	const other = shipWith([
+		answer('here', [session({ id: 'c', keeping: 'fabled', lifetime: 'brief' })], { projects: ['paude'] }),
+	]);
+
+	run(other, 10);
+
+	expect(other.watcherStands(other.workers.get('here/c'))).toBe(false);
+	other.vaporize('here/c');
+	expect(other.zaps.map(({ key }) => key)).toEqual(['here/c']);
 });
 
 test('a session deleted from here crumbles to a heap of dust, which stays a while after it is gone', () => {
@@ -1319,10 +1360,11 @@ test('a session deleted from here crumbles to a heap of dust, which stays a whil
 	made.update([answer('here', [session(), session({ id: 'b' })], { projects: ['paude'] })]);
 	expect(made.workers.get('here/b').leaving).toBe(true);
 	run(made, 2);
-	expect(made.workers.has('here/b')).toBe(false);
+	expect(made.workers.get('here/b').ashedAt).toBeDefined();
 	expect(made.dust).toHaveLength(1);
 	run(made, 7);
 	expect(made.dust).toHaveLength(0);
+	expect(made.workers.has('here/b')).toBe(false);
 });
 
 test("however many projects have islands, their conduits' risers stand side by side on the bridge's aft wall, apart, before the lounge", () => {
@@ -1650,7 +1692,7 @@ test('one deleted on a couch keeps its place till its dust has gone, the others 
 	made.vaporize('here/b');
 	run(made, 3);
 	made.update([answer('here', [stopped('a'), stopped('c')], { projects: ['paude'] })]);
-	expect(made.workers.has('here/b')).toBe(false);
+	expect(made.workers.get('here/b').ashedAt).toBeDefined();
 	expect(made.layout.rooms.find(({ kind }) => kind === 'lounge').count).toBe(3);
 	expect(seatOf('here/a')).toEqual(a);
 	expect(seatOf('here/c')).toEqual(c);
