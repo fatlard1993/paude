@@ -447,6 +447,10 @@ const sessionsRoutes = async (request, server) => {
 	// A project's icon, as its folder keeps it (a favicon), for wherever the project is named
 	match = requestMatch('GET', '/api/projects/:project/icon', request);
 	if (match) {
+		// A guest sees their own session's project's, no other's
+		if (!identity.owner && projectOf((await sessionRecord(identity.sessionId))?.cwd) !== match.project)
+			return new Response('Not your project', { status: 403 });
+
 		const folder = projectPath(match.project);
 		const icon = folder && (await listProjects()).includes(match.project) ? await iconOf(folder) : null;
 

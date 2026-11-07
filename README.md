@@ -144,7 +144,7 @@ The commands run in the main checkout. `{name}` and `{path}` are filled in alrea
 
 The password belongs to the owner, and the owner can type into any session, which means running commands as the server's user. Give it only to someone you'd give that shell.
 
-Everyone else comes in by invite: in a session's **People** tab, name the person, pick a role and an expiry (an hour, a day, a week), and send them the link. It opens that one session, in a browser or with `paude login <link>`.
+Everyone else comes in by invite: in a session's **People** tab, name the person, pick a role and an expiry (an hour, a day, a week), and send them the link. It opens that one session, in a browser or with `paude login <link>`. From it they can open the universe too, and see a ship with that session's grey and its project's machine alone: no other session or project, none of the ship's fuel, usage, log or crew, and the checkout's changes only with a role that may see files; the verbs that start, list or add things aboard are the owner's.
 
 A Drive invite can type into Claude, which runs commands as the server's user: give it to someone you'd give that shell, as with the password.
 

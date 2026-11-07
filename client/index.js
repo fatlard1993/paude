@@ -78,8 +78,19 @@ const content = () => {
 	if (!authenticated) return new Login({ passwordSet, inviteEnded: joinFailed || recall(GUEST_KEY) === 'yes' });
 	if (identity.owner) remember(GUEST_KEY, '');
 
-	// A guest has exactly one session and nowhere else to go
-	if (!identity.owner) return new TerminalView({ id: identity.sessionId });
+	// A guest has exactly one session, and the universe with that session's grey and its project's machine alone
+	if (!identity.owner) {
+		class GuestTerminal extends TerminalView {
+			constructor(options) {
+				super({ ...options, id: identity.sessionId });
+			}
+		}
+
+		return new Router({
+			views: { '/sessions/:id': GuestTerminal, '/universe': Universe, '/universe/sessions/:session': Universe },
+			defaultPath: `/sessions/${identity.sessionId}`,
+		});
+	}
 
 	return new Router({
 		views: {

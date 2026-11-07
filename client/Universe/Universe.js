@@ -251,6 +251,9 @@ const checkStatus = ({ draft, checks: { passing = 0, failing = 0, pending = 0 } 
 // A project's icon before its name, where its folder keeps one
 const iconOf = bay => (bay?.icon ? Object.assign(element('img', 'icon'), { src: bay.icon, alt: '' }) : null);
 
+// Verbs that start, list or add things aboard are the owner's; a guest, aboard with their one session, has none
+const owned = (...commands) => (identity()?.owner ? commands : []);
+
 const tone = (panel, title, hue, titleHue = hue) => {
 	const colorOf = value => (Number.isFinite(value) ? `hsl(${value} 60% 68%)` : '');
 
@@ -1082,14 +1085,18 @@ export default class Universe extends View {
 		);
 
 		return [
-			{
+			...owned({
 				label: local && remotes.length ? `New prompt${on(local.name)}` : 'New prompt here',
 				hotkey: 'n',
 				run: () => this.newPrompt(bay.name, anchor),
-			},
+			}),
 			...(local
 				? [
-						{ label: `Sessions${on(local.name)}`, hotkey: 'h', run: () => this.openProjectDock(bay.name, 'sessions') },
+						...owned({
+							label: `Sessions${on(local.name)}`,
+							hotkey: 'h',
+							run: () => this.openProjectDock(bay.name, 'sessions'),
+						}),
 						{
 							label: `${PANELS.files.label}${on(local.name)}`,
 							hotkey: 'f',
@@ -1140,20 +1147,18 @@ export default class Universe extends View {
 
 		return [
 			{ heading: bay.name },
-			{
+			...owned({
 				label: local && remotes.length ? `New prompt${on(local.name)}` : 'New prompt here',
 				detail: 'paude finds the session it carries on, or starts one in this project',
 				onPress: () => this.newPrompt(bay.name, point),
-			},
+			}),
 			{ label: 'Look closer', onPress: () => this.aboard.look(bay.name) },
 			this.watchBayAction(bay),
 			...(local
-				? [
-						{
-							label: `Open project${on(local.name)}`,
-							onPress: () => (window.location.hash = `#/projects/${encodeURIComponent(bay.name)}`),
-						},
-					]
+				? owned({
+						label: `Open project${on(local.name)}`,
+						onPress: () => (window.location.hash = `#/projects/${encodeURIComponent(bay.name)}`),
+					})
 				: []),
 			...remotes.map(engine => ({
 				label: `Open project on ${engine.name}`,
@@ -1172,7 +1177,7 @@ export default class Universe extends View {
 						{ label: 'Sessions', hotkey: 'h', run: () => this.openShipDock('sessions', [remote], engine.name) },
 						{ label: `Open ${engine.name}`, hotkey: 'o', run: () => this.openEngine(remote) },
 					]
-				: [{ label: 'Sessions', hotkey: 'h', run: () => this.openShipDock('sessions', [], engine.name) }]),
+				: owned({ label: 'Sessions', hotkey: 'h', run: () => this.openShipDock('sessions', [], engine.name) })),
 		];
 	}
 
@@ -1180,12 +1185,10 @@ export default class Universe extends View {
 		const prompt = { label: 'New prompt', hotkey: 'n', run: () => this.newPrompt() };
 		const folder = { label: 'Add a folder', hotkey: 'a', run: () => this.openShipDock('folders') };
 
-		if (place === 'new') return [prompt, folder];
+		if (place === 'new') return owned(prompt, folder);
 
 		return [
-			{ label: 'All sessions', hotkey: 'h', run: () => this.openShipDock('sessions') },
-			folder,
-			prompt,
+			...owned({ label: 'All sessions', hotkey: 'h', run: () => this.openShipDock('sessions') }, folder, prompt),
 			{ label: 'Look closer', hotkey: 'z', run: () => this.aboard.look(BRIDGE) },
 		];
 	}
@@ -1860,8 +1863,8 @@ export default class Universe extends View {
 					run: () => this.select(selectionOf({ kind: 'engine', engine }, this)),
 				})),
 				commands: [
-					{ label: 'All sessions', hotkey: 'h', run: () => this.openShipDock('sessions') },
-					{ label: 'New project', hotkey: 'p', run: () => this.openShipDock('projects') },
+					...owned({ label: 'All sessions', hotkey: 'h', run: () => this.openShipDock('sessions') }),
+					...owned({ label: 'New project', hotkey: 'p', run: () => this.openShipDock('projects') }),
 					...(identity()?.remotes
 						? [{ label: 'Connect a device', hotkey: 'd', run: () => this.openShipDock('devices') }]
 						: []),
@@ -1872,7 +1875,7 @@ export default class Universe extends View {
 				title: 'Resting',
 				rows: [['here', plural(room.sessions.length, 'resting session')]],
 				items: workersIn(room.sessions).map(workerItem),
-				commands: [{ label: 'All sessions', hotkey: 'h', run: () => this.openShipDock('sessions') }],
+				commands: owned({ label: 'All sessions', hotkey: 'h', run: () => this.openShipDock('sessions') }),
 			};
 		if (kind === 'bridge') {
 			const flyout = flyoutOf({ kind: 'bridge', room }, aboard);
@@ -1896,7 +1899,7 @@ export default class Universe extends View {
 				items: [...needed.map(workerItem), ...this.healthItems(), ...watched.map(workerItem)],
 				commands: [
 					...this.placeCommands('bridge'),
-					{ label: 'New project', hotkey: 'p', run: () => this.openShipDock('projects') },
+					...owned({ label: 'New project', hotkey: 'p', run: () => this.openShipDock('projects') }),
 					...(this.aboard.layout?.transporter
 						? [{ label: 'Transporter', hotkey: 'x', run: () => this.aboard.look('transporter') }]
 						: []),

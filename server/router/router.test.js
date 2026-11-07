@@ -98,6 +98,26 @@ test('the api needs a login; the owner gets in', async () => {
 	expect((await call('/api/projects/nowhere/icon', { token: tokens.owner })).status).toBe(404);
 });
 
+test("a guest's universe is their session and its project alone, none of the ship's figures, and a checkout's changes only with the files role", async () => {
+	const seen = await (await call('/api/universe', { token: tokens.comment })).json();
+
+	expect(seen.sessions.map(({ id }) => id)).toEqual([session.id]);
+	expect(seen.projects.map(({ name }) => name)).toEqual(['app']);
+	expect(seen.people.every(person => person.sessions.every(id => id === session.id))).toBe(true);
+	expect(seen.tools).toEqual([]);
+	expect(seen.fuel).toBeNull();
+	for (const figure of ['usage', 'log', 'crew', 'journey']) expect(seen[figure]).toBeUndefined();
+	expect((await (await call('/api/universe', { token: tokens.watch })).json()).checkouts).toEqual([]);
+	// The owner's has every session
+	const whole = await (await call('/api/universe', { token: tokens.owner })).json();
+
+	expect(whole.sessions.map(({ id }) => id).sort()).toEqual([session.id, other.id].sort());
+	expect(whole.fuel).not.toBeNull();
+	// Their project's icon is theirs to see, no other's
+	expect((await call('/api/projects/app/icon', { token: tokens.comment })).status).toBe(200);
+	expect((await call('/api/projects/nowhere/icon', { token: tokens.comment })).status).toBe(403);
+});
+
 test('watching a project watches its sessions, the ones it gains too, and leads the projects', async () => {
 	const watch = watching => ({ token: tokens.owner, method: 'PUT', body: { watching } });
 	const watchedIds = async () =>

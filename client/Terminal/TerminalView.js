@@ -173,14 +173,13 @@ export default class TerminalView extends View {
 		}
 		this.presence = new Presence({ appendTo: header });
 		new Elem({ appendTo: header, addClass: 'divider' });
-		// The universe, flown to this session's grey
-		if (identity()?.owner)
-			ghostButton(header, {
-				icon: 'earth-americas',
-				title: 'See it in the universe',
-				className: 'tool',
-				onPress: () => (window.location.hash = `#/universe/sessions/${encodeURIComponent(this.options.id)}`),
-			});
+		// The universe, flown to this session's grey (a guest's shows this session and its project alone)
+		ghostButton(header, {
+			icon: 'earth-americas',
+			title: 'See it in the universe',
+			className: 'tool',
+			onPress: () => (window.location.hash = `#/universe/sessions/${encodeURIComponent(this.options.id)}`),
+		});
 
 		const body = new Body({ appendTo: this });
 

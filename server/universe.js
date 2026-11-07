@@ -4,6 +4,7 @@ import path from 'path';
 
 import { facilityOf } from '../shared/facilities';
 import { sessionHue } from '../shared/hues';
+import { roleAllows } from '../shared/roles';
 import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
 
@@ -559,9 +560,14 @@ export const isOwnProject = folder => {
 	}
 };
 
+// A guest's ship is their session and its project alone: nothing else aboard, and none of the ship's figures (fuel,
+// usage, the log, the crew, the journey, the tools), which are the machine's, not the session's. The owner sees all.
+const scopeOf = identity => (identity.owner ? null : new Set([identity.sessionId]));
+
 export const universe = async identity => {
 	forgetStale();
-	const running = [...allRunning()].filter(session => !session.ended);
+	const scope = scopeOf(identity);
+	const running = [...allRunning()].filter(session => !session.ended && (!scope || scope.has(session.id)));
 	const roots = new Map(
 		await Promise.all(
 			running.map(async session => [
@@ -619,33 +625,41 @@ export const universe = async identity => {
 		}),
 	);
 
-	const sessions = [...live, ...(await stoppedFor(identity, new Set(live.map(({ id }) => id))))];
+	const stopped = (await stoppedFor(identity, new Set(live.map(({ id }) => id)))).filter(
+		({ id }) => !scope || scope.has(id),
+	);
+	const sessions = [...live, ...stopped];
+	const theirs = scope && new Set(sessions.map(({ project }) => project));
 
 	return {
 		name: await serverName(),
-		tools: [...tools],
-		usage: usageOf(),
-		log: logOf(),
-		fuel: await fuelOf(),
-		crew: crewOf(),
-		journey: journeyOf(),
+		tools: scope ? [] : [...tools],
+		usage: scope ? undefined : usageOf(),
+		log: scope ? undefined : logOf(),
+		fuel: scope ? null : await fuelOf(),
+		crew: scope ? undefined : crewOf(),
+		journey: scope ? undefined : journeyOf(),
 		projects: await Promise.all(
-			(await listProjects()).map(async name => {
-				const watching = watchesProject(identity, name);
+			(await listProjects())
+				.filter(name => !theirs || theirs.has(name))
+				.map(async name => {
+					const watching = watchesProject(identity, name);
 
-				return {
-					name,
-					...(await brandFields(name)),
-					watching,
-					// The project this paude runs from: the ship's own works, as it flies
-					...(isOwnProject(projectPath(name)) && { own: true }),
-					// Every project is a machine aboard, at work or not, so every one is looked into
-					character: (await characterOf(name)) || undefined,
-				};
-			}),
+					return {
+						name,
+						...(await brandFields(name)),
+						watching,
+						// The project this paude runs from: the ship's own works, as it flies
+						...(isOwnProject(projectPath(name)) && { own: true }),
+						// Every project is a machine aboard, at work or not, so every one is looked into
+						character: (await characterOf(name)) || undefined,
+					};
+				}),
 		),
 		sessions,
-		checkouts: checkouts.filter(({ changed }) => changed !== undefined),
+		// A checkout's changes are the files panel's to show, so a guest sees them only with that much of a role
+		checkouts:
+			scope && !roleAllows(identity.role, 'files') ? [] : checkouts.filter(({ changed }) => changed !== undefined),
 		people: await withViewer(peopleOf(running), identity),
 	};
 };

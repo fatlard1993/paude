@@ -439,6 +439,8 @@ export const tanksOf = engines => {
 	const tanks = new Map();
 
 	for (const engine of engines) {
+		// A guest's ship shows no fuel at all
+		if (engine.fuel === null) continue;
 		// Those that don't say what they run on (paudes too old to) share one tank, what's in it not known
 		if (!engine.fuel) {
 			const unknown = tanks.get('unknown') ?? { ...EMPTY_TANK, engines: [], unknown: true };

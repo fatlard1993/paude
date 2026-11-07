@@ -60,6 +60,8 @@ export const guestMayRequest = (identity, method, pathname) => {
 		(['GET', 'POST', 'PATCH', 'DELETE'].includes(method) &&
 			(pathname === `${own}/shares` || pathname.startsWith(`${own}/shares/`))) ||
 		(method === 'GET' && pathname === '/api/watching') ||
+		// The universe, scoped to their session and its project there; the icon route checks the project is theirs
+		(method === 'GET' && (pathname === '/api/universe' || /^\/api\/projects\/[^/]+\/icon$/.test(pathname))) ||
 		(method === 'POST' && pathname === '/api/handoff') ||
 		(method === 'POST' && pathname === `${own}/replace`) ||
 		// Making, moving and deleting files; the route checks the role may edit
