@@ -384,13 +384,11 @@ export const drawIsland = (ctx, { from, to, y }, { color }) => {
 
 // A grey's seat at its island, `at` its foot: its screen on a stand before it, large enough to read, showing what it's
 // at or what needs you; its todos in lamps along the console's front under it, and a keyboard
-// `bare`, its place at the console without its screen or keyboard, for one working from a laptop on the floor
-export const drawSeat = (ctx, at, { screen, engineColor, time, seed, todos = [], frost, bare = false }) => {
+export const drawSeat = (ctx, at, { screen, engineColor, time, seed, todos = [], frost }) => {
 	const { x, y } = at;
 
 	drawTodos(ctx, { x: x - 13, y: y - 7, w: 26 }, todos, time);
 	rect(ctx, x - 13, y - 5, 26, 1, engineColor);
-	if (bare) return;
 	rect(ctx, x + 1, y - 11, 9, 2, PALETTE.d);
 	rect(ctx, x + 2, y - 11, 7, 1, PALETTE.m);
 	rect(ctx, x - 9, y - 16, 3, 4, PALETTE.d);

@@ -122,6 +122,13 @@ const BODIES = {
 	],
 };
 
+// Sat cross-legged on the floor: the same from the shoulders down to the hands, over a lap with the knees out to
+// either side and the shins crossed before it
+const SIT_BASE = ['kkaaaaaaaaAkk', 'kaaAkaaaakaAk', '.kkkkkkkkkkk.'];
+const sat = rows => [...rows.slice(0, -2).map(row => `.${row}.`), ...SIT_BASE];
+
+Object.assign(BODIES, { sit: sat(BODIES.stand), sitWave: sat(BODIES.wave) });
+
 // Someone aboard, in a pressure suit: a gold visor under a stripe of their color, a neck ring, shoulders broader than
 // the helmet with the arms hanging from them, gloved, and their color in the light on the chest; a step with each boot for walking
 // Its helmet, body and arms, over legs standing or walking
@@ -424,6 +431,8 @@ const SPRITES = {
 	bodyWave: BODIES.wave,
 	bodyStepLeft: BODIES.stepLeft,
 	bodyStepRight: BODIES.stepRight,
+	bodySit: BODIES.sit,
+	bodySitWave: BODIES.sitWave,
 	bodyBack: BODIES.stand.map(row => row.replace('s', 'a')),
 	suit: SUIT.stand,
 	suitStepLeft: SUIT.stepLeft,

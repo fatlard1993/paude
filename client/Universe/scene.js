@@ -321,10 +321,10 @@ const drinkOf = session => {
 
 	return keeping === 'fabled' ? undefined : keeping;
 };
-// One deleted once its cache lets go, sitting on the floor with a laptop rather than at its console
+// One deleted once its cache lets go, sitting on the floor past its island's desk with a laptop rather than at a seat
 const briefOf = worker => worker.session.lifetime === 'brief' && !worker.lounging && !worker.seat?.housing;
-// How far before its console's foot such a one sits
-const ON_FLOOR = 0.75;
+// How far left of where it sits its laptop stands, in art pixels: between it and the desk's end it's plugged into
+const LAPTOP_ASIDE = 14;
 
 // Resting in the lounge: stopped, or ready with its prompt cache gone cold and nobody keeping it warm; one asking you
 // something stays at its seat
@@ -1224,6 +1224,7 @@ export default class Ship {
 			watched: Object.fromEntries(
 				[...this.workers].map(([key, worker]) => [key, keepingOf(worker.session) === 'fabled']),
 			),
+			brief: Object.fromEntries([...this.workers].map(([key, worker]) => [key, worker.session.lifetime === 'brief'])),
 			checkouts: this.cargo.length,
 			fleet: this.fleet.length,
 		});
@@ -1309,8 +1310,12 @@ export default class Ship {
 
 		if (worker.lounging) return { x: seat.x, y: seat.y };
 
-		// A short-lived one sits on the floor before its console, working from a laptop
-		return briefOf(worker) ? { x: seat.x + 0.3, y: seat.y + ON_FLOOR } : { x: seat.x + 0.3, y: seat.y + 0.2 };
+		return { x: seat.x + 0.3, y: seat.y + 0.2 };
+	}
+
+	// Where a seat's work comes to it in the tube: under its console; a short-lived one's, at its laptop on the floor
+	deskOf(seat) {
+		return this.art({ x: seat.x + (seat.floor ? 0.3 - LAPTOP_ASIDE / UNIT.x : 0.55), y: seat.y + 0.2 });
 	}
 
 	// From a point in one room to one in another: to its door, out to the spine (along `lane`, the spine's middle unless
@@ -1614,10 +1619,18 @@ export default class Ship {
 		// gone cold, switched off stopped
 		for (const [key, worker] of this.workers)
 			if (!worker.leaving || worker.opacity > 0) bayOf(worker.session.project ?? 'elsewhere').sessions.push(key);
+		// Seated oldest first from the island's aft end, each newer one to the right of the last, so one coming aboard
+		// takes the end and nobody shifts along; its short-lived ones after them all, on the floor past the desk
 		for (const bay of bays.values())
-			bay.sessions.sort((a, b) =>
-				(this.workers.get(a).session.checkout ?? '').localeCompare(this.workers.get(b).session.checkout ?? ''),
-			);
+			bay.sessions.sort((a, b) => {
+				const [one, other] = [this.workers.get(a).session, this.workers.get(b).session];
+
+				return (
+					Number(one.lifetime === 'brief') - Number(other.lifetime === 'brief') ||
+					(other.age ?? 0) - (one.age ?? 0) ||
+					(one.checkout ?? '').localeCompare(other.checkout ?? '')
+				);
+			});
 
 		// A project is a section of the hull while one of its sessions is aboard or it's watched; the rest stay off the
 		// ship. Each keeps its place along the ship as long as the view is open, so the floor plan changes as little as
@@ -2067,7 +2080,7 @@ export default class Ship {
 					...(pipe
 						? {
 								path: [],
-								tube: { pipe, desk: this.art({ x: worker.seat.x + 0.55, y: worker.seat.y + 0.2 }), along: 0 },
+								tube: { pipe, desk: this.deskOf(worker.seat), along: 0 },
 								// Out of the hopper on the crane's hook, along the rail to over its pod, and let down onto it
 								legs: [
 									{
@@ -3406,7 +3419,7 @@ export default class Ship {
 		const engineColor = `hsl(${session.engine.hue ?? 215} 45% 50%)`;
 		const at = this.art({ x: seat.x, y: seat.y + 0.2 });
 		const floor = briefOf(worker) && !walker.length && this.art(this.placeOf(worker));
-		const laptop = floor && { x: floor.x + 12, y: floor.y + 2 };
+		const laptop = floor && { x: floor.x - LAPTOP_ASIDE, y: floor.y };
 		// Its terminal says what it's at, or what needs you, in place of a badge over its head: news while there's
 		// something new it hasn't been looked at for
 		const status = !working && this.needs(session) === 'unread' ? { ...screen, kind: 'news' } : screen;
@@ -3421,27 +3434,15 @@ export default class Ship {
 		return [
 			...walker,
 			...(!walker.length && !floor ? [{ y: seat.y - 0.12, draw: () => this.drawWorker(ctx, worker) }] : []),
-			// Sat on the floor before its console, where the conduits run along the row's foot: over them, nothing standing
-			// before it but the next row, well clear
+			// Sat cross-legged on the floor past the desk's end, its laptop between it and the desk, plugged by a cord along
+			// the floor into a socket on the desk's end; the cord under whoever sits between
 			...(floor
 				? [
+						{ y: seat.y + 0.19, draw: () => this.drawLaptopCord(ctx, worker, laptop) },
 						{
-							y: TUBE_FRONT - 0.0015,
+							y: seat.y + 0.2,
 							draw: () => {
-								// Its cable out of the laptop's back and up into the console's front
-								rect(ctx, laptop.x + 6, laptop.y - 1, 2, 1, PALETTE.k);
-								rect(ctx, laptop.x + 7, at.y - 2, 1, laptop.y - at.y + 1, PALETTE.k);
-								rect(ctx, laptop.x + 5, at.y - 3, 3, 1, PALETTE.l);
-								// Sat cross-legged on the floor: no more of it than shows above its knees
-								ctx.save();
-								ctx.beginPath();
-								ctx.rect(floor.x - 20, floor.y - 60, 40, 57);
-								ctx.clip();
 								this.drawWorker(ctx, worker);
-								ctx.restore();
-								rect(ctx, floor.x - 6, floor.y - 4, 12, 3, PALETTE.k);
-								rect(ctx, floor.x - 5, floor.y - 3, 4, 1, PALETTE.a);
-								rect(ctx, floor.x + 1, floor.y - 3, 4, 1, PALETTE.a);
 								drawLaptop(ctx, laptop, { screen: status, time: this.time, seed: worker.seed });
 							},
 						},
@@ -3470,28 +3471,68 @@ export default class Ship {
 						);
 				},
 			},
-			{
-				y: seat.y + 0.14,
-				draw: () => {
-					this.drawRisingSeat(
-						ctx,
-						at,
+			...(seat.floor
+				? []
+				: [
 						{
-							screen: status,
-							engineColor,
-							time: this.time,
-							seed: worker.seed,
-							todos: session.todos,
-							frost: session.status === 'ready' && session.context?.warm === false,
-							bare: Boolean(floor),
+							y: seat.y + 0.14,
+							draw: () => {
+								this.drawRisingSeat(
+									ctx,
+									at,
+									{
+										screen: status,
+										engineColor,
+										time: this.time,
+										seed: worker.seed,
+										todos: session.todos,
+										frost: session.status === 'ready' && session.context?.warm === false,
+									},
+									seat.island?.key,
+								);
+								if (working && session.tool && worker.opacity >= 1) this.drawActivity(ctx, worker, facility, at);
+								if (worker.opacity >= 1) this.drawInstruments(ctx, worker, at);
+							},
 						},
-						seat.island?.key,
-					);
-					if (working && session.tool && worker.opacity >= 1) this.drawActivity(ctx, worker, facility, at);
-					if (worker.opacity >= 1) this.drawInstruments(ctx, worker, at);
-				},
-			},
+					]),
 		];
+	}
+
+	// A short-lived session's laptop cord: out of the laptop's side, along the floor and up the end of its island's desk
+	// into a socket there, lit in the session's color
+	drawLaptopCord(ctx, worker, laptop) {
+		const { seat, session } = worker;
+		const end = this.art({ x: seat.island.x + seat.island.w, y: seat.y + 0.2 });
+		const color = `hsl(${session.hue ?? 200} 55% 55%)`;
+		const socket = { x: end.x + 2, y: end.y - 8 };
+		const cord = [
+			{ x: laptop.x - 5, y: laptop.y - 1 },
+			{ x: socket.x + 1, y: laptop.y - 1 },
+			{ x: socket.x + 1, y: socket.y + 1 },
+		];
+
+		for (const [index, to] of cord.slice(1).entries()) {
+			const from = cord[index];
+			const [left, top] = [Math.min(from.x, to.x), Math.min(from.y, to.y)];
+			const [w, h] = [Math.abs(to.x - from.x) + 1, Math.abs(to.y - from.y) + 1];
+
+			rect(ctx, left - 1, top - 1, w + 2, h + 2, PALETTE.k);
+		}
+		for (const [index, to] of cord.slice(1).entries()) {
+			const from = cord[index];
+
+			rect(
+				ctx,
+				Math.min(from.x, to.x),
+				Math.min(from.y, to.y),
+				Math.abs(to.x - from.x) + 1,
+				Math.abs(to.y - from.y) + 1,
+				PALETTE.m,
+			);
+		}
+		rect(ctx, socket.x - 1, socket.y - 1, 5, 4, PALETTE.k);
+		rect(ctx, socket.x, socket.y, 3, 2, PALETTE.d);
+		rect(ctx, socket.x + 1, socket.y, 1, 1, Math.floor(this.time * 2 + (worker.seed ?? 0)) % 2 ? color : PALETTE.m);
 	}
 
 	// The bridge: each project's island, its console striped in the project's color and pressable as the project; the
@@ -3918,9 +3959,9 @@ export default class Ship {
 		worker.smalls = smalls.filter(({ goneAt }) => goneAt === undefined || this.time - goneAt < SMALL_GREY_SECONDS);
 	}
 
-	// Where a grey's i-th small grey sits: at its own small terminal along the island beside its grey's seat
+	// Where a grey's i-th small grey sits: at its own small terminal along the island to the left of its grey's seat
 	smallGreyAt(worker, index) {
-		return { x: worker.seat.x + 1.3 + index * 0.8, y: worker.seat.y };
+		return { x: worker.seat.x - 1.1 - index * 0.8, y: worker.seat.y };
 	}
 
 	// The small greys at their terminals beside their grey's seat, budding in a spark and going in a puff; those past
@@ -4205,12 +4246,11 @@ export default class Ship {
 		}
 	}
 
-	// Where a grey's monitor stands: behind the seat, past the small terminals its grey has out
+	// Where a grey's monitor stands: behind the seat, a little to its right
 	watcherAt(worker) {
-		const { seat, session } = worker;
-		const smalls = Math.min(MOST.smallGreys, Math.max(0, Number(session.agents) || 0));
+		const { seat } = worker;
 
-		return { x: seat.x + WATCHER_ASIDE + smalls * 0.8, y: seat.y + 0.2 - WATCHER_BEHIND };
+		return { x: seat.x + WATCHER_ASIDE, y: seat.y + 0.2 - WATCHER_BEHIND };
 	}
 
 	// An arm out from `from` toward `to`, `reach` of the way (0 to 1): outlined, with a fingertip
@@ -4307,7 +4347,8 @@ export default class Ship {
 	homeSeatParts(ctx, worker) {
 		const { session, homeSeat } = worker;
 
-		if (!homeSeat) return [];
+		// A short-lived one's place on the floor holds nothing of its own
+		if (!homeSeat || homeSeat.floor) return [];
 
 		const at = this.art({ x: homeSeat.x, y: homeSeat.y + 0.2 });
 
@@ -4832,7 +4873,7 @@ export default class Ship {
 		const hop = walking ? this.hopOf(worker) : null;
 
 		if (hop !== null) at.y -= Math.round(Math.sin(hop * Math.PI) * HOP_PIXELS);
-		if (!walking && !worker.seat?.housing) at.y -= (worker.lounging && 4) || (briefOf(worker) && -2) || 10;
+		if (!walking && !worker.seat?.housing && !briefOf(worker)) at.y -= worker.lounging ? 4 : 10;
 
 		return at;
 	}
@@ -4902,12 +4943,13 @@ export default class Ship {
 		const colors = { c: `hsl(${session.hue ?? 200} 55% 55%)`, s: rankOf(session.context?.model) };
 		const sag =
 			(drowse >= 0.85 && 2) || (drowse >= 0.6 && Math.floor((this.time + worker.seed) * 0.8) % 3 === 0 ? 1 : 0);
-		const neck = at.y - bob - 5 + sag;
-
-		// Walking: standing, a step, standing, the other step
+		// Walking: standing, a step, standing, the other step; a short-lived one sits cross-legged on the floor
 		const stride = walking && making >= 1 ? STEPS[Math.floor(worker.step) % STEPS.length] : '';
+		const sitting = !walking && briefOf(worker);
+		const body = (waving && (sitting ? 'bodySitWave' : 'bodyWave')) || (sitting ? 'bodySit' : `body${stride}`);
+		const neck = at.y - bob - (sitting ? 6 : 5) + sag;
 
-		drawSprite(ctx, (waving && 'bodyWave') || `body${stride}`, at.x, at.y - bob, {
+		drawSprite(ctx, body, at.x, at.y - bob, {
 			colors,
 			flip: (walking && worker.facing < 0) || (!walking && worker.seat?.side < 0),
 		});
@@ -6385,7 +6427,7 @@ export default class Ship {
 
 		if (!row) return null;
 
-		const over = this.art({ x: seat.x + 0.55, y: 0 }).x;
+		const over = this.deskOf(seat).x;
 
 		return [
 			...this.clearOfLounge([

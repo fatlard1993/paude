@@ -2288,6 +2288,42 @@ test("a fabled session's monitor stands behind its grey, and points at the termi
 	if (!hadDocument) delete globalThis.document;
 });
 
+test("seats run oldest to newest from the aft end, small terminals to a seat's left; short-lived sessions sit on the floor past the desk, each after the last", () => {
+	const sessions = [
+		session({ id: 'old', age: 90000, checkout: 'z' }),
+		session({ id: 'brief', lifetime: 'brief', age: 1000, checkout: 'a' }),
+		session({ id: 'new', age: 5000, checkout: 'b', agents: 2 }),
+		session({ id: 'later', lifetime: 'brief', age: 500, checkout: 'c' }),
+	];
+	const made = shipWith([answer('here', sessions, { projects: ['paude'] })]);
+	const [island] = made.bridge.islands;
+
+	expect(island.seats.map(({ key }) => key)).toEqual(['here/old', 'here/new', 'here/brief', 'here/later']);
+
+	const [old, fresh, brief, later] = ['old', 'new', 'brief', 'later'].map(id => made.workers.get(`here/${id}`));
+
+	// On the floor past the desk's end, level with the row, its laptop between it and the desk clear of the end cap
+	expect(brief.seat.floor).toBe(true);
+	expect(brief.seat.x).toBeGreaterThan(island.x + island.w);
+	expect(made.placeOf(brief).y).toBeCloseTo(island.y + 0.2, 5);
+	expect(made.deskOf(brief.seat).x - 6).toBeGreaterThan(made.art({ x: island.x + island.w, y: 0 }).x + 1);
+	expect(later.seat.x - brief.seat.x).toBeCloseTo(1.7, 5);
+	// The desk is only the seats'; nothing on it marks the floor places
+	expect(island.w).toBeLessThan(brief.seat.x - island.x);
+	expect(fresh.seat.x).toBeLessThan(island.x + island.w);
+	// Small terminals to the left of their grey's seat, within its own room: past the seat before's keyboard
+	for (const index of [0, 1]) {
+		const small = made.art(made.smallGreyAt(fresh, index));
+
+		expect(small.x).toBeLessThan(made.art(fresh.seat).x - 17);
+		expect(small.x - 14).toBeGreaterThanOrEqual(made.art(old.seat).x + 10);
+	}
+	expect(made.watcherAt(fresh).x).toBeCloseTo(fresh.seat.x + 1, 5);
+	// Sat cross-legged: a body of its own, and one waving
+	expect(spriteSize('bodySit').h).toBe(7);
+	expect(spriteSize('bodySitWave').h).toBe(10);
+});
+
 test('a session turned fabled gets its monitor out of the materializer, walking to its place; turned back, it walks there and is beamed away', () => {
 	const kept = keeping => [answer('here', [session({ status: 'ready', keeping })], { projects: ['paude'] })];
 	const made = shipWith(kept(undefined));

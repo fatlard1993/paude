@@ -71,10 +71,16 @@ const PITCH_TRIES = 8;
 const SEAT_W = 1.5;
 // The most an island's seats run across before it's split, in world units: six plain seats
 const ISLAND_SEATS_W = 6 * SEAT_W;
-// A subagent's small terminal beside its grey's seat, as many as are shown
+// A subagent's small terminal to the left of its grey's seat, as many as are shown, and the room before the first of
+// them, so the farthest one's terminal still stands within the seat's own room
 const SMALL_W = 0.8;
+const SMALL_ROOM = 0.55;
 const MOST_SMALL = 4;
-// Where a fabled session's monitor stands, past its grey's small terminals: a seat only as wide as a grey puts it
+// A short-lived session sits on the floor past its island's desk's end rather than at a seat on it, its laptop between
+// it and the desk's end, each later one past the last: the room each takes, and how far into it it sits
+export const BRIEF_W = 1.7;
+export const BRIEF_SIT = 1.3;
+// Where a fabled session's monitor stands, to the right of its grey: a seat only as wide as a grey puts it
 // under the next seat's screen
 export const WATCHER_W = 0.7;
 const ISLAND_END = 0.3;
@@ -103,23 +109,25 @@ export const splitSeats = (keys, widthOf) => {
 };
 
 // The islands of the bridge `from` its stern edge down `rows`, for the bays at work: [{ name, hue, keys, x, y, w,
-// seats: [{ key, x, y }] }], and how far forward they reach
+// seats: [{ key, x, y, floor }] }], and how far forward they reach (`floor`: a short-lived session's place on the
+// floor past the desk's end)
 // `stern`: how much of the bridge from its aft wall `from` is past, the risers' room, so where an island stood is kept
 // from the wall itself, and an island stays put as the risers' room grows unless it grows into it
 const islandsOf = (
 	bays,
-	{ from, top, rows, lounge, agents = {}, watched = {}, pitch = BRIDGE_ROW, kept, stern = 0 },
+	{ from, top, rows, lounge, agents = {}, watched = {}, brief = {}, pitch = BRIDGE_ROW, kept, stern = 0 },
 ) => {
-	// A seat, with its small terminals and its monitor's standing room
-	const seatWidth = key => SEAT_W + Math.min(MOST_SMALL, agents[key] ?? 0) * SMALL_W + (watched[key] ? WATCHER_W : 0);
+	// The room a seat's small terminals take to its left
+	const smallRoom = key => (agents[key] > 0 ? SMALL_ROOM + Math.min(MOST_SMALL, agents[key]) * SMALL_W : 0);
+	// A seat, with its small terminals and its monitor's standing room; a short-lived session's place on the floor
+	const seatWidth = key => (brief[key] ? BRIEF_W : SEAT_W + smallRoom(key) + (watched[key] ? WATCHER_W : 0));
 	// One island for each project, in the order given (the order their conduits come to the bridge); one seating more
-	// than an island holds split into as few as hold it, its seats shared out evenly, so no row runs on for one project
+	// than an island holds split into as few as hold it, its seats shared out evenly, so no row runs on for one project.
+	// Its short-lived sessions last, past its desk's end
 	const runs = bays.flatMap(({ name, hue, sessions = [] }) =>
-		splitSeats(sessions, seatWidth).map(keys => ({
-			name,
-			hue,
-			keys,
-		})),
+		splitSeats([...sessions.filter(key => !brief[key]), ...sessions.filter(key => brief[key])], seatWidth).map(
+			keys => ({ name, hue, keys }),
+		),
 	);
 	// The lounge's room first, in the bottom rows it covers, so the islands pack round it; then each island into whichever
 	// row reaches least far yet, so short ones fill in beside long ones
@@ -131,7 +139,10 @@ const islandsOf = (
 	// With fewer islands than rows left open, they spread evenly down the bridge
 	const open = Array.from({ length: rows }, (_, row) => row).filter(row => row < rows - covers);
 	const seatWidths = run => run.keys.map(seatWidth);
-	const widthOf = run => ISLAND_END + seatWidths(run).reduce((sum, seat) => sum + seat, 0) + 0.3;
+	// Its desk, and all the room it takes along its row: its desk and the floor past its end its short-lived sit on
+	const deskOf = run =>
+		ISLAND_END + run.keys.filter(key => !brief[key]).reduce((sum, key) => sum + seatWidth(key), 0) + 0.3;
+	const widthOf = run => deskOf(run) + run.keys.filter(key => brief[key]).length * BRIEF_W;
 	// More than the open rows: down the rows in order, as short a bridge as holds them all, each row starting from what's
 	// already in it (the lounge)
 	const widths = runs.map(widthOf);
@@ -237,6 +248,8 @@ const islandsOf = (
 		const y = top + BRIDGE_ROW_TOP + spot.row * pitch;
 		let along = x + ISLAND_END;
 
+		const desk = deskOf(run);
+
 		return {
 			...run,
 			key,
@@ -245,9 +258,18 @@ const islandsOf = (
 			at: spot.at + stern,
 			x,
 			y,
-			w,
+			w: desk,
 			seats: run.keys.map((seatKey, seat) => {
-				const at = { key: seatKey, x: along + SEAT_W / 2 - 0.3, y };
+				// A short-lived one on the floor past the desk's end, each after the last
+				if (brief[seatKey]) {
+					const start = Math.max(along, x + desk);
+
+					along = start + BRIEF_W;
+
+					return { key: seatKey, x: start + BRIEF_SIT - 0.3, y, floor: true };
+				}
+
+				const at = { key: seatKey, x: along + smallRoom(seatKey) + SEAT_W / 2 - 0.3, y };
 
 				along += widths[seat];
 
@@ -401,6 +423,7 @@ export const layOut = ({
 	checkouts = 0,
 	agents = {},
 	watched = {},
+	brief = {},
 	fleet = 0,
 	kept,
 } = {}) => {
@@ -499,6 +522,7 @@ export const layOut = ({
 				lounge: loungeBlock,
 				agents,
 				watched,
+				brief,
 				pitch,
 				kept,
 				stern: sternRoom(inLine(placed)),
@@ -648,6 +672,7 @@ export const layOut = ({
 		lounge: loungeBlock,
 		agents,
 		watched,
+		brief,
 		pitch: rowsApart,
 		kept,
 		stern,
