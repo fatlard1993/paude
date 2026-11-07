@@ -2,24 +2,8 @@ import tokens from '../../shared/tokenCount';
 import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { getTimeline, getVerification } from '../api';
 import { button, closeButton, element, icon } from '../dom';
+import { toolIcon } from '../toolIcons';
 import Panel from './GitPanel.styles';
-
-const TOOL_ICONS = {
-	Read: 'eye',
-	Edit: 'pen',
-	MultiEdit: 'pen',
-	Write: 'file-pen',
-	NotebookEdit: 'pen',
-	Bash: 'terminal',
-	Grep: 'magnifying-glass',
-	Glob: 'folder-open',
-	WebFetch: 'globe',
-	WebSearch: 'globe',
-	Task: 'diagram-project',
-	Agent: 'diagram-project',
-	TodoWrite: 'list-check',
-};
-
 
 const duration = (from, to) => {
 	const seconds = Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 1000));
@@ -142,7 +126,7 @@ export default class ActivityPanel extends Panel {
 		const output = element('pre', 'step-output', step.output ?? '');
 
 		line.append(
-			icon(TOOL_ICONS[step.tool] ?? 'wrench'),
+			icon(toolIcon(step.tool)),
 			element('span', 'tool', step.tool),
 			element('span', 'what', step.summary ?? ''),
 		);
