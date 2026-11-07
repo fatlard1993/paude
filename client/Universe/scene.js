@@ -881,6 +881,9 @@ export default class Ship {
 	// The shuttles on their way to or from the airlock: [{ key, hue, kind: 'in' | 'out', at, climbAt }]; `at` not yet
 	// set for one that waits for the ship to come in out of warp
 	shuttles = [];
+	// Monitors on their way off the ship, to the airlock, where a craft of their own comes for each: [{ key, session,
+	// watcher }], key the session's
+	monitorsGone = [];
 	// The shared systems, each from every engine's appliances, and the hold's cargo
 	systems = new Map();
 	engineSystems = new Map();
@@ -1947,13 +1950,12 @@ export default class Ship {
 				this.workers.delete(key);
 				continue;
 			}
-			// Crumbled: its dust, and its monitor's, stays a while where it was, and it keeps its seat until the dust has
-			// gone, so the island isn't laid again under the heaps and the emitters
+			// Crumbled: its dust stays a while where it was, and it keeps its seat until the dust has gone, so the island
+			// isn't laid again under the heap and the emitter
 			if (worker.ashedAt === undefined) {
 				worker.ashedAt = this.time;
-				for (const heap of [worker.dustAt, worker.watcher?.dustAt].filter(Boolean))
-					this.dust.push({ ...heap, hue: worker.session.hue, at: this.time, ...(worker.lounging && { key }) });
-				worker.watcher = undefined;
+				if (worker.dustAt)
+					this.dust.push({ ...worker.dustAt, hue: worker.session.hue, at: this.time, ...(worker.lounging && { key }) });
 			}
 			if (this.time - worker.ashedAt >= DUST_SECONDS + SEAT_SINK_SECONDS) this.workers.delete(key);
 		}
@@ -1979,6 +1981,7 @@ export default class Ship {
 			if (!worker.path?.length) worker.scoot = undefined;
 			this.walkWatcher(worker, calm, seconds);
 		}
+		this.walkMonitorsGone(calm, seconds);
 		this.tendShuttles();
 
 		for (const parcel of this.parcels) {
@@ -2041,20 +2044,8 @@ export default class Ship {
 		Object.assign(worker, { vaporizedAt: this.time, leaving: true, dustAt });
 		// The emitter over it, outlasting the grey by its way back up
 		this.zaps.push({ key, x: standing.x, top: standing.y - 26, floor: dustAt.y, depth: dustAt.depth, at: this.time });
-		if (!this.watcherStands(worker)) return;
-
-		// Its monitor, standing behind it, crumbles under an emitter of its own, its dust to the desk beside its grey's
-		const foot = this.art(this.watcherAt(worker));
-
-		worker.watcher.dustAt = { ...dustAt, x: foot.x };
-		this.zaps.push({
-			key: `${key}|watcher`,
-			x: foot.x,
-			top: foot.y - WATCHER_TALL,
-			floor: dustAt.y,
-			depth: dustAt.depth,
-			at: this.time,
-		});
+		// Its monitor isn't deleted with it: it walks off to the airlock, where its craft comes for it
+		this.departWatcher(worker);
 	}
 
 	// Read here: its marker goes until something newer comes
@@ -2386,6 +2377,7 @@ export default class Ship {
 		this.drawMats(ctx);
 		standing.push(...this.cargoParts(ctx));
 		for (const worker of this.workers.values()) if (worker.seat) standing.push(...this.workerParts(ctx, worker));
+		for (const gone of this.monitorsGone) standing.push(this.watcherWalkingPart(ctx, gone));
 		standing.push(...this.tubeParts(ctx));
 		standing.push(...this.fleetParts(ctx));
 		// The deleted crumbling, over what they sat at, and their dust after, fading out in its last seconds
@@ -2395,11 +2387,6 @@ export default class Ship {
 				standing.push({
 					y: worker.dustAt.depth,
 					draw: () => this.drawCrumbling(ctx, worker.crumble, worker.dustAt, key),
-				});
-			if (worker.watcher?.crumble)
-				standing.push({
-					y: worker.watcher.dustAt.depth,
-					draw: () => this.drawCrumbling(ctx, worker.watcher.crumble, worker.watcher.dustAt, `${key}|watcher`),
 				});
 		}
 		for (const heap of this.dust) standing.push({ y: heap.depth, draw: () => this.drawAshSucked(ctx, heap) });
@@ -4113,14 +4100,8 @@ export default class Ship {
 	watcherParts(ctx, worker) {
 		const { session, seat, watcher } = worker;
 
-		// On its way from the materializer, or back to it: drawn where it is, over everything a walker is drawn over
-		if (watcher && (watcher.path.length || watcher.leaving))
-			return [
-				{
-					y: this.behindFurniture(watcher, this.furniture(), WATCHER_SIZE) ? watcher.y : TUBE_FRONT - 0.0016,
-					draw: () => this.drawWatcherWalking(ctx, worker),
-				},
-			];
+		// On its way in from the airlock: drawn where it is, once it's out of its craft
+		if (watcher?.path.length) return this.boarding(watcher) ? [] : [this.watcherWalkingPart(ctx, worker)];
 		if (!this.watcherStands(worker)) return [];
 
 		const spot = this.watcherAt(worker);
@@ -4132,7 +4113,6 @@ export default class Ship {
 					const at = this.art(spot);
 					const console = this.art({ x: seat.x, y: seat.y + 0.2 });
 
-					if (watcher.dustAt) return this.drawWatcherCrumbling(ctx, worker, at);
 					// Where it stands this frame, for whoever walks behind it to be hidden by it
 					worker.watcherDrawn = { x: at.x, y: at.y, consoleTop: console.y - CONSOLE_TALL, at: this.time };
 					this.drawWatcher(ctx, worker, at);
@@ -4155,7 +4135,6 @@ export default class Ship {
 		return Boolean(
 			watcher &&
 			!watcher.path.length &&
-			!watcher.leaving &&
 			keepingOf(session) === 'fabled' &&
 			seat &&
 			!seat.housing &&
@@ -4163,22 +4142,6 @@ export default class Ship {
 			!briefOf(worker) &&
 			!this.walking(worker),
 		);
-	}
-
-	// Deleted with its grey: whole while the emitter comes down, then crumbling from the top down under its beam, its
-	// dust falling to a heap on the desk
-	drawWatcherCrumbling(ctx, worker, at) {
-		const { watcher } = worker;
-		const gone = Math.max(0, Math.min(1, (this.time - worker.vaporizedAt - GREY_ZAP.down) / VAPOR_SECONDS));
-		const top = at.y - WATCHER_TALL;
-
-		watcher.crumble = { x: at.x, line: Math.round(top + (watcher.dustAt.y - top) * gone), gone };
-		ctx.save();
-		ctx.beginPath();
-		ctx.rect(at.x - 24, watcher.crumble.line, 48, 60);
-		ctx.clip();
-		this.drawWatcher(ctx, worker, at);
-		ctx.restore();
 	}
 
 	// Whether its monitor is prompting it: a nudge of the monitor's was typed into it these last seconds
@@ -4237,37 +4200,62 @@ export default class Ship {
 		}
 	}
 
-	// A session turned fabled gets its monitor: made in the materializer and walked to its place, as a new grey is (or
-	// simply there, before this engine has answered once). One no longer fabled walks back to the materializer and is
-	// beamed away.
+	// A session turned fabled gets its monitor: brought to the airlock by a craft of its own and walked to its place (or
+	// simply there, before this engine has answered once). One no longer fabled walks back to the airlock, where such a
+	// craft comes for it.
 	noteWatcher(worker, session) {
 		const was = keepingOf(worker.session) === 'fabled';
 		const now = keepingOf(session) === 'fabled';
+		const gone = this.monitorsGone.find(({ key }) => key === worker.session.key);
 
-		if (now && !was && !worker.watcher) worker.watcherDue = this.watcherDueFor(session);
+		// Fabled again before its monitor had reached the airlock: it turns round, and its craft leaves without it
+		if (now && !worker.watcher && gone?.watcher.path.length) {
+			this.monitorsGone = this.monitorsGone.filter(each => each !== gone);
+			Object.assign(gone.watcher.shuttle, { empty: true, climbAt: this.time });
+			worker.watcher = { ...gone.watcher, shuttle: undefined, path: [] };
+			worker.watcherDue = 'back';
+		} else if (now && !was && !worker.watcher) worker.watcherDue = this.watcherDueFor(session);
 		// The session just stopped to ask something: the monitor takes it in, then points
 		if (worker.watcher && session.status === 'waiting' && worker.session.status !== 'waiting')
 			worker.watcher.askedAt = this.time;
-		if (now && worker.watcher?.leaving) {
-			// Fabled again before it had gone: it turns round
-			worker.watcher.leaving = false;
-			worker.watcher.goneAt = undefined;
-			worker.watcher.path = [];
-			worker.watcherDue = 'back';
-		}
-		if (!now && was && worker.watcher && !worker.watcher.leaving) {
-			worker.watcherDue = null;
-			worker.watcher.leaving = true;
-			worker.watcher.path = this.layout.materializer
-				? this.route(worker.watcher, worker.room, clonerAt(this.layout.materializer), this.layout.materializer)
-				: [];
-		}
+		if (!now && was && worker.watcher) this.departWatcher(worker);
 		if (!now && !worker.watcher) worker.watcherDue = null;
 	}
 
-	// How a monitor arrives: made in the materializer once its engine has answered before, simply there at first sight
+	// How a monitor arrives: by craft once its engine has answered before, simply there at first sight
 	watcherDueFor(session) {
-		return this.answered.has(session.engine.key) ? 'made' : 'there';
+		return this.answered.has(session.engine.key) ? 'come' : 'there';
+	}
+
+	// Its monitor leaves: off to the airlock, where a craft of its own comes to take it; one not yet down its own
+	// craft's tube goes back up in it
+	departWatcher(worker) {
+		const { watcher, session } = worker;
+		const { airlock } = this;
+
+		worker.watcher = undefined;
+		worker.watcherDue = null;
+		if (!watcher || !airlock) return;
+		if (watcher.shuttle?.kind === 'in' && this.boarding(watcher)) {
+			Object.assign(watcher.shuttle, { empty: true });
+
+			return;
+		}
+
+		const shuttle = { key: `${session.key}|monitor`, hue: session.hue, kind: 'out', craft: 'monitor', at: this.time };
+
+		this.shuttles.push(shuttle);
+		this.monitorsGone.push({
+			key: session.key,
+			session,
+			watcher: { ...watcher, shuttle, path: this.route(watcher, worker.room, airlock, this.bridge), step: 0 },
+		});
+	}
+
+	// Monitors on their way off walk to the airlock; there, each one's craft takes it (tendShuttles)
+	walkMonitorsGone(calm, seconds) {
+		for (const { watcher } of this.monitorsGone)
+			if (watcher.path.length) walk(watcher, calm ? Infinity : WORKER_SPEED * seconds, seconds);
 	}
 
 	// Its monitor set off or put in place, once the seat it stands behind is known
@@ -4275,65 +4263,67 @@ export default class Ship {
 		const { watcherDue: due } = worker;
 		const spot = this.watcherAt(worker);
 
-		if (this.moved && worker.watcher && !worker.watcher.leaving) Object.assign(worker.watcher, spot, { path: [] });
+		const { airlock } = this;
+
+		// The rooms moved round: one still in its craft walks out of the airlock from where it is now; any other is put
+		// in place
+		if (this.moved && worker.watcher) {
+			if (airlock && this.boarding(worker.watcher))
+				Object.assign(worker.watcher, airlock, { path: this.route(airlock, this.bridge, spot, worker.room) });
+			else Object.assign(worker.watcher, spot, { path: [] });
+		}
 		if (!due) return;
 		worker.watcherDue = null;
-		if (due === 'made' && this.layout.materializer) {
-			const cloner = clonerAt(this.layout.materializer);
+		if (due === 'come' && airlock) {
+			// Brought by a craft of its own, held at the airlock till it's come down the tube
+			const shuttle = {
+				key: `${worker.session.key}|monitor`,
+				hue: worker.session.hue,
+				kind: 'in',
+				craft: 'monitor',
+				at: this.arrived() ? this.time : undefined,
+			};
 
+			this.shuttles.push(shuttle);
 			worker.watcher = {
-				...cloner,
-				path: this.route(cloner, this.layout.materializer, spot, worker.room),
-				madeAt: this.time,
+				...airlock,
+				path: this.route(airlock, this.bridge, spot, worker.room),
+				shuttle,
 				facing: 1,
 				step: 0,
-				leaving: false,
 				askedAt: this.time,
 			};
 		} else if (due === 'back' && worker.watcher)
 			Object.assign(worker.watcher, { path: this.route(worker.watcher, worker.room, spot, worker.room), step: 0 });
-		else worker.watcher = { ...spot, path: [], facing: 1, step: 0, leaving: false, askedAt: -Infinity };
+		else worker.watcher = { ...spot, path: [], facing: 1, step: 0, askedAt: -Infinity };
 	}
 
-	// Its monitor walks its path once made; one leaving, back at the materializer, is beamed away and gone
+	// Its monitor walks its path, once out of its craft
 	walkWatcher(worker, calm, seconds) {
 		const { watcher } = worker;
 
-		if (!watcher) return;
-		if (watcher.path.length && (calm || this.time - (watcher.madeAt ?? -Infinity) >= MAKE_SECONDS))
-			walk(watcher, calm ? Infinity : WORKER_SPEED * seconds, seconds);
-		if (watcher.leaving && !watcher.path.length) {
-			watcher.goneAt ??= this.time;
-			if (calm || this.time - watcher.goneAt >= MAKE_SECONDS) worker.watcher = undefined;
-		}
+		if (!watcher?.path.length || this.boarding(watcher)) return;
+		walk(watcher, calm ? Infinity : WORKER_SPEED * seconds, seconds);
 	}
 
-	// The monitor on its feet: stepping along as a grey does, in the materializer's beam while it's made or unmade
-	drawWatcherWalking(ctx, worker) {
-		const { watcher, session } = worker;
+	// A monitor on its way (`holder` its worker, or its record among those gone), drawn where it is: over everything a
+	// walker is drawn over, or behind what stands before it
+	watcherWalkingPart(ctx, holder) {
+		const { watcher } = holder;
+
+		return {
+			y: this.behindFurniture(watcher, this.furniture(), WATCHER_SIZE) ? watcher.y : TUBE_FRONT - 0.0016,
+			draw: () => this.drawWatcherWalking(ctx, holder),
+		};
+	}
+
+	// The monitor on its feet: stepping along as a grey does
+	drawWatcherWalking(ctx, { watcher, session }) {
 		const at = this.art(watcher);
-		const making = (this.time - (watcher.madeAt ?? -Infinity)) / MAKE_SECONDS;
-		const unmaking = watcher.goneAt === undefined ? -1 : (this.time - watcher.goneAt) / MAKE_SECONDS;
 		const colors = { c: `hsl(${session.hue ?? 200} 55% 55%)`, s: rankOf('fable') };
-
-		if (making < 1 || unmaking >= 0) {
-			const strength = unmaking >= 0 ? Math.min(1, unmaking) : 1 - making / 2;
-
-			this.drawBeam(ctx, at, strength);
-			ctx.save();
-			ctx.beginPath();
-			ctx.rect(at.x - 20, at.y - Math.round(WATCHER_TALL * Math.min(1, making)), 40, WATCHER_TALL + 1);
-			ctx.clip();
-			ctx.globalAlpha = unmaking >= 0 ? Math.max(0, 1 - unmaking) : 1;
-		}
-
 		const stride = watcher.path.length ? STEPS[Math.floor(watcher.step) % STEPS.length] : '';
 
 		drawSprite(ctx, `watcher${stride}`, at.x, at.y, { colors, flip: watcher.facing < 0 });
-		if (making < 1 || unmaking >= 0) {
-			ctx.globalAlpha = 1;
-			ctx.restore();
-		}
 	}
 
 	// Where a grey's monitor stands: behind the seat, a little to its right
@@ -6119,18 +6109,22 @@ export default class Ship {
 		const { fly, tube, walk: down, retract } = SHUTTLE;
 
 		for (const shuttle of this.shuttles) if (shuttle.at === undefined && this.arrived()) shuttle.at = this.time;
-		for (const [name, walker] of this.walkers) {
-			if (!walker.leaving || walker.path.length) continue;
-
+		// Whether the craft come for `key`, at the airlock, takes them now: its tube is down, or it's waited long enough
+		const taken = key => {
 			const shuttle = this.shuttles.find(
-				({ key, kind, climbAt }) => key === name && kind === 'out' && climbAt === undefined,
+				({ key: of, kind, climbAt }) => of === key && kind === 'out' && climbAt === undefined,
 			);
 			const age = shuttle ? this.shuttleAge(shuttle) : Infinity;
 
-			if (age < fly + tube && age < SHUTTLE_WAITS) continue;
+			if (age < fly + tube && age < SHUTTLE_WAITS) return false;
 			if (shuttle) shuttle.climbAt = this.time;
-			this.walkers.delete(name);
-		}
+
+			return true;
+		};
+
+		for (const [name, walker] of this.walkers)
+			if (walker.leaving && !walker.path.length && taken(name)) this.walkers.delete(name);
+		this.monitorsGone = this.monitorsGone.filter(({ key, watcher }) => watcher.path.length || !taken(`${key}|monitor`));
 		for (const shuttle of this.shuttles)
 			if (shuttle.kind === 'out' && shuttle.climbAt === undefined && this.shuttleAge(shuttle) > SHUTTLE_WAITS)
 				shuttle.climbAt = this.time;
@@ -6170,7 +6164,7 @@ export default class Ship {
 			return {
 				away: coming + ease((left - retract) / fly),
 				tube: Math.min(ease((age - approach) / tube), 1 - ease(left / retract)),
-				walker: age >= approach + tube && left < 0 ? (age - approach - tube) / down : null,
+				walker: !shuttle.empty && age >= approach + tube && left < 0 ? (age - approach - tube) / down : null,
 			};
 		}
 
@@ -6180,7 +6174,7 @@ export default class Ship {
 		return {
 			away: 1 - ease(age / fly) + ease((after - retract) / fly),
 			tube: Math.min(ease((age - fly) / tube), climbed === -Infinity ? 1 : 1 - ease(after / retract)),
-			walker: climbed >= 0 && climbed < down ? 1 - climbed / down : null,
+			walker: !shuttle.empty && climbed >= 0 && climbed < down ? 1 - climbed / down : null,
 		};
 	}
 
@@ -6192,7 +6186,13 @@ export default class Ship {
 
 		// Come in with the ship, it holds its place on screen as the ship slides in under it
 		if (shuttle.join) dock.x -= this.entryShift() / this.camera.zoom;
-		drawShuttle(ctx, dock, { ...this.shuttleState(shuttle), hue: shuttle.hue, time: this.time });
+		drawShuttle(ctx, dock, {
+			...this.shuttleState(shuttle),
+			hue: shuttle.hue,
+			time: this.time,
+			craft: shuttle.craft,
+			accent: rankOf('fable'),
+		});
 	}
 
 	// The bay doors in the belly, each eased open while something's passing through it and shut again after: the

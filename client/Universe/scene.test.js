@@ -1331,7 +1331,7 @@ test('a deleted session stands whole while the emitter comes down over it, crumb
 	expect(made.bays.find(({ name }) => name === 'paude').sessions).toEqual(['here/a']);
 });
 
-test('a fabled session deleted from here has its monitor zapped beside it, the two heaps lying on the desk together', () => {
+test('a fabled session deleted from here sends its monitor walking to the airlock, where a craft of its own takes it off, while its grey crumbles alone', () => {
 	const made = shipWith([
 		answer('here', [session(), session({ id: 'b', keeping: 'fabled' })], { projects: ['paude'] }),
 	]);
@@ -1341,22 +1341,19 @@ test('a fabled session deleted from here has its monitor zapped beside it, the t
 
 	expect(made.watcherStands(worker)).toBe(true);
 	made.vaporize('here/b');
-	expect(made.zaps.map(({ key }) => key)).toEqual(['here/b', 'here/b|watcher']);
-	expect(worker.watcher.dustAt.y).toBe(worker.dustAt.y);
-	expect(worker.watcher.dustAt.x).not.toBe(worker.dustAt.x);
-	run(made, 2.5);
+	expect(made.zaps.map(({ key }) => key)).toEqual(['here/b']);
 	expect(worker.watcher).toBeUndefined();
-	expect(made.dust).toHaveLength(2);
-	// Deleted where no monitor stands (on the floor past the desk), only the grey is zapped
-	const other = shipWith([
-		answer('here', [session({ id: 'c', keeping: 'fabled', lifetime: 'brief' })], { projects: ['paude'] }),
-	]);
+	const [gone] = made.monitorsGone;
 
-	run(other, 10);
-
-	expect(other.watcherStands(other.workers.get('here/c'))).toBe(false);
-	other.vaporize('here/c');
-	expect(other.zaps.map(({ key }) => key)).toEqual(['here/c']);
+	expect(gone.key).toBe('here/b');
+	expect(gone.watcher.path.at(-1)).toEqual(made.airlock);
+	expect(made.shuttles.find(({ key }) => key === 'here/b|monitor')).toMatchObject({ kind: 'out', craft: 'monitor' });
+	run(made, 2.5);
+	expect(made.dust).toHaveLength(1);
+	run(made, 90);
+	expect(made.monitorsGone).toEqual([]);
+	expect(made.shuttles).toEqual([]);
+	expect(made.workers.has('here/b')).toBe(false);
 });
 
 test('a session deleted from here crumbles to a heap of dust, which stays a while after it is gone', () => {
@@ -2387,11 +2384,12 @@ test("a fabled session's monitor stands behind its grey, and points at the termi
 	made.drawWatchersOver(ctx, { x: spot.x + 2, y: spot.y - 0.5 });
 	expect(drawn).toHaveLength(before + 1);
 
-	// No longer fabled: it walks back to the materializer and is gone
+	// No longer fabled: it walks off to the airlock, no longer its grey's, and is gone once its craft has taken it
 	made.update(kept('going'));
-	expect(made.watcherParts(ctx, worker)).toHaveLength(1);
-	run(made, 90);
 	expect(made.watcherParts(ctx, worker)).toEqual([]);
+	expect(made.monitorsGone).toHaveLength(1);
+	run(made, 90);
+	expect(made.monitorsGone).toEqual([]);
 	done();
 });
 
@@ -2494,24 +2492,28 @@ test("seats run oldest to newest from the aft end, small terminals to a seat's l
 	expect(spriteSize('bodySitWave').h).toBe(10);
 });
 
-test('a session turned fabled gets its monitor out of the materializer, walking to its place; turned back, it walks there and is beamed away', () => {
+test('a session turned fabled gets its monitor by a craft of its own at the airlock, walking to its place; turned back, it walks there and the craft takes it off', () => {
 	const kept = keeping => [answer('here', [session({ status: 'ready', keeping })], { projects: ['paude'] })];
 	const made = shipWith(kept(undefined));
 	const [worker] = made.workers.values();
+	const { airlock } = made;
 
-	expect(made.layout.materializer).toBeTruthy();
+	expect(airlock).toBeTruthy();
 	expect(worker.watcher).toBeUndefined();
 
 	made.update(kept('fabled'));
 
-	const cloner = clonerAt(made.layout.materializer);
-
 	expect(worker.watcher).toBeTruthy();
-	expect(worker.watcher.x).toBeCloseTo(cloner.x, 5);
-	expect(worker.watcher.y).toBeCloseTo(cloner.y, 5);
+	expect(worker.watcher.x).toBeCloseTo(airlock.x, 5);
+	expect(worker.watcher.y).toBeCloseTo(airlock.y, 5);
 	expect(worker.watcher.path.length).toBeGreaterThan(0);
 	expect(worker.watcher.path.at(-1)).toEqual(made.watcherAt(worker));
-	expect(worker.watcher.madeAt).toBe(made.time);
+	// Its craft, come for it alone, holds it at the airlock till it's down the tube; out of sight the while
+	expect(worker.watcher.shuttle).toMatchObject({ key: 'here/a|monitor', kind: 'in', craft: 'monitor' });
+	expect(made.shuttles).toContain(worker.watcher.shuttle);
+	expect(made.boarding(worker.watcher)).toBe(true);
+	run(made, 1);
+	expect(worker.watcher.x).toBeCloseTo(airlock.x, 5);
 	// Round its island's aft end with its whole width clear of the console's end cap, then in behind the console
 	const { island } = worker.seat;
 	const climb = worker.watcher.path.findIndex(({ y }) => Math.abs(y - (island.y - 0.15)) < 1e-9);
@@ -2526,19 +2528,40 @@ test('a session turned fabled gets its monitor out of the materializer, walking 
 	expect(worker.watcher.path).toHaveLength(0);
 	expect(worker.watcher.x).toBeCloseTo(made.watcherAt(worker).x, 5);
 	expect(worker.watcher.y).toBeCloseTo(made.watcherAt(worker).y, 5);
+	expect(made.shuttles).toEqual([]);
 
+	// No longer fabled: no longer its grey's, it walks to the airlock, where a craft comes for it and takes it off
 	made.update(kept('warm'));
-	expect(worker.watcher.leaving).toBe(true);
-	expect(worker.watcher.path.at(-1)).toEqual(cloner);
-	run(made, 90);
 	expect(worker.watcher).toBeUndefined();
+	const [gone] = made.monitorsGone;
+
+	expect(gone.key).toBe('here/a');
+	expect(gone.watcher.path.at(-1)).toEqual(airlock);
+	expect(made.shuttles.find(({ key }) => key === 'here/a|monitor')).toMatchObject({ kind: 'out', craft: 'monitor' });
+	run(made, 90);
+	expect(made.monitorsGone).toEqual([]);
+	expect(made.shuttles).toEqual([]);
+
+	// Fabled again while it was still walking to the airlock: it turns round, and its craft leaves without it
+	made.update(kept('fabled'));
+	run(made, 90);
+	made.update(kept('warm'));
+	run(made, 0.5);
+	expect(made.monitorsGone[0].watcher.path.length).toBeGreaterThan(0);
+	made.update(kept('fabled'));
+	expect(made.monitorsGone).toEqual([]);
+	expect(worker.watcher).toBeTruthy();
+	expect(made.shuttles.find(({ key }) => key === 'here/a|monitor')).toMatchObject({ empty: true });
+	run(made, 90);
+	expect(worker.watcher.x).toBeCloseTo(made.watcherAt(worker).x, 5);
+	expect(made.shuttles).toEqual([]);
 
 	// Fabled at first sight, it's simply there
 	const first = shipWith(kept('fabled'));
 	const [seen] = first.workers.values();
 
 	expect(seen.watcher.path).toHaveLength(0);
-	expect(seen.watcher.madeAt).toBeUndefined();
+	expect(seen.watcher.shuttle).toBeUndefined();
 });
 
 test("the island keeps room for a fabled session's monitor past its seat, so it isn't under the next seat's screen", () => {

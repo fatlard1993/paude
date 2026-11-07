@@ -597,7 +597,9 @@ export const hullEdges = building => {
 // A shuttle bringing someone aboard or taking them off, docked over the airlock: `dock` the hull's top over it, `away`
 // how far off it still is (0 docked, 1 out of sight ahead and above), `tube` how far its boarding tube reaches down to
 // the hull (0 to 1), `walker` how far down it someone is (0 at the shuttle, 1 at the hull; null for nobody), `hue`
-// theirs. A small white craft striped in their color, its cockpit forward.
+// theirs. A small white craft striped in their color, its cockpit forward; or, bringing a fabled session's monitor
+// (`craft` 'monitor'), a longer dark craft of Fable's livery (`accent`), its window strip lit, striped in the session's
+// color, with the monitor's tall figure in its tube.
 export const SHUTTLE_HOVER = 20;
 
 // Where a shuttle hangs `away` from its dock, in art pixels: its hull's bottom, over the hatch
@@ -606,9 +608,11 @@ export const shuttleAt = (dock, away) => ({
 	y: Math.round(dock.y - SHUTTLE_HOVER - away * 90),
 });
 
-export const drawShuttle = (ctx, dock, { away, tube, walker, hue, time }) => {
+export const drawShuttle = (ctx, dock, { away, tube, walker, hue, time, craft = 'shuttle', accent = PALETTE.p }) => {
 	const { x, y } = shuttleAt(dock, away);
 	const stripe = `hsl(${hue ?? 200} 60% 55%)`;
+
+	if (craft === 'monitor') return drawMonitorCraft(ctx, dock, { x, y, away, tube, walker, stripe, accent, time });
 
 	// Its tube down to the hull: glass in a frame, someone in it on their way through
 	if (tube > 0) {
@@ -651,6 +655,66 @@ export const drawShuttle = (ctx, dock, { away, tube, walker, hue, time }) => {
 	rect(ctx, x - 2, y - 1, 5, 1, tube > 0 ? '#05070a' : '#8a94a6');
 	// Its beacon
 	rect(ctx, x - 8, y - 9, 2, 1, Math.floor(time * 2) % 2 ? '#ff4a3a' : '#5a1a16');
+};
+
+// The tube a craft lets down to the hull: glass in a frame, `figure` drawn in it at its way down (0 to 1), when given
+const drawTube = (ctx, dock, { x, y, tube, walker }, figure) => {
+	const reach = Math.round(SHUTTLE_HOVER * tube);
+
+	rect(ctx, x - 3, y, 7, reach, PALETTE.k);
+	rect(ctx, x - 2, y, 5, reach, 'rgba(120, 190, 230, 0.35)');
+	rect(ctx, x - 2, y, 1, reach, 'rgba(220, 245, 255, 0.5)');
+	for (let rib = y + 3; rib < y + reach; rib += 4) rect(ctx, x - 3, rib, 7, 1, PALETTE.m);
+	if (tube >= 1) {
+		rect(ctx, x - 4, dock.y - 1, 9, 2, PALETTE.k);
+		rect(ctx, x - 3, dock.y - 1, 7, 1, PALETTE.l);
+	}
+	if (walker !== null) figure(reach);
+};
+
+// The monitor's craft: long and dark, a lit window strip along it, the session's stripe under, twin fins aft, a
+// beacon in Fable's color; the monitor's tall grey figure in its tube, its skull aglow
+const drawMonitorCraft = (ctx, dock, { x, y, away, tube, walker, stripe, accent, time }) => {
+	if (tube > 0)
+		drawTube(ctx, dock, { x, y, tube, walker }, reach => {
+			const at = Math.round(y + 1 + (reach - 10) * walker);
+
+			rect(ctx, x - 1, at, 3, 4, '#c9ced8');
+			rect(ctx, x, at + 1, 1, 1, accent);
+			rect(ctx, x - 1, at + 4, 3, 1, stripe);
+			rect(ctx, x - 1, at + 5, 3, 3, '#8f96a8');
+			rect(ctx, x - 1, at + 8, 1, 2, '#8f96a8');
+			rect(ctx, x + 1, at + 8 - (Math.floor(time * 6) % 2), 1, 2, '#8f96a8');
+		});
+
+	const flare = away > 0.01 ? 3 + (Math.floor(time * 20) % 3) : 1;
+
+	rect(ctx, x - 16 - flare, y - 5, flare, 2, accent);
+	// Twin fins aft, over and under
+	rect(ctx, x - 15, y - 11, 3, 4, PALETTE.k);
+	rect(ctx, x - 14, y - 10, 1, 3, '#3a4260');
+	rect(ctx, x - 15, y - 1, 3, 3, PALETTE.k);
+	rect(ctx, x - 14, y - 1, 1, 2, '#3a4260');
+	// Its hull: dark, outlined, longer than a shuttle, its nose drawn to a point
+	rect(ctx, x - 16, y - 8, 28, 8, PALETTE.k);
+	rect(ctx, x + 12, y - 7, 2, 6, PALETTE.k);
+	rect(ctx, x + 14, y - 5, 1, 2, PALETTE.k);
+	rect(ctx, x - 15, y - 7, 27, 6, '#262c40');
+	rect(ctx, x + 12, y - 6, 1, 4, '#262c40');
+	rect(ctx, x - 15, y - 7, 27, 1, '#3d4660');
+	rect(ctx, x - 15, y - 2, 27, 1, '#161a28');
+	// Its window strip, lit, and the session's stripe under it
+	rect(ctx, x - 12, y - 6, 20, 1, accent);
+	for (let pane = x - 11; pane < x + 8; pane += 4) rect(ctx, pane, y - 6, 1, 1, '#161a28');
+	rect(ctx, x - 15, y - 4, 27, 1, stripe);
+	// Its cockpit forward
+	rect(ctx, x + 8, y - 7, 5, 3, PALETTE.k);
+	rect(ctx, x + 9, y - 7, 4, 2, accent);
+	rect(ctx, x + 9, y - 7, 1, 1, '#f0e6ff');
+	// Its belly hatch, open while its tube is out
+	rect(ctx, x - 2, y - 1, 5, 1, tube > 0 ? '#05070a' : '#4a5270');
+	// Its beacon
+	rect(ctx, x - 10, y - 9, 2, 1, Math.floor(time * 2) % 2 ? accent : '#2a1a40');
 };
 
 // The refuel ship, `at` the hull over a tank it fills, `t` through its visit: in from astern and above, settled on the
