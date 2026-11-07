@@ -1179,6 +1179,9 @@ export default class Ship {
 				faultAt: session.faultAgo === undefined ? null : this.time - session.faultAgo / 1000,
 				turnAt: session.turnAge === undefined ? null : this.time - session.turnAge / 1000,
 			});
+			// When it was born, for its seat: as its paude says, or an older paude's age at first sight, kept so a stop or a
+			// waking (which starts its age over) doesn't move it
+			this.workers.get(session.key).born ??= session.born ?? Date.now() - (session.age ?? 0);
 			if (session.unseen === 0) this.read.delete(session.key);
 		}
 
@@ -1633,16 +1636,17 @@ export default class Ship {
 		for (const [key, worker] of this.workers)
 			if (!worker.leaving || worker.opacity > 0 || worker.ashedAt !== undefined)
 				bayOf(worker.session.project ?? 'elsewhere').sessions.push(key);
-		// Seated oldest first from the island's aft end, each newer one to the right of the last, so one coming aboard
-		// takes the end and nobody shifts along; its short-lived ones after them all, on the floor past the desk
+		// Seated oldest born first from the island's aft end, each newer one to the right of the last, so one coming
+		// aboard takes the end and nobody shifts along, whatever stops and wakes; its short-lived ones after them all,
+		// on the floor past the desk
 		for (const bay of bays.values())
 			bay.sessions.sort((a, b) => {
-				const [one, other] = [this.workers.get(a).session, this.workers.get(b).session];
+				const [one, other] = [this.workers.get(a), this.workers.get(b)];
 
 				return (
-					Number(one.lifetime === 'brief') - Number(other.lifetime === 'brief') ||
-					(other.age ?? 0) - (one.age ?? 0) ||
-					(one.checkout ?? '').localeCompare(other.checkout ?? '')
+					Number(one.session.lifetime === 'brief') - Number(other.session.lifetime === 'brief') ||
+					one.born - other.born ||
+					a.localeCompare(b)
 				);
 			});
 

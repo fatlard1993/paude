@@ -2424,6 +2424,40 @@ test("a fabled session's monitor jabs at the terminal for a few seconds after it
 	done();
 });
 
+test('a seat is kept through a stop and a waking: seats go by when a session was born, as its paude says, or by its age at first sight', () => {
+	const at = (id, changes) => session({ id, checkout: id, ...changes });
+	const seats = made => made.bridge.islands[0].seats.map(({ key }) => key);
+	const made = shipWith([
+		answer('here', [at('a', { age: 90000 }), at('b', { age: 50000 }), at('c', { age: 5000 })], { projects: ['paude'] }),
+	]);
+
+	expect(seats(made)).toEqual(['here/a', 'here/b', 'here/c']);
+	// b stops (no age any more), then wakes as a fresh process (a small age): it stays where it sat
+	made.update([
+		answer('here', [at('a', { age: 92000 }), at('b', { status: 'stopped', tool: null }), at('c', { age: 7000 })], {
+			projects: ['paude'],
+		}),
+	]);
+	expect(seats(made)).toEqual(['here/a', 'here/b', 'here/c']);
+	made.update([
+		answer('here', [at('a', { age: 94000 }), at('b', { age: 100 }), at('c', { age: 9000 })], { projects: ['paude'] }),
+	]);
+	expect(seats(made)).toEqual(['here/a', 'here/b', 'here/c']);
+
+	// A paude that says when each was born is believed over their ages, so a reload seats them the same
+	const told = shipWith([
+		answer(
+			'here',
+			[at('a', { age: 90000, born: 3000 }), at('b', { age: 50000, born: 1000 }), at('c', { born: 2000 })],
+			{
+				projects: ['paude'],
+			},
+		),
+	]);
+
+	expect(seats(told)).toEqual(['here/b', 'here/c', 'here/a']);
+});
+
 test("seats run oldest to newest from the aft end, small terminals to a seat's left; short-lived sessions sit on the floor past the desk, each after the last", () => {
 	const sessions = [
 		session({ id: 'old', age: 90000, checkout: 'z' }),

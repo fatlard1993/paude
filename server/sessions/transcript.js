@@ -52,7 +52,7 @@ export const transcriptFile = async (id, cwd) => {
 	const seen = new Set([id]);
 	let file = await ownFile(id, cwd);
 
-	for (let at = id; file; ) {
+	for (let at = id; file;) {
 		const next = await continuedIn(at, file);
 		const onward = next && !seen.has(next) && (await ownFile(next, cwd));
 
@@ -105,6 +105,23 @@ export const folderOf = async id => {
 	if (folder) folders.set(id, folder);
 
 	return folder;
+};
+
+const births = new Map();
+
+// When the session was born: the time on the first line of its transcript, which never changes, in ms; null while it
+// has no transcript, or none with a time, so it's looked for again
+export const bornOf = async (id, cwd) => {
+	if (births.has(id)) return births.get(id);
+
+	const file = await transcriptFile(id, cwd);
+	const stamp = file ? /"timestamp":\s*"([^"]+)"/.exec(await file.slice(0, PROMPT_SCAN_BYTES).text())?.[1] : null;
+	const born = stamp ? Date.parse(stamp) : NaN;
+
+	if (Number.isNaN(born)) return null;
+	births.set(id, born);
+
+	return born;
 };
 
 const firstPrompts = new Map();

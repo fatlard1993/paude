@@ -27,6 +27,7 @@ import { defaultBase, gitLog, gitStatus, linkedWorktree, openBase, repoHistory, 
 import { pinnedName } from './names';
 import { brandFields } from './brand';
 import { listProjects, projectOf, projectPath } from './projects';
+import { bornOf } from './sessions/transcript';
 import { serverName } from './serverSettings';
 import { sessionRecord } from './sessions/record';
 import { allRunning } from './sessions/running';
@@ -512,6 +513,7 @@ const stoppedOf = async (identity, id) => {
 		...activitySummary(identity, id, { running: false, project }),
 		tool: null,
 		reply: replyOf(id),
+		born: (await bornOf(id, record.cwd)) ?? record.stored?.lastModified ?? undefined,
 		stoppedAgo: record.stored?.lastModified ? Date.now() - record.stored.lastModified : undefined,
 		coldAgo: await coldAt(id, record.cwd, record.stored?.lastModified).then(at =>
 			at ? Math.max(0, Date.now() - at) : undefined,
@@ -603,6 +605,8 @@ export const universe = async identity => {
 				...busy,
 				talk,
 				age: Date.now() - session.startedAt,
+				// When it was born, for its place among its project's seats: unchanged by stops and wakings
+				born: (await bornOf(session.id, session.cwd)) ?? session.startedAt,
 				limit: limitOf(session.id) ?? undefined,
 				// 'warm', 'going', 'fabled' or none
 				keeping: keptOf(session.id) ?? undefined,
