@@ -10,7 +10,7 @@ import { claudePointer, wheelToClaude } from '../Terminal/claudePointer';
 import claudeKeys from '../Terminal/claudeKeys';
 import { besideSelection, clickToClaude, forkButtons, forkFromMarker, touchToClaude } from '../Terminal/claudeTerminal';
 import { acceptFiles } from '../Terminal/fileDrop';
-import { copySelection } from '../Terminal/copySelection';
+import { copyAsSelected, copySelection, selectedText } from '../Terminal/copySelection';
 import KeyBar from '../Terminal/KeyBar';
 import selectLinesByTap from '../Terminal/lineSelect';
 import { linkFilePaths, linkUrls } from '../Terminal/linkProviders';
@@ -46,7 +46,7 @@ export default class TerminalPanel {
 		this.selected = element('div', 'selected');
 		this.selected.style.display = 'none';
 		this.selected.append(
-			button('Copy', () => copySelection(this.terminal), { icon: 'copy', className: 'variant-flat' }),
+			button('Copy', () => copySelection(this.terminal, { unwrap: true }), { icon: 'copy', className: 'variant-flat' }),
 			...(canType() && toShell
 				? [
 						button('Shell', () => this.toShell(toShell), {
@@ -72,7 +72,7 @@ export default class TerminalPanel {
 	}
 
 	toShell(send) {
-		const text = this.terminal?.getSelection().replace(/\s+$/, '');
+		const text = this.terminal && selectedText(this.terminal, { unwrap: true }).replace(/\s+$/, '');
 
 		if (!text) return;
 		send(text);
@@ -192,6 +192,7 @@ export default class TerminalPanel {
 		linkUrls(terminal, { over });
 		if (canBrowse() && this.openFile && !remote) linkFilePaths(terminal, session.id, { over, open: this.openFile });
 		terminal.attachCustomKeyEventHandler(claudeKeys({ terminal, send, canType }));
+		copyAsSelected(terminal, { unwrap: true });
 		terminal.onSelectionChange(() => besideSelection(terminal, this.selected));
 		// Output scrolls the selection, and the buttons with it, except from under a pointer reaching for them
 		terminal.onScroll(() => {

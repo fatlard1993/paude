@@ -30,7 +30,7 @@ const claudeKeys =
 
 		if (copy) {
 			event.preventDefault();
-			copySelection(terminal);
+			copySelection(terminal, { unwrap: true });
 		}
 
 		return !copy;

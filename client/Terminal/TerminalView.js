@@ -53,7 +53,7 @@ import attach from './attach';
 import { PANELS, panelTitle } from './panels';
 import { startCatchUp, trackLastSeen } from './catchUp';
 import KeyBar from './KeyBar';
-import { copySelection } from './copySelection';
+import { copyAsSelected, copySelection, selectedText } from './copySelection';
 import selectLinesByTap from './lineSelect';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from './xtermOptions';
 import FilesPanel, { quickOpenMode } from './FilesPanel';
@@ -329,7 +329,7 @@ export default class TerminalView extends View {
 		const selectionButton = (options, onPress) =>
 			new Button({ appendTo: this.selectionActions, ...options }).elem.addEventListener('click', onPress);
 
-		selectionButton({ icon: 'copy', textContent: 'Copy' }, () => copySelection(this.terminal));
+		selectionButton({ icon: 'copy', textContent: 'Copy' }, () => copySelection(this.terminal, { unwrap: true }));
 		if (canType())
 			selectionButton(
 				{
@@ -612,6 +612,7 @@ export default class TerminalView extends View {
 				leave: event => canBrowse() && isAskToOpenKey(event),
 			}),
 		);
+		copyAsSelected(this.terminal, { unwrap: true });
 
 		this.connection = attach(this.options.id, {
 			hello: () => ({
@@ -1026,7 +1027,7 @@ export default class TerminalView extends View {
 	}
 
 	sendSelectionToShell() {
-		const text = this.terminal.getSelection().replace(/\s+$/, '');
+		const text = selectedText(this.terminal, { unwrap: true }).replace(/\s+$/, '');
 
 		if (!text) return;
 

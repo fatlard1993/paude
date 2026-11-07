@@ -1,5 +1,7 @@
 import { Notify, copyToClipboard } from '@vanilla-bean/components';
 
+import { unwrapped } from './unwrapped';
+
 // Ctrl+C copies what's selected, as in a Windows terminal; with nothing selected it still interrupts
 export const isCopyKey = (event, terminal) =>
 	event.type === 'keydown' &&
@@ -9,8 +11,24 @@ export const isCopyKey = (event, terminal) =>
 	event.key.toLowerCase() === 'c' &&
 	terminal.hasSelection();
 
-export const copySelection = async terminal => {
+// What's selected, as text to copy: Claude's screen with its own wrapping undone (`unwrap`), a shell's as it is
+export const selectedText = (terminal, { unwrap = false } = {}) => {
 	const text = terminal.getSelection();
+
+	return unwrap ? unwrapped(text, terminal.cols) : text;
+};
+
+// The browser's own copy of the terminal (Cmd+C, Ctrl+Shift+C, Ctrl+Insert, its menu) carries the same text the Copy
+// button does
+export const copyAsSelected = (terminal, options) =>
+	terminal.element?.addEventListener('copy', event => {
+		if (!terminal.hasSelection()) return;
+		event.clipboardData.setData('text/plain', selectedText(terminal, options));
+		event.preventDefault();
+	});
+
+export const copySelection = async (terminal, options) => {
+	const text = selectedText(terminal, options);
 
 	if (!text) return;
 
