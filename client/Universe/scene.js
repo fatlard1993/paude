@@ -184,7 +184,7 @@ const MAKE_SECONDS = 1.6;
 const CHARGE_SECONDS = 30;
 const EASE = 4;
 // Screen pixels to an art pixel: whole steps only, so every pixel stays square
-const ZOOMS = { least: 1, room: 5, most: 8 };
+export const ZOOMS = { least: 1, room: 5, most: 8 };
 // The least the whole ship is shown at for its pixels to read; the bridge's panel folds rather than push it below
 const READABLE_ZOOM = 2;
 // What the plans station and the lounge are looked at by, apart from any project's name

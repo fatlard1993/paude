@@ -15,7 +15,7 @@ import {
 	setWatching,
 	sessionElsewhere,
 } from '../api';
-import { Bar } from '../Bar';
+import { Bar, ghostButton } from '../Bar';
 import { breadcrumbs } from '../Breadcrumbs';
 import { button, element } from '../dom';
 import { identity, serverName } from '../identity';
@@ -48,7 +48,7 @@ import refusal from './reason';
 import { airlockCard } from './airlockCard';
 import { logCard, manifestCard, promptCard, replyCard } from './replyCard';
 import { arrivalOf } from './sidePanel';
-import Ship, { BEAM_SECONDS, BRIDGE, LOUNGE, remoteOfBay, sessionKey, triage, GROUP_SEPARATOR } from './scene';
+import Ship, { BEAM_SECONDS, BRIDGE, LOUNGE, ZOOMS, remoteOfBay, sessionKey, triage, GROUP_SEPARATOR } from './scene';
 import { FOCUS_WIDTH, Stage } from './universeStyle';
 
 // Panels framed as void-driller frames them, corners cut by augmented-ui
@@ -267,6 +267,12 @@ export default class Universe extends View {
 			current: 'Universe',
 			addCleanup: (name, stop) => this.addCleanup(name, stop),
 		});
+		// A step in and out by button, in the bar as every page's actions are, for a hand without a wheel or a pinch;
+		// + and - do the same
+		this.zoomButtons = {
+			in: ghostButton(bar, { icon: 'magnifying-glass-plus', title: 'Zoom in (+)', onPress: () => this.zoomBy(2) }),
+			out: ghostButton(bar, { icon: 'magnifying-glass-minus', title: 'Zoom out (-)', onPress: () => this.zoomBy(0.5) }),
+		};
 
 		this.stage = new Stage({ appendTo: this });
 		this.canvas = element('canvas');
@@ -504,6 +510,7 @@ export default class Universe extends View {
 			for (const ship of this.ships.values())
 				ship.step(Math.min(LONGEST_FRAME_S, (now - last) / 1000), this.calm.matches);
 			this.aboard.draw(ctx, ratio);
+			this.showZoom();
 			last = now;
 			// Walked aboard as it opens: what's to be focused is, then and there rather than at the next answer
 			if (!this.focusedOpen && !this.settledSeen && this.answers && this.aboard.settled()) {
@@ -665,6 +672,11 @@ export default class Universe extends View {
 				event.preventDefault();
 
 				return this.nextNeed(event.shiftKey ? -1 : 1);
+			}
+			if (['+', '=', '-', '_'].includes(event.key)) {
+				event.preventDefault();
+
+				return this.zoomBy(event.key === '-' || event.key === '_' ? 0.5 : 2);
 			}
 			if (event.key !== 'Escape') return this.hotkey(event);
 			if (this.card) this.closeCard();
@@ -1362,6 +1374,23 @@ export default class Universe extends View {
 				intent: 'danger',
 				content: refusal(`Could not reach ${remote.name}`, body),
 			});
+	}
+
+	// A step in or out about the middle of the view
+	zoomBy(factor) {
+		const { clientWidth: width, clientHeight: height } = this.stage.elem;
+
+		this.aboard.zoom(factor, { x: width / 2, y: height / 2 });
+	}
+
+	// The zoom buttons greyed at the ends of the range, as the view stands this frame
+	showZoom() {
+		const { zoom } = this.aboard.camera;
+
+		if (this.shownZoom === zoom) return;
+		this.shownZoom = zoom;
+		this.zoomButtons.in.disabled = zoom >= ZOOMS.most;
+		this.zoomButtons.out.disabled = zoom <= ZOOMS.least;
 	}
 
 	hotkey(event) {
