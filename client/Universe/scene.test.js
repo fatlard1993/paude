@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import Ship, {
+	BEHIND_CONSOLE,
 	appliancesOf,
 	bendAround,
 	countdown,
@@ -977,7 +978,7 @@ test("a walk across the bridge goes round its islands, never through a console n
 				x < island.x + island.w &&
 				y > island.y + 0.2 - SCREEN_RISE / UNIT.y &&
 				y < island.y + 0.2 &&
-				Math.abs(y - (island.y - 0.15)) > 1e-9,
+				Math.abs(y - (island.y - BEHIND_CONSOLE)) > 1e-9,
 		);
 
 	expect(new Set(islands.map(({ y }) => y)).size).toBeGreaterThan(1);
@@ -2516,7 +2517,7 @@ test('a session turned fabled gets its monitor by a craft of its own at the airl
 	expect(worker.watcher.x).toBeCloseTo(airlock.x, 5);
 	// Round its island's aft end with its whole width clear of the console's end cap, then in behind the console
 	const { island } = worker.seat;
-	const climb = worker.watcher.path.findIndex(({ y }) => Math.abs(y - (island.y - 0.15)) < 1e-9);
+	const climb = worker.watcher.path.findIndex(({ y }) => Math.abs(y - (island.y - BEHIND_CONSOLE)) < 1e-9);
 
 	expect(climb).toBeGreaterThan(0);
 	expect(worker.watcher.path[climb].x).toBe(worker.watcher.path[climb - 1].x);

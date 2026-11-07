@@ -539,8 +539,9 @@ const trackOf = points => {
 };
 
 // How far behind an island's console someone walks to or from its seats, and how far past its end they go round it,
-// in world units
-const BEHIND_CONSOLE = 0.15;
+// in world units: far enough back that they show over the screens and the heads of those sat there (a grey's head
+// stands 26 art pixels over its feet, a screen 31 over the desk), rather than being swallowed by the desk
+export const BEHIND_CONSOLE = 1.4;
 // Far enough past an island's aft end that a grey or its monitor, eleven art pixels wide, clears the console's end cap
 // (drawn four art pixels past the island) on its way round, rather than crossing it drawn in front and then popping
 // behind it
@@ -548,7 +549,9 @@ const ROUND_ISLAND = 0.5;
 
 // The island on the bridge whose seat `point` is at, behind its console
 const islandAt = (bridge, point) =>
-	bridge.islands?.find(({ x, y, w }) => point.x >= x && point.x <= x + w && Math.abs(point.y - y) <= 0.3);
+	bridge.islands?.find(
+		({ x, y, w }) => point.x >= x && point.x <= x + w && point.y <= y + 0.3 && point.y >= y - BEHIND_CONSOLE - 0.1,
+	);
 
 // From `point` on the bridge out to its row's walkway: from a seat, behind its island's console, past the others sat
 // there, to its aft end and round it; from anywhere else, straight down to it
