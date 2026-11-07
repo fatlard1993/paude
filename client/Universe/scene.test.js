@@ -2308,12 +2308,10 @@ test('those sat at an island that has to move get up and walk to where it has go
 	expect(made.islandRise('paude#0')).toBe(2);
 });
 
-test("a fabled session's monitor stands behind its grey, and points at the terminal while the session asks something", () => {
-	const kept = (keeping, status = 'ready') => [answer('here', [session({ status, keeping })], { projects: ['paude'] })];
-	const made = shipWith(kept('fabled'));
-	const [worker] = made.workers.values();
+// A surface that notes each sprite drawn on it; sprites are drawn through canvases the art makes, stood in for here.
+// `done` once drawn with
+const spriteSurface = () => {
 	const drawn = [];
-	// Sprites are drawn through canvases the art makes; here, stand-ins
 	const canvasLike = () => ({ width: 0, height: 0, getContext: () => ({ fillStyle: '', fillRect: () => {} }) });
 	const hadDocument = 'document' in globalThis;
 
@@ -2332,6 +2330,15 @@ test("a fabled session's monitor stands behind its grey, and points at the termi
 		clip: () => {},
 		createRadialGradient: () => ({ addColorStop: () => {} }),
 	};
+
+	return { ctx, drawn, done: () => !hadDocument && delete globalThis.document };
+};
+
+test("a fabled session's monitor stands behind its grey, and points at the terminal while the session asks something", () => {
+	const kept = (keeping, status = 'ready') => [answer('here', [session({ status, keeping })], { projects: ['paude'] })];
+	const made = shipWith(kept('fabled'));
+	const [worker] = made.workers.values();
+	const { ctx, drawn, done } = spriteSurface();
 
 	run(made, 10);
 	expect(made.walking(worker)).toBe(false);
@@ -2375,7 +2382,36 @@ test("a fabled session's monitor stands behind its grey, and points at the termi
 	expect(made.watcherParts(ctx, worker)).toHaveLength(1);
 	run(made, 90);
 	expect(made.watcherParts(ctx, worker)).toEqual([]);
-	if (!hadDocument) delete globalThis.document;
+	done();
+});
+
+test("a fabled session's monitor jabs at the terminal for a few seconds after it prompts the session", () => {
+	const kept = changes => [
+		answer('here', [session({ status: 'ready', keeping: 'fabled', ...changes })], { projects: ['paude'] }),
+	];
+	const made = shipWith(kept({}));
+	const [worker] = made.workers.values();
+	const { ctx, drawn, done } = spriteSurface();
+
+	run(made, 10);
+	made.watcherParts(ctx, worker)[0].draw();
+	expect(made.watcherPrompting(worker)).toBe(false);
+	// Its nudge typed in half a second ago: it stands at the terminal, arm out
+	made.update(kept({ status: 'working', boost: { kind: 'fabled', ago: 500 } }));
+	expect(made.watcherPrompting(worker)).toBe(true);
+	made.watcherParts(ctx, worker)[0].draw();
+	expect(drawn).toHaveLength(2);
+	expect(drawn[1].image).not.toBe(drawn[0].image);
+	// Done a few seconds later
+	run(made, 5);
+	expect(made.watcherPrompting(worker)).toBe(false);
+	// A session kept warm is pinged, not prompted: no monitor, no jab
+	const warm = shipWith([
+		answer('here', [session({ keeping: 'warm', boost: { kind: 'warm', ago: 500 } })], { projects: ['paude'] }),
+	]);
+
+	expect(warm.watcherPrompting([...warm.workers.values()][0])).toBe(false);
+	done();
 });
 
 test("seats run oldest to newest from the aft end, small terminals to a seat's left; short-lived sessions sit on the floor past the desk, each after the last", () => {

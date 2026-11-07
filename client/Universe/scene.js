@@ -246,6 +246,8 @@ const WATCHER_SIZE = { half: 6, tall: WATCHER_TALL };
 // then raises its arm to point at the terminal: how long each takes, in seconds
 const WATCHER_THINK = 1.6;
 const WATCHER_RAISE = 0.5;
+// For how long after its monitor prompts it (a nudge typed in) the monitor is seen jabbing at the terminal
+const WATCHER_PROMPT = 4;
 // A failed tool throws sparks for a moment and smokes a while after; a cube of compacted context takes this long to
 // go; a turn running this long steams, and this long glows hot
 const SPARK_SECONDS = 2.5;
@@ -4202,23 +4204,32 @@ export default class Ship {
 		ctx.restore();
 	}
 
+	// Whether its monitor is prompting it: a nudge of the monitor's was typed into it these last seconds
+	watcherPrompting(worker) {
+		return keepingOf(worker.session) === 'fabled' && this.time - (worker.boostAt ?? -Infinity) < WATCHER_PROMPT;
+	}
+
 	// The monitor with its feet at `at` (art pixels). The screen stands on the console's left; while the session asks, its
-	// near arm reaches toward it, bobbing as its grey waves
+	// near arm reaches toward it, bobbing as its grey waves; while it prompts the session, its arm is out at the screen,
+	// jabbing
 	drawWatcher(ctx, worker, at) {
 		const { session, seat, watcher } = worker;
 		const console = this.art({ x: seat.x, y: seat.y + 0.2 });
 		const asking = session.status === 'waiting';
+		const prompting = !asking && this.watcherPrompting(worker);
 		const colors = { c: `hsl(${session.hue ?? 200} 55% 55%)`, s: rankOf('fable') };
 		// Since the session stopped to ask: thinking it over first, then the arm rising, then pointing
 		const since = asking ? this.time - (watcher?.askedAt ?? -Infinity) : 0;
 		const thinking = asking && since < WATCHER_THINK;
-		const raised = asking && !thinking ? Math.min(1, (since - WATCHER_THINK) / WATCHER_RAISE) : 0;
+		const jabbing = Math.floor(this.time * 5) % 2 === 1;
+		const jab = prompting ? 0.7 + Number(jabbing) * 0.3 : 0;
+		const raised = asking && !thinking ? Math.min(1, (since - WATCHER_THINK) / WATCHER_RAISE) : jab;
 
-		drawSprite(ctx, asking && !thinking ? 'watcherPoint' : 'watcher', at.x, at.y, { colors });
+		drawSprite(ctx, (asking && !thinking) || prompting ? 'watcherPoint' : 'watcher', at.x, at.y, { colors });
 		if (thinking)
 			this.drawConcentrating(ctx, { x: at.x, top: at.y - WATCHER_TALL, w: 9, h: 16, seed: worker.seed ?? 0 });
 		if (raised > 0) {
-			const bob = raised === 1 && Math.floor(this.time * 3) % 2 ? 1 : 0;
+			const bob = raised === 1 && !prompting && Math.floor(this.time * 3) % 2 ? 1 : 0;
 
 			this.drawPointing(ctx, { x: at.x - 4, y: at.y - 13 + bob }, { x: console.x - 9, y: console.y - 24 }, raised);
 		}
