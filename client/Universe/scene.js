@@ -147,6 +147,7 @@ const THINK_BREATH = 2.2;
 const EYES_UP = 6;
 // The part of a drink spent lifting the cup to its mouth, and again setting it back
 const DRINK_LIFT = 0.15;
+const LIFT_SECONDS = DRINK_LIFT * DRINK_SECONDS;
 // How long a beam off a transporter, or onto one, lasts
 export const BEAM_SECONDS = 0.9;
 // How long the ship takes coming in out of warp, opened no sooner however fast what's aboard comes in
@@ -348,7 +349,11 @@ export const resting = session =>
 
 const headFor = fill => (fill >= 0.75 && 'huge') || (fill >= 0.5 && 'big') || 'small';
 
-const screenOf = session => {
+// A keeper's color on the screen of a session whose reply it's reading: keeps going green, fabled purple, as the
+// lifetimes' marks are
+const KEEPER_HUES = { going: 140, fabled: 275 };
+
+export const screenOf = session => {
 	const facility = facilityOf(session.tool);
 	const working = session.status === 'working';
 	const kind =
@@ -356,10 +361,12 @@ const screenOf = session => {
 		(working && !session.tool && 'think') ||
 		(working && facility === 'reactor' && 'terminal') ||
 		(working && 'work') ||
+		// Its reply gone out to its keeper to decide what next: not waiting on anyone
+		(session.reading && 'send') ||
 		{ waiting: 'ask', ready: 'idle' }[session.status] ||
 		'off';
 
-	return { kind, hue: accentOf(facility) };
+	return { kind, hue: kind === 'send' ? (KEEPER_HUES[session.reading.kind] ?? 200) : accentOf(facility) };
 };
 
 // A branch's hue, the same for it on every engine
@@ -2065,7 +2072,10 @@ export default class Ship {
 		this.dust = this.dust.filter(({ at }) => this.time - at < DUST_SECONDS);
 		this.zaps = this.zaps.filter(({ at }) => this.time - at < GREY_ZAP.down + GREY_ZAP.fire + GREY_ZAP.up);
 
-		for (const worker of this.workers.values()) this.tendSmallGreys(worker, calm);
+		for (const worker of this.workers.values()) {
+			this.tendSmallGreys(worker, calm);
+			this.tendSip(worker);
+		}
 		this.tendCrew(seconds);
 		this.tendCrane(seconds);
 		for (const [name, walker] of this.walkers)
@@ -4247,9 +4257,13 @@ export default class Ship {
 		);
 	}
 
-	// Whether its monitor is prompting it: a nudge of the monitor's was typed into it these last seconds
+	// Whether its monitor is prompting it: the whole time the monitor has its reply, and the seconds after the monitor's
+	// nudge was typed into it
 	watcherPrompting(worker) {
-		return keepingOf(worker.session) === 'fabled' && this.time - (worker.boostAt ?? -Infinity) < WATCHER_PROMPT;
+		return (
+			keepingOf(worker.session) === 'fabled' &&
+			(this.reading(worker) || this.time - (worker.boostAt ?? -Infinity) < WATCHER_PROMPT)
+		);
 	}
 
 	// The monitor with its feet at `at` (art pixels). The screen stands on the console's left; while the session asks, its
@@ -4884,6 +4898,8 @@ export default class Ship {
 	// ping or nudge was typed into it, for the drink it takes
 	noteKeeping(worker, session) {
 		if (session.context?.cache) worker.cacheAt = this.time;
+		// Its keeper reading its reply: from when it began, till the nudge is typed or it's left to wait
+		worker.readAt = session.reading ? this.time - session.reading.ago / 1000 : undefined;
 
 		const boost = session.boost;
 
@@ -4907,9 +4923,40 @@ export default class Ship {
 		return Math.max(0, Math.min(1, 1 - left / cache.life));
 	}
 
-	// Taking a drink: for a few seconds after a ping or a nudge was typed into it
+	// Its keeper is reading its reply to decide what next
+	reading(worker) {
+		return worker.readAt !== undefined;
+	}
+
+	// Taking a drink: the whole time its keeper has its reply, and for a few seconds after a ping or a nudge was typed
+	// into it; then the cup is set back
 	drinking(worker) {
-		return this.time - (worker.boostAt ?? -Infinity) < DRINK_SECONDS;
+		return worker.sipAt !== undefined;
+	}
+
+	// A drink begins when there's cause (the cup lifted) and ends a lift after the cause has passed (the cup set back)
+	tendSip(worker) {
+		const thirsty =
+			(this.reading(worker) && Boolean(drinkOf(worker.session))) ||
+			this.time - (worker.boostAt ?? -Infinity) < DRINK_SECONDS;
+
+		if (thirsty) {
+			worker.sipAt ??= this.time;
+			worker.sipEndAt = undefined;
+
+			return;
+		}
+		if (worker.sipAt === undefined) return;
+		worker.sipEndAt ??= this.time;
+		if (this.time - worker.sipEndAt >= LIFT_SECONDS) worker.sipAt = worker.sipEndAt = undefined;
+	}
+
+	// How far the cup is lifted to its mouth, 0 to 1: up over a lift at the drink's start, held, down over one at its end
+	sipLift(worker) {
+		const up = Math.min(1, (this.time - worker.sipAt) / LIFT_SECONDS);
+		const down = worker.sipEndAt === undefined ? 1 : Math.max(0, 1 - (this.time - worker.sipEndAt) / LIFT_SECONDS);
+
+		return Math.min(up, down);
 	}
 
 	drawSip(ctx, worker, at, neck) {
@@ -4923,8 +4970,7 @@ export default class Ship {
 			return;
 		}
 		// The giant cup lifted off the desk to its mouth, its straw between its lips, a long pull on it, and set back
-		const t = Math.min(1, (this.time - worker.boostAt) / DRINK_SECONDS);
-		const lift = Math.min(1, t / DRINK_LIFT, (1 - t) / DRINK_LIFT);
+		const lift = this.sipLift(worker);
 		// Held beside its head, above the desk it sits behind, the straw bent across to its mouth
 		const held = { x: at.x + 10, y: neck + 1 };
 		const desk = { x: at.x + 13, y: at.y + 2 };

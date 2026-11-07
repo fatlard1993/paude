@@ -108,17 +108,27 @@ export const noteMonitor = async (id, { monitor, seen = null, missed = 0 }, now 
 	if (file) await save();
 };
 
-// A session that keeps going is answering the end of turn `turnId` (null once answered): saved, so a server that
-// restarts meanwhile knows to answer it
-export const noteAsking = async (id, turnId) => {
+// A session that keeps going is answering the end of turn `turnId` (null once answered), from `now`: saved, so a
+// server that restarts meanwhile knows to answer it
+export const noteAsking = async (id, turnId, now = Date.now()) => {
 	if (!warm[id] || (warm[id].asking ?? null) === (turnId ?? null)) return;
-	if (turnId) warm[id] = { ...warm[id], asking: turnId };
+	if (turnId) warm[id] = { ...warm[id], asking: turnId, askingAt: now };
 	else {
-		const { asking: _, ...rest } = warm[id];
+		const { asking: _, askingAt: __, ...rest } = warm[id];
 
 		warm[id] = rest;
 	}
 	if (file) await save();
+};
+
+// Its keeper reading its latest reply to decide what next, for the universe to show the reply with it rather than
+// waiting on anyone: { kind: 'going' | 'fabled', ago }, or null
+export const readingOf = (id, now = Date.now()) => {
+	const kept = keptOf(id, now);
+
+	if (!warm[id]?.asking || !kept || kept === 'warm') return null;
+
+	return { kind: kept, ago: now - (warm[id].askingAt ?? now) };
 };
 
 // The sessions whose turn end was being answered when the server last stopped

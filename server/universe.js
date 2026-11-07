@@ -14,7 +14,7 @@ import { ownerName } from './serverSettings';
 import { sessionArtifacts } from './artifacts';
 import { meterOf } from './cacheMeter';
 import { modelFor, windowFor } from './contextWindow';
-import { boostOf, keptOf } from './keepWarm';
+import { boostOf, keptOf, readingOf } from './keepWarm';
 import { lifetimeOf } from './lifetime';
 import { crewOf } from './crew';
 import { fuelOf } from './fuel';
@@ -618,6 +618,8 @@ export const universe = async identity => {
 				keeping: keptOf(session.id) ?? undefined,
 				lifetime: lifetimeOf(session.id),
 				boost: boostOf(session.id) ?? undefined,
+				// Its keeper reading its reply, before it's nudged on or left to wait
+				reading: readingOf(session.id) ?? undefined,
 				...instrumentsOf(session),
 				// Its size, for a terminal opened from the universe to take
 				screen: { cols: session.cols, rows: session.rows },

@@ -458,6 +458,7 @@ const drawScreen = (ctx, area, { kind, hue, time, seed }) => {
 		work: `hsl(${hue} 40% 12%)`,
 		terminal: PALETTE.e,
 		think: 'hsl(200 25% 14%)',
+		send: `hsl(${hue} 45% 12%)`,
 		ask: PALETTE.y,
 		news: '#0f2a4a',
 		limit: '#2a0f0f',
@@ -492,6 +493,18 @@ const drawScreen = (ctx, area, { kind, hue, time, seed }) => {
 		rect(ctx, x + 5, y + 6, 1, 1, PALETTE.k);
 	}
 	if (kind === 'limit') drawBattery(ctx, area, blink);
+	// Its reply going out to its keeper: a packet sliding off the screen's right edge, again and again
+	if (kind === 'send') {
+		const span = w - 2;
+		const head = Math.floor((time * 10 + seed) % (span + 3));
+
+		for (let step = 0; step < 3; step++) {
+			const px = x + 1 + head - step;
+
+			if (px >= x + 1 && px < x + 1 + span)
+				rect(ctx, px, y + Math.floor(h / 2), 1, 1, step ? `hsl(${hue} 70% 45%)` : `hsl(${hue} 80% 72%)`);
+		}
+	}
 	// Something new for you: a letter, lit while it waits to be looked at
 	if (kind === 'news') {
 		const [left, top] = [x + Math.floor((w - 9) / 2), y + Math.floor((h - 6) / 2)];

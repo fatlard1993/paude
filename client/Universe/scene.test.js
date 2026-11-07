@@ -9,6 +9,7 @@ import Ship, {
 	resting,
 	risersFor,
 	runsFor,
+	screenOf,
 	tanksOf,
 	triage,
 } from './scene';
@@ -2506,7 +2507,7 @@ test("a fabled session's monitor stands behind its grey, and points at the termi
 	done();
 });
 
-test("a fabled session's monitor jabs at the terminal for a few seconds after it prompts the session", () => {
+test("a fabled session's monitor jabs at the terminal the whole time it has the reply, and for a few seconds after it prompts the session", () => {
 	const kept = changes => [
 		answer('here', [session({ status: 'ready', keeping: 'fabled', ...changes })], { projects: ['paude'] }),
 	];
@@ -2517,6 +2518,13 @@ test("a fabled session's monitor jabs at the terminal for a few seconds after it
 	run(made, 10);
 	made.watcherParts(ctx, worker)[0].draw();
 	expect(made.watcherPrompting(worker)).toBe(false);
+	// The reply with its monitor: at the terminal, arm out, for as long as that takes, the screen sending it out
+	made.update(kept({ reading: { kind: 'fabled', ago: 1000 } }));
+	expect(made.watcherPrompting(worker)).toBe(true);
+	expect(screenOf(worker.session)).toEqual({ kind: 'send', hue: 275 });
+	run(made, 30);
+	expect(made.watcherPrompting(worker)).toBe(true);
+	expect(made.drinking(worker)).toBe(false);
 	// Its nudge typed in half a second ago: it stands at the terminal, arm out
 	made.update(kept({ status: 'working', boost: { kind: 'fabled', ago: 500 } }));
 	expect(made.watcherPrompting(worker)).toBe(true);
@@ -2533,6 +2541,39 @@ test("a fabled session's monitor jabs at the terminal for a few seconds after it
 
 	expect(warm.watcherPrompting([...warm.workers.values()][0])).toBe(false);
 	done();
+});
+
+test("a session kept going drinks from its cup the whole time its reply is with Haiku, its screen sending the reply out, and sets the cup back a few seconds after Haiku's nudge", () => {
+	const kept = changes => [
+		answer('here', [session({ status: 'ready', keeping: 'going', ...changes })], { projects: ['paude'] }),
+	];
+	const made = shipWith(kept({}));
+	const [worker] = made.workers.values();
+
+	expect(made.drinking(worker)).toBe(false);
+	expect(screenOf(worker.session).kind).toBe('idle');
+	made.update(kept({ reading: { kind: 'going', ago: 500 } }));
+	run(made, 0.1);
+	expect(made.drinking(worker)).toBe(true);
+	expect(made.sipLift(worker)).toBeLessThan(1);
+	expect(screenOf(worker.session)).toEqual({ kind: 'send', hue: 140 });
+	run(made, 20);
+	expect(made.drinking(worker)).toBe(true);
+	expect(made.sipLift(worker)).toBe(1);
+	// Haiku's nudge typed and Claude at work: the drink goes on a few seconds, then the cup is set back
+	made.update(kept({ status: 'working', boost: { kind: 'going', ago: 100 } }));
+	expect(screenOf(worker.session).kind).toBe('work');
+	run(made, 3);
+	expect(made.drinking(worker)).toBe(true);
+	run(made, 5);
+	expect(made.drinking(worker)).toBe(false);
+	// Left to wait: the cup set back, the screen idle
+	made.update(kept({ reading: { kind: 'going', ago: 500 } }));
+	run(made, 1);
+	made.update(kept({}));
+	run(made, 2);
+	expect(made.drinking(worker)).toBe(false);
+	expect(screenOf(worker.session).kind).toBe('idle');
 });
 
 test('a seat is kept through a stop and a waking: seats go by when a session was born, as its paude says, or by its age at first sight', () => {

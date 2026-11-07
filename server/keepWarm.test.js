@@ -5,6 +5,8 @@ import {
 	PING,
 	PING_AFTER_MS,
 	boostOf,
+	noteAsking,
+	readingOf,
 	checkWarm,
 	claudeActive,
 	forgetMonitorsWith,
@@ -116,8 +118,14 @@ test('how a session is kept, and the last ping or nudge typed into it and how lo
 
 	await keepWarm('kept', 12, 0, { going: true });
 	expect(keptOf('kept', 0)).toBe('going');
+	// Its reply with Haiku, until the nudge is typed
+	expect(readingOf('kept', 8000)).toBeNull();
+	await noteAsking('kept', 'turn-9', 8000);
+	expect(readingOf('kept', 8500)).toEqual({ kind: 'going', ago: 500 });
 	expect(typeWhenIdle('kept', session, nudgeWith('next'), 9000)).toBe(true);
 	expect(boostOf('kept', 9100)).toEqual({ kind: 'going', ago: 100 });
+	await noteAsking('kept', null);
+	expect(readingOf('kept', 9100)).toBeNull();
 
 	await keepWarm('kept', 0, 0);
 	expect(keptOf('kept', 0)).toBeNull();
