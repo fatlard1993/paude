@@ -1,4 +1,4 @@
-import { PALETTE } from './art';
+import { PALETTE, plating } from './art';
 import {
 	NACELLE,
 	NOSE,
@@ -93,19 +93,17 @@ const hulls = new Map();
 let lastHull;
 
 // The hull plate, painted once for each size
-const hullImage = building => {
-	if (lastHull?.building === building) return lastHull.image;
+const hullImage = (building, hue) => {
+	if (lastHull?.building === building && lastHull.hue === hue) return lastHull.image;
 
-	const key = Object.values(building)
-		.map(value => value.toFixed(2))
-		.join('|');
+	const key = [hue, ...Object.values(building).map(value => value.toFixed(2))].join('|');
 
 	if (!hulls.has(key)) {
 		// Its plates' pattern runs with where it lies, so it's kept for each place it's been, a few at a time
 		if (hulls.size > 8) hulls.clear();
-		hulls.set(key, paintHull(building));
+		hulls.set(key, paintHull(building, hue));
 	}
-	lastHull = { building, image: hulls.get(key) };
+	lastHull = { building, hue, image: hulls.get(key) };
 
 	return lastHull.image;
 };
@@ -113,7 +111,7 @@ const hullImage = building => {
 // How deep the keel's strip runs under the hull's belly, in art pixels, its outline the row past it
 const KEEL = 9;
 
-const paintHull = building => {
+const paintHull = (building, hue) => {
 	const shape = outline(building);
 	const below = KEEL;
 	const canvas = document.createElement('canvas');
@@ -133,10 +131,9 @@ const paintHull = building => {
 		for (let x = from; x <= to; x++) {
 			const column = Math.floor((x - shape.left) / 20);
 			const shade = seeded(`plate${column}:${row}`);
-			const base = (lit < 0.2 && [44, 53, 71]) || (lit < 0.75 && [35, 43, 58]) || [28, 35, 48];
-			const tone = base.map(part => Math.round(part + (shade - 0.5) * 8));
+			const base = (lit < 0.2 && 23) || (lit < 0.75 && 18) || 15;
 
-			put(x, y, 1, 1, `rgb(${tone.join(', ')})`);
+			put(x, y, 1, 1, plating(hue, base + (shade - 0.5) * 3));
 		}
 		if (within === 0) put(from, y, to - from + 1, 1, '#141a26');
 		else if (within === 1) put(from, y, to - from + 1, 1, 'rgba(120, 140, 170, 0.18)');
@@ -182,8 +179,8 @@ const paintHull = building => {
 		const panel = Math.floor((x - shape.left) / 30);
 		const top = Math.round(edge) + 1;
 
-		put(x, top, 1, tall - 1, panel % 2 ? '#2a3243' : PALETTE.d);
-		put(x, top, 1, 1, '#3a4458');
+		put(x, top, 1, tall - 1, plating(hue, panel % 2 ? 16 : 12));
+		put(x, top, 1, 1, plating(hue, 26));
 		if ((x - shape.left) % 30 === 0) put(x, top, 1, tall - 1, '#141a26');
 		put(x, Math.round(edge) + tall, 1, 1, PALETTE.k);
 		if (x % 30 === 0 && x <= shape.right - 8) {
@@ -203,7 +200,7 @@ const paintHull = building => {
 export const drawHullCover = (ctx, layout, cover, { time, name = '', hue = 200 }) => {
 	if (!layout.building || cover <= 0) return;
 
-	const image = hullImage(layout.building);
+	const image = hullImage(layout.building, hue);
 	const { shape } = image;
 	const tall = shape.bottom - shape.top;
 	const [from, to] = [shape.left + 14, shape.right - 14];
@@ -286,7 +283,7 @@ const canopyOf = image => {
 	return image.canopyShape;
 };
 
-const drawCanopy = (ctx, image, { time, pace, drift }) => {
+const drawCanopy = (ctx, image, { time, pace, drift, hue }) => {
 	const { shape } = image;
 	const { from, window, rows, glass, stars } = canopyOf(image);
 
@@ -304,13 +301,13 @@ const drawCanopy = (ctx, image, { time, pace, drift }) => {
 
 				const above = y < shape.middle;
 
-				rect(paint, from, y, to - from, 1, above ? '#2e3849' : '#1d2432');
+				rect(paint, from, y, to - from, 1, plating(hue, above ? 22 : 15));
 				for (let x = from; x < to; x++)
 					if ((x - from + Math.round(Math.abs(y - shape.middle) * 0.8)) % 12 === 0) rect(paint, x, y, 1, 1, '#141a26');
 				rect(paint, to, y, 2, 1, PALETTE.k);
 			}
 			for (const { y, to } of glass) {
-				rect(paint, from, y, to - from, 1, '#0a1226');
+				rect(paint, from, y, to - from, 1, `hsl(${hue} 45% 9%)`);
 				rect(paint, to, y, 2, 1, PALETTE.k);
 			}
 			rect(paint, from - 1, rows[0].y, 1, rows.length, PALETTE.k);
@@ -325,7 +322,7 @@ const drawCanopy = (ctx, image, { time, pace, drift }) => {
 
 			rect(paint, from, first.y - 1, first.to - from + 1, 1, PALETTE.k);
 			rect(paint, from, last.y + 1, last.to - from + 1, 1, PALETTE.k);
-			rect(paint, from, first.y, first.to - from, 1, '#3b5f96');
+			rect(paint, from, first.y, first.to - from, 1, `hsl(${hue} 45% 42%)`);
 		}),
 	];
 	ctx.drawImage(image.canopy[0], area.left, area.top);
@@ -354,8 +351,9 @@ const layer = ({ left, top, w, h }, painting) => {
 	return canvas;
 };
 
-// A swept fin off the stern on its back and another under its belly
-const drawFins = (ctx, image, engineering, { time = 0 } = {}) => {
+// A swept fin off the stern on its back and another under its belly, each with a stripe in the ship's color (`hue`),
+// the hull's own
+const drawFins = (ctx, image, engineering, { time = 0, hue = 200 } = {}) => {
 	if (!engineering) return;
 
 	const { shape } = image;
@@ -371,7 +369,7 @@ const drawFins = (ctx, image, engineering, { time = 0 } = {}) => {
 		const base = out < 0 ? shape.top : shape.bottom + 9;
 		const tip = base + out * (tall + 1);
 		const area = { left: tipFrom, top: Math.min(base, tip), w: sweep + Math.max(chord, tipChord) + 1, h: tall + 2 };
-		const key = `${out},${chord}`;
+		const key = `${out},${chord},${hue}`;
 
 		image.fins ??= new Map();
 		if (!image.fins.has(key))
@@ -386,10 +384,11 @@ const drawFins = (ctx, image, engineering, { time = 0 } = {}) => {
 
 						if (to <= from) continue;
 						const band = part > 0.62 && part < 0.78;
+						const stripe = part < 0.66 ? `hsl(${hue} 60% 62%)` : `hsl(${hue} 55% 42%)`;
 
-						rect(paint, from, y, to - from, 1, (band && '#7a2a26') || (out < 0 ? '#2a3344' : '#1c2330'));
+						rect(paint, from, y, to - from, 1, (band && stripe) || (out < 0 ? plating(hue, 20) : plating(hue, 14)));
 						for (let seam = to - 9; seam > from + 2; seam -= 9)
-							rect(paint, seam, y, 1, 1, band ? '#5a1e1b' : '#141a26');
+							rect(paint, seam, y, 1, 1, band ? `hsl(${hue} 55% 28%)` : '#141a26');
 						rect(paint, from + 1, y, 2, 1, 'rgba(0, 0, 0, 0.3)');
 						rect(paint, from, y, 1, 1, PALETTE.k);
 						rect(paint, to - 2, y, 1, 1, out < 0 ? '#4a5670' : '#3a4458');
@@ -704,8 +703,8 @@ export const drawTanker = (ctx, at, t, { color = FUEL, time }) => {
 // A bay door through the keel, `left` to `right` from the hull's belly (`top`) down through the keel's strip, `open`
 // 0 shut to 1 wide: a frame round the opening, its two plated leaves meeting in the middle with hazard bands on their
 // meeting edges, sliding apart into the keel; while they move or stand open, the opening glows red within and lamps
-// at the frame's ends blink
-const drawBayDoor = (ctx, { left, right, top, open, time }) => {
+// at the frame's ends blink. Its leaves are plated in the ship's color (`hue`) as the keel round them is
+const drawBayDoor = (ctx, { left, right, top, open, time, hue }) => {
 	const deep = KEEL + 1;
 	const width = right - left;
 	const half = Math.floor(width / 2);
@@ -729,9 +728,9 @@ const drawBayDoor = (ctx, { left, right, top, open, time }) => {
 
 		const x = side < 0 ? left : right - w;
 
-		rect(ctx, x, top + 1, w, deep - 1, '#2c3547');
-		rect(ctx, x, top + 1, w, 1, '#4a5878');
-		rect(ctx, x, top + deep - 2, w, 1, '#1c2330');
+		rect(ctx, x, top + 1, w, deep - 1, plating(hue, 20));
+		rect(ctx, x, top + 1, w, 1, plating(hue, 36));
+		rect(ctx, x, top + deep - 2, w, 1, plating(hue, 13));
 		for (let seam = x + 6; seam < x + w - 2; seam += 8) rect(ctx, seam, top + 2, 1, deep - 4, '#141a26');
 		// The hazard band down its meeting edge
 		const edge = side < 0 ? x + w - 3 : x;
@@ -746,16 +745,16 @@ const drawBayDoor = (ctx, { left, right, top, open, time }) => {
 };
 
 // The hull and what's on it: the engines, a fuel tank for each account, each project's section, the comms dish and
-// masts, the hangar's doors, running lights
+// masts, the hangar's doors, running lights; its plating, its fins' stripes and its canopy in the ship's color (`hue`)
 export const drawHull = (
 	ctx,
 	layout,
-	{ time, engines = [], comms, bayDoors = {}, sections = [], pace = 1, drift = 0 },
+	{ time, engines = [], comms, bayDoors = {}, sections = [], pace = 1, drift = 0, hue = 200 },
 ) => {
-	const image = hullImage(layout.building);
+	const image = hullImage(layout.building, hue);
 	const { shape } = image;
 
-	drawFins(ctx, image, layout.engineering, { time });
+	drawFins(ctx, image, layout.engineering, { time, hue });
 	for (const engine of engines) drawEngine(ctx, shape, { ...engine, time });
 	ctx.drawImage(image.canvas, image.x, image.y);
 	// The bay doors in the belly under the hold and the hangar, as open as `bayDoors` says (0 to 1): a pod drops out
@@ -771,8 +770,9 @@ export const drawHull = (
 				top: shape.bottom - 1,
 				open,
 				time,
+				hue,
 			});
-	drawCanopy(ctx, image, { time, pace, drift });
+	drawCanopy(ctx, image, { time, pace, drift, hue });
 	// Each project's section: seams at its ends where it has no machine, and its machine's machinery outside
 	for (const section of sections) {
 		const [from, to] = [Math.round(section.from * UNIT.x), Math.round(section.to * UNIT.x)];
@@ -794,6 +794,7 @@ export const drawHull = (
 					folders: section.folders,
 					fallback: section.form,
 					hue: section.hue,
+					ship: hue,
 					state: (section.working && 'working') || (section.idle ? 'idle' : 'ready'),
 					asking: section.asking,
 					time,

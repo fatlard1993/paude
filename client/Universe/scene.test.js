@@ -4,7 +4,6 @@ import Ship, {
 	appliancesOf,
 	bendAround,
 	countdown,
-	huesApart,
 	remoteOfBay,
 	resting,
 	risersFor,
@@ -13,6 +12,7 @@ import Ship, {
 	triage,
 } from './scene';
 import { WATCHER_W, clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats } from './plan';
+import { huesApart } from '../../shared/hues';
 import { SCREEN_RISE, UNIT, cableWeight, floor, setTrim, walls } from './station';
 import { drawTransporter, shuttleAt } from './hull';
 import { spriteSize } from './art';

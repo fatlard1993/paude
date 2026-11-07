@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { cksum, folderHue, sessionHue, tintsOf, hueOfColor } from './hues';
+import { cksum, folderHue, sessionHue, tintsOf, hueOfColor, huesApart } from './hues';
 
 test('checksums a path as cksum does', () => {
 	expect(cksum('/home/chase/Projects/paude')).toBe(4246214386);
@@ -38,6 +38,27 @@ test('reads a CSS color into hue, saturation and lightness, and nothing else', (
 	expect(hueOfColor('#33333380').saturation).toBe(0);
 	expect(hueOfColor('blue')).toBeNull();
 	expect(hueOfColor(null)).toBeNull();
+});
+
+test('names settled apart on a wheel of any size: a brand keeps its hue and the rest step round it', () => {
+	const ships = huesApart(
+		[
+			{ name: 'dock', hue: 100 },
+			{ name: 'vps', hue: 110 },
+			{ name: 'laptop', hue: 120 },
+		],
+		{ slots: 8 },
+	);
+
+	expect(ships.get('dock')).toBe(100);
+	expect(ships.get('laptop')).toBe(165);
+	expect(ships.get('vps')).toBe(20);
+	expect(
+		huesApart([
+			{ name: 'a', hue: 7, branded: true },
+			{ name: 'b', hue: 10 },
+		]).get('b'),
+	).toBe(25);
 });
 
 test("tints as kitty-bg's awk does", () => {

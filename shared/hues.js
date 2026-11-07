@@ -73,6 +73,49 @@ export const hueOfColor = color => {
 };
 const min = Math.min;
 
+// Each named thing's color (a project, a ship), by name: its brand's hue where it has one (`branded`), kept as it is; else its folder's hue,
+// kitty-bg's for a terminal opened there, or when a project before it has that one (a brand, or one before it by
+// name), the nearest free hue of kitty-bg's wheel (a step up, a step down, two up...), so up to a wheel's worth of
+// projects all read apart and each stays as near its terminal's tint as it can. Worked out over every project there
+// is, at work or not: a project's color is the same whichever are at work, however they came, and wherever it's
+// looked at from. [{ name, hue, branded }] (any order, a name maybe more than once) to Map(name → hue); `slots` how many hues the wheel
+// has, 15 degrees apart by default
+export const huesApart = (named, { slots = HUES } = {}) => {
+	const own = new Map();
+
+	for (const { name, hue, branded } of named) {
+		const had = own.get(name);
+		const brand = Boolean(branded) && hue !== null && hue !== undefined;
+
+		if (!had || had.hue === null || (brand && !had.branded)) own.set(name, { hue: hue ?? null, branded: brand });
+	}
+
+	const step = 360 / slots;
+	const turns = Array.from({ length: slots }, (_, turn) => (turn % 2 ? turn + 1 : -turn) / 2);
+	const hues = new Map();
+	const taken = [];
+	const free = hue => taken.every(other => Math.abs(((hue - other + 540) % 360) - 180) >= step);
+	const names = [...own.keys()].sort((a, b) => a.localeCompare(b));
+	// A brand's hue is its own and goes first; the rest step round the brands and each other
+	const inTurn = [...names.filter(name => own.get(name).branded), ...names.filter(name => !own.get(name).branded)];
+
+	for (const name of inTurn) {
+		const { hue, branded } = own.get(name);
+
+		if (hue === null) {
+			hues.set(name, null);
+			continue;
+		}
+
+		const found = branded ? hue : (turns.map(turn => (hue + turn * step + 360) % 360).find(free) ?? hue);
+
+		hues.set(name, found);
+		taken.push(found);
+	}
+
+	return hues;
+};
+
 const hex = (hue, saturation, lightness) => {
 	const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
 	const x = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));

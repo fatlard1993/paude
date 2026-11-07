@@ -1,4 +1,4 @@
-import { PALETTE } from './art';
+import { PALETTE, plating } from './art';
 import { noise, pixelEllipse, rect } from './station';
 
 // A project's machine: modules for its folders on a plinth, ports down each side for the workers jacked into it. It
@@ -262,13 +262,21 @@ export const drawCore = (
 // glowing cap for a core, a bank of radiator fins for coils, a truss mast for a lattice, a fan in its ring for a
 // turbine), banded in its language's color, riveted when the project is old, fresh-sheened when it's new, lit as the
 // machine runs and flashing amber at its tips while one of its sessions asks you something. `left` to `right` along the
-// hull, from `base`, `out` from it: -1 up off its back, 1 down under its belly.
+// hull, from `base`, `out` from it: -1 up off its back, 1 down under its belly; built of the hull's plating in the
+// ship's color (`ship`), the project's own (`hue`) its trim and glow.
 const EXTERIOR_TALL = 18;
-// The hull's own plating, as its skin is painted (hull.js): lighter along the back, in shadow under the belly; what
-// grows out of it is built of the same, so it looks part of it
-const HULL_PLATING = {
-	back: { outline: '#0b0f17', plate: '#2c3547', lit: '#4a5878', dark: '#1c2330', seam: '#141a26', rivet: '#3a4762' },
-	belly: { outline: '#0b0f17', plate: '#1c2330', lit: '#34405a', dark: '#141a26', seam: '#0f141e', rivet: '#2c3547' },
+// The hull's own plating in the ship's color, as its skin is painted (hull.js): lighter along the back, in shadow
+// under the belly; what grows out of it is built of the same, so it looks part of it
+const hullPlating = (ship, side) => {
+	const tone =
+		side === 'back'
+			? { plate: 22, lit: 38, dark: 15, seam: 11, rivet: 31 }
+			: { plate: 15, lit: 28, dark: 11, seam: 9, rivet: 22 };
+
+	return {
+		outline: '#0b0f17',
+		...Object.fromEntries(Object.entries(tone).map(([part, lightness]) => [part, plating(ship, lightness)])),
+	};
 };
 // How far a fairing steps out of the hull's skin before the machinery on it, in art pixels
 const FAIRING = 3;
@@ -418,13 +426,28 @@ const drawSpire = (ctx, { left, right, row, plating, hue, state, asking, time })
 
 export const drawExterior = (
 	ctx,
-	{ left, right, base, out, folders = [], fallback = 'core', hue, state, asking, time, seed = 0, history, own = false },
+	{
+		left,
+		right,
+		base,
+		out,
+		folders = [],
+		fallback = 'core',
+		hue,
+		ship = 200,
+		state,
+		asking,
+		time,
+		seed = 0,
+		history,
+		own = false,
+	},
 ) => {
 	const glow = glowOf(hue, state, time);
 	const trim = hue === null || hue === undefined ? PALETTE.l : `hsl(${hue} 45% 52%)`;
 	const tip = (asking && (Math.floor(time * 3) % 2 ? PALETTE.y : PALETTE.Y)) || (state === 'idle' ? PALETTE.d : glow);
 	const years = history?.since ? (Date.now() - history.since) / (365 * DAY_MS) : 1;
-	const plating = out < 0 ? HULL_PLATING.back : HULL_PLATING.belly;
+	const plating = hullPlating(ship, out < 0 ? 'back' : 'belly');
 	const skin = (x, from, width, rows, fill) =>
 		width > 0 && rows > 0 && rect(ctx, x, out < 0 ? base - from - rows : base + from, width, rows, fill);
 	const row = (x, from, width, rows, fill) => skin(x, from + FAIRING, width, rows, fill);

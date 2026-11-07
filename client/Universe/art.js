@@ -1,5 +1,9 @@
 // The universe view's sprites, drawn pixel by pixel: each a grid of palette letters, '.' for nothing. 'c' and 's'
 // take a color given when it's drawn (a session's, a machine's, a screen's), so one sprite serves every hue.
+// The hull's plating in the ship's color: a grey leaning its way, `lightness` in percent; everything built of the hull's
+// skin (its fins, keel, doors, the housings grown out of it) is painted with it
+export const plating = (hue, lightness) => `hsl(${hue} 9% ${lightness}%)`;
+
 export const PALETTE = {
 	k: '#0b0d12',
 	d: '#252c3b',
