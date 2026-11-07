@@ -51,11 +51,9 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose,
 	const tabs = element('div', 'tabs');
 	const body = element('div', 'body');
 	const panels = new Map();
-	// Another paude's session's panels reach it through this paude, all but its side shell, whose socket isn't relayed
+	// Another paude's session's panels reach it through this paude, its side shell's socket among them
 	const { remote } = session.engine;
-	const verbs = VERBS.filter(
-		({ key, allowed }) => allowed() && (key !== 'terminal' || live) && !(remote && key === 'shell'),
-	);
+	const verbs = VERBS.filter(({ key, allowed }) => allowed() && (key !== 'terminal' || live));
 	let connection;
 	let showing;
 

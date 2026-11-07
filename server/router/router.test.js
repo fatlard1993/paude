@@ -356,6 +356,12 @@ test("another paude's sessions and projects are relayed only for this machine's 
 		expect((await call(`/api/remotes/at/${there}${route}`, { token: tokens.local })).status).toBe(404);
 	for (const route of ['/api/sessions/a/x%2fy', '/api/sessions/a/x%5cy'])
 		expect((await call(`/api/remotes/at/${there}${route}`, { token: tokens.local })).status).toBe(400);
+	// Nor its sockets: a session's attach there, or a side shell in its folder there, is relayed for this machine's login
+	// alone, to one of its servers
+	for (const socket of ['attach', 'shell']) {
+		expect((await call(`/api/remotes/at/${there}/api/sessions/a/${socket}`, { token: tokens.owner })).status).toBe(403);
+		expect((await call(`/api/remotes/at/${there}/api/sessions/a/${socket}`, { token: tokens.local })).status).toBe(404);
+	}
 	// Not one of its servers, or no address at all
 	expect((await call(`/api/remotes/at/${there}/api/sessions/a/links`, { token: tokens.local })).status).toBe(404);
 	expect((await call('/api/remotes/at/%E0%A4%A/api/sessions/a', { token: tokens.local })).status).toBe(404);

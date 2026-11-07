@@ -1,12 +1,12 @@
 import { trustedCertificates } from '../../shared/certificates';
 
-// A session on another paude, attached through this one: the browser's socket here, relayed to that server's own
-// attach socket on this machine's login there, which never leaves this server. Frames pass through untouched both
-// ways; what the browser sends before that server answers waits for it.
+// A session on another paude, attached through this one, or a side shell opened in its folder there (`path`): the
+// browser's socket here, relayed to that server's own socket on this machine's login there, which never leaves this
+// server. Frames pass through untouched both ways; what the browser sends before that server answers waits for it.
 const relay = {
 	open(socket) {
-		const { server, sessionId } = socket.data;
-		const upstream = new WebSocket(`${server.url.replace(/^http/, 'ws')}/api/sessions/${sessionId}/attach`, {
+		const { server, sessionId, path = 'attach' } = socket.data;
+		const upstream = new WebSocket(`${server.url.replace(/^http/, 'ws')}/api/sessions/${sessionId}/${path}`, {
 			headers: { authorization: `Bearer ${server.token}` },
 			tls: trustedCertificates(),
 		});

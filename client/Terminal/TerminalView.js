@@ -334,8 +334,8 @@ export default class TerminalView extends View {
 			selectionButton(
 				{
 					icon: 'terminal',
-					textContent: 'Terminal',
-					attributes: { title: "Put it on the terminal's command line" },
+					textContent: 'Shell',
+					attributes: { title: "Put it on the shell's command line" },
 				},
 				() => this.sendSelectionToShell(),
 			);

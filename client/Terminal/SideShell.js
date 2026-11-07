@@ -26,7 +26,7 @@ const endedBecause = ({ code, reason }, opened) => {
 export default class SideShell extends Panel {
 	build() {
 		const bar = element('div', 'bar');
-		const label = element('span', 'label', 'Terminal: ends when you close it');
+		const label = element('span', 'label', 'Shell: ends when you close it');
 
 		label.prepend(icon('terminal'));
 		this.attachButton = button('Attach selection', () => this.attachSelection(), {

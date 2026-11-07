@@ -306,15 +306,19 @@ const sessionsRoutes = async (request, server) => {
 		}
 	}
 
-	// A session there, attached from here as on this server: its socket relayed on this machine's login there, and
-	// its state asked there, so a socket refused for good says why
-	match = requestMatch('GET', '/api/remotes/at/:url/api/sessions/:id/attach', request);
-	if (match) {
+	// A session there, attached from here as on this server, or a side shell in its folder there: its socket relayed on
+	// this machine's login there, and its state asked there, so a socket refused for good says why
+	for (const path of ['attach', 'shell']) {
+		match = requestMatch('GET', `/api/remotes/at/:url/api/sessions/:id/${path}`, request);
+		if (!match) continue;
+
 		const remote = /^[\w-]+$/.test(match.id) && (await remoteServer(match.url));
 
 		if (!remote) return new Response('Not one of your servers', { status: 404 });
 
-		const upgraded = server.upgrade(request, { data: { route: 'remoteAttach', server: remote, sessionId: match.id } });
+		const upgraded = server.upgrade(request, {
+			data: { route: 'remoteAttach', server: remote, sessionId: match.id, path },
+		});
 
 		return upgraded ? undefined : new Response('WebSocket upgrade failed', { status: 400 });
 	}

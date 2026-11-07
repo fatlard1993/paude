@@ -1016,10 +1016,12 @@ export default class Universe extends View {
 			...(live(session)
 				? [{ label: PANELS.terminal.label, hotkey: 't', run: () => this.dockOrReply(worker, 'terminal') }]
 				: []),
-			// Another paude's session's panels are relayed through this one, all but its side shell
-			...VERBS.filter(({ key, allowed }) => key !== 'terminal' && allowed() && !(remote && key === 'shell')).map(
-				({ key, label, hotkey }) => ({ label, hotkey, run: () => this.openDock(worker, key) }),
-			),
+			// Another paude's session's panels are relayed through this one, its side shell among them
+			...VERBS.filter(({ key, allowed }) => key !== 'terminal' && allowed()).map(({ key, label, hotkey }) => ({
+				label,
+				hotkey,
+				run: () => this.openDock(worker, key),
+			})),
 			{
 				label: session.watching ? 'Stop watching' : 'Watch',
 				hotkey: 'u',
@@ -1472,15 +1474,15 @@ export default class Universe extends View {
 		if (worker) this.wake(worker);
 	}
 
-	// A panel of a session, here or on another paude (relayed through this one, all but its side shell); another paude's
-	// stopped session opens its reply for its terminal
+	// A panel of a session, here or on another paude (relayed through this one); another paude's stopped session opens
+	// its reply for its terminal
 	dockOrReply(worker, key) {
 		this.select(selectionOf({ kind: 'worker', worker }, this));
 		if (worker.session.engine.remote) {
 			if (key === 'terminal' && !live(worker.session)) return this.openReply(worker);
 			this.seen(worker.session);
 
-			return this.openDock(worker, key === 'shell' ? 'terminal' : key);
+			return this.openDock(worker, key);
 		}
 		// Its terminal attached marks it seen on its engine; here at once
 		if (key === 'terminal' && this.aboard.needs(worker.session) === 'unread') {

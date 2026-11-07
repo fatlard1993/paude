@@ -8,13 +8,7 @@ import { canBrowse, canNote, canType, identity } from '../identity';
 import attach from '../Terminal/attach';
 import { claudePointer, wheelToClaude } from '../Terminal/claudePointer';
 import claudeKeys from '../Terminal/claudeKeys';
-import {
-	besideSelection,
-	clickToClaude,
-	forkButtons,
-	forkFromMarker,
-	touchToClaude,
-} from '../Terminal/claudeTerminal';
+import { besideSelection, clickToClaude, forkButtons, forkFromMarker, touchToClaude } from '../Terminal/claudeTerminal';
 import { acceptFiles } from '../Terminal/fileDrop';
 import { copySelection } from '../Terminal/copySelection';
 import KeyBar from '../Terminal/KeyBar';
@@ -53,12 +47,12 @@ export default class TerminalPanel {
 		this.selected.style.display = 'none';
 		this.selected.append(
 			button('Copy', () => copySelection(this.terminal), { icon: 'copy', className: 'variant-flat' }),
-			...(canType() && toShell && here
+			...(canType() && toShell
 				? [
-						button('Terminal', () => this.toShell(toShell), {
+						button('Shell', () => this.toShell(toShell), {
 							icon: 'terminal',
 							className: 'variant-flat',
-							title: "Put it on the terminal's command line",
+							title: "Put it on the shell's command line",
 						}),
 					]
 				: []),
