@@ -273,6 +273,12 @@ export default class TerminalView extends View {
 			this.lifetimeButton.append(this.lifetimeText, this.lifetimeWas);
 			this.showLifetime('ordinary');
 		}
+		if (identity()?.owner)
+			ghostButton(header, {
+				icon: 'gamepad',
+				title: 'Arcade: this session as a kid plays it, the game beside the talk, read aloud',
+				onPress: () => (window.location.hash = `#/arcade/${this.options.id}`),
+			});
 		this.sharesButton = ghostButton(header, {
 			icon: PANELS.shares.icon,
 			title: panelTitle('shares'),

@@ -26,6 +26,7 @@ const OWN_SESSION_ROUTES = [
 	'/attach',
 	'/asking',
 	'/answer',
+	'/prompt',
 	'/continue',
 	'/artifacts',
 	'/artifact',

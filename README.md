@@ -160,6 +160,14 @@ In chat and comments the owner goes by this machine's user name, or by `ownerNam
 
 Revoking an invite, or changing the password with `bun run set-password` (a running server picks it up), signs those people out everywhere at once.
 
+## Arcade
+
+A session as a kid plays it: the game they're building on one side, the talk with Claude on the other, in big type, read aloud by the browser, answered by tapping a choice or by talking into the microphone, with no terminal anywhere. **🕹️ New arcade game** on the home page (with the sessions grouped by project) asks what the game is called, who's building it and how well they read, and makes a project from [web-game-framework](https://github.com/fatlard1993/web-game-framework)'s scaffold: a small multiplayer game on `@vanilla-bean/components`, with a lobby anyone on the network can join from a phone. Claude starts in it told who it's building with and how to talk with them (`CLAUDE.local.md` in the project, yours to edit), ends each turn asking what should happen next with two to four emoji choices, and the game's dev server runs as the project's `dev` task and shows live in the arcade, reloading as Claude saves. The project gets a `.claude/settings.json` that accepts edits and the commands that check and build the game, so a kid isn't stopped by a permission prompt for every change; anything wider still asks, and the arcade shows that question only to the owner.
+
+The arcade is another window on an ordinary session: the gamepad in a session's bar opens it on any session, and the session's own page is a button away for the grown-up. To hand it to the kid on their own device, make a Drive invite in **People** with **Opens the arcade** checked: that browser gets the arcade and nothing else of the session. Reading aloud and listening are the browser's own (Chrome and Safari have both; a browser without a microphone falls back to typing), and the voice and text size are per device, from the bar.
+
+paude installs the framework pinned to a commit, and each game pins the same; `PAUDE_GAME_FRAMEWORK=/path/to/a/checkout` in the server's environment makes games from, and depending on, that checkout instead, for working on the scaffold itself.
+
 ## In the terminal
 
 Inside a session everything goes to Claude except **Ctrl+]** (**Cmd+]** on a Mac, in a terminal that passes it on, such as kitty), which floats the box over Claude's screen. Claude keeps working behind it. A terminal that keeps Cmd+] for itself (iTerm2, Ghostty) can be set to send Ctrl+] (the byte `0x1d`) for it instead.

@@ -28,6 +28,7 @@ import { button, element } from './dom';
 import { Bar, ghostButton } from './Bar';
 import { Empty, Scroll, sessionCard } from './Layout';
 import { composeBox, HOME_PROMPT_KEY, placePrompt } from './PromptHome';
+import newArcadeCard from './Arcade/newArcadeCard';
 
 // The project list's last row: pressed, it opens into the folder's path
 const AddFolder = styled(
@@ -138,7 +139,7 @@ export default class Home extends View {
 			bulk: sessions => bulkActions(sessions, () => this.load()),
 			projects: () => this.projectList(),
 			fetchProject: (project, page) => this.projectSessions(project, page),
-			extra: [this.adder],
+			extra: [this.adder, newArcadeCard()],
 		});
 
 		this.load();

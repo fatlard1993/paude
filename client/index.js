@@ -9,6 +9,7 @@ import { registerNotificationWorker } from './notify';
 import Project from './Project';
 import { keepDraft } from './PromptHome';
 import TerminalView from './Terminal/TerminalView';
+import Arcade from './Arcade/Arcade';
 import Universe from './Universe/Universe';
 import { updateTabTitle } from './tabTitle';
 import { startWatchAlerts } from './watchAlerts';
@@ -85,6 +86,19 @@ const content = () => {
 				super({ ...options, id: identity.sessionId });
 			}
 		}
+		class GuestArcade extends Arcade {
+			constructor(options) {
+				super({ ...options, id: identity.sessionId });
+			}
+		}
+
+		// Invited to the arcade, the guest gets the arcade and nothing else of the session, whatever page the link or
+		// an old bookmark named
+		if (identity.view === 'arcade') {
+			if (!window.location.hash.startsWith('#/arcade/')) window.location.replace(`#/arcade/${identity.sessionId}`);
+
+			return new Router({ views: { '/arcade/:id': GuestArcade }, defaultPath: `/arcade/${identity.sessionId}` });
+		}
 
 		return new Router({
 			views: { '/sessions/:id': GuestTerminal, '/universe': Universe, '/universe/sessions/:session': Universe },
@@ -97,6 +111,7 @@ const content = () => {
 			'/': Home,
 			'/projects/:project': Project,
 			'/sessions/:id': TerminalView,
+			'/arcade/:id': Arcade,
 			'/universe': Universe,
 			// Opened looking at one session's grey, or one project's machine
 			'/universe/sessions/:session': Universe,

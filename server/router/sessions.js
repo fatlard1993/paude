@@ -29,6 +29,8 @@ import { catchUp } from '../catchUp';
 import { sessionDecisions } from '../decisions';
 import { findHome, localCandidates } from '../promptHome';
 import { askClaude } from '../claudeInbox';
+import { ArcadeError, acceptTrust, createArcadeProject, folderName, openingPrompt } from '../arcade';
+import { runTask } from '../tasks';
 import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
 import { connectRemote, listRemotes, remoteApi, remoteLink, remoteServer, remoteSessions } from '../remotes';
@@ -159,11 +161,14 @@ const creatingSession = (create, text, how) => {
 						// Started whether or not anyone is still reading
 						const id = await startWith(folder, text, how);
 
+						await how.started?.(id, folder);
 						if (open) send({ id });
 					}
 				} catch (error) {
-					if (!(error instanceof WorktreeError)) console.error('A worktree could not be made', error);
-					send({ error: error instanceof WorktreeError ? error.message : 'The worktree could not be made.' });
+					const told = error instanceof WorktreeError || error instanceof ArcadeError;
+
+					if (!told) console.error('A session could not be made', error);
+					send({ error: told ? error.message : 'The session could not be made.' });
 				}
 
 				clearInterval(heartbeat);
@@ -553,6 +558,9 @@ const sessionsRoutes = async (request, server) => {
 	// A prompt for a session, typed in once its prompt box is free (taken back up first if it isn't running)
 	match = requestMatch('POST', '/api/sessions/:id/prompt', request);
 	if (match) {
+		if (!may(identity, 'type', match.id))
+			return new Response('Sending to Claude takes the drive role', { status: 403 });
+
 		const { text } = await request.json();
 
 		if (!String(text ?? '').trim()) return new Response('Nothing to send', { status: 400 });
@@ -678,6 +686,32 @@ const sessionsRoutes = async (request, server) => {
 
 	// `checkout` is { join: name } for a worktree in the project, { create: name } for a new one (with `from`, on
 	// that branch, ref or pull request), or absent for the project folder itself
+	// A new arcade game: a project from the game scaffold, its session started on the opening prompt, and its dev server
+	// run as the project's task so the arcade page has the game to show. Streamed, as a worktree's creation is.
+	if (requestMatch('POST', '/api/arcade', request)) {
+		const { name, player, reading, model } = await request.json();
+		const title = String(name ?? '').trim();
+
+		if (!title) return new Response('Name the game.', { status: 400 });
+
+		return creatingSession(
+			async onOutput => ({ folder: (await createArcadeProject({ name: title, player, reading }, onOutput)).folder }),
+			openingPrompt({ title, player: String(player ?? '').trim() }),
+			{
+				model,
+				identity,
+				project: folderName(title),
+				started: async (id, folder) => {
+					await runTask(id, folder, 'package.json:dev').catch(error =>
+						console.error('The game could not start', error),
+					);
+					// Not awaited: the session's first screen takes a moment, and the answer is sent the moment it asks
+					acceptTrust(runningSession(id)).catch(() => {});
+				},
+			},
+		);
+	}
+
 	match = requestMatch('POST', '/api/projects/:project/sessions', request);
 	if (match) {
 		const cwd = projectPath(match.project);

@@ -3,6 +3,7 @@ import { copyToClipboard } from '@vanilla-bean/components';
 import { createInvite, getInvites, revokeInvite } from '../api';
 import confirmDialog from '../confirmDialog';
 import { element } from '../dom';
+import { checkbox } from '../Layout';
 
 const ROLES = [
 	['drive', 'Drive: type into Claude, and all of the above'],
@@ -47,7 +48,15 @@ const renderPeople = async sessionId => {
 	const expiry = select(EXPIRIES);
 	const create = element('button', '', 'Create invite link');
 	const result = element('div', 'invite-result');
+	const arcade = checkbox(false);
+	const arcadeLabel = element('label', 'meta');
 
+	arcadeLabel.append(
+		arcade,
+		' Opens the arcade: the game and the talk with Claude in big type, read aloud, no terminal',
+	);
+	arcadeLabel.title =
+		'For a kid, or anyone who would rather tap and talk than read a terminal; takes the drive role to answer';
 	name.placeholder = 'Their name';
 	name.maxLength = 40;
 	expiry.value = String(24);
@@ -57,6 +66,7 @@ const renderPeople = async sessionId => {
 			name: name.value.trim(),
 			role: role.value,
 			hours: Number(expiry.value),
+			...(arcade.checked && { view: 'arcade' }),
 		});
 
 		if (!response?.ok) {
@@ -81,7 +91,7 @@ const renderPeople = async sessionId => {
 		list.replaceChildren(...(await inviteRows()));
 	});
 
-	form.append(name, role, expiry, create);
+	form.append(name, role, expiry, create, arcadeLabel);
 
 	const list = element('div', 'invites');
 	const inviteRows = async () => {
@@ -106,7 +116,7 @@ const renderPeople = async sessionId => {
 			});
 			row.append(
 				element('div', 'text', invite.name),
-				element('div', 'meta', `${invite.role} · ${remaining(invite.expires)}`),
+				element('div', 'meta', [invite.role, invite.view, remaining(invite.expires)].filter(Boolean).join(' · ')),
 				revoke,
 			);
 

@@ -271,6 +271,14 @@ export const setWatching = async (sessionId, watching) =>
 	await PUT('/api/sessions/:id/watch', { urlParameters: { id: sessionId }, body: { watching } });
 
 // What Claude is asking in a session now ({ asking: null } for nothing), and the answer to it, by its number
+// What a session said and did from a cursor on (none: from now), for a page following it without its screen
+export const getFeed = async (sessionId, after) =>
+	await GET('/api/sessions/:id/feed', {
+		urlParameters: { id: sessionId },
+		...(after !== undefined && { searchParameters: { after } }),
+		invalidateAfter: 0,
+	});
+
 export const getAsking = async sessionId =>
 	await GET('/api/sessions/:id/asking', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 

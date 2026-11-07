@@ -26,6 +26,8 @@ import { publicOrigin } from '../publicOrigin';
 
 const OPEN_ROUTES = new Set(['/api/auth', '/api/login', '/api/tokens', '/api/join', '/api/handoff/redeem']);
 const INVITE_HOURS = [1, 24, 24 * 7];
+// Pages a guest can be sent to instead of the session's own
+const INVITE_VIEWS = ['arcade'];
 
 const refused = outcome =>
 	typeof outcome === 'number'
@@ -149,7 +151,7 @@ const authRoutes = async request => {
 
 	match = requestMatch('POST', '/api/sessions/:id/invites', request);
 	if (match) {
-		const { name, role, hours } = await request.json();
+		const { name, role, hours, view } = await request.json();
 		const cleanName = String(name ?? '')
 			.trim()
 			.slice(0, 40);
@@ -158,8 +160,10 @@ const authRoutes = async request => {
 		if (!ROLES.includes(role)) return new Response(`Role must be one of ${ROLES.join(', ')}`, { status: 400 });
 		if (!INVITE_HOURS.includes(hours))
 			return new Response(`Expiry must be ${INVITE_HOURS.join(', ')} hours`, { status: 400 });
+		if (view !== undefined && !INVITE_VIEWS.includes(view))
+			return new Response(`The page must be one of ${INVITE_VIEWS.join(', ')}`, { status: 400 });
 
-		const { invite, token } = await createInvite({ sessionId: match.id, name: cleanName, role, hours });
+		const { invite, token } = await createInvite({ sessionId: match.id, name: cleanName, role, hours, view });
 
 		// The link carries the server's public address, not this tab's: an invite made from a .local tab has to open from
 		// wherever the guest is

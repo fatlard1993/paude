@@ -222,9 +222,9 @@ export const identityOf = credential => {
 	if (!record) return null;
 	if (!record.invite) return { owner: true, ...(record.local && { local: true }) };
 
-	const { id, name, role, sessionId } = liveInvite(record.invite);
+	const { id, name, role, sessionId, view } = liveInvite(record.invite);
 
-	return { owner: false, inviteId: id, name, role, sessionId };
+	return { owner: false, inviteId: id, name, role, sessionId, ...(view && { view }) };
 };
 
 export const credentialOf = request => {
@@ -266,13 +266,15 @@ export const revokeToken = async request => {
 	return state.tokens.length < before;
 };
 
-export const createInvite = async ({ sessionId, name, role, hours }) => {
+export const createInvite = async ({ sessionId, name, role, hours, view }) => {
 	const token = randomToken();
 	const invite = {
 		id: randomToken().slice(0, 10),
 		name,
 		role,
 		sessionId,
+		// The page the guest gets instead of the session's own: 'arcade', or nothing
+		...(view && { view }),
 		hash: digest(token),
 		created: Date.now(),
 		expires: Date.now() + hours * 60 * 60 * 1000,
@@ -292,7 +294,7 @@ export const inviteFromToken = token =>
 export const listInvites = sessionId =>
 	state.invites
 		.filter(invite => invite.sessionId === sessionId && invite.expires > Date.now())
-		.map(({ id, name, role, expires }) => ({ id, name, role, expires }));
+		.map(({ id, name, role, expires, view }) => ({ id, name, role, expires, ...(view && { view }) }));
 
 export const revokeInvite = async id => {
 	const before = state.invites.length;
