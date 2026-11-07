@@ -1,7 +1,7 @@
 // Colors told apart at a glance, as the dotfiles' kitty-bg tints a terminal (and claude-statusline its accent): one of
 // 24 hues, 15° apart, chosen by a name's POSIX cksum. A session's comes from its id, so each has its own; a project's
 // from its folder, matching kitty-bg's tint for a terminal opened there.
-const HUES = 24;
+export const HUES = 24;
 
 const TABLE = Array.from({ length: 256 }, (_, index) => {
 	let crc = index << 24;

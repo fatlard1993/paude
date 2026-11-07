@@ -1,5 +1,5 @@
 import { facilitiesFor, facilityOf } from '../../shared/facilities';
-import { cksum } from '../../shared/hues';
+import { cksum, HUES } from '../../shared/hues';
 import { PALETTE, drawSprite, spriteSize } from './art';
 import { drawLighting, lightOf } from './lighting';
 import { FORMS, drawCore, drawHousing } from './machine';
@@ -326,6 +326,39 @@ const drinkOf = session => {
 
 	return keeping === 'fabled' ? undefined : keeping;
 };
+// Each project's color, by name: its folder's hue, kitty-bg's for a terminal opened there, or when a project before it by
+// name has that one, the nearest free hue of kitty-bg's wheel (a step up, a step down, two up...), so up to a wheel's
+// worth of projects all read apart and each stays as near its terminal's tint as it can. Worked out over every project
+// there is, at work or not, in name order: a project's color is the same whichever are at work, however they came,
+// and wherever it's looked at from. Projects ([{ name, hue }], any order, a name maybe more than once) to Map(name → hue)
+export const huesApart = projects => {
+	const own = new Map();
+
+	for (const { name, hue } of projects) if (!own.has(name) || own.get(name) === null) own.set(name, hue ?? null);
+
+	const step = 360 / HUES;
+	const turns = Array.from({ length: HUES }, (_, turn) => (turn % 2 ? turn + 1 : -turn) / 2);
+	const hues = new Map();
+	const taken = [];
+	const free = hue => taken.every(other => Math.abs(((hue - other + 540) % 360) - 180) >= step);
+
+	for (const name of [...own.keys()].sort((a, b) => a.localeCompare(b))) {
+		const hue = own.get(name);
+
+		if (hue === null) {
+			hues.set(name, null);
+			continue;
+		}
+
+		const found = turns.map(turn => (hue + turn * step + 360) % 360).find(free) ?? hue;
+
+		hues.set(name, found);
+		taken.push(found);
+	}
+
+	return hues;
+};
+
 // One deleted once its cache lets go, sitting on the floor past its island's desk with a laptop rather than at a seat
 const briefOf = worker => worker.session.lifetime === 'brief' && !worker.lounging && !worker.seat?.housing;
 // How far left of where it sits its laptop stands, in art pixels: between it and the desk's end it's plugged into
@@ -1181,6 +1214,7 @@ export default class Ship {
 		// streams are routed from it before the machines draw
 		const built = new Map((this.bays ?? []).map(({ name, built: where }) => [name, where]));
 
+		this.projectHues = huesApart(answers.flatMap(answer => answer.projects ?? []));
 		this.bays = this.baysFor(answers);
 		// Each grey in its project's color, the one its machine, island and conduit have
 		for (const bay of this.bays)
@@ -1190,7 +1224,6 @@ export default class Ship {
 				if (worker && bay.hue !== null) worker.session = { ...worker.session, hue: bay.hue };
 			}
 		this.people = this.peopleOf(answers);
-		this.projectHues = new Map(answers.flatMap(answer => (answer.projects ?? []).map(({ name, hue }) => [name, hue])));
 
 		const onCouches = [...this.workers]
 			.filter(([, worker]) => worker.lounging && (!worker.leaving || worker.opacity > 0))
@@ -1638,41 +1671,18 @@ export default class Ship {
 			});
 
 		// A project is a section of the hull while one of its sessions is aboard or it's watched; the rest stay off the
-		// ship. Each keeps its place along the ship as long as the view is open, so the floor plan changes as little as
-		// it can: those first aboard by name, each later one after them, and one that leaves and comes back where it was.
+		// ship. Along the ship by name, so each is where it's expected whenever it's aboard and wherever it's looked at
+		// from; one that leaves and comes back is where it was.
 		const rank = bay => {
 			if (bay.sessions.length || bay.active) return 0;
 
 			return bay.watching ? 1 : 2;
 		};
-		const aboard = [...bays.values()].filter(bay => rank(bay) < 2);
-		const known = this.bayOrder ?? [];
-		const newcomers = aboard
-			.map(({ name }) => name)
-			.filter(name => !known.includes(name))
-			.sort((a, b) => a.localeCompare(b));
+		const ranked = [...bays.values()].filter(bay => rank(bay) < 2).sort((a, b) => a.name.localeCompare(b.name));
 
-		this.bayOrder = [...known, ...newcomers];
-
-		const ranked = aboard.sort((a, b) => this.bayOrder.indexOf(a.name) - this.bayOrder.indexOf(b.name));
-
-		// Only a project at work has a color: idle ones are plain metal, so no two at work share one and each stays its
-		// own; one too close to a color already taken moves round the wheel until it's clear of the rest
-		const taken = [];
-
-		for (const bay of ranked) {
-			if (rank(bay) > 0 || bay.hue === null) {
-				bay.hue = null;
-				continue;
-			}
-
-			let hue = bay.hue;
-
-			for (let turn = 0; turn < 12 && taken.some(other => Math.abs(((hue - other + 540) % 360) - 180) < 28); turn++)
-				hue = (hue + 37) % 360;
-			bay.hue = hue;
-			taken.push(hue);
-		}
+		// Only a project at work has a color: idle ones are plain metal. Its color is its own, the same whatever else is
+		// at work (huesApart)
+		for (const bay of ranked) bay.hue = rank(bay) > 0 ? null : (this.projectHues?.get(bay.name) ?? null);
 
 		return ranked;
 	}

@@ -4,6 +4,7 @@ import Ship, {
 	appliancesOf,
 	bendAround,
 	countdown,
+	huesApart,
 	remoteOfBay,
 	resting,
 	risersFor,
@@ -67,7 +68,7 @@ test('a project is a section of the hull while a session of it is aboard or it i
 	expect(made.bays.find(({ name }) => name === 'paude').engines.map(({ key }) => key)).toEqual(['here', 'vps']);
 });
 
-test('each project keeps its place along the ship: one coming aboard goes after the rest, and one that leaves and comes back is where it was', () => {
+test('projects stand along the ship by name: one coming aboard goes in its place among the rest, and one that leaves and comes back is where it was', () => {
 	const projects = ['paude', 'site', 'alpha', 'zeta'];
 	const at = ids => [
 		answer(
@@ -100,7 +101,7 @@ test('each project keeps its place along the ship: one coming aboard goes after 
 			['d', 'alpha'],
 		]),
 	);
-	expect(made.bays.map(({ name }) => name)).toEqual(['paude', 'alpha', 'zeta']);
+	expect(made.bays.map(({ name }) => name)).toEqual(['alpha', 'paude', 'zeta']);
 	made.update(
 		at([
 			['a', 'paude'],
@@ -109,7 +110,44 @@ test('each project keeps its place along the ship: one coming aboard goes after 
 			['d', 'alpha'],
 		]),
 	);
-	expect(made.bays.map(({ name }) => name)).toEqual(['paude', 'site', 'alpha', 'zeta']);
+	expect(made.bays.map(({ name }) => name)).toEqual(['alpha', 'paude', 'site', 'zeta']);
+});
+
+test("a project's color is its own whatever else is at work: one before it by name on the same hue, it takes the nearest free one of the wheel, the same way every time", () => {
+	const projects = [
+		{ name: 'paude', hue: 150, watching: false },
+		{ name: 'site', hue: 150, watching: false },
+		{ name: 'alpha', hue: 300, watching: false },
+	];
+	const apart = huesApart(projects);
+
+	expect(apart.get('paude')).toBe(150);
+	expect(apart.get('alpha')).toBe(300);
+	expect(apart.get('site')).toBe(165);
+	// The step up taken, it steps down instead
+	expect(huesApart([...projects, { name: 'ender', hue: 165 }]).get('site')).toBe(135);
+	// However they're listed, whichever are at work, and with a remote paude naming one of them too
+	expect(huesApart([...projects].reverse())).toEqual(apart);
+	expect(huesApart([{ name: 'site', hue: 150 }])).toEqual(new Map([['site', 150]]));
+	// A whole wheel of projects on one hue all read apart
+	const crowd = huesApart(Array.from({ length: 24 }, (_, index) => ({ name: `p${index}`, hue: 45 })));
+
+	expect(new Set(crowd.values()).size).toBe(24);
+	expect([...crowd.values()].every(hue => hue % 15 === 0)).toBe(true);
+
+	const hueOf = (made, name) => made.bays.find(bay => bay.name === name)?.hue;
+	const alone = shipWith([answer('here', [session({ id: 'b', project: 'site' })], { projects })]);
+	const together = shipWith([
+		answer('here', [session(), session({ id: 'b', project: 'site' })], { projects }),
+		answer('vps', [], { projects: [{ name: 'site', hue: 200, watching: false }] }),
+	]);
+
+	expect(hueOf(alone, 'site')).toBe(165);
+	expect(hueOf(together, 'site')).toBe(165);
+	expect(hueOf(together, 'paude')).toBe(150);
+	// Idle, it's plain metal; its grey wears its color
+	expect(hueOf(alone, 'paude')).toBeUndefined();
+	expect(alone.workers.get('here/b').session.hue).toBe(165);
 });
 
 test('what needs you: those asking first, then those with news, newest reply first', () => {
