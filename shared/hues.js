@@ -32,6 +32,47 @@ export const folderHue = (folder, home) => (folder && folder !== home ? hueOf(fo
 
 export const sessionHue = id => (id ? hueOf(id) : null);
 
+const channelsOf = text => {
+	const hex = text.match(/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i)?.[1];
+
+	if (hex) {
+		if (hex.length < 6) return [...hex.slice(0, 3)].map(digit => parseInt(digit + digit, 16));
+
+		return [0, 2, 4].map(at => parseInt(hex.slice(at, at + 2), 16));
+	}
+
+	const rgb = text.match(/^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i);
+
+	return rgb ? rgb.slice(1, 4).map(Number) : null;
+};
+
+const sectorOf = (r, g, b, max, chroma) => {
+	if (max === r) return ((g - b) / chroma + 6) % 6;
+	if (max === g) return (b - r) / chroma + 2;
+
+	return (r - g) / chroma + 4;
+};
+
+// A CSS color read as { hue (degrees), saturation, lightness (0 to 1) }: a hex color (#rgb, #rrggbb, with alpha or
+// not) or rgb(); null for anything else
+export const hueOfColor = color => {
+	const channels = channelsOf(String(color ?? '').trim());
+
+	if (!channels) return null;
+
+	const [r, g, b] = channels.map(channel => Math.min(255, channel) / 255);
+	const max = Math.max(r, g, b);
+	const chroma = max - Math.min(r, g, b);
+	const lightness = (max + min(r, g, b)) / 2;
+
+	return {
+		hue: chroma === 0 ? 0 : sectorOf(r, g, b, max, chroma) * 60,
+		saturation: chroma === 0 ? 0 : chroma / (1 - Math.abs(2 * lightness - 1)),
+		lightness,
+	};
+};
+const min = Math.min;
+
 const hex = (hue, saturation, lightness) => {
 	const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
 	const x = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));

@@ -1,10 +1,9 @@
-import os from 'os';
 import { existsSync, realpathSync } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
 
 import { facilityOf } from '../shared/facilities';
-import { folderHue, sessionHue } from '../shared/hues';
+import { sessionHue } from '../shared/hues';
 import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
 
@@ -26,6 +25,7 @@ import { journeyOf, noteDelivered } from './journey';
 import { combinedHistory, foldersOf, languageOf } from './character';
 import { defaultBase, gitLog, gitStatus, linkedWorktree, openBase, repoHistory, repoRoot, trackedFiles } from './git';
 import { pinnedName } from './names';
+import { brandFields } from './brand';
 import { listProjects, projectOf, projectPath } from './projects';
 import { serverName } from './serverSettings';
 import { sessionRecord } from './sessions/record';
@@ -631,7 +631,7 @@ export const universe = async identity => {
 
 				return {
 					name,
-					hue: folderHue(projectPath(name), os.homedir()),
+					...(await brandFields(name)),
 					watching,
 					// The project this paude runs from: the ship's own works, as it flies
 					...(isOwnProject(projectPath(name)) && { own: true }),

@@ -519,6 +519,16 @@ export const Stage = styled(
 			margin: -4px -6px 0 ${space.sm};
 		}
 
+		.tip img.icon,
+		.focus .title img.icon,
+		.projects-list .project-row img.icon {
+			width: 1em;
+			height: 1em;
+			margin-right: 0.35em;
+			vertical-align: -0.15em;
+			object-fit: contain;
+		}
+
 		.focus {
 			position: absolute;
 			z-index: 2;

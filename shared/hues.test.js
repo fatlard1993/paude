@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { cksum, folderHue, sessionHue, tintsOf } from './hues';
+import { cksum, folderHue, sessionHue, tintsOf, hueOfColor } from './hues';
 
 test('checksums a path as cksum does', () => {
 	expect(cksum('/home/chase/Projects/paude')).toBe(4246214386);
@@ -28,6 +28,16 @@ test("gives each session its own hue, not its folder's", () => {
 	expect(sessionHue(one)).toBe((cksum(one) % 24) * 15);
 	expect(sessionHue(one)).not.toBe(sessionHue(other));
 	expect(sessionHue(undefined)).toBeNull();
+});
+
+test('reads a CSS color into hue, saturation and lightness, and nothing else', () => {
+	expect(hueOfColor('#b23434')).toMatchObject({ hue: 0 });
+	expect(Math.round(hueOfColor('#7a34b2').hue)).toBe(273);
+	expect(Math.round(hueOfColor('rgb(52, 117, 178)').hue)).toBe(209);
+	expect(hueOfColor('#fff')).toEqual({ hue: 0, saturation: 0, lightness: 1 });
+	expect(hueOfColor('#33333380').saturation).toBe(0);
+	expect(hueOfColor('blue')).toBeNull();
+	expect(hueOfColor(null)).toBeNull();
 });
 
 test("tints as kitty-bg's awk does", () => {

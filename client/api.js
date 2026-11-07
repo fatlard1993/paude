@@ -321,7 +321,7 @@ export const setLifetime = async (sessionId, lifetime) =>
 	await PUT('/api/sessions/:id/lifetime', { urlParameters: { id: sessionId }, body: { lifetime } });
 
 // `remote`, another paude's address, adds it there, through this one
-const remoteBase = remote => (remote ? `/api/remotes/at/${encodeURIComponent(remote)}` : '');
+export const remoteBase = remote => (remote ? `/api/remotes/at/${encodeURIComponent(remote)}` : '');
 
 export const addFolder = async (path, remote) =>
 	await POST(`${remoteBase(remote)}/api/projects`, { body: { path }, responseType: 'text' });

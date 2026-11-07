@@ -248,6 +248,9 @@ const checkStatus = ({ draft, checks: { passing = 0, failing = 0, pending = 0 } 
 // and command bar about it
 // A panel bordered in a project's color when it's about a project, its own otherwise; its title in the same color, or
 // in a session's own (`titleHue`) when it's about one of the project's sessions
+// A project's icon before its name, where its folder keeps one
+const iconOf = bay => (bay?.icon ? Object.assign(element('img', 'icon'), { src: bay.icon, alt: '' }) : null);
+
 const tone = (panel, title, hue, titleHue = hue) => {
 	const colorOf = value => (Number.isFinite(value) ? `hsl(${value} 60% 68%)` : '');
 
@@ -715,7 +718,9 @@ export default class Universe extends View {
 		const { title, rows = [], hint, hue, titleHue } = flyoutOf(target, this.aboard);
 		const table = element('div', 'rows');
 		const heading = element('strong', '', title);
+		const icon = iconOf(target.bay);
 
+		if (icon) heading.prepend(icon);
 		for (const row of rows.filter(Boolean)) table.append(element('span', 'key', row[0]), element('span', '', row[1]));
 		tone(this.tip, heading, hue, titleHue);
 		this.tip.replaceChildren(heading, table, ...(hint ? [element('div', 'about', hint)] : []));
@@ -1966,7 +1971,9 @@ export default class Universe extends View {
 			verbs.append(press);
 		}
 		const heading = element('strong', 'title', title);
+		const icon = iconOf(focus.bay);
 
+		if (icon) heading.prepend(icon);
 		tone(this.focus, heading, hue, titleHue);
 		this.focus.classList.remove('folded');
 		// Closed: whatever was selected is let go, and the bridge's panel folds to its summary, which opens it again

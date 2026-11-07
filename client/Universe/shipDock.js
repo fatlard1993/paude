@@ -13,6 +13,7 @@ import {
 	markProjectLink,
 	setProjectWatching,
 	setRemoteWatching,
+	remoteBase,
 } from '../api';
 import { button, element } from '../dom';
 import { sessionCard } from '../Layout';
@@ -192,7 +193,13 @@ export const projectsPane = ({ remotes = [], onStart, onOpenThere, onWatched }) 
 			const actions = element('span', 'actions');
 
 			actions.append(action, watchButton(project));
-			line.append(element('strong', '', name), element('span', 'about', about), actions);
+			const label = element('strong', '', name);
+
+			if (project.icon)
+				label.prepend(
+					Object.assign(element('img', 'icon'), { src: `${remoteBase(project.remote?.url)}${project.icon}`, alt: '' }),
+				);
+			line.append(label, element('span', 'about', about), actions);
 
 			return line;
 		};

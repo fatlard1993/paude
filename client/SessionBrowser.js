@@ -122,6 +122,14 @@ const Box = styled(
 			font-weight: bold;
 		}
 
+		.project-head .name img.icon {
+			width: 1em;
+			height: 1em;
+			margin-right: 0.35em;
+			vertical-align: -0.15em;
+			object-fit: contain;
+		}
+
 		.project-head .about {
 			flex: 1;
 			min-width: 0;
@@ -423,10 +431,10 @@ export default class SessionBrowser {
 			const body = element('div', 'project-body');
 			const about = element('span', 'about');
 
-			head.append(
-				element('i', `fa-solid fa-chevron-${open ? 'down' : 'right'} chevron`),
-				element('span', 'name', project.name),
-			);
+			const name = element('span', 'name', project.name);
+
+			if (project.icon) name.prepend(Object.assign(element('img', 'icon'), { src: project.icon, alt: '' }));
+			head.append(element('i', `fa-solid fa-chevron-${open ? 'down' : 'right'} chevron`), name);
 			if (project.server) {
 				const server = element('span', 'server', project.server);
 

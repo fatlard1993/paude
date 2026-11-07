@@ -1,4 +1,3 @@
-import os from 'os';
 import { forkSession } from '@anthropic-ai/claude-agent-sdk';
 
 import { requestMatch } from '@vanilla-bean/components/app';
@@ -16,7 +15,8 @@ import {
 } from '../activity';
 import { setArchived } from '../archive';
 import { credentialOf, identityOf } from '../auth';
-import { folderHue, sessionHue } from '../../shared/hues';
+import { sessionHue } from '../../shared/hues';
+import { brandFields, iconOf } from '../brand';
 import { FILTERS, matchesFilter, matchesQuery } from '../../shared/sessionSearch';
 import { warmUntil } from '../keepWarm';
 import { continueSession } from '../usageLimit';
@@ -194,19 +194,21 @@ const sessionsRoutes = async (request, server) => {
 		);
 
 		return Response.json(
-			projects.map(name => {
-				const own = sessions.filter(session => session.project === name);
+			await Promise.all(
+				projects.map(async name => {
+					const own = sessions.filter(session => session.project === name);
 
-				return {
-					name,
-					lastActivity: projectActivity(name),
-					sessionCount: own.length,
-					liveCount: own.filter(session => session.live).length,
-					hue: folderHue(projectPath(name), os.homedir()),
-					watching: watchesProject(identity, name),
-					...(registered.has(name) && { registered: true, path: registered.get(name) }),
-				};
-			}),
+					return {
+						name,
+						lastActivity: projectActivity(name),
+						sessionCount: own.length,
+						liveCount: own.filter(session => session.live).length,
+						...(await brandFields(name)),
+						watching: watchesProject(identity, name),
+						...(registered.has(name) && { registered: true, path: registered.get(name) }),
+					};
+				}),
+			),
 		);
 	}
 
@@ -440,6 +442,19 @@ const sessionsRoutes = async (request, server) => {
 			: [];
 
 		return Response.json([...watched, ...covered]);
+	}
+
+	// A project's icon, as its folder keeps it (a favicon), for wherever the project is named
+	match = requestMatch('GET', '/api/projects/:project/icon', request);
+	if (match) {
+		const folder = projectPath(match.project);
+		const icon = folder && (await listProjects()).includes(match.project) ? await iconOf(folder) : null;
+
+		if (!icon) return new Response('No icon', { status: 404 });
+
+		return new Response(Bun.file(icon.path), {
+			headers: { 'content-type': icon.type, 'cache-control': 'private, max-age=600' },
+		});
 	}
 
 	match = requestMatch('PUT', '/api/projects/:project/watch', request);

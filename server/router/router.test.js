@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from 'fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
@@ -43,6 +43,10 @@ beforeAll(async () => {
 	const data = path.join(base, 'data');
 
 	await mkdir(path.join(base, 'projects', 'app'), { recursive: true });
+	await writeFile(
+		path.join(base, 'projects', 'app', 'favicon.svg'),
+		'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="#b23434"/></svg>',
+	);
 	process.env.XDG_CONFIG_HOME = path.join(base, 'config');
 	process.env.CLAUDE_CONFIG_DIR = path.join(base, 'claude');
 	setProjectsRoot(path.join(base, 'projects'));
@@ -84,6 +88,14 @@ test('the api needs a login; the owner gets in', async () => {
 	const projects = await (await call('/api/projects', { token: tokens.owner })).json();
 
 	expect(projects.map(({ name }) => name)).toEqual(['app']);
+	// Its brand: the hue its icon is painted in, and where the icon is served
+	expect(projects[0]).toMatchObject({ hue: 0, branded: true, icon: '/api/projects/app/icon' });
+
+	const icon = await call('/api/projects/app/icon', { token: tokens.owner });
+
+	expect(icon.status).toBe(200);
+	expect(icon.headers.get('content-type')).toBe('image/svg+xml');
+	expect((await call('/api/projects/nowhere/icon', { token: tokens.owner })).status).toBe(404);
 });
 
 test('watching a project watches its sessions, the ones it gains too, and leads the projects', async () => {

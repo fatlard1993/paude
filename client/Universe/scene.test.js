@@ -134,6 +134,16 @@ test("a project's color is its own whatever else is at work: one before it by na
 
 	expect(new Set(crowd.values()).size).toBe(24);
 	expect([...crowd.values()].every(hue => hue % 15 === 0)).toBe(true);
+	// A brand's hue is its own, whatever its name, and the others step round it; a paude that doesn't know the brand
+	// doesn't unbrand it
+	const branded = huesApart([
+		{ name: 'alpha', hue: 160 },
+		{ name: 'zeta', hue: 158, branded: true },
+		{ name: 'zeta', hue: 150 },
+	]);
+
+	expect(branded.get('zeta')).toBe(158);
+	expect(branded.get('alpha')).toBe(175);
 
 	const hueOf = (made, name) => made.bays.find(bay => bay.name === name)?.hue;
 	const alone = shipWith([answer('here', [session({ id: 'b', project: 'site' })], { projects })]);

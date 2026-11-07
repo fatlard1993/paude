@@ -8,6 +8,7 @@ import byUrgency from '../shared/urgency';
 import {
 	addFolder,
 	getProjects,
+	remoteBase,
 	getRecentSessions,
 	getRemoteSessions,
 	getRemotes,
@@ -265,6 +266,7 @@ export default class Home extends View {
 		return [...this.projects, ...this.remoteProjects].sort(byWatchedThenRecent).map(project => ({
 			...project,
 			accent: tintsOf(project.hue)?.accent,
+			icon: project.icon && `${remoteBase(project.remote?.url)}${project.icon}`,
 			server: project.remote?.name ?? (this.otherServers ? hereName() : undefined),
 			serverHue: hueOf(project.remote?.name ?? hereName()),
 			href: project.remote ? undefined : `#/projects/${project.name}`,

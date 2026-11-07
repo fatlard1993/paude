@@ -331,31 +331,40 @@ const drinkOf = session => {
 
 	return keeping === 'fabled' ? undefined : keeping;
 };
-// Each project's color, by name: its folder's hue, kitty-bg's for a terminal opened there, or when a project before it by
-// name has that one, the nearest free hue of kitty-bg's wheel (a step up, a step down, two up...), so up to a wheel's
-// worth of projects all read apart and each stays as near its terminal's tint as it can. Worked out over every project
-// there is, at work or not, in name order: a project's color is the same whichever are at work, however they came,
-// and wherever it's looked at from. Projects ([{ name, hue }], any order, a name maybe more than once) to Map(name → hue)
+// Each project's color, by name: its brand's hue where it has one (`branded`), kept as it is; else its folder's hue,
+// kitty-bg's for a terminal opened there, or when a project before it has that one (a brand, or one before it by
+// name), the nearest free hue of kitty-bg's wheel (a step up, a step down, two up...), so up to a wheel's worth of
+// projects all read apart and each stays as near its terminal's tint as it can. Worked out over every project there
+// is, at work or not: a project's color is the same whichever are at work, however they came, and wherever it's
+// looked at from. Projects ([{ name, hue, branded }], any order, a name maybe more than once) to Map(name → hue)
 export const huesApart = projects => {
 	const own = new Map();
 
-	for (const { name, hue } of projects) if (!own.has(name) || own.get(name) === null) own.set(name, hue ?? null);
+	for (const { name, hue, branded } of projects) {
+		const had = own.get(name);
+		const brand = Boolean(branded) && hue !== null && hue !== undefined;
+
+		if (!had || had.hue === null || (brand && !had.branded)) own.set(name, { hue: hue ?? null, branded: brand });
+	}
 
 	const step = 360 / HUES;
 	const turns = Array.from({ length: HUES }, (_, turn) => (turn % 2 ? turn + 1 : -turn) / 2);
 	const hues = new Map();
 	const taken = [];
 	const free = hue => taken.every(other => Math.abs(((hue - other + 540) % 360) - 180) >= step);
+	const names = [...own.keys()].sort((a, b) => a.localeCompare(b));
+	// A brand's hue is its own and goes first; the rest step round the brands and each other
+	const inTurn = [...names.filter(name => own.get(name).branded), ...names.filter(name => !own.get(name).branded)];
 
-	for (const name of [...own.keys()].sort((a, b) => a.localeCompare(b))) {
-		const hue = own.get(name);
+	for (const name of inTurn) {
+		const { hue, branded } = own.get(name);
 
 		if (hue === null) {
 			hues.set(name, null);
 			continue;
 		}
 
-		const found = turns.map(turn => (hue + turn * step + 360) % 360).find(free) ?? hue;
+		const found = branded ? hue : (turns.map(turn => (hue + turn * step + 360) % 360).find(free) ?? hue);
 
 		hues.set(name, found);
 		taken.push(found);
@@ -1650,6 +1659,9 @@ export default class Ship {
 				const bay = bayOf(project.name, project.hue);
 
 				bay.active ||= has;
+				// Its icon, where its folder keeps one; another paude's through the relay to it
+				if (project.icon && !bay.icon)
+					bay.icon = `${answer.remote ? `/api/remotes/at/${encodeURIComponent(answer.remote.url)}` : ''}${project.icon}`;
 
 				bay.watching ||= project.watching;
 				// The ship's own works: the project the paude showing it runs from (not another engine's own)
