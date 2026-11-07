@@ -1693,8 +1693,37 @@ export default class Universe extends View {
 		return room?.kind ? { key: `room:${room.kind}:${room.name}`, kind: room.kind, room } : null;
 	}
 
-	// What the panel beside a room says: the room's facts as its flyout has them, what's in it to pick, and its verbs
+	// What the panel beside a room says, with Look closer last among its verbs: the view flies to what the panel is about
+	// only when asked, so everything it can be about offers the ask
 	focusOf(focus) {
+		const panel = this.panelOf(focus);
+
+		return {
+			...panel,
+			commands: [
+				...(panel.commands ?? []).filter(({ hotkey }) => hotkey !== 'z'),
+				{ label: 'Look closer', hotkey: 'z', run: () => this.lookCloser(focus) },
+			],
+		};
+	}
+
+	// The view flown to what the panel is about: a grey where it is (its seat, its couch, its way), a project's machine,
+	// engineering, the bridge, the lounge or another room
+	lookCloser({ kind, worker, group, bay, engine, room }) {
+		const { aboard } = this;
+		const spot = worker && (aboard.walking(worker) ? worker : worker.seat);
+
+		if (spot) return aboard.lookAt(spot);
+		if (bay) return aboard.look(bay.name);
+		if (engine || kind === 'engineering') return aboard.look((engine ?? aboard.engines[0])?.key);
+		if (kind === 'lounge') return aboard.look(LOUNGE);
+		if (worker || group || kind === 'bridge' || !room?.name) return aboard.look(BRIDGE);
+
+		return aboard.look(room.name);
+	}
+
+	// What the panel beside a room says: the room's facts as its flyout has them, what's in it to pick, and its verbs
+	panelOf(focus) {
 		const { aboard } = this;
 		const { kind, room, bay, worker, engine } = focus;
 
@@ -1763,7 +1792,7 @@ export default class Universe extends View {
 						},
 					})),
 				],
-				commands: this.bayCommands(bay).filter(({ hotkey }) => hotkey !== 'z'),
+				commands: this.bayCommands(bay),
 			};
 		}
 		if (kind === 'system') {
@@ -1832,7 +1861,7 @@ export default class Universe extends View {
 				],
 				items: [...needed.map(workerItem), ...this.healthItems(), ...watched.map(workerItem)],
 				commands: [
-					...this.placeCommands('bridge').filter(({ hotkey }) => hotkey !== 'z'),
+					...this.placeCommands('bridge'),
 					{ label: 'New project', hotkey: 'p', run: () => this.openShipDock('projects') },
 					...(this.aboard.layout?.transporter
 						? [{ label: 'Transporter', hotkey: 'x', run: () => this.aboard.look('transporter') }]
