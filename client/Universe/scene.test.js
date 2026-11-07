@@ -1039,6 +1039,37 @@ test('whoever stands before an island walks to another place along its row down 
 		}
 });
 
+test('whoever moves on to another place on the bridge after a poll laid its rooms anew walks there within it, not out of its door and back in', () => {
+	const answers = [
+		answer(
+			'here',
+			['one', 'two', 'three', 'four'].map((project, index) => session({ id: `s${index}`, project })),
+			{
+				projects: ['one', 'two', 'three', 'four'],
+				people: [{ key: 'chase', name: 'chase', role: 'owner', sessions: [] }],
+			},
+		),
+	];
+	const made = shipWith(answers);
+	const pilot = walkerNamed(made, 'chase');
+	const { bridge } = made;
+	const was = { ...pilot.spot };
+
+	// Time for the pilot to move on to the next grey; the poll lays the rooms anew, the same as they were
+	run(made, 25);
+	made.update(answers);
+	expect(made.moved).toBe(false);
+	expect(pilot.spot).not.toEqual(was);
+	expect(pilot.path.length).toBeGreaterThan(0);
+	expect(pilot.path.length).toBeLessThanOrEqual(5);
+	for (const { x, y } of pilot.path) {
+		expect(x).toBeGreaterThan(bridge.x);
+		expect(x).toBeLessThan(bridge.x + bridge.w);
+		expect(y).toBeGreaterThan(bridge.y);
+		expect(y).toBeLessThan(bridge.y + bridge.d);
+	}
+});
+
 test('a grey moving along its own console to another of its seats walks behind it, straight there', () => {
 	const made = shipWith([
 		answer(

@@ -1375,7 +1375,8 @@ export default class Ship {
 
 	// From a point in one room to one in another: to its door, out to the spine (along `lane`, the spine's middle unless
 	// given), along it, and in; from nowhere (`room` null) it starts on the spine
-	route(from, room, to, toRoom, lane = this.layout.halls[0]?.lane) {
+	route(from, was, to, bound, lane = this.layout.halls[0]?.lane) {
+		const [room, toRoom] = [this.roomNow(was), this.roomNow(bound)];
 		// Within one room, or between rooms on the bridge, straight there
 		const home = place => place?.within ?? place;
 
@@ -1454,9 +1455,20 @@ export default class Ship {
 	// From where a walker is to a new spot: across the ship by the spine; within the bridge along its aisles; within
 	// any other room straight there
 	walkTo(walker, spot, room) {
-		if (room !== walker.room) return this.route(walker, walker.room, spot, room);
+		if (this.roomNow(walker.room) !== room) return this.route(walker, walker.room, spot, room);
 
 		return room?.kind === 'bridge' ? this.acrossBridge(walker, spot) : [spot];
+	}
+
+	// The room `room` is now: the layout's rooms are made anew with each update, so one kept from before is found again
+	// by what it is; one no longer aboard as it was
+	roomNow(room) {
+		if (!room) return room;
+		if (room.kind === 'bridge') return this.bridge;
+		if (room.kind === 'lounge') return this.lounge ?? room;
+		if (!room.kind) return this.bays.find(({ name }) => name === room.name) ?? room;
+
+		return this.layout.rooms.find(({ kind, name }) => kind === room.kind && name === room.name) ?? room;
 	}
 
 	// A walk's path from `from`, bent round the lounge rather than over its couches
