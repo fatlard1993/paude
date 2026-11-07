@@ -12,7 +12,7 @@ import Ship, {
 	tanksOf,
 	triage,
 } from './scene';
-import { WATCHER_W, clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats } from './plan';
+import { WATCHER_W, clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats, standingOf } from './plan';
 import { huesApart } from '../../shared/hues';
 import { SCREEN_RISE, UNIT, cableWeight, floor, setTrim, walls } from './station';
 import { drawTransporter, shuttleAt } from './hull';
@@ -998,6 +998,84 @@ test("a walk across the bridge goes round its islands, never through a console n
 					expect(inScreens(point)).toBe(false);
 				}
 		}
+});
+
+// The islands of the bridge in two rows of two, a grey at each
+const twoRows = () =>
+	shipWith([
+		answer(
+			'here',
+			['one', 'two', 'three', 'four'].map((project, index) => session({ id: `s${index}`, project })),
+			{ projects: ['one', 'two', 'three', 'four'] },
+		),
+	]);
+
+test('whoever stands before an island walks to another place along its row down the aisle before it, never behind a console', () => {
+	const made = twoRows();
+	const { islands } = made.bridge;
+	const rowOf = seat => islands.find(({ y }) => y === seat.y);
+	const seats = [...made.workers.values()].map(({ seat }) => seat);
+	const before = seat => ({ x: seat.x - 0.6, y: standingOf(made.bridge, seat.y) });
+	// Behind any island's console: back from where anyone stands before it to where its screens' backs are, across its
+	// console and its end caps
+	const behind = ({ x, y }) =>
+		islands.some(
+			island =>
+				x > island.x - 0.45 &&
+				x < island.x + island.w + 0.45 &&
+				y < standingOf(made.bridge, island.y) &&
+				y > island.y - BEHIND_CONSOLE - 0.1,
+		);
+
+	expect(islands).toHaveLength(4);
+	expect(new Set(seats.map(rowOf)).size).toBe(2);
+	for (const from of seats)
+		for (const to of seats) {
+			const path = made.acrossBridge(before(from), before(to));
+
+			for (const point of path) expect(behind(point)).toBe(false);
+			// Along one row: a step down into the aisle, along it, and a step back up
+			if (from.y === to.y && from !== to) expect(path).toHaveLength(3);
+		}
+});
+
+test('a grey moving along its own console to another of its seats walks behind it, straight there', () => {
+	const made = shipWith([
+		answer(
+			'here',
+			['a', 'b', 'c'].map(id => session({ id })),
+			{ projects: ['paude'] },
+		),
+	]);
+	const [a, , c] = [...made.workers.values()];
+	const [from, to] = [made.placeOf(a), made.placeOf(c)];
+	const back = a.seat.island.y - BEHIND_CONSOLE;
+
+	expect(a.seat.island).toBe(c.seat.island);
+	expect(made.acrossBridge(from, to)).toEqual([{ x: from.x, y: back }, { x: to.x, y: back }, to]);
+});
+
+test('between rows, a walk crosses by the aft wall or forward past the islands between, whichever is the shorter way', () => {
+	const made = twoRows();
+	const { islands } = made.bridge;
+	const rows = [...new Set(islands.map(({ y }) => y))].sort((a, b) => a - b);
+	const inRow = y => islands.filter(island => island.y === y).sort((a, b) => a.x - b.x);
+	const seatOf = island => made.placeOf(made.workers.get(island.seats[0].key));
+	const [aftmost, foremost] = [0, -1].map(end => rows.map(y => inRow(y).at(end)));
+	const aft = Math.min(...islands.map(({ x }) => x));
+	const fore = Math.max(...islands.map(({ x, w }) => x + w));
+
+	expect(rows).toHaveLength(2);
+	expect(inRow(rows[0])).toHaveLength(2);
+
+	// Between the two islands by the aft wall: along it; between the two forward ones: round the forward side
+	const byWall = made.acrossBridge(seatOf(aftmost[0]), seatOf(aftmost[1]));
+	const byFore = made.acrossBridge(seatOf(foremost[0]), seatOf(foremost[1]));
+
+	expect(Math.min(...byWall.map(({ x }) => x))).toBeLessThan(aft);
+	expect(Math.max(...byWall.map(({ x }) => x))).toBeLessThan(fore);
+	expect(Math.max(...byFore.map(({ x }) => x))).toBeGreaterThan(fore);
+	expect(Math.min(...byFore.map(({ x }) => x))).toBeGreaterThan(aft);
 });
 
 test('the transporter is a room to press: looked at, its own flyout naming the other ships to beam to', async () => {
@@ -2515,13 +2593,14 @@ test('a session turned fabled gets its monitor by a craft of its own at the airl
 	expect(made.boarding(worker.watcher)).toBe(true);
 	run(made, 1);
 	expect(worker.watcher.x).toBeCloseTo(airlock.x, 5);
-	// Round its island's aft end with its whole width clear of the console's end cap, then in behind the console
+	// Round its island's forward end, the one nearer the airlock, with its whole width clear of the console's end cap,
+	// then in behind the console
 	const { island } = worker.seat;
 	const climb = worker.watcher.path.findIndex(({ y }) => Math.abs(y - (island.y - BEHIND_CONSOLE)) < 1e-9);
 
 	expect(climb).toBeGreaterThan(0);
 	expect(worker.watcher.path[climb].x).toBe(worker.watcher.path[climb - 1].x);
-	expect(worker.watcher.path[climb].x).toBeLessThanOrEqual(island.x - 0.45);
+	expect(worker.watcher.path[climb].x).toBeGreaterThanOrEqual(island.x + island.w + 0.45);
 	// Striding as a grey does: a step sprite each way, the monitor's own size
 	for (const step of ['watcherStepLeft', 'watcherStepRight']) expect(spriteSize(step)).toEqual(spriteSize('watcher'));
 

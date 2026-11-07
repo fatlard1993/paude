@@ -26,6 +26,8 @@ import {
 	drawTug,
 } from './hull';
 import {
+	BRIEF_SIT,
+	BRIEF_W,
 	standingOf,
 	walkwayOf,
 	airlockAt,
@@ -104,6 +106,8 @@ const RACK_SLEDS = 4;
 // its console stands, in art pixels
 const ISLAND_RISE_RATE = 1.8;
 const CONSOLE_TALL = 14;
+// How far before its seats an island's console reaches, in world units: nobody walks there but to stand before it
+const CONSOLE_FOOT = 0.5;
 // A top deck's machine's name, inside the hull under its ceiling: how far down it's drawn, and how far down the machine
 // starts to clear it, in art pixels
 const NAME_INSIDE = 9;
@@ -547,28 +551,58 @@ export const BEHIND_CONSOLE = 1.4;
 // behind it
 const ROUND_ISLAND = 0.5;
 
-// The island on the bridge whose seat `point` is at, behind its console
+// Where an island's room along its row ends: past its desk, and past the floor beyond it where its short-lived
+// sessions sit
+const islandEnd = ({ x, w, seats = [] }) =>
+	Math.max(x + w, ...seats.filter(({ floor }) => floor).map(seat => seat.x - BRIEF_SIT + 0.3 + BRIEF_W));
+
+// The island on the bridge whose seat `point` is at: behind where anyone stands before its console, back to where
+// those walking behind it go
 const islandAt = (bridge, point) =>
 	bridge.islands?.find(
-		({ x, y, w }) => point.x >= x && point.x <= x + w && point.y <= y + 0.3 && point.y >= y - BEHIND_CONSOLE - 0.1,
+		({ x, y, w }) =>
+			point.x >= x && point.x <= x + w && point.y < standingOf(bridge, y) && point.y >= y - BEHIND_CONSOLE - 0.1,
 	);
 
-// From `point` on the bridge out to its row's walkway: from a seat, behind its island's console, past the others sat
-// there, to its aft end and round it; from anywhere else, straight down to it
-const toWalkway = (bridge, point) => {
+// The ways from `point` on the bridge out to its row's walkway: from a seat, behind its island's console, past the
+// others sat there, to either end (the aft one first) and round it; from anywhere else, straight down to it
+const waysToWalkway = (bridge, point) => {
 	const walkway = walkwayOf(bridge, point.y);
 	const island = islandAt(bridge, point);
 
-	if (!island) return [{ x: point.x, y: walkway }];
+	if (!island) return [[{ x: point.x, y: walkway }]];
 
-	const [back, end] = [island.y - BEHIND_CONSOLE, island.x - ROUND_ISLAND];
+	const back = island.y - BEHIND_CONSOLE;
 
-	return [
+	return [island.x - ROUND_ISLAND, islandEnd(island) + ROUND_ISLAND].map(end => [
 		{ x: point.x, y: back },
 		{ x: end, y: back },
 		{ x: end, y: walkway },
-	];
+	]);
 };
+
+// Out to the walkway by the aft end: the way off the bridge
+const toWalkway = (bridge, point) => waysToWalkway(bridge, point)[0];
+
+// Whether `box` ({ left, right, top, bottom }) has `point` in it
+const contains = (box, { x, y }) => x >= box.left && x <= box.right && y >= box.top && y <= box.bottom;
+
+// Whether a walk from `from` along `path` keeps out of `blocks`: every leg but its first step out of where it starts
+// and its last into where it ends, each of which may lie inside one
+const keepsClear = (from, path, blocks) => {
+	const points = [from, ...path];
+
+	return points.slice(1).every((to, index) => {
+		const at = points[index];
+		const [first, last] = [index === 0, index === points.length - 2];
+
+		return blocks.every(box => (first && contains(box, at)) || (last && contains(box, to)) || !through(at, to, box));
+	});
+};
+
+// `path` without a point repeated on the heels of the one before
+const unrepeated = path =>
+	path.filter((point, index) => !index || point.x !== path[index - 1].x || point.y !== path[index - 1].y);
 
 // From inside a room out to the spine at `lane`: across to its door and through it
 const exitOf = (room, from, lane) => {
@@ -1354,21 +1388,67 @@ export default class Ship {
 		return this.walkAround(from, [...out, ...exitOf(toRoom, to, lane).reverse(), to]);
 	}
 
-	// From one place on the bridge to another down the rows' walkways and up or down its aft wall, round the islands
-	// rather than through them, where nobody walks over a screen
+	// From one place on the bridge to another, the shortest way that walks through nothing: along one console to another
+	// of its seats behind it; otherwise out to the row's walkway round either end of the island, between rows along
+	// the aft wall, forward past every island and the lounge between, or straight up or down where the floor is open,
+	// and in round either end of the island it's bound for. Through something when nothing else is open (round the
+	// lounge, then, as ever).
 	acrossBridge(from, to) {
-		const wall = this.bridge.x + BRIDGE_WALL;
-		const [out, back] = [toWalkway(this.bridge, from), toWalkway(this.bridge, to).reverse()];
-		const [leave, reach] = [out.at(-1).y, back[0].y];
-		const along =
-			leave === reach
-				? []
-				: [
-						{ x: wall, y: leave },
-						{ x: wall, y: reach },
-					];
+		const { bridge } = this;
+		const [here, there] = [islandAt(bridge, from), islandAt(bridge, to)];
 
-		return this.walkAround(from, [...out, ...along, ...back, to]);
+		if (here && here === there) {
+			const back = here.y - BEHIND_CONSOLE;
+
+			return [{ x: from.x, y: back }, { x: to.x, y: back }, to];
+		}
+
+		const blocks = this.blocksOnBridge();
+		const wall = bridge.x + BRIDGE_WALL;
+		const ways = [];
+
+		for (const out of waysToWalkway(bridge, from))
+			for (const back of waysToWalkway(bridge, to)) {
+				const home = [...back].reverse();
+				const [leave, reach] = [out.at(-1).y, home[0].y];
+
+				if (leave === reach) {
+					ways.push([...out, ...home, to]);
+					continue;
+				}
+
+				const between = ({ top, bottom }) => top < Math.max(leave, reach) && bottom > Math.min(leave, reach);
+				const fore = Math.max(wall, ...blocks.filter(box => box.island && between(box)).map(({ right }) => right));
+
+				for (const x of new Set([wall, fore, out.at(-1).x, home[0].x]))
+					ways.push([...out, { x, y: leave }, { x, y: reach }, ...home, to]);
+			}
+
+		const clear = ways.filter(way => keepsClear(from, way, blocks));
+		const way = clear.sort((a, b) => pathLength([from, ...a]) - pathLength([from, ...b]))[0] ?? ways[0];
+
+		return this.walkAround(from, unrepeated(way));
+	}
+
+	// What nobody walks through on the bridge, as boxes: each island from where those walking behind it go to its
+	// console's foot, out past either end cap (`island`); the lounge; the stations at the bridge's foot
+	blocksOnBridge() {
+		const { bridge, lounge } = this;
+		const CLEAR = 0.01;
+
+		return [
+			...(bridge.islands ?? []).map(island => ({
+				island: true,
+				left: island.x - ROUND_ISLAND + CLEAR,
+				right: islandEnd(island) + ROUND_ISLAND - CLEAR,
+				top: island.y - BEHIND_CONSOLE + CLEAR,
+				bottom: island.y + CONSOLE_FOOT,
+			})),
+			...(lounge?.count ? [{ island: true, ...this.loungeBox() }] : []),
+			...this.layout.rooms
+				.filter(({ kind }) => kind === 'materializer' || kind === 'transporter')
+				.map(room => ({ left: room.x, right: room.x + room.w, top: room.y, bottom: room.y + room.d })),
+		];
 	}
 
 	// From where a walker is to a new spot: across the ship by the spine; within the bridge along its aisles; within
@@ -1385,15 +1465,23 @@ export default class Ship {
 
 		if (!lounge?.count) return path;
 
-		const box = {
+		return bendAround([from, ...path], this.loungeBox(), {
+			walled: this.loungeWalled(),
+			step: 0.1,
+			over: this.loungeOver(),
+		}).slice(1);
+	}
+
+	// The lounge as a box nobody walks through: its couches and the step before them
+	loungeBox() {
+		const { lounge } = this;
+
+		return {
 			left: lounge.x - 0.1,
 			right: lounge.x + lounge.w + 0.2,
 			top: lounge.y + 0.2,
 			bottom: lounge.y + lounge.d,
 		};
-		return bendAround([from, ...path], box, { walled: this.loungeWalled(), step: 0.1, over: this.loungeOver() }).slice(
-			1,
-		);
 	}
 
 	// Workers set off: one new from the materializer, one stopped or woken from where it was; and one already on its way
