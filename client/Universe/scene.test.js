@@ -828,6 +828,42 @@ test('each half hour a lounger tosses a can onto its pile, landing there at the 
 	expect(made.cansOf(worker)).toBe(1);
 });
 
+test("a lounger's empties go to its head by the same clock as its pile: steady at first, swaying and blinking long by the half, passed out on the couch's arm at eight cans' worth", () => {
+	const at = minutes => {
+		const made = shipWith([lounger(minutes * MINUTE)]);
+		const worker = made.workers.get('here/a');
+
+		run(made, 2);
+
+		return { made, worker, pose: made.loungerPose(worker) };
+	};
+	const sober = at(10);
+
+	expect(sober.made.drunkOf(sober.worker)).toBeCloseTo(10 / 240, 3);
+	expect(sober.pose).toMatchObject({ out: false, sway: 0, hiccup: 0, sag: 0, lean: { x: 0, y: 0 } });
+
+	const tipsy = at(150);
+
+	expect(tipsy.made.drunkOf(tipsy.worker)).toBeCloseTo(150 / 240, 3);
+	expect(tipsy.pose.out).toBe(false);
+	// Swaying by up to a couple of pixels over a few seconds
+	const sways = new Set();
+
+	for (let step = 0; step < 60; step++) {
+		run(tipsy.made, 0.1);
+		sways.add(tipsy.made.loungerPose(tipsy.worker).sway);
+	}
+	expect(Math.max(...[...sways].map(Math.abs))).toBeGreaterThanOrEqual(1);
+	expect(Math.max(...[...sways].map(Math.abs))).toBeLessThanOrEqual(2);
+
+	const gone = at(5 * 60);
+
+	expect(gone.made.drunkOf(gone.worker)).toBe(1);
+	expect(gone.pose).toEqual({ drunk: 1, out: true, sway: 0, hiccup: 0, shut: true, sag: 0, lean: { x: 3, y: 3 } });
+	// Its pile still counts every half hour
+	expect(gone.made.cansOf(gone.worker)).toBe(10);
+});
+
 test("a lounger's pile goes when it's resumed, so stopping again starts a fresh one; and with it when it's removed", () => {
 	const made = shipWith([lounger(95 * MINUTE)]);
 	const worker = made.workers.get('here/a');

@@ -199,8 +199,12 @@ export const LOUNGE = '#lounge';
 const TEXT = 2;
 // How much cargo shows, however much there is
 const MOST = { papers: 8, crates: 6, canisters: 6, cans: 12, smallGreys: 4, bots: 4 };
-// A lounger's empties pile up, one more every half hour since its session's prompt cache went cold
+// A lounger's empties pile up, one more every half hour since its session's prompt cache went cold; and they go to its
+// head, until it's passed out on the couch's arm after this many
 const CAN_MS = 30 * 60_000;
+const PASS_OUT_CANS = 8;
+// How long a lounger's session has been cold, in ms: since its cache went cold, or since it stopped where that isn't known
+const coldOf = session => session.coldAgo ?? session.context?.cache?.ago ?? session.stoppedAgo ?? 0;
 const HAUL_SECONDS = 6;
 // How fast the bay doors in the belly slide, as a part of their way a second
 const BAY_DOOR_RATE = 2.5;
@@ -4527,16 +4531,39 @@ export default class Ship {
 	// How many empties a lounger has on its pile: one each half hour since its session's prompt cache went cold (since it
 	// stopped, where that isn't known)
 	cansOf(worker) {
-		const { session } = worker;
-		const now = Math.min(
-			MOST.cans,
-			Math.floor((session.coldAgo ?? session.context?.cache?.ago ?? session.stoppedAgo ?? 0) / CAN_MS),
-		);
+		const now = Math.min(MOST.cans, Math.floor(coldOf(worker.session) / CAN_MS));
 
 		if (worker.cans !== undefined && now > worker.cans) worker.tossedAt = this.time;
 		worker.cans = now;
 
 		return this.time - (worker.tossedAt ?? -Infinity) < TOSS_SECONDS ? now - 1 : now;
+	}
+
+	// How drunk a lounger is, 0 to 1: its empties go to its head, by the same clock as its pile, until it's had
+	// PASS_OUT_CANS' worth and is passed out
+	drunkOf(worker) {
+		return Math.min(1, coldOf(worker.session) / (PASS_OUT_CANS * CAN_MS));
+	}
+
+	// How a lounger holds itself on the couch, by how drunk it is: swaying more the more it's had, its eyes shut longer
+	// and more often, a hiccup now and then; passed out, slumped against the couch's arm with its eyes shut, its can
+	// dropped, and nothing of the rest
+	loungerPose(worker) {
+		const drunk = this.drunkOf(worker);
+		const out = drunk >= 1;
+		const beat = this.time + worker.seed;
+
+		if (out) return { drunk, out, sway: 0, hiccup: 0, shut: true, sag: 0, lean: { x: 3, y: 3 } };
+
+		return {
+			drunk,
+			out,
+			sway: Math.round(Math.sin(this.time * (0.7 + drunk) + worker.seed * 6) * drunk * 2.4),
+			hiccup: drunk >= 0.35 && (this.time * 1.1 + worker.seed * 7) % 4 < 0.12 ? 1 : 0,
+			shut: drunk > 0 && beat % 4 < 0.15 + drunk * 1.2,
+			sag: drunk >= 0.5 && Math.floor(beat * 0.6) % 3 === 0 ? 1 : 0,
+			lean: { x: 0, y: 0 },
+		};
 	}
 
 	// The seat it left at its island while it rests: its chair empty, its terminal frosted over gone cold or switched off
@@ -5162,24 +5189,29 @@ export default class Ship {
 			session.status === 'ready' &&
 			(drowse >= 0.85 || (this.time + worker.seed) % 4 < 0.15 + Math.max(0, drowse - 0.5) * 3);
 		const fill = session.context?.fill ?? 0;
-		// On the lounge's couch it faces the viewer as at its seat, watching the TV on the near wall, a beer in hand
+		// On the lounge's couch it faces the viewer as at its seat, watching the TV on the near wall, a beer in hand; its
+		// empties going to its head the longer it's there
 		const watching = worker.lounging && !walking;
+		const pose = watching ? this.loungerPose(worker) : null;
 		const dozing =
-			!watching && (asleep || session.status === 'stopped' || (session.limit && session.status !== 'working'));
-		const shut = dozing || blinking;
+			(!watching && (asleep || session.status === 'stopped' || (session.limit && session.status !== 'working'))) ||
+			Boolean(pose?.out);
+		const shut = dozing || blinking || Boolean(pose?.shut);
 		const size = this.headOf(session, worker);
 		const squeezing = size !== this.headOf(session);
 		const head = `head-${size}${shut ? '-shut' : ''}`;
 		const colors = { c: `hsl(${session.hue ?? 200} 55% 55%)`, s: rankOf(session.context?.model) };
-		const sag =
+		const drowsing =
 			(drowse >= 0.85 && 2) || (drowse >= 0.6 && Math.floor((this.time + worker.seed) * 0.8) % 3 === 0 ? 1 : 0);
+		const sag = pose ? pose.sag + pose.lean.y : drowsing;
+		const lift = bob + (pose?.hiccup ?? 0);
 		// Walking: standing, a step, standing, the other step; a short-lived one sits cross-legged on the floor
 		const stride = walking && making >= 1 ? STEPS[Math.floor(worker.step) % STEPS.length] : '';
 		const sitting = !walking && briefOf(worker);
 		const body = (waving && (sitting ? 'bodySitWave' : 'bodyWave')) || (sitting ? 'bodySit' : `body${stride}`);
-		const neck = at.y - bob - (sitting ? 6 : 5) + sag;
+		const neck = at.y - lift - (sitting ? 6 : 5) + sag;
 
-		drawSprite(ctx, body, at.x, at.y - bob, {
+		drawSprite(ctx, body, at.x, at.y - lift, {
 			colors,
 			flip: (walking && worker.facing < 0) || (!walking && worker.seat?.side < 0),
 		});
@@ -5196,7 +5228,9 @@ export default class Ship {
 			ctx.fillRect(at.x - 20, neck - tall / 2 - 20, 40, 40);
 		}
 		if (fill >= 0.9 && Math.floor(this.time * 4) % 2) ctx.globalAlpha = 0.85;
-		drawSprite(ctx, head, at.x + (squeezing ? (Math.floor(this.time * 20) % 2) * 2 - 1 : 0), neck, {
+		const aside = (squeezing ? (Math.floor(this.time * 20) % 2) * 2 - 1 : 0) + (pose ? pose.sway + pose.lean.x : 0);
+
+		drawSprite(ctx, head, at.x + aside, neck, {
 			colors: size === 'bursting' ? { ...colors, r: '#ff4a3a' } : colors,
 		});
 		ctx.globalAlpha = 1;
@@ -5205,13 +5239,19 @@ export default class Ship {
 		const { w, h } = spriteSize(head);
 		const top = neck - h;
 
-		if (watching) {
-			// A sip now and then, the can up at its mouth; otherwise resting on the couch's arm; and each half hour, the can
-			// done, a toss onto its pile before it opens another
+		if (pose?.out) {
+			// Passed out: its can dropped, on its side by its feet
 			const beer = `hsl(${worker.session.hue ?? 0} 65% 55%)`;
-			const sipping = (this.time + worker.seed * 3) % 6 < 1.6;
+
+			rect(ctx, at.x + 7, at.y - 2, 5, 3, PALETTE.k);
+			rect(ctx, at.x + 8, at.y - 1, 3, 1, beer);
+		} else if (watching) {
+			// A sip now and then, oftener the more it's had, the can up at its mouth; otherwise resting on the couch's arm;
+			// and each half hour, the can done, a toss onto its pile before it opens another
+			const beer = `hsl(${worker.session.hue ?? 0} 65% 55%)`;
+			const sipping = (this.time + worker.seed * 3) % (6 - pose.drunk * 2.5) < 1.6;
 			const toss = this.time - (worker.tossedAt ?? -Infinity);
-			const can = sipping ? { x: at.x, y: neck - 2 } : { x: at.x + 6, y: at.y - 6 };
+			const can = sipping ? { x: at.x + pose.sway, y: neck - 2 } : { x: at.x + 6, y: at.y - 6 };
 
 			if (toss < TOSS_SECONDS) {
 				const t = toss / TOSS_SECONDS;
