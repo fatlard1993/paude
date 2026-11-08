@@ -232,6 +232,63 @@ const Talk = styled(
 			color: ${colors.alpha(colors.white, 0.7)};
 		}
 
+		/* A choice opened to confirm: the headline, what it would do, yes in green and no in red */
+		.choices .confirm {
+			display: flex;
+			flex-direction: column;
+			gap: ${space.md};
+		}
+
+		.choices .confirm .headline {
+			font-size: 1.3em;
+			font-weight: bold;
+			border-radius: ${radius.sm};
+			padding: 0 ${space.xs};
+		}
+
+		.choices .confirm .headline .emoji {
+			font-size: 1.6em;
+			line-height: 1;
+		}
+
+		.choices .confirm .detail {
+			border-radius: ${radius.sm};
+			padding: 0 ${space.xs};
+		}
+
+		.choices .confirm .headline.lit,
+		.choices .confirm .detail.lit {
+			background: ${colors.alpha(colors.orange, 0.45)};
+		}
+
+		.choices .yes-no {
+			display: flex;
+			gap: ${space.md};
+		}
+
+		.choices .yes-no button {
+			flex: 1;
+			justify-content: center;
+			min-height: 4em;
+			font-size: 1.15em;
+		}
+
+		.choices button.yes {
+			background: ${colors.alpha(colors.green, 0.55)};
+		}
+
+		.choices button.no {
+			background: ${colors.alpha(colors.red, 0.5)};
+		}
+
+		.choices button.yes.lit {
+			background: ${colors.green};
+		}
+
+		.choices button.no.lit {
+			background: ${colors.red};
+		}
+
 		.composer {
 			display: flex;
 			align-items: center;

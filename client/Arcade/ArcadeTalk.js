@@ -569,60 +569,134 @@ export default class ArcadeTalk extends Talk {
 			details.style.fontSize = '0.7em';
 			question.append(details);
 		}
-		this.choices.append(question);
+		this.dismissed = new Set();
+		this.shown = player ? { question, player, asking } : { question, player, asking };
+		this.drawChoices();
+		this.feed.scrollTop = this.feed.scrollHeight;
+		// The first reading of a new question is what the player takes in before playing; readings after a tap are not
+		this.restArmed = player;
+		clearTimeout(this.restTimer);
+		if (player && this.prefs.speak) this.readShown();
+		else if (player) this.restTimer = setTimeout(() => this.rested(), UNSPOKEN_REST_MS);
+	}
 
-		for (const option of asking.options) {
+	// The question with its choices, those not dropped; for the player each tap opens the choice to confirm, and More
+	// ideas asks Claude for a fresh set through the question's own typing option
+	drawChoices() {
+		const { question, player, asking } = this.shown;
+		const options = asking.options.filter(option => !this.dismissed.has(option.key));
+
+		this.choices.replaceChildren(question);
+		for (const option of options) {
 			const { emoji, words } = splitEmoji(option.label);
 			const ownWords = player && asking.typing && OWN_WORDS.test(option.label);
 			const choice = button(
 				'',
-				async () => {
+				() => {
 					if (ownWords) return this.askInOwnWords();
+					if (player) return this.confirmChoice(option);
 
-					const answered = await answerAsking(this.id, asking.question, option.key);
-
-					if (answered.response?.ok) {
-						this.clearAsking();
-						this.noteChoice(option.label);
-						this.showStatus({ status: 'working' });
-					} else this.notice('Claude is no longer asking that', 'warning');
+					return this.choose(option);
 				},
 				{ className: 'choice' },
 			);
-
 			const label = element('span', 'label');
 
 			if (emoji) choice.append(element('span', 'emoji', emoji));
 			label.append(element('span', 'words', words));
-			// A reader gets the line under each choice; a listener hears the choices alone
-			if (option.detail && (!player || this.reading !== 'listening'))
-				label.append(element('small', 'detail', option.detail));
+			// A grown-up's prompt shows its lines; a player hears a choice's detail once they tap it
+			if (option.detail && !player) label.append(element('small', 'detail', option.detail));
 			choice.append(label);
 			this.choices.append(choice);
 		}
-		// A question for the player always has one more way out: other ideas, asked for in words through the question's
-		// own typing option, so Claude asks again with a fresh set
 		if (player && asking.typing) {
 			const more = button('', () => this.moreIdeas(asking), { className: 'choice more-ideas' });
 
 			more.append(element('span', 'emoji', '🎲'), element('span', 'label', 'More ideas'));
 			this.choices.append(more);
 		}
+		this.choices.hidden = false;
+	}
+
+	// The headlines read, those still listed
+	readShown() {
+		if (!this.shown?.player || !this.prefs.speak) return;
+
+		const { question, asking } = this.shown;
+
+		this.readChoices(
+			question,
+			asking.options.filter(option => !this.dismissed.has(option.key)),
+			{ more: Boolean(asking.typing) },
+		);
+	}
+
+	// A choice tapped: what it would do, in full, read out, and a green yes or a red no. No drops it from the list.
+	confirmChoice(option) {
+		const { emoji, words } = splitEmoji(option.label);
+		const card = element('div', 'confirm');
+		const head = element('div', 'headline');
+		const detail = element('div', 'detail', option.detail || '');
+		const yes = button('', () => this.choose(option), { className: 'choice yes' });
+		const no = button('', () => this.dropChoice(option), { className: 'choice no' });
+
+		if (emoji) head.append(element('span', 'emoji', emoji), ' ');
+		head.append(element('span', 'words', words));
+		yes.append(element('span', 'emoji', '✅'), element('span', 'label', 'Yes, do it'));
+		no.append(element('span', 'emoji', '✖️'), element('span', 'label', 'Not that one'));
+		const yesNo = element('div', 'yes-no');
+
+		yesNo.append(yes, no);
+		card.append(head, detail, yesNo);
+		this.choices.replaceChildren(card);
 		this.feed.scrollTop = this.feed.scrollHeight;
-		this.shown = player ? { question, options: asking.options, more: Boolean(asking.typing) } : null;
-		clearTimeout(this.restTimer);
-		if (player && this.prefs.speak) this.readChoices(question, asking.options, { more: Boolean(asking.typing) });
-		else if (player) this.restTimer = setTimeout(() => this.rested(), UNSPOKEN_REST_MS);
+		if (!this.prefs.speak) return;
+
+		// Read in turn, each part lit while it's said: the headline, the detail, then the two answers
+		const parts = [spokenText(option.label), spokenText(option.detail || ''), 'Yes, do it?', 'Or not that one.'];
+		const owners = [];
+
+		parts.forEach((part, index) => {
+			for (const _ of wordsOf(part)) owners.push(index);
+		});
+
+		const targets = [head, detail, yes, no];
+		const light = index => {
+			const owner = index === -1 ? -1 : owners[index];
+
+			targets.forEach((node, at) => node.classList.toggle('lit', owner === at));
+		};
+
+		this.voice.sayNow(parts.filter(Boolean).join(' '), { lightWord: light });
+	}
+
+	async choose(option) {
+		const { asking } = this.shown;
+		const answered = await answerAsking(this.id, asking.question, option.key);
+
+		if (answered.response?.ok) {
+			this.clearAsking();
+			this.noteChoice(option.label);
+			this.showStatus({ status: 'working' });
+		} else this.notice('Claude is no longer asking that', 'warning');
+	}
+
+	dropChoice(option) {
+		this.dismissed.add(option.key);
+		this.drawChoices();
+		this.feed.scrollTop = this.feed.scrollHeight;
+		if (this.prefs.speak) this.readShown();
 	}
 
 	// The question and its choices read again, for whoever comes back to them
 	readAsking() {
-		if (!this.shown || !this.prefs.speak) return;
-		this.readChoices(this.shown.question, this.shown.options, { more: this.shown.more });
+		this.readShown();
 	}
 
-	// Nothing left to say, and Claude waiting on the player: time to play
+	// Nothing left to say after a new question's first reading, and Claude waiting on the player: time to play
 	rested() {
+		if (!this.restArmed) return;
+		this.restArmed = false;
 		if (this.status === 'waiting' && this.asking && forPlayer(this.asking)) this.options.onRested?.();
 	}
 
@@ -665,6 +739,7 @@ export default class ArcadeTalk extends Talk {
 	clearAsking() {
 		this.asking = null;
 		this.shown = null;
+		this.restArmed = false;
 		clearTimeout(this.restTimer);
 		if (this.asked === null) return;
 		this.asked = null;
