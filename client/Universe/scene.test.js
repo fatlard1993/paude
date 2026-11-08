@@ -2951,3 +2951,26 @@ test('people coming aboard or leaving together share one shuttle, down and up it
 	expect(walkerNamed(made, 'pat')).toBeUndefined();
 	expect(made.shuttles).toEqual([]);
 });
+
+test("a fabled session's monitor walks over with its grey when their island has to move, rather than reappearing at the new place", () => {
+	const projects = ['paude', 'other'];
+	const made = shipWith([answer('here', [session({ keeping: 'fabled' })], { projects })]);
+
+	run(made, 30);
+
+	const worker = made.workers.get('here/a');
+
+	expect(made.watcherStands(worker)).toBe(true);
+
+	const stood = { x: worker.watcher.x, y: worker.watcher.y };
+
+	made.update([answer('here', [session({ keeping: 'fabled' }), session({ id: 'c', project: 'other' })], { projects })]);
+	expect(made.walking(worker)).toBe(true);
+	expect(worker.watcher.path.length).toBeGreaterThan(0);
+	expect([worker.watcher.x, worker.watcher.y]).toEqual([stood.x, stood.y]);
+	run(made, 12);
+	expect(made.walking(worker)).toBe(false);
+	expect(worker.watcher.path).toEqual([]);
+	expect(made.watcherStands(worker)).toBe(true);
+	expect([worker.watcher.x, worker.watcher.y]).not.toEqual([stood.x, stood.y]);
+});

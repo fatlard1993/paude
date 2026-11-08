@@ -2599,6 +2599,8 @@ export default class Ship {
 		) {
 			worker.trip = { from: { x: shownSeat.x + 0.3, y: shownSeat.y + 0.2 }, room: this.bridge, fromSeat: true };
 			worker.seatGoal = null;
+			// Its monitor, stood behind it, walks over with it from where it stood
+			if (worker.watcher && !worker.watcher.path.length) worker.watcher.from = this.watcherAt({ seat: shownSeat });
 
 			return;
 		}
@@ -4415,11 +4417,16 @@ export default class Ship {
 
 		const { airlock } = this;
 
-		// The rooms moved round: one still in its craft walks out of the airlock from where it is now; any other is put
-		// in place
+		// The rooms moved round: one still in its craft walks out of the airlock from where it is now; one stood behind a
+		// grey whose island moved walks over with it from where it stood (`from`); any other is put in place
 		if (this.moved && worker.watcher) {
+			const { from } = worker.watcher;
+
+			worker.watcher.from = undefined;
 			if (airlock && this.boarding(worker.watcher))
 				Object.assign(worker.watcher, airlock, { path: this.route(airlock, this.bridge, spot, worker.room) });
+			else if (from)
+				Object.assign(worker.watcher, from, { path: this.route(from, worker.room, spot, worker.room), step: 0 });
 			else Object.assign(worker.watcher, spot, { path: [] });
 		}
 		if (!due) return;
