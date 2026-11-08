@@ -57,6 +57,9 @@ const clampSize = (value, [min, max]) => {
 	return Number.isFinite(number) ? Math.min(Math.max(number, min), max) : null;
 };
 
+// How long after its key a typing option's field is given before words go in, and again before Enter
+const ANSWER_TYPING_MS = 350;
+
 const canDrive = client => client.role === 'owner' || client.role === 'drive';
 
 const send = (socket, message) => socket.send(typeof message === 'string' ? message : JSON.stringify(message));
@@ -287,14 +290,21 @@ export default class PtySession {
 	}
 
 	// One of the dialog's numbered answers, pressed for someone who chose it elsewhere; refused when the screen no
-	// longer asks that question with that answer, so an answer never lands on whatever was asked next
-	answer(question, key) {
+	// longer asks that question with that answer, so an answer never lands on whatever was asked next. With `text`,
+	// the key is the question's typing option, and the words are typed into it and entered.
+	answer(question, key, text) {
 		const asked = this.asking();
+		const offered = asked?.options.some(option => option.key === key) || (text && asked?.typing === key);
 
-		if (asked?.question !== question || !asked.options.some(option => option.key === key)) return false;
+		if (asked?.question !== question || !offered) return false;
 
 		setStatus(this.id, 'working');
 		this.process.terminal.write(key);
+		if (text) {
+			// The option's field takes a moment to open; the paste and its Enter arrive apart, as a person's would
+			setTimeout(() => this.typeIn(`\x1b[200~${String(text).trim()}\x1b[201~`), ANSWER_TYPING_MS);
+			setTimeout(() => this.typeIn('\r'), ANSWER_TYPING_MS * 2);
+		}
 
 		return true;
 	}

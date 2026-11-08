@@ -79,6 +79,7 @@ test('a question Claude asks: each option with what it says, and none that has t
 			{ key: '1', label: 'Red', detail: 'Choose red.' },
 			{ key: '2', label: 'Blue', detail: 'Choose blue.' },
 		],
+		typing: '3',
 	});
 });
 

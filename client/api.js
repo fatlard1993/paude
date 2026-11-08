@@ -307,8 +307,12 @@ export const hear = async (sessionId, blob) => {
 export const getAsking = async sessionId =>
 	await GET('/api/sessions/:id/asking', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 
-export const answerAsking = async (sessionId, question, key) =>
-	await POST('/api/sessions/:id/answer', { urlParameters: { id: sessionId }, body: { question, key } });
+// An answer to what Claude asks: an option by its key, or words (`text`) into the question's typing option
+export const answerAsking = async (sessionId, question, key, text) =>
+	await POST('/api/sessions/:id/answer', {
+		urlParameters: { id: sessionId },
+		body: { question, key, ...(text && { text }) },
+	});
 
 // After a usage limit: 'now', 'reset' (carry on when it resets) or 'cancel' (stop waiting for that)
 export const continueAfterLimit = async (sessionId, when) =>

@@ -34,20 +34,50 @@ const TRUST_YES = /Yes, I trust this folder/;
 // Down is pressed at most this often before giving up, so a dialog that never moves is never answered
 const TRUST_PRESSES = 6;
 
-// What Claude may do in the game without asking: change its files, and run what checks and builds them. A command
-// beyond these still asks, and the arcade shows that question to the owner.
+// What Claude may do in the game without asking: read anything in it (the libraries' docs under node_modules
+// included), change its files, look around with the shell's read-only commands, and run what checks and builds it.
+// Anything that reaches out or destroys is refused outright, and a command beyond these asks, which the arcade shows
+// to the owner alone: a kid's session must not stop on a question only a grown-up can answer.
 export const claudeSettings = {
 	permissions: {
 		defaultMode: 'acceptEdits',
 		allow: [
+			'Read',
+			'Glob',
+			'Grep',
+			'Edit',
+			'Write',
+			'MultiEdit',
+			'Bash(ls *)',
+			'Bash(cat *)',
+			'Bash(head *)',
+			'Bash(tail *)',
+			'Bash(wc *)',
+			'Bash(grep *)',
+			'Bash(rg *)',
+			'Bash(find *)',
+			'Bash(sed -n *)',
+			'Bash(tree *)',
+			'Bash(mkdir *)',
 			'Bash(bun test*)',
-			'Bash(bun run build*)',
-			'Bash(bun run test*)',
+			'Bash(bun run *)',
+			'Bash(bun build*)',
+			'Bash(bun -e *)',
 			'Bash(git status*)',
 			'Bash(git diff*)',
 			'Bash(git log*)',
+			'Bash(git show*)',
 			'Bash(git add*)',
 			'Bash(git commit*)',
+		],
+		deny: [
+			'Bash(rm -rf *)',
+			'Bash(sudo *)',
+			'Bash(curl *)',
+			'Bash(wget *)',
+			'Bash(git push*)',
+			'Bash(git reset --hard*)',
+			'WebFetch',
 		],
 	},
 };
@@ -118,6 +148,10 @@ export const arcadeInstructions = ({ title, player, reading }) =>
 		'## Keep it safe and small',
 		'',
 		'Work only inside this project. Do not install new packages unless the game truly needs one, and then say so in a word. Make small changes so each is seen within a minute. If something breaks, fix it quietly and say what you did in a line.',
+		'',
+		'## Tools',
+		'',
+		"Read files with the Read tool, find things with Grep and Glob, and change files with Edit and Write, never through shell commands or scripts: those tools run without asking, while a shell command beyond bun test, bun run, bun build and git status, diff, log, add and commit stops everything until a grown-up answers a question the kid cannot see. The libraries' docs are files too: read them with Read.",
 		'',
 	].join('\n');
 

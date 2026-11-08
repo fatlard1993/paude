@@ -1,4 +1,4 @@
-import { Notify, View } from '@vanilla-bean/components';
+import { View } from '@vanilla-bean/components';
 
 import {
 	answerAsking,
@@ -49,10 +49,24 @@ const LAMPS = {
 	ready: { icon: 'circle-check', words: 'Ready. What next?' },
 	stopped: { icon: 'moon', words: 'Asleep. Say something to wake it' },
 };
+// Working this long with nothing new from Claude reads as a long one, then as stuck
+const LONG_MS = 90_000;
+const STUCK_MS = 4 * 60_000;
+const LAMP_TICK_MS = 1000;
+
+const ago = ms => {
+	const seconds = Math.round(ms / 1000);
+
+	return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+};
 const EMOJI_FIRST = /^(\p{Extended_Pictographic}[\u{FE0F}\u{200D}\p{Extended_Pictographic}]*)\s*(.*)$/su;
 // A question put to the player with AskUserQuestion shows its header as a checkbox; a permission prompt is titled
 // by its tool and asks whether to proceed
 const forPlayer = asking => /^[☐☑]/.test(asking.title) || (!asking.title && !/proceed/i.test(asking.question));
+
+// A choice whose words mean the player will say it themselves: it opens the ear (or the box) rather than being
+// answered as is, and what they say answers the question
+const OWN_WORDS = /\b(my (own )?idea|my own|something else|i('ll| will) (say|tell|type)|tell you|other)\b/i;
 
 const splitEmoji = label => {
 	const match = EMOJI_FIRST.exec(label);
@@ -72,6 +86,7 @@ export default class Arcade extends View {
 		this.saying = null;
 		this.sent = [];
 		this.did = null;
+		this.asking = null;
 		// What arcade this is ({ title, player, reading, shelf? }), once asked; null for an ordinary session
 		this.arcade = null;
 		this.reading = 'reading';
@@ -88,7 +103,12 @@ export default class Arcade extends View {
 		this.addCleanup('poll', () => {
 			this.left = true;
 			clearTimeout(this.timer);
+			clearInterval(this.lampTimer);
 		});
+		this.statusSince = Date.now();
+		this.heardFromAt = Date.now();
+		this.lastAct = '';
+		this.lampTimer = setInterval(() => this.status === 'working' && this.showLampWords(), LAMP_TICK_MS);
 		this.addCleanup('speech', () => {
 			stopSpeaking();
 			this.ear?.stop();
@@ -301,24 +321,53 @@ export default class Arcade extends View {
 	}
 
 	showStatus(session) {
+		if (session.status !== this.status) {
+			this.statusSince = Date.now();
+			this.heardFromAt = Date.now();
+			this.lastAct = '';
+		}
 		this.status = session.status;
 		this.title.textContent = session.title || session.project || 'Arcade';
 
 		const lamp = LAMPS[session.status] ?? LAMPS.stopped;
 
 		this.lamp.className = `lamp ${session.status}`;
-		this.lampWords.textContent = lamp.words;
 		this.lamp.replaceChildren(icon(lamp.icon), this.lampWords, this.putBack);
+		this.showLampWords();
+	}
+
+	// The lamp's words: while Claude works, what it's at and for how long, and plainly when it's been a while
+	showLampWords() {
+		const lamp = LAMPS[this.status] ?? LAMPS.stopped;
+
+		if (this.status !== 'working') {
+			this.lampWords.textContent =
+				this.status === 'waiting' && this.asking && !forPlayer(this.asking) && !identity()?.owner
+					? 'Waiting for a grown-up'
+					: lamp.words;
+
+			return;
+		}
+
+		const quiet = Date.now() - this.heardFromAt;
+		const since = ago(Date.now() - this.statusSince);
+
+		if (quiet > STUCK_MS) this.lampWords.textContent = `Claude has been quiet for ${ago(quiet)}. It may be stuck`;
+		else if (quiet > LONG_MS) this.lampWords.textContent = `Still working, a big one · ${since}`;
+		else this.lampWords.textContent = `Claude is ${this.lastAct || 'working'} · ${since}`;
 	}
 
 	showEntries(entries) {
 		const atBottom = this.feed.scrollHeight - this.feed.scrollTop - this.feed.clientHeight < 80;
 
 		for (const entry of entries) {
+			if (!entry.old) this.heardFromAt = Date.now();
 			if (entry.kind === 'tool') {
 				this.noteDid(entry);
+				if (!entry.old) this.lastAct = `${toolWord(entry.name)}${entry.file ? ` ${entry.file.split('/').pop()}` : ''}`;
 				continue;
 			}
+			if (entry.kind === 'text' && !entry.old) this.lastAct = 'thinking what to say';
 
 			this.did = null;
 			if (entry.kind === 'prompt') {
@@ -398,6 +447,15 @@ export default class Arcade extends View {
 		return card;
 	}
 
+	// A word to whoever is here, in the feed where they look, never a toast over the choices and the box
+	notice(text, intent = 'info') {
+		const card = element('div', `card notice ${intent}`);
+
+		card.textContent = text;
+		this.feed.append(card);
+		this.feed.scrollTop = this.feed.scrollHeight;
+	}
+
 	// Reading aloud: one thing at a time, in the order it arrived
 
 	enqueue(text, card) {
@@ -443,6 +501,7 @@ export default class Arcade extends View {
 
 		if (this.asked === key) return;
 		this.asked = key;
+		this.asking = asking;
 		this.choices.replaceChildren();
 		this.choices.hidden = false;
 
@@ -467,15 +526,18 @@ export default class Arcade extends View {
 
 		for (const option of asking.options) {
 			const { emoji, words } = splitEmoji(option.label);
+			const ownWords = player && asking.typing && OWN_WORDS.test(option.label);
 			const choice = button(
 				'',
 				async () => {
+					if (ownWords) return this.askInOwnWords();
+
 					const answered = await answerAsking(this.id, asking.question, option.key);
 
 					if (answered.response?.ok) {
 						this.clearAsking();
 						this.showStatus({ status: 'working', title: this.title.textContent });
-					} else new Notify({ intent: 'warning', content: 'Claude is no longer asking that' });
+					} else this.notice('Claude is no longer asking that', 'warning');
 				},
 				{ className: 'choice' },
 			);
@@ -496,10 +558,21 @@ export default class Arcade extends View {
 	}
 
 	clearAsking() {
+		this.asking = null;
 		if (this.asked === null) return;
 		this.asked = null;
 		this.choices.hidden = true;
 		this.choices.replaceChildren();
+	}
+
+	// "My idea": the ear opens (or the box takes focus), and what comes answers the question in words
+	askInOwnWords() {
+		stopSpeaking();
+		this.queue = [];
+		if (this.mic && !this.ear) this.toggleEar();
+		else this.input.focus();
+		this.input.placeholder = 'Say your idea';
+		if (this.prefs.speak) this.enqueue('Tell me your idea.');
 	}
 
 	// Talking to Claude
@@ -511,13 +584,21 @@ export default class Arcade extends View {
 		stopSpeaking();
 		this.queue = [];
 
-		const { response, body } = await sendPrompt(this.id, typed);
+		// Words while a question with a typing option is up answer that question; otherwise they're the next prompt
+		const asking = this.asking;
+		let { response, body } = asking?.typing
+			? await answerAsking(this.id, asking.question, asking.typing, typed)
+			: await sendPrompt(this.id, typed);
 
+		// The question went away meanwhile: the words go as a prompt instead
+		if (!response?.ok && asking?.typing && response?.status === 409)
+			({ response, body } = await sendPrompt(this.id, typed));
 		if (!response?.ok) {
-			new Notify({ intent: 'danger', content: typeof body === 'string' && body ? body : 'Could not send that' });
+			this.notice(typeof body === 'string' && body ? body : 'Could not send that', 'danger');
 
 			return;
 		}
+		this.input.placeholder = 'Tell Claude what to do';
 		this.sent.push(typed);
 		this.feed.append(element('div', 'card you', typed));
 		this.feed.scrollTop = this.feed.scrollHeight;
@@ -557,11 +638,10 @@ export default class Arcade extends View {
 				this.input.hidden = false;
 				this.heard.hidden = true;
 				if (reason === 'done' && heard.trim()) this.send(heard);
-				else if (reason === 'failed') new Notify({ intent: 'warning', content: "I couldn't hear that. Try again" });
+				else if (reason === 'failed') this.notice("I couldn't hear that. Try again", 'warning');
 				else if (reason === 'denied')
-					new Notify({ intent: 'warning', content: 'The microphone is blocked here: allow it in the address bar' });
-				else if (reason === 'unsupported')
-					new Notify({ intent: 'warning', content: "This browser can't listen; type instead" });
+					this.notice('The microphone is blocked here: allow it in the address bar', 'warning');
+				else if (reason === 'unsupported') this.notice("This browser can't listen; type instead", 'warning');
 			},
 		});
 	}
@@ -570,7 +650,7 @@ export default class Arcade extends View {
 
 	offerPutBack() {
 		if (this.status === 'working') {
-			new Notify({ intent: 'warning', content: 'Claude is still working. Wait for it to finish' });
+			this.notice('Claude is still working. Wait for it to finish', 'warning');
 
 			return;
 		}
@@ -596,7 +676,7 @@ export default class Arcade extends View {
 		const { body, response } = await undoArcadeTurn(this.id);
 
 		if (!response?.ok) {
-			new Notify({ intent: 'warning', content: typeof body === 'string' && body ? body : 'It could not be put back' });
+			this.notice(typeof body === 'string' && body ? body : 'It could not be put back', 'warning');
 
 			return;
 		}
@@ -616,16 +696,16 @@ export default class Arcade extends View {
 
 		if (!confirmed) return;
 
-		const working = new Notify({ intent: 'info', content: 'Putting it on the shelf…', timeout: 0 });
+		this.notice('Putting it on the shelf…', 'info');
+
 		const { body, response } = await shelveArcade(this.id);
 
-		working.destroy?.();
 		if (!response?.ok) {
-			new Notify({ intent: 'danger', content: typeof body === 'string' && body ? body : 'The shelf refused it' });
+			this.notice(typeof body === 'string' && body ? body : 'The shelf refused it', 'danger');
 
 			return;
 		}
-		new Notify({ intent: 'success', content: `On the shelf, on port ${body.port}`, timeout: 6000 });
+		this.notice(`On the shelf, on port ${body.port}`, 'success');
 	}
 
 	// The game
@@ -668,7 +748,7 @@ export default class Arcade extends View {
 					const { response, body } = await runTask(this.id, DEV_TASK);
 
 					if (response?.ok) this.waitingRoom('The game is starting…');
-					else new Notify({ intent: 'danger', content: typeof body === 'string' ? body : 'Could not start it' });
+					else this.notice(typeof body === 'string' ? body : 'Could not start it', 'danger');
 				}),
 			);
 		this.game.replaceChildren(room);

@@ -643,9 +643,10 @@ const sessionsRoutes = async (request, server) => {
 		if (!may(identity, 'type', match.id)) return new Response('Answering takes the drive role', { status: 403 });
 
 		const session = runningSession(match.id);
-		const { question, key } = await request.json();
+		const { question, key, text } = await request.json();
+		const words = typeof text === 'string' ? text.trim().slice(0, 4000) : '';
 
-		if (!session?.answer(String(question), String(key)))
+		if (!session?.answer(String(question), String(key), words || undefined))
 			return new Response('Claude is no longer asking that', { status: 409 });
 
 		return new Response(null, { status: 204 });

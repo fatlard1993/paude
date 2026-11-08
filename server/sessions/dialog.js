@@ -6,7 +6,8 @@ const LOOK_BACK_ROWS = 60;
 const NEEDS_TYPING = /^(Type something|Chat about this)/i;
 
 // What Claude is asking on a screen (an xterm buffer), read from its dialog: a title, what it says, the question and
-// its numbered options, each answered by pressing its number. null when no dialog shows.
+// its numbered options, each answered by pressing its number, and `typing`, the key of a question's option that takes
+// an answer in words. null when no dialog shows.
 //
 //  Bash command                               ← title, after the rule above the dialog
 //  Write current Unix timestamp to stamp.txt  ← details
@@ -60,6 +61,10 @@ const readDialog = (buffer, cols) => {
 		if (text && !RULE.test(text) && !text.startsWith('Tip:')) details.unshift(text);
 	}
 
+	// A question's own "Type something" is answered in words rather than by a number: its key is kept aside, so an
+	// answer in words can be typed into it
+	const typing = options.find(option => /^Type something/i.test(option.label))?.key;
+
 	return {
 		title: details.shift() ?? '',
 		details,
@@ -67,6 +72,7 @@ const readDialog = (buffer, cols) => {
 		options: options
 			.filter(option => !NEEDS_TYPING.test(option.label))
 			.map(option => ({ ...option, detail: option.detail === option.label ? '' : option.detail })),
+		...(typing && { typing }),
 	};
 };
 

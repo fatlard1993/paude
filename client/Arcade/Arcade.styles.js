@@ -136,6 +136,24 @@ const ArcadePage = styled(
 			background: ${colors.alpha(colors.blue, 0.25)};
 		}
 
+		.card.notice {
+			align-self: center;
+			max-width: 90%;
+			padding: ${space.sm} ${space.md};
+			background: ${colors.alpha(colors.white, 0.08)};
+			color: ${colors.alpha(colors.white, 0.8)};
+			font-size: 0.85em;
+			text-align: center;
+		}
+
+		.card.notice.warning {
+			box-shadow: inset 0 0 0 1px ${colors.alpha(colors.orange, 0.6)};
+		}
+
+		.card.notice.danger {
+			box-shadow: inset 0 0 0 1px ${colors.alpha(colors.red, 0.6)};
+		}
+
 		.card p {
 			margin: 0;
 		}
