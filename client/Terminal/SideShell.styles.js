@@ -71,7 +71,12 @@ const Panel = styled(
 		}
 
 		.screen .xterm {
+			width: 100%;
 			height: 100%;
+		}
+
+		.screen .xterm-scrollable-element {
+			width: 100% !important;
 		}
 
 		/* xterm paints its viewport solid from the theme, alpha dropped */
