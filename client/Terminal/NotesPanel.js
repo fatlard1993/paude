@@ -9,6 +9,7 @@ import { applyNote } from '../../shared/protocol';
 import { REACTION_PALETTE } from '../../shared/reactions';
 import { canNote, canType, identity, identityKey } from '../identity';
 import { closeButton, element, icon } from '../dom';
+import { intoBox, micButton } from '../micButton';
 import renderPeople from './People';
 import Panel from './NotesPanel.styles';
 
@@ -24,7 +25,7 @@ const yours = note =>
 
 // Enter sends; Shift+Enter makes a new line. A draft map keeps half-typed text across re-renders. With `onAsk`, an
 // Ask Claude button (or Ctrl/Cmd+Enter) sends it to Claude too, for those who may type into Claude.
-const composer = ({ placeholder, label, onSend, onAsk, drafts, draftKey }) => {
+const composer = ({ placeholder, label, onSend, onAsk, drafts, draftKey, session }) => {
 	const row = element('div', 'composer');
 	const input = element('textarea');
 	const button = element('button', 'variant-flat', label);
@@ -58,7 +59,11 @@ const composer = ({ placeholder, label, onSend, onAsk, drafts, draftKey }) => {
 		}
 	});
 	button.addEventListener('click', () => send());
-	row.append(input, button);
+	row.append(
+		input,
+		micButton({ session, onText: words => intoBox(input, words), className: 'variant-flat' }) ?? '',
+		button,
+	);
 	if (ask) {
 		ask.title = 'Send it to Claude as a prompt too (Ctrl+Enter); its answer comes back here';
 		ask.addEventListener('click', () => send(onAsk));
@@ -100,6 +105,7 @@ export default class NotesPanel extends Panel {
 		this.draft = element('div', 'draft');
 		this.draft.style.display = 'none';
 		this.chatComposer = composer({
+			session: this.options.sessionId,
 			placeholder: canType() ? 'Message the people here, or ask Claude' : 'Message the people here',
 			label: 'Send',
 			onSend: text => this.options.send({ type: 'chat', text }),
@@ -284,6 +290,7 @@ export default class NotesPanel extends Panel {
 			if (!comment.resolved && canNote()) {
 				node.append(
 					composer({
+						session: this.options.sessionId,
 						placeholder: 'Reply',
 						label: 'Reply',
 						drafts: this.drafts,
@@ -448,6 +455,7 @@ export default class NotesPanel extends Panel {
 			this.draft.replaceChildren();
 		};
 		const box = composer({
+			session: this.options.sessionId,
 			placeholder: 'Comment on this selection',
 			label: 'Comment',
 			onSend: text => {

@@ -299,9 +299,13 @@ export const undoArcadeTurn = async sessionId =>
 export const shelveArcade = async sessionId =>
 	await POST('/api/sessions/:id/arcade/shelf', { urlParameters: { id: sessionId } });
 
-// A recording from the page's microphone, heard by this paude's ear: { text }, or 404 when it has none
+// A recording from the page's microphone, heard by this paude's ear (a session's, or this paude's own for the owner):
+// { text }, or 404 when it has none
 export const hear = async (sessionId, blob) => {
-	const response = await fetch(`${sessionBase(sessionId)}/api/sessions/${encodeURIComponent(sessionId)}/hear`, {
+	const route = sessionId
+		? `${sessionBase(sessionId)}/api/sessions/${encodeURIComponent(sessionId)}/hear`
+		: '/api/hear';
+	const response = await fetch(route, {
 		method: 'POST',
 		headers: { 'content-type': blob.type || 'audio/webm' },
 		body: blob,

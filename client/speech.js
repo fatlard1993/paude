@@ -383,8 +383,8 @@ export const canListen = () =>
 // server's); onThinking() while the server's ear works; onEnd(reason) when it stops: 'done', 'nothing' (silence),
 // 'failed' (the ear couldn't), 'denied' (the microphone), or 'unsupported'. Returns { stop }. `session` names the
 // session whose paude may have an ear; without it, or once it's known not to, the browser's own is used.
-export const listen = ({ onHeard, onThinking, onEnd, session } = {}) => {
-	if (session && serverEar !== false && canRecord()) return recordAndHear(session, { onHeard, onThinking, onEnd });
+export const listen = ({ onHeard, onThinking, onEnd, session = null } = {}) => {
+	if (serverEar !== false && canRecord()) return recordAndHear(session, { onHeard, onThinking, onEnd });
 
 	return browserEar({ onHeard, onEnd });
 };

@@ -31,6 +31,7 @@ import { NOTE_TYPES } from '../../shared/protocol';
 import { showNotification } from '../notify';
 import { recall, remember } from '../storage';
 import { button, element } from '../dom';
+import { micButton } from '../micButton';
 import { breadcrumbs } from '../Breadcrumbs';
 import { closeMenu, openMenu } from '../menu';
 import { AskingCard, showAsking, showLimit } from '../Asking';
@@ -281,6 +282,17 @@ export default class TerminalView extends View {
 				onPress: () => (window.location.hash = `#/arcade/${this.options.id}`),
 			});
 			this.arcadeButton.style.display = 'none';
+		}
+		// Said instead of typed: the words land in Claude's prompt as a paste, for Enter to send
+		if (canType()) {
+			const mic = micButton({
+				session: this.options.id,
+				onText: text => this.attachToPrompt(text),
+				className: 'ghost variant-flat',
+				title: 'Say something into the prompt',
+			});
+
+			if (mic) header.elem.append(mic);
 		}
 		this.sharesButton = ghostButton(header, {
 			icon: PANELS.shares.icon,

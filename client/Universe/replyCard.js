@@ -6,6 +6,7 @@ import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { sendPrompt, sendRemotePrompt } from '../api';
 import { AskingCard, showAsking } from '../Asking';
 import { button, element } from '../dom';
+import { intoBox, micButton } from '../micButton';
 import { HOME_PROMPT_KEY, placePrompt } from '../PromptHome';
 import { forget, recall, remember } from '../storage';
 import refusal from './reason';
@@ -40,7 +41,7 @@ export const heading = (title, about, onClose, { close = 'Close (Esc)', buttons 
 
 // A box to write to Claude in, Enter sending it. What's typed is kept in this browser under `keep` until sent() says it
 // went, so the card closing (a press elsewhere, Escape, a reload) doesn't lose it. { form, sent }
-const composer = ({ placeholder, send, actions, keep }) => {
+const composer = ({ placeholder, send, actions, keep, session }) => {
 	const form = element('form', 'answer');
 	const text = Object.assign(element('textarea'), { value: recall(keep) });
 	let sending = false;
@@ -74,7 +75,8 @@ const composer = ({ placeholder, send, actions, keep }) => {
 	});
 
 	const row = element('div', 'actions');
-	const buttons = [...actions, button('Send', submit, { icon: 'paper-plane' })];
+	const mic = micButton({ session, onText: words => intoBox(text, words), className: 'variant-flat' });
+	const buttons = [...actions, mic, button('Send', submit, { icon: 'paper-plane' })].filter(Boolean);
 
 	// Pressed, not submitting: Enter in the box sends
 	for (const node of buttons) node.type = 'button';
@@ -117,6 +119,7 @@ export const replyCard = ({ session, onOpen, onSent, onClose, note }) => {
 	}
 
 	const box = composer({
+		session: engine.remote ? undefined : session.id,
 		keep: `paude.reply.${sessionKey(engine.key, session.id)}`,
 		placeholder: session.status === 'waiting' ? 'Or type to Claude' : 'Reply to Claude',
 		send: async text => {

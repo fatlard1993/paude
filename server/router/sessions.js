@@ -582,6 +582,20 @@ const sessionsRoutes = async (request, server) => {
 		}
 	}
 
+	// What was said into a page's microphone, as text, by this paude's ear, for the owner anywhere; 404 when it has none
+	if (requestMatch('POST', '/api/hear', request)) {
+		if (!identity.owner) return new Response("The ear is the owner's, or a session's", { status: 403 });
+
+		try {
+			return Response.json(
+				await hear(await request.arrayBuffer(), request.headers.get('content-type') || 'audio/webm'),
+			);
+		} catch (error) {
+			if (error instanceof SpeechError) return new Response(error.message, { status: error.status });
+			throw error;
+		}
+	}
+
 	// What was said into a page's microphone, as text, by this paude's ear; 404 when it has none
 	match = requestMatch('POST', '/api/sessions/:id/hear', request);
 	if (match) {

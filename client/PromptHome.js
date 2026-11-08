@@ -8,6 +8,7 @@ import { createSession, findPromptHome, openRemote, sendPrompt, sendRemotePrompt
 import { serverName } from './identity';
 import { forget, recall, remember } from './storage';
 import { button, element } from './dom';
+import { intoBox, micButton } from './micButton';
 
 const Compose = styled(
 	Elem,
@@ -154,7 +155,9 @@ export const composeBox = ({ appendTo, placeholder, actions, keep }) => {
 		return node;
 	});
 	const footer = element('div', 'footer');
+	const mic = micButton({ onText: words => intoBox(prompt, words), className: 'secondary variant-flat' });
 
+	if (mic) row.prepend(mic);
 	row.append(...buttons);
 	footer.append(options, row);
 	box.elem.append(prompt, footer);
