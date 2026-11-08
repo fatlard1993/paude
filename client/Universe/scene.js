@@ -3829,13 +3829,14 @@ export default class Ship {
 			const phase = Math.round((lanes.indexOf(key) * PACKET_GAP) / lanes.length);
 			const style = { dim: `hsl(${hue} 30% 22%)`, bright: `hsl(${hue} 70% 62%)`, phase };
 
-			const conduit = room.within?.kind === 'engineering' && this.cables?.get(this.bayOf(worker)?.name);
+			const cable = this.cables?.get(this.bayOf(worker)?.name);
+			const conduit = room.within?.kind === 'engineering' && cable;
 			// Routed again only when where it runs from or to moves
-			const inputs = [this.layout, seat, worker.room, key, conduit];
+			const inputs = [this.layout, seat, worker.room, key, conduit, cable];
 			const last = this.streamPaths.get(worker);
 			const routed = last?.inputs.every((input, index) => input === inputs[index])
 				? last.routed
-				: this.streamRoute(worker, room, lanes, key, conduit);
+				: this.streamRoute(worker, room, lanes, key, conduit, cable);
 
 			this.streamPaths.set(worker, { inputs, routed });
 			for (const { track, ports } of routed) paths.push({ track, style, fade, ports });
@@ -3903,7 +3904,7 @@ export default class Ship {
 	}
 
 	// A worker's stream from its system, in art pixels: by way of its project's machine when `conduit`, its two halves
-	streamRoute(worker, room, sources, key, conduit) {
+	streamRoute(worker, room, sources, key, conduit, cable = conduit) {
 		const tech = room.kind === 'system' ? this.throughSystem(room) : null;
 		const fed = tech ? [{ track: trackOf(tech.feed), ports: [tech.feed.at(-1)] }] : [];
 
@@ -3920,8 +3921,17 @@ export default class Ship {
 
 		const lane = this.layout.halls[0].lane;
 		const start = key === 'tower' ? navAt(room) : { x: room.door.x, y: room.door.y };
-		const end = { x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 };
 		const offset = (sources.indexOf(key) - (sources.length - 1) / 2) * 0.09;
+		// Not walked in behind the consoles to the seat, through the screens: along the aisle to its island's plate, and
+		// in under the desk as its project's conduit does
+		const plate = cable && this.plateOf(worker, cable.plates);
+		const seat = this.art({ x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 });
+		const end = plate
+			? { x: plate.x / UNIT.x, y: walkwayOf(this.bridge, plate.island.y) }
+			: { x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 };
+		const tail = plate
+			? [{ x: plate.x, y: plate.run }, { x: plate.x, y: plate.y }, { x: seat.x, y: plate.y }, seat]
+			: [];
 
 		// From an engine-bay unit: straight across into its lane of the trunk, down it to the hall, and on from there
 		if (tech && room.within?.kind === 'engineering') {
@@ -3939,6 +3949,7 @@ export default class Ship {
 						{ x: along, y: tech.outlet.y },
 						{ x: along, y: onward[0].y },
 						...onward.slice(1),
+						...tail,
 					]),
 					ports: [tech.outlet],
 				},
@@ -3951,10 +3962,13 @@ export default class Ship {
 		if (tech)
 			return [
 				...fed,
-				{ track: trackOf([tech.outlet, { x: points[0].x, y: tech.outlet.y }, ...points]), ports: [tech.outlet] },
+				{
+					track: trackOf([tech.outlet, { x: points[0].x, y: tech.outlet.y }, ...points, ...tail]),
+					ports: [tech.outlet],
+				},
 			];
 
-		return [{ track: trackOf(points), ports: [] }];
+		return [{ track: trackOf([...points, ...tail]), ports: [] }];
 	}
 
 	// The system a worker's stream runs from, and how strongly: while it uses one and for a few seconds after, fading, so
@@ -4003,17 +4017,24 @@ export default class Ship {
 		};
 	}
 
+	// The plate of the island a worker is at, of its project's: the one seating it, else (on the floor, say) the one whose
+	// plate is nearest, with the height its cable runs at
+	plateOf(worker, plates) {
+		const seat = this.art({ x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 });
+		const seating = plates.find(({ island }) => island?.keys?.includes(worker.session.key));
+
+		return (seating ? [seating] : plates)
+			.map(({ island, at, run = at.y }) => ({ ...at, run, island }))
+			.sort((a, b) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(b.x - seat.x, b.y - seat.y))[0];
+	}
+
 	throughProject(worker, room, conduit, nth, outlet) {
 		const door = this.art({ x: room.door.x, y: room.door.side === 'bottom' ? room.y + room.d : room.y + FACE });
 		const wall = this.trunkLane(nth);
 		const { tray, entry, exit, out, riser, plates } = conduit;
 		const into = { x: entry.x - 4, y: entry.y };
 		const seat = this.art({ x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 });
-		// The island it's at, of its project's: the one seating it, else (on the floor, say) the one whose plate is nearest
-		const seating = plates.find(({ island }) => island?.keys?.includes(worker.session.key));
-		const plate = (seating ? [seating] : plates)
-			.map(({ at, run = at.y }) => ({ ...at, run }))
-			.sort((a, b) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(b.x - seat.x, b.y - seat.y))[0];
+		const plate = this.plateOf(worker, plates);
 
 		return [
 			[

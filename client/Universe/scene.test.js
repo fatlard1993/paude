@@ -1462,6 +1462,74 @@ test('a stream leaves its engine-bay unit straight across into its lane of the t
 	expect(routed.at(-1).track.legs[2].to.y).not.toBe(outlet.y);
 });
 
+test("a stream that is not through a conduit comes in along the aisle and under the desk, never through any seat's screen", () => {
+	const surface = new Proxy(function () {}, { get: () => surface, set: () => true, apply: () => surface });
+	const hadDocument = 'document' in globalThis;
+	const had = globalThis.document;
+
+	globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => surface }) };
+
+	try {
+		const tools = ['Skill', 'TodoWrite', 'NotSomethingKnown'];
+		const made = shipWith([
+			{
+				...answer(
+					'here',
+					[
+						...tools.map((tool, index) => session({ id: `t${index}`, project: index % 2 ? 'site' : 'paude', tool })),
+						session({ id: 'z', project: 'paude', status: 'stopped', tool: null }),
+					],
+					{ projects: ['paude', 'site'] },
+				),
+				tools,
+			},
+		]);
+
+		for (let step = 0; step < 4; step++) {
+			run(made, 0.5);
+			made.draw(surface, 1);
+		}
+		made.cables = made.conduitsOf();
+
+		const lanes = ['library', 'forge', 'reactor', 'dish', 'tower', 'outpost'];
+		const screens = [...made.workers.values()]
+			.filter(({ seat }) => seat?.island)
+			.map(({ seat }) => made.art({ x: seat.x, y: seat.y + 0.2 }))
+			.map(({ x, y }) => ({ left: x - 17, right: x + 2, top: y - 31, bottom: y - 16 }));
+		let checked = 0;
+
+		for (const worker of made.workers.values()) {
+			const facility = made.streamOf(worker)?.facility;
+			const room = { tower: made.bridge, outpost: made.layout.hold }[facility];
+
+			if (!room) continue;
+
+			const cable = made.cables.get(made.bayOf(worker).name);
+			const [{ track }] = made.streamRoute(worker, room, lanes, facility, null, cable);
+			const plate = made.plateOf(worker, cable.plates);
+			const [reach, along, end] = track.legs.slice(-3);
+
+			for (const { from, to } of track.legs)
+				for (const screen of screens)
+					expect(
+						Math.max(from.x, to.x) > screen.left &&
+							Math.min(from.x, to.x) < screen.right &&
+							Math.max(from.y, to.y) > screen.top &&
+							Math.min(from.y, to.y) < screen.bottom,
+					).toBe(false);
+			// Its last legs are the conduit's: up to the plate's foot, along under the desk, and in to the seat
+			expect([reach.to.x, reach.to.y]).toEqual([plate.x, plate.y]);
+			expect(along.to.y).toBe(plate.y);
+			expect(end.to).toEqual(made.art({ x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 }));
+			checked++;
+		}
+		expect(checked).toBeGreaterThan(0);
+	} finally {
+		if (hadDocument) globalThis.document = had;
+		else delete globalThis.document;
+	}
+});
+
 test('a deleted session stands whole while the emitter comes down over it, crumbles under its beam, and the emitter goes back up after', () => {
 	const made = shipWith([answer('here', [session(), session({ id: 'b' })], { projects: ['paude'] })]);
 
