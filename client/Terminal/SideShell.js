@@ -78,6 +78,8 @@ export default class SideShell extends Panel {
 			...xtermOptions,
 			scrollback: 2000,
 			allowTransparency: true,
+			// The fit leaves 14px for a scrollbar unless told a width; the scrollbar draws over the text
+			overviewRuler: { width: 1 },
 			theme: { background: 'rgba(0, 0, 0, 0)' },
 		});
 		this.fitter = new FitAddon();
