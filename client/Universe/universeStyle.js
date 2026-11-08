@@ -157,6 +157,35 @@ export const Stage = styled(
 			align-self: flex-end;
 		}
 
+		/* A new arcade game: where, what it's called, who builds it, how they read, each on its own line, and what the
+		   making prints */
+		.pane .new-arcade {
+			display: flex;
+			flex-direction: column;
+			align-items: stretch;
+			gap: ${space.sm};
+		}
+
+		.pane .new-arcade .meta {
+			color: ${colors.muted};
+			font-size: 0.85em;
+		}
+
+		.pane .new-arcade button {
+			align-self: flex-end;
+		}
+
+		.pane .new-arcade .progress {
+			max-height: 10em;
+			overflow: auto;
+			margin: 0;
+			padding: ${space.sm} ${space.md};
+			border-radius: ${radius.md};
+			background: ${colors.alpha(colors.black, 0.35)};
+			font-size: 0.85em;
+			white-space: pre-wrap;
+		}
+
 		/* Where a new prompt goes, or a folder is added */
 		.reply-card select.where,
 		.pane select.where {

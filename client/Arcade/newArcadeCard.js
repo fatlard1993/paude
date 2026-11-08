@@ -1,13 +1,12 @@
 import { Elem, Notify, styled } from '@vanilla-bean/components';
 
-import { READING } from '../../shared/arcade';
-import { readProgress, recentLines } from '../../shared/progress';
 import { button, element } from '../dom';
+import { goToArcade, makeArcade, readingSelect, whereSelect } from './makeArcade';
 
 // The home page's way into the arcade: name the game and who's building it, and paude makes a project from the game
 // scaffold, starts Claude in it on the kid's terms, and opens the arcade page on it. On this paude, or on any other
 // this machine is logged into (remotes(): the reachable ones, as the home page has them), where the game then lives
-// and runs; openThere(remote, { arcade }) takes the browser to the arcade there.
+// and runs.
 const Card = styled(
 	Elem,
 	({ colors, radius, space }) => `
@@ -79,15 +78,14 @@ const Card = styled(
 	`,
 );
 
-const newArcadeCard = ({ remotes = () => [], openThere } = {}) => {
+const newArcadeCard = ({ remotes = () => [] } = {}) => {
 	const card = new Card({});
 	const opener = element('button', 'open-form variant-flat', '🕹️ New arcade game');
 	const form = element('form');
 	const name = element('input');
 	const player = element('input');
-	const reading = element('select');
-	const where = element('select');
-	const hint = element('div', 'meta');
+	const { reading, hint } = readingSelect();
+	const where = whereSelect([]);
 	const make = element('button', '', 'Make it');
 	const progress = element('pre');
 	const close = () => {
@@ -101,25 +99,19 @@ const newArcadeCard = ({ remotes = () => [], openThere } = {}) => {
 	name.required = true;
 	player.placeholder = "Who's building it? (their name)";
 	player.maxLength = 40;
-	for (const [key, { label }] of Object.entries(READING)) {
-		const option = element('option', '', label);
-
-		option.value = key;
-		reading.append(option);
-	}
-	reading.value = 'learning';
-	hint.textContent = READING[reading.value].detail;
-	reading.addEventListener('change', () => (hint.textContent = READING[reading.value].detail));
 	form.append(
 		name,
 		player,
 		reading,
+		where,
 		make,
 		button('', close, { icon: 'xmark', title: 'Cancel (Esc)', className: 'icon-only' }),
 		hint,
 	);
 	card.elem.append(opener, form, progress);
 	opener.addEventListener('click', () => {
+		// The other paudes as the page knows them now
+		where.replaceWith((form.where = whereSelect(remotes())));
 		card.elem.classList.add('open');
 		name.focus();
 	});
@@ -132,29 +124,22 @@ const newArcadeCard = ({ remotes = () => [], openThere } = {}) => {
 		make.disabled = true;
 		progress.textContent = '';
 
-		const game = { name: name.value.trim(), player: player.value.trim(), reading: reading.value };
-		const remote = remotes().find(other => other.url === where.value) ?? null;
-		const response = await fetch(remote ? '/api/remotes/arcade' : '/api/arcade', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify(remote ? { url: remote.url, ...game } : game),
-		}).catch(() => null);
-		let output = '';
-		let made = { error: 'Could not reach the server.' };
-
-		if (response && !response.ok) made = { error: await response.text() };
-		else if (response)
-			made = await readProgress(response, arrived => {
-				output += arrived;
-				progress.textContent = recentLines(output, 10).join('\n');
-				progress.scrollTop = progress.scrollHeight;
-			});
+		const picked = form.where ?? where;
+		const remote = remotes().find(other => other.url === picked.value) ?? null;
+		const made = await makeArcade(
+			{ name: name.value.trim(), player: player.value.trim(), reading: reading.value },
+			remote,
+			progress,
+		);
 
 		make.disabled = false;
 		if (made?.id) {
 			close();
-			if (remote) openThere?.(remote, { arcade: made.id });
-			else window.location.hash = `#/arcade/${made.id}`;
+			if (!(await goToArcade(made.id, remote)))
+				new Notify({
+					intent: 'danger',
+					content: `The game is made, but ${remote.name} could not be opened from here.`,
+				});
 		} else {
 			card.elem.classList.remove('making');
 			new Notify({ intent: 'danger', content: made?.error || 'The game could not be made.' });
