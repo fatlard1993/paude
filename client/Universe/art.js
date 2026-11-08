@@ -134,7 +134,8 @@ const sat = rows => [...rows.slice(0, -2).map(row => `.${row}.`), ...SIT_BASE];
 Object.assign(BODIES, { sit: sat(BODIES.stand), sitWave: sat(BODIES.wave) });
 
 // Someone aboard, in a pressure suit: a gold visor under a stripe of their color, a neck ring, shoulders broader than
-// the helmet with the arms hanging from them, gloved, and their color in the light on the chest; a step with each boot for walking
+// the helmet with the arms hanging from them, gloved, and a band of their color across the chest; a step with each boot
+// for walking
 // Its helmet, body and arms, over legs standing or walking
 const SUIT_TOP = [
 	'...kkkkk...',
@@ -145,8 +146,8 @@ const SUIT_TOP = [
 	'.kwwkkkwwk.',
 	'..kklllkk..',
 	'.kwwwwwwwk.',
-	'kwwwwcwwwwk',
-	'kwkwwwwwkwk',
+	'kwwcccccwwk',
+	'kwkwcccwkwk',
 	'kwkwwwwwkwk',
 	'kwkwlllwkwk',
 	'kmk.kkk.kmk',
@@ -170,7 +171,7 @@ const SUIT_BACK = [
 	'..kklllkk..',
 	'.kmmmmmmmk.',
 	'kwmlllllmwk',
-	'kwmmmmmmmwk',
+	'kwmcccccmwk',
 	'kwmmmmmmmwk',
 	'kwkmmmmmkwk',
 	'kmk.kkk.kmk',

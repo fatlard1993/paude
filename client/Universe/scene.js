@@ -1786,6 +1786,20 @@ export default class Ship {
 
 	peopleOf(answers) {
 		const people = new Map();
+		// Each in a suit of their own color: a hue seeded by their name, stepped apart from everyone else's aboard, so two
+		// whose names fall near each other are still told apart; one aboard keeps the color it was given as others come and
+		// go (a branded hue is kept as it is)
+		const hues = huesApart(
+			answers.flatMap(answer =>
+				(answer.people ?? []).map(person => {
+					const key = person.key ?? person.name;
+					const kept = this.people?.get(key)?.hue;
+
+					return { name: key, hue: kept ?? Math.round(seeded(person.name) * 360), branded: kept !== undefined };
+				}),
+			),
+			{ slots: 6 },
+		);
 
 		for (const answer of answers)
 			for (const person of answer.people ?? []) {
@@ -1795,7 +1809,7 @@ export default class Ship {
 				const known = people.get(key) ?? {
 					...person,
 					sessions: [],
-					hue: Math.round(seeded(person.name) * 360),
+					hue: hues.get(key),
 				};
 
 				known.sessions.push(...person.sessions.map(id => sessionKey(answer.key, id)));

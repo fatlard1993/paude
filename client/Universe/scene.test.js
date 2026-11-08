@@ -2885,3 +2885,30 @@ test("a deck's project only another paude has is started there: the deck says wh
 	expect(remoteOfBay({ engines: [] })).toBeUndefined();
 	expect(remoteOfBay(undefined)).toBeUndefined();
 });
+
+test("each person aboard wears a suit of their own color: two going by one name on two servers' invites are told apart", () => {
+	const made = shipWith([
+		answer('here', [session()], {
+			projects: ['paude'],
+			people: [
+				{ key: 'k1', name: 'Sam', role: 'owner', sessions: ['a'] },
+				{ key: 'k2', name: 'Sam', role: 'drive', sessions: ['a'] },
+				{ key: 'k3', name: 'Pat', role: 'drive', sessions: ['a'] },
+			],
+		}),
+	]);
+	const hues = [...made.people.values()].map(person => person.hue);
+	const apart = (a, b) => Math.abs(((a - b + 540) % 360) - 180);
+
+	expect(hues).toHaveLength(3);
+	for (const [index, hue] of hues.entries())
+		for (const other of hues.slice(index + 1)) expect(apart(hue, other)).toBeGreaterThanOrEqual(60);
+	// The same mark keeps its color from one answer to the next
+	made.update([
+		answer('here', [session()], {
+			projects: ['paude'],
+			people: [{ key: 'k2', name: 'Sam', role: 'drive', sessions: ['a'] }],
+		}),
+	]);
+	expect(made.people.get('k2').hue).toBe(hues[1]);
+});
