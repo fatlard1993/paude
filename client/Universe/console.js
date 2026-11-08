@@ -259,8 +259,11 @@ export default class TerminalPanel {
 					}[value] ?? value;
 			},
 		});
+		// Fitted against the stage's width and the dock's, neither of which changes this element's own box when the dock
+		// opens or the stage narrows round it
 		this.resizing = new ResizeObserver(() => this.fit());
-		this.resizing.observe(this.elem);
+		for (const watched of [this.elem, this.elem.closest('.dock'), this.elem.closest('.dock')?.parentElement])
+			if (watched) this.resizing.observe(watched);
 		this.fit();
 		if (canType()) terminal.focus();
 	}
