@@ -13,6 +13,9 @@ const sessionBase = id => (elsewhere.has(id) ? `/api/remotes/at/${encodeURICompo
 // Where a session's socket is opened from this page: this server, or this server's relay to the one that has it
 export const sessionOrigin = id => `${window.location.origin}${sessionBase(id)}`;
 
+// The other paude a session is on, by its address, or null for one of this paude's own
+export const sessionRemote = id => elsewhere.get(id) ?? null;
+
 const routed =
 	method =>
 	(path, options = {}) =>

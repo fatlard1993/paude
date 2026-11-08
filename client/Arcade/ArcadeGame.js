@@ -1,4 +1,4 @@
-import { getShares, getTasks, runTask } from '../api';
+import { getShares, getTasks, openRemote, runTask, sessionRemote } from '../api';
 import { button, element, icon } from '../dom';
 import { identity } from '../identity';
 import GameFrame from './ArcadeGame.styles';
@@ -19,6 +19,8 @@ export default class ArcadeGame extends GameFrame {
 		this.sessionId = this.options.sessionId;
 		this.url = null;
 		this.frame = null;
+		// On another paude, the game's frame loads from there, where this browser may hold no login yet
+		this.remote = sessionRemote(this.sessionId);
 		this.elem.classList.add('arcade-game');
 		this.addCleanup('finding', () => {
 			this.left = true;
@@ -53,10 +55,8 @@ export default class ArcadeGame extends GameFrame {
 		if (port) {
 			if (this.url !== port.url) {
 				this.url = port.url;
-				this.frame = element('iframe');
-				this.frame.src = port.url;
-				this.frame.allow = 'autoplay; fullscreen';
-				this.elem.replaceChildren(this.frame);
+				if (this.remote && !this.loggedInThere) return this.loginRoom();
+				this.showFrame();
 			}
 
 			return;
@@ -80,6 +80,36 @@ export default class ArcadeGame extends GameFrame {
 		this.waitingRoom(running ? 'The game is starting…' : 'The game is not running', !running);
 	}
 
+	showFrame() {
+		this.frame = element('iframe');
+		this.frame.src = this.url;
+		this.frame.allow = 'autoplay; fullscreen';
+		this.elem.replaceChildren(this.frame);
+	}
+
+	// A game on another paude shows from there, and that paude knows this browser only once it has logged in there:
+	// paude's handoff does that in a tab of its own, and the frame follows when this page is looked at again
+	loginRoom() {
+		const name = new URL(this.remote).hostname;
+		const room = element('div', 'waiting-room');
+
+		room.append(
+			icon('gamepad'),
+			element('div', '', `The game runs on ${name}. Log in there once and it shows here.`),
+			button(`Log in on ${name}`, async () => {
+				const { body, response } = await openRemote(this.remote, { home: true });
+
+				if (!response?.ok) return;
+				window.open(body.link, '_blank');
+				this.loggedInThere = true;
+				// Back from that tab, the frame loads with the login it now has
+				window.addEventListener('focus', () => this.url && this.showFrame(), { once: true });
+				this.waitingRoom('Come back here once you are logged in there');
+			}),
+		);
+		this.elem.replaceChildren(room);
+	}
+
 	waitingRoom(words, canStart = false) {
 		const room = element('div', 'waiting-room');
 
@@ -97,6 +127,7 @@ export default class ArcadeGame extends GameFrame {
 
 	reload() {
 		if (this.frame) this.frame.src = this.url;
+		else if (this.url && this.remote) this.showFrame();
 		else this.find();
 	}
 }
