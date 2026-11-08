@@ -552,7 +552,11 @@ export default class ArcadeTalk extends Talk {
 			return;
 		}
 
-		const question = element('div', 'question', player ? asking.question : `${asking.title}: ${asking.question}`);
+		const question = element(
+			'div',
+			'question',
+			player ? asking.questionText || asking.question : `${asking.title}: ${asking.question}`,
+		);
 
 		if (!player && asking.details.length) {
 			const details = element('pre', 'details', asking.details.join('\n'));

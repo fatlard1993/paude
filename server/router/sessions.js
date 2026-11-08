@@ -42,6 +42,7 @@ import {
 	undoLastTurn,
 } from '../arcade';
 import { SpeechError, hear, readAloud } from '../speech';
+import { askingAsWritten } from '../sessions/askedQuestion';
 import { runTask } from '../tasks';
 import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
@@ -562,7 +563,9 @@ const sessionsRoutes = async (request, server) => {
 		if (!identity.owner && identity.sessionId !== match.id)
 			return new Response('Not part of your invite', { status: 403 });
 
-		return Response.json({ asking: runningSession(match.id)?.asking() ?? null });
+		const session = runningSession(match.id);
+
+		return Response.json({ asking: await askingAsWritten(session?.asking() ?? null, match.id, session?.cwd) });
 	}
 
 	// A text said by this paude's voice, for anyone in the session; 404 when it has none, and the page uses its own
