@@ -9,7 +9,7 @@ import {
 	markLink,
 	writeDownDecision,
 } from '../api';
-import { canBrowse, canNote, canType } from '../identity';
+import { canBrowse, canNote, canType, identity } from '../identity';
 import { button, element } from '../dom';
 import ArcadeGame from '../Arcade/ArcadeGame';
 import ArcadeTalk from '../Arcade/ArcadeTalk';
@@ -52,6 +52,16 @@ export const VERBS = [
 // The arcade's panels, for a session that is one (a game a kid builds)
 export const ARCADE_VERBS = ['arcade', 'game'];
 
+// The verbs for `session` as the viewer may have them: the arcade's only for a session that is one, and for a guest
+// invited to the arcade those alone, since the rest is the grown-up's; the terminal only while the session's live
+export const verbsFor = (session, { live = false } = {}) =>
+	VERBS.filter(
+		({ key, allowed }) =>
+			allowed() &&
+			(key !== 'terminal' || live) &&
+			(ARCADE_VERBS.includes(key) ? session.arcade : identity()?.view !== 'arcade'),
+	);
+
 // A session's panels docked beside the universe, one showing at a time, each built when first wanted and wired to the
 // others as on the session page; the chat on a connection of its own
 export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose, onForked }) => {
@@ -61,9 +71,7 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose,
 	const panels = new Map();
 	// Another paude's session's panels reach it through this paude, its side shell's socket among them
 	const { remote } = session.engine;
-	const verbs = VERBS.filter(
-		({ key, allowed }) => allowed() && (key !== 'terminal' || live) && (!ARCADE_VERBS.includes(key) || session.arcade),
-	);
+	const verbs = verbsFor(session, { live });
 	let connection;
 	let showing;
 
@@ -84,6 +92,7 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose,
 	);
 	for (const { key, label, hotkey } of verbs) {
 		const tab = button(label, () => card.show(key), {
+			icon: PANELS[key].icon,
 			className: 'variant-flat',
 			title: `${panelTitle(key)} (${hotkey})`,
 		});

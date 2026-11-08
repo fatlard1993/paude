@@ -137,14 +137,21 @@ test('a look kept from before is still an answer on its way, as one worked out n
 	expect(coldAt('kept-twice', '/nowhere', stopped)).toBeInstanceOf(Promise);
 });
 
-test('whoever looks at the universe is aboard, once, attached to a session or not', async () => {
+test('whoever looks at the universe is aboard, once, attached to a session or not, and seen by those who share their session while they keep looking', async () => {
 	const { withViewer } = await import('./universe');
-	const watcher = { inviteId: 'abc', role: 'watch', name: 'Sam' };
-	const alone = await withViewer([], watcher);
+	const watcher = { inviteId: 'abc', role: 'watch', name: 'Sam', sessionId: 'one' };
+	const sameSession = { inviteId: 'def', role: 'drive', name: 'Ben', sessionId: 'one' };
+	const elsewhere = { inviteId: 'ghi', role: 'watch', name: 'Kim', sessionId: 'two' };
+	const alone = await withViewer([], watcher, 1000);
 
 	expect(alone).toEqual([{ key: expect.any(String), name: 'Sam', role: 'watch', sessions: [] }]);
-	expect(await withViewer([{ ...alone[0], sessions: ['one'] }], watcher)).toHaveLength(1);
+	expect(await withViewer([{ ...alone[0], sessions: ['one'] }], watcher, 1000)).toHaveLength(1);
 	expect(await withViewer([], null)).toEqual([]);
+	// Ben, looking at the same session's ship, sees Sam aboard; Kim, invited to another session, doesn't
+	expect((await withViewer([], sameSession, 2000)).map(({ name }) => name)).toEqual(['Sam', 'Ben']);
+	expect((await withViewer([], elsewhere, 3000)).map(({ name }) => name)).toEqual(['Kim']);
+	// Sam stopped looking: gone after a few seconds
+	expect((await withViewer([], sameSession, 20_000)).map(({ name }) => name)).toEqual(['Ben']);
 });
 
 test("the project this paude runs from is told apart as the ship's own, by its folder's real path", async () => {

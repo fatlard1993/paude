@@ -262,18 +262,39 @@ export const peopleOf = sessions => {
 	return [...people.values()];
 };
 
-// Whoever is looking at the universe is aboard while they are, attached to a session or not: as the people in
-// sessions are, so the same person attached somewhere is one
-export const withViewer = async (people, identity) => {
+// Whoever is looking at the universe is aboard while they keep looking (the ship asks every couple of seconds),
+// attached to a session or not, and everyone else aboard sees them there: the owner by all, a guest by the owner and by
+// whoever shares their session. Keyed as the people in sessions are, so the same person attached somewhere is one.
+const VIEWER_MS = 8000;
+const viewers = new Map();
+
+export const withViewer = async (people, identity, now = Date.now()) => {
 	const name = identity?.owner ? await ownerName() : identity?.name;
 
 	if (!name) return people;
 
 	const key = markOf(identity, name);
 
-	return people.some(person => person.key === key)
-		? people
-		: [...people, { key, name, role: identity.owner ? 'owner' : identity.role, sessions: [] }];
+	viewers.set(key, {
+		key,
+		name,
+		role: identity.owner ? 'owner' : identity.role,
+		session: identity.owner ? null : identity.sessionId,
+		at: now,
+	});
+	for (const [theirs, viewer] of viewers) if (now - viewer.at > VIEWER_MS) viewers.delete(theirs);
+
+	const scope = scopeOf(identity);
+	const aboard = [...viewers.values()].filter(
+		viewer =>
+			(!scope || viewer.role === 'owner' || scope.has(viewer.session)) &&
+			!people.some(person => person.key === viewer.key),
+	);
+
+	return [
+		...people,
+		...aboard.map(({ key: theirs, name: called, role }) => ({ key: theirs, name: called, role, sessions: [] })),
+	];
 };
 
 const recordOf = async id => {

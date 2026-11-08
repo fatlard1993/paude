@@ -29,7 +29,7 @@ import { PANELS } from '../Terminal/panels';
 import { recall, remember } from '../storage';
 import { LOCAL, shipsOf } from './shown';
 import olderPaude from './olderPaude';
-import { ARCADE_VERBS, VERBS, dockCard } from './dock';
+import { dockCard, verbsFor } from './dock';
 import {
 	ROOMS,
 	STATUS,
@@ -1017,9 +1017,7 @@ export default class Universe extends View {
 				? [{ label: PANELS.terminal.label, hotkey: 't', run: () => this.dockOrReply(worker, 'terminal') }]
 				: []),
 			// Another paude's session's panels are relayed through this one, its side shell among them
-			...VERBS.filter(
-				({ key, allowed }) => key !== 'terminal' && allowed() && (!ARCADE_VERBS.includes(key) || session.arcade),
-			).map(({ key, label, hotkey }) => ({
+			...verbsFor(session).map(({ key, label, hotkey }) => ({
 				label,
 				hotkey,
 				run: () => this.openDock(worker, key),
