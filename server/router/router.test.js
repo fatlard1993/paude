@@ -367,6 +367,11 @@ test("another paude's sessions and projects are relayed only for this machine's 
 	expect((await call('/api/remotes/at/%E0%A4%A/api/sessions/a', { token: tokens.local })).status).toBe(404);
 });
 
+test("restarting a session's Claude is the owner's, on a session that exists", async () => {
+	expect((await call('/api/sessions/a/restart', { method: 'POST', token: tokens.comment })).status).toBe(403);
+	expect((await call('/api/sessions/nope/restart', { method: 'POST', token: tokens.owner })).status).toBe(404);
+});
+
 test("a new arcade game on another paude is made only for this machine's own logins, and only on one of its servers", async () => {
 	const game = { name: 'Moon Rocks', player: 'Ada', reading: 'learning' };
 

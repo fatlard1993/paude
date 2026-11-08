@@ -1,12 +1,14 @@
 import { Elem, Notify, styled } from '@vanilla-bean/components';
 
+import { getRemotes } from '../api';
 import { button, element } from '../dom';
+import { identity } from '../identity';
+import { knownServers, setServers } from '../servers';
 import { goToArcade, makeArcade, readingSelect, whereSelect } from './makeArcade';
 
 // The home page's way into the arcade: name the game and who's building it, and paude makes a project from the game
 // scaffold, starts Claude in it on the kid's terms, and opens the arcade page on it. On this paude, or on any other
-// this machine is logged into (remotes(): the reachable ones, as the home page has them), where the game then lives
-// and runs.
+// this machine is logged into, asked for as the card opens, where the game then lives and runs.
 const Card = styled(
 	Elem,
 	({ colors, radius, space }) => `
@@ -78,14 +80,28 @@ const Card = styled(
 	`,
 );
 
-const newArcadeCard = ({ remotes = () => [] } = {}) => {
+// The other paudes this machine can make a game on, for this machine's own login: the ones last found, at once, then
+// asked again (which takes a moment per paude) in case one came or went
+const otherPaudes = async onFound => {
+	if (!identity()?.remotes) return;
+	onFound(knownServers());
+
+	const { body } = await getRemotes().catch(() => ({}));
+
+	if (!Array.isArray(body)) return;
+	setServers(body);
+	onFound(body.filter(remote => !remote.error));
+};
+
+const newArcadeCard = () => {
 	const card = new Card({});
+	let remotes = [];
 	const opener = element('button', 'open-form variant-flat', '🕹️ New arcade game');
 	const form = element('form');
 	const name = element('input');
 	const player = element('input');
 	const { reading, hint } = readingSelect();
-	const where = whereSelect([]);
+	let where = whereSelect([]);
 	const make = element('button', '', 'Make it');
 	const progress = element('pre');
 	const close = () => {
@@ -110,10 +126,17 @@ const newArcadeCard = ({ remotes = () => [] } = {}) => {
 	);
 	card.elem.append(opener, form, progress);
 	opener.addEventListener('click', () => {
-		// The other paudes as the page knows them now
-		where.replaceWith((form.where = whereSelect(remotes())));
 		card.elem.classList.add('open');
 		name.focus();
+		otherPaudes(found => {
+			remotes = found;
+
+			const picker = whereSelect(remotes);
+
+			picker.value = remotes.some(remote => remote.url === where.value) ? where.value : '';
+			where.replaceWith(picker);
+			where = picker;
+		});
 	});
 	form.addEventListener('keydown', event => event.key === 'Escape' && close());
 	form.addEventListener('submit', async event => {
@@ -124,8 +147,7 @@ const newArcadeCard = ({ remotes = () => [] } = {}) => {
 		make.disabled = true;
 		progress.textContent = '';
 
-		const picked = form.where ?? where;
-		const remote = remotes().find(other => other.url === picked.value) ?? null;
+		const remote = remotes.find(other => other.url === where.value) ?? null;
 		const made = await makeArcade(
 			{ name: name.value.trim(), player: player.value.trim(), reading: reading.value },
 			remote,

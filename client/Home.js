@@ -140,9 +140,7 @@ export default class Home extends View {
 			projects: () => this.projectList(),
 			fetchProject: (project, page) => this.projectSessions(project, page),
 			extra: [this.adder],
-			always: [
-				newArcadeCard({ remotes: () => this.remotes ?? [], openThere: (remote, to) => this.openThere(remote, to) }),
-			],
+			always: [newArcadeCard()],
 		});
 
 		this.load();
@@ -331,9 +329,6 @@ export default class Home extends View {
 			identity()?.remotes ? getRemotes() : { body: [] },
 		]);
 		const reachable = (remotes ?? []).filter(remote => !remote.error);
-
-		// For the new-game card: where a game can be made besides here
-		this.remotes = reachable;
 
 		if (remotes) setServers(remotes);
 

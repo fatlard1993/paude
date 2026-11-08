@@ -36,11 +36,13 @@ const TRUST_PRESSES = 6;
 
 // What Claude may do in the game without asking: read anything in it (the libraries' docs under node_modules
 // included), change its files, look around with the shell's read-only commands, and run what checks and builds it.
-// Anything that reaches out or destroys is refused outright, and a command beyond these asks, which the arcade shows
-// to the owner alone: a kid's session must not stop on a question only a grown-up can answer.
+// Anything that reaches out or destroys is refused outright. What's left between is auto mode's to answer, and the
+// rare question it still asks is shown to the owner alone: a kid's session must not stop on one.
 export const claudeSettings = {
 	permissions: {
-		defaultMode: 'acceptEdits',
+		// Auto mode, as a session of the owner's runs: its classifier answers what the allow list doesn't, so nothing
+		// waits on a grown-up for a routine command; the deny list still holds whatever it would allow
+		defaultMode: 'auto',
 		allow: [
 			'Read',
 			'Glob',
@@ -132,6 +134,10 @@ export const arcadeInstructions = ({ title, player, reading }) =>
 		`# Building ${title} together`,
 		'',
 		`You are making this game with ${player || 'a kid'}, who is young. They decide what the game is and what happens next; you do all the building. A grown-up who owns this paude may write in the same conversation now and then; follow what they say.`,
+		'',
+		'## The game is already running',
+		'',
+		'The game\'s server runs under paude as the project\'s `dev` task, and the kid sees the game live beside this conversation: it rebuilds and reloads itself every time you save a file. Never start, stop or restart it, and never run `bun run dev` yourself. "Show me" means say in a line what to look at or tap in the game they already see. If the game looks broken, fix the file; paude restarts the server itself if it ever dies.',
 		'',
 		'## Every turn',
 		'',

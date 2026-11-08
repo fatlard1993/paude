@@ -33,6 +33,7 @@ describe('arcadeInstructions', () => {
 		expect(text).toContain('cannot read yet');
 		expect(text).toContain('AskUserQuestion');
 		expect(text).toContain('never through shell commands');
+		expect(text).toContain('Never start, stop or restart it');
 	});
 
 	test('has a voice for every reading level', () => {
@@ -107,7 +108,7 @@ describe('acceptTrust', () => {
 
 describe('claudeSettings', () => {
 	test('lets Claude read, edit and check the game without asking, and refuses what reaches out or destroys', () => {
-		expect(claudeSettings.permissions.defaultMode).toBe('acceptEdits');
+		expect(claudeSettings.permissions.defaultMode).toBe('auto');
 		expect(claudeSettings.permissions.allow).toEqual(expect.arrayContaining(['Read', 'Edit', 'Bash(bun run *)']));
 		expect(claudeSettings.permissions.allow).not.toContainEqual(expect.stringMatching(/^Bash\(\*|Bash\(rm|push/));
 		expect(claudeSettings.permissions.deny).toEqual(expect.arrayContaining(['Bash(git push*)', 'Bash(sudo *)']));

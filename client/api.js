@@ -315,6 +315,10 @@ export const answerAsking = async (sessionId, question, key, text) =>
 	});
 
 // After a usage limit: 'now', 'reset' (carry on when it resets) or 'cancel' (stop waiting for that)
+// Claude ended and resumed in the same conversation, as the owner: its settings read again, a hung one back
+export const restartSession = async sessionId =>
+	await POST('/api/sessions/:id/restart', { urlParameters: { id: sessionId } });
+
 export const continueAfterLimit = async (sessionId, when) =>
 	await POST('/api/sessions/:id/continue', { urlParameters: { id: sessionId }, body: { when } });
 

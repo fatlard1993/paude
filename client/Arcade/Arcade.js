@@ -9,6 +9,7 @@ import {
 	getShares,
 	getTasks,
 	logout,
+	restartSession,
 	runTask,
 	sendPrompt,
 	shelveArcade,
@@ -36,6 +37,8 @@ const BACK_BYTES = 150_000;
 const SHOWN_HISTORY = 4;
 const GAME_CHECK_EVERY = 5;
 const DEV_TASK = 'package.json:dev';
+// A game server found down is started again at most this often
+const RESTART_EVERY_MS = 60_000;
 const NUDGE = /^keep-?warm ping/i;
 const PREFS = { speak: 'paude.arcade.speak', size: 'paude.arcade.size' };
 const SIZES = [
@@ -148,6 +151,13 @@ export default class Arcade extends View {
 		this.title.style.whiteSpace = 'nowrap';
 		bar.elem.append(this.title);
 		ghostButton(bar, { icon: 'rotate-right', title: 'Reload the game', onPress: () => this.reloadGame() });
+		if (owner)
+			ghostButton(bar, {
+				icon: 'power-off',
+				title:
+					'Restart Claude: start it over in this same conversation, reading its rules again; for one that is stuck',
+				onPress: () => this.restartClaude(),
+			});
 		this.shelfButton = ghostButton(bar, {
 			icon: 'box-archive',
 			title: "Put it on the house shelf: run as one of the house's games, at a name of its own",
@@ -686,6 +696,23 @@ export default class Arcade extends View {
 		if (this.prefs.speak) this.enqueue("It's back the way it was.");
 	}
 
+	async restartClaude() {
+		const confirmed = await confirmDialog({
+			header: 'Restart Claude?',
+			body: 'It stops what Claude is doing right now and starts it again in this same conversation, with its rules read fresh. The game keeps running.',
+			confirmLabel: 'Restart',
+		});
+
+		if (!confirmed) return;
+		this.notice('Restarting Claude…', 'info');
+
+		const { body, response } = await restartSession(this.id);
+
+		if (response?.ok) this.notice('Claude is back', 'info');
+		else this.notice(typeof body === 'string' && body ? body : 'Claude could not be restarted', 'danger');
+		this.clearAsking();
+	}
+
 	async shelve() {
 		const name = this.arcade?.title || this.title.textContent;
 		const confirmed = await confirmDialog({
@@ -730,11 +757,19 @@ export default class Arcade extends View {
 		}
 
 		this.gameUrl = null;
-		if (!identity()?.owner) return this.waitingRoom('Claude is getting the game ready…');
+		if (!identity()?.owner) return this.waitingRoom('The game is getting ready…');
 
 		const tasks = await getTasks(this.id);
 		const running = tasks.body?.runs?.some(run => run.taskId === DEV_TASK && run.code === undefined);
 
+		// Down (it crashed, or the session slept and woke): started again by itself, with the button for a stubborn one
+		if (!running && Date.now() - (this.restartedAt ?? 0) > RESTART_EVERY_MS) {
+			this.restartedAt = Date.now();
+			this.waitingRoom('The game is starting…');
+			await runTask(this.id, DEV_TASK).catch(() => {});
+
+			return;
+		}
 		this.waitingRoom(running ? 'The game is starting…' : 'The game is not running', !running);
 	}
 

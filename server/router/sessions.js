@@ -69,7 +69,14 @@ import {
 } from '../projects';
 import { sessionRecord } from '../sessions/record';
 import { listAllSessions, listProjectSessions, toSummary } from '../sessions/stored';
-import { allRunning, openSession, runningSession, startFailureOf, startSession } from '../sessions/running';
+import {
+	allRunning,
+	openSession,
+	runningSession,
+	startFailureOf,
+	startSession,
+	stopSession,
+} from '../sessions/running';
 import {
 	WorktreeError,
 	checkoutsOf,
@@ -747,6 +754,22 @@ const sessionsRoutes = async (request, server) => {
 	}
 
 	// After a usage limit: carry on now ('now'), once it resets ('reset'), or stop waiting for that ('cancel')
+	// Claude started over in the same conversation: ended and resumed, so it reads its settings and instructions
+	// again, and a hung one comes back. The owner's: it ends whatever Claude was doing.
+	match = requestMatch('POST', '/api/sessions/:id/restart', request);
+	if (match) {
+		if (!identity.owner) return new Response("Restarting Claude is the owner's", { status: 403 });
+		if (!(await sessionRecord(match.id))) return new Response('Session not found', { status: 404 });
+
+		await stopSession(match.id);
+
+		const session = await openSession(match.id);
+
+		return session
+			? new Response(null, { status: 204 })
+			: new Response('Claude could not be started again', { status: 502 });
+	}
+
 	match = requestMatch('POST', '/api/sessions/:id/continue', request);
 	if (match) {
 		if (!may(identity, 'type', match.id)) return new Response('Continuing takes the drive role', { status: 403 });

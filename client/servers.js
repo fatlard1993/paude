@@ -6,6 +6,9 @@ import { serverName } from './identity';
 let servers = null;
 const listeners = new Set();
 
+// The other servers as last found, for a page that needs them before asking again: the reachable ones
+export const knownServers = () => (servers ?? []).filter(server => !server.error);
+
 export const setServers = found => {
 	servers = found;
 	for (const listener of listeners) listener(servers);
