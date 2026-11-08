@@ -6,6 +6,7 @@ import {
 	getSession,
 	restartSession,
 	sendPrompt,
+	sessionOrigin,
 	undoArcadeTurn,
 } from '../api';
 import confirmDialog from '../confirmDialog';
@@ -15,6 +16,7 @@ import { openMenu } from '../menu';
 import { canListen, canSpeak, displayTokens, listen, speak, spokenText, stopSpeaking, wordsOf } from '../speech';
 import { recall, remember } from '../storage';
 import { toolIcon, toolWord } from '../toolIcons';
+import attach from '../Terminal/attach';
 import Talk from './ArcadeTalk.styles';
 import sayQueue from './sayQueue';
 
@@ -92,6 +94,16 @@ export default class ArcadeTalk extends Talk {
 
 		this.buildTalk();
 		this.applySize();
+		// Attached as the page's own client, so whoever is here is aboard the ship (a guest beside the grey) and the
+		// session knows them; what it says and asks still comes by polling, which works for a page the socket can't reach
+		this.connection = attach(this.id, {
+			url: sessionOrigin(this.id),
+			hello: () => ({ kind: 'web', label: 'arcade' }),
+			onOutput: () => {},
+			onMessage: () => {},
+			onState: () => {},
+		});
+		this.addCleanup('attached', () => this.connection.close());
 
 		this.addCleanup('poll', () => {
 			this.left = true;
