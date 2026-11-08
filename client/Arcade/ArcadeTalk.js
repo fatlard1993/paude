@@ -15,7 +15,7 @@ import { canType, identity } from '../identity';
 import { openMenu } from '../menu';
 import { canListen, canSpeak, displayTokens, listen, speak, spokenText, stopSpeaking, wordsOf } from '../speech';
 import { recall, remember } from '../storage';
-import { toolIcon, toolWord } from '../toolIcons';
+import { toolDoing, toolIcon, toolWord } from '../toolIcons';
 import attach from '../Terminal/attach';
 import Talk from './ArcadeTalk.styles';
 import sayQueue from './sayQueue';
@@ -347,7 +347,8 @@ export default class ArcadeTalk extends Talk {
 			if (!entry.old) this.heardFromAt = Date.now();
 			if (entry.kind === 'tool') {
 				this.noteDid(entry);
-				if (!entry.old) this.lastAct = `${toolWord(entry.name)}${entry.file ? ` ${entry.file.split('/').pop()}` : ''}`;
+				if (!entry.old)
+					this.lastAct = `${toolDoing(entry.name)}${entry.file && entry.name !== 'Bash' ? ` ${entry.file.split('/').pop()}` : ''}`;
 				continue;
 			}
 			if (entry.kind === 'text' && !entry.old) this.lastAct = 'thinking what to say';

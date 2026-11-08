@@ -34,6 +34,26 @@ export const TOOL_WORDS = {
 	AskUserQuestion: 'asked',
 };
 
+// What Claude is at, while it is: for a status line ("Claude is changing Play.js")
+export const TOOL_DOING = {
+	Read: 'looking at',
+	Edit: 'changing',
+	MultiEdit: 'changing',
+	Write: 'making',
+	NotebookEdit: 'changing',
+	Bash: 'running a command',
+	Grep: 'searching',
+	Glob: 'searching',
+	WebFetch: 'looking something up',
+	WebSearch: 'looking something up',
+	Task: 'getting help',
+	Agent: 'getting help',
+	TodoWrite: 'planning',
+	AskUserQuestion: 'asking',
+};
+
 export const toolIcon = name => TOOL_ICONS[name] ?? 'wrench';
+
+export const toolDoing = name => TOOL_DOING[name] ?? 'working';
 
 export const toolWord = name => TOOL_WORDS[name] ?? 'worked';
