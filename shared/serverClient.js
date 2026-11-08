@@ -3,7 +3,8 @@ import { byWatchedThenRecent } from './projects';
 
 const TIMEOUT_MS = 8000;
 
-const serverFetch = async ({ url, token }, route, init = {}) => {
+// A call to a server as this machine, with its saved token: the response itself, for what streams or isn't JSON
+export const serverFetch = async ({ url, token }, route, init = {}) => {
 	const response = await fetch(`${url}${route}`, {
 		...init,
 		tls: trustedCertificates(),

@@ -44,7 +44,15 @@ import { SpeechError, hear, readAloud } from '../speech';
 import { runTask } from '../tasks';
 import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
-import { connectRemote, listRemotes, remoteApi, remoteLink, remoteServer, remoteSessions } from '../remotes';
+import {
+	connectRemote,
+	listRemotes,
+	remoteApi,
+	remoteArcade,
+	remoteLink,
+	remoteServer,
+	remoteSessions,
+} from '../remotes';
 import { trustedCertificates } from '../../shared/certificates';
 import { mayListRemotes } from '../serverSettings';
 import { sessionTurns } from '../sessions/history';
@@ -263,8 +271,8 @@ const sessionsRoutes = async (request, server) => {
 	}
 
 	if (requestMatch('POST', '/api/remotes/open', request)) {
-		const { url, sessionId, project, home, draft, lifetime } = await request.json();
-		const link = await remoteLink(url, { sessionId, project, home, draft, lifetime });
+		const { url, sessionId, arcade, project, home, draft, lifetime } = await request.json();
+		const link = await remoteLink(url, { sessionId, arcade, project, home, draft, lifetime });
 
 		return link ? Response.json({ link }) : new Response('Not one of your servers', { status: 404 });
 	}
@@ -285,6 +293,27 @@ const sessionsRoutes = async (request, server) => {
 			return sent === undefined
 				? new Response('Not one of your servers', { status: 404 })
 				: new Response(null, { status: 204 });
+		} catch (error) {
+			return new Response(error.message, { status: 502 });
+		}
+	}
+
+	// A new arcade game on another server, made there as its owner: its progress streamed through, then { id }
+	if (requestMatch('POST', '/api/remotes/arcade', request)) {
+		const { url, ...game } = await request.json();
+
+		try {
+			const there = await remoteArcade(url, game);
+
+			if (there === undefined) return new Response('Not one of your servers', { status: 404 });
+
+			return new Response(there.body, {
+				status: there.status,
+				headers: {
+					'content-type': there.headers.get('content-type') ?? 'application/x-ndjson',
+					'cache-control': 'no-cache',
+				},
+			});
 		} catch (error) {
 			return new Response(error.message, { status: 502 });
 		}

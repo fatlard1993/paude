@@ -45,11 +45,11 @@ if (joinToken) {
 	} else joinFailed = true;
 }
 
-// A handoff from another server: a code to log in with, where to go, and for a project page a prompt to start with
+// A handoff from another server: a code to log in with, where to go (a session, its arcade, a project), and for a project page a prompt to start with
 // and how long its session should last
 const [, handoffCode, handoffTo, handoffProject, handoffLifetime, handoffDraft] =
 	window.location.hash.match(
-		/^#\/handoff\/([^/]+)(\/sessions\/[^/]+|\/projects\/([^/]+))?(?:\/lifetime\/(\w+))?(?:\/draft\/(.+))?$/,
+		/^#\/handoff\/([^/]+)(\/sessions\/[^/]+|\/arcade\/[^/]+|\/projects\/([^/]+))?(?:\/lifetime\/(\w+))?(?:\/draft\/(.+))?$/,
 	) ?? [];
 
 if (handoffCode) {

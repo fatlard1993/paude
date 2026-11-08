@@ -5,7 +5,9 @@ import { readProgress, recentLines } from '../../shared/progress';
 import { button, element } from '../dom';
 
 // The home page's way into the arcade: name the game and who's building it, and paude makes a project from the game
-// scaffold, starts Claude in it on the kid's terms, and opens the arcade page on it
+// scaffold, starts Claude in it on the kid's terms, and opens the arcade page on it. On this paude, or on any other
+// this machine is logged into (remotes(): the reachable ones, as the home page has them), where the game then lives
+// and runs; openThere(remote, { arcade }) takes the browser to the arcade there.
 const Card = styled(
 	Elem,
 	({ colors, radius, space }) => `
@@ -77,13 +79,14 @@ const Card = styled(
 	`,
 );
 
-const newArcadeCard = () => {
+const newArcadeCard = ({ remotes = () => [], openThere } = {}) => {
 	const card = new Card({});
 	const opener = element('button', 'open-form variant-flat', '🕹️ New arcade game');
 	const form = element('form');
 	const name = element('input');
 	const player = element('input');
 	const reading = element('select');
+	const where = element('select');
 	const hint = element('div', 'meta');
 	const make = element('button', '', 'Make it');
 	const progress = element('pre');
@@ -129,10 +132,12 @@ const newArcadeCard = () => {
 		make.disabled = true;
 		progress.textContent = '';
 
-		const response = await fetch('/api/arcade', {
+		const game = { name: name.value.trim(), player: player.value.trim(), reading: reading.value };
+		const remote = remotes().find(other => other.url === where.value) ?? null;
+		const response = await fetch(remote ? '/api/remotes/arcade' : '/api/arcade', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ name: name.value.trim(), player: player.value.trim(), reading: reading.value }),
+			body: JSON.stringify(remote ? { url: remote.url, ...game } : game),
 		}).catch(() => null);
 		let output = '';
 		let made = { error: 'Could not reach the server.' };
@@ -148,7 +153,8 @@ const newArcadeCard = () => {
 		make.disabled = false;
 		if (made?.id) {
 			close();
-			window.location.hash = `#/arcade/${made.id}`;
+			if (remote) openThere?.(remote, { arcade: made.id });
+			else window.location.hash = `#/arcade/${made.id}`;
 		} else {
 			card.elem.classList.remove('making');
 			new Notify({ intent: 'danger', content: made?.error || 'The game could not be made.' });

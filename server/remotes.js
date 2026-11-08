@@ -2,7 +2,7 @@ import os from 'os';
 
 import { allTokens, normalizeUrl, saveToken, serverNames } from '../shared/credentials';
 import { trustedCertificates } from '../shared/certificates';
-import { serverApi, serverPage, visitServer } from '../shared/serverClient';
+import { serverApi, serverFetch, serverPage, visitServer } from '../shared/serverClient';
 import { getServerId } from './auth';
 
 // The tokens in the paude command's credentials file stay on this server; the browser only gets what they fetch
@@ -35,10 +35,11 @@ export const listRemotes = async () => {
 	return remotes.filter(Boolean);
 };
 
-// A link that logs this browser in there and opens a session, a project page, or its home page
-export const remoteLink = async (url, { sessionId, project, home, draft, lifetime }) => {
+// A link that logs this browser in there and opens a session (or its arcade), a project page, or its home page
+export const remoteLink = async (url, { sessionId, arcade, project, home, draft, lifetime }) => {
 	const server = (await remoteServers()).find(remote => remote.url === url);
 	const to =
+		(typeof arcade === 'string' && /^[\w-]+$/.test(arcade) && `/arcade/${arcade}`) ||
 		(typeof sessionId === 'string' && /^[\w-]+$/.test(sessionId) && `/sessions/${sessionId}`) ||
 		(typeof project === 'string' && project && !project.includes('/') && `/projects/${encodeURIComponent(project)}`) ||
 		(home === true && '');
@@ -155,4 +156,21 @@ export const connectRemote = async ({ url: given, password, name }) => {
 	await saveToken(url, token, name?.trim() || undefined, { makeDefault: false });
 
 	return { url, name: name?.trim() || new URL(url).host };
+};
+
+// How long making a game there may take: the scaffold's install, mostly
+const ARCADE_TIMEOUT_MS = 10 * 60 * 1000;
+
+// A new arcade game made on another server, as its owner: its streamed answer (what the install prints, then the
+// session's id), passed through as it comes; undefined for a server this machine isn't logged into
+export const remoteArcade = async (url, body) => {
+	const server = await remoteServer(url);
+
+	if (!server) return undefined;
+
+	return serverFetch(server, '/api/arcade', {
+		method: 'POST',
+		body: JSON.stringify(body),
+		signal: AbortSignal.timeout(ARCADE_TIMEOUT_MS),
+	});
 };

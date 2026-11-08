@@ -367,6 +367,40 @@ test("another paude's sessions and projects are relayed only for this machine's 
 	expect((await call('/api/remotes/at/%E0%A4%A/api/sessions/a', { token: tokens.local })).status).toBe(404);
 });
 
+test("a new arcade game on another paude is made only for this machine's own logins, and only on one of its servers", async () => {
+	const game = { name: 'Moon Rocks', player: 'Ada', reading: 'learning' };
+
+	// Not this machine's login: refused before anything is relayed
+	expect(
+		(
+			await call('/api/remotes/arcade', {
+				method: 'POST',
+				token: tokens.owner,
+				body: { url: 'https://example.invalid', ...game },
+			})
+		).status,
+	).toBe(403);
+	// Not one of its servers
+	const refused = await call('/api/remotes/arcade', {
+		method: 'POST',
+		token: tokens.local,
+		body: { url: 'https://example.invalid', ...game },
+	});
+
+	expect(refused.status).toBe(404);
+	expect(await refused.text()).toBe('Not one of your servers');
+	// A link there may open a session's arcade, and nothing but a session's id names one
+	expect(
+		(
+			await call('/api/remotes/open', {
+				method: 'POST',
+				token: tokens.local,
+				body: { url: 'https://example.invalid', arcade: 'a' },
+			})
+		).status,
+	).toBe(404);
+});
+
 test('a file a session made on another paude comes through the relay as it is, with the headers that keep it so', async () => {
 	const far = Bun.serve({
 		port: 0,
