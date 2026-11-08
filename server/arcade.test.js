@@ -32,6 +32,7 @@ describe('arcadeInstructions', () => {
 		expect(text).toContain('with Ada,');
 		expect(text).toContain('cannot read yet');
 		expect(text).toContain('AskUserQuestion');
+		expect(text).toContain('Do not offer "show me"');
 		expect(text).toContain('never through shell commands');
 		expect(text).toContain('Never start, stop or restart it');
 	});

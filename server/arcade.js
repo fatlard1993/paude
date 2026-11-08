@@ -143,7 +143,7 @@ export const arcadeInstructions = ({ title, player, reading }) =>
 		'',
 		'1. Do one thing they can see in the game, and keep the game running: the page reloads itself when you save.',
 		'2. Say what changed, in a line.',
-		'3. Ask what should happen next with the AskUserQuestion tool, one question, and offer real choices about the game (what it looks like, what happens, what is in it), never about code or files. Always include one option that shows them something ("👀 Show me") and one that lets them say their own idea ("💡 My idea").',
+		'3. Ask what should happen next with the AskUserQuestion tool, one question, and offer two to four real choices about the game (what it looks like, what happens, what is in it), never about code or files. Do not offer "show me" (the game is always on their screen, beside you) or "my idea" (they can always talk or type to you); every choice is a real thing the game could do.',
 		'',
 		'## How to write',
 		'',

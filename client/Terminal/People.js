@@ -14,6 +14,8 @@ const EXPIRIES = [
 	[1, '1 hour'],
 	[24, '1 day'],
 	[24 * 7, '7 days'],
+	[24 * 30, '30 days'],
+	[24 * 365, 'A year'],
 ];
 
 const select = options => {
@@ -32,7 +34,10 @@ const select = options => {
 const remaining = expires => {
 	const hours = Math.max(0, Math.round((expires - Date.now()) / 3_600_000));
 
-	return hours < 24 ? `${hours}h left` : `${Math.round(hours / 24)}d left`;
+	if (hours < 24) return `${hours}h left`;
+	if (hours < 24 * 60) return `${Math.round(hours / 24)}d left`;
+
+	return `${Math.round(hours / 24 / 30)}mo left`;
 };
 
 // Refused, the link is still selectable in its field
