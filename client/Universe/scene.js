@@ -956,6 +956,8 @@ export default class Ship {
 	drift = 0;
 	pace = 1;
 	hits = [];
+	// Thought bubbles over the greys and monitors thinking this frame, drawn last so none hides behind a screen
+	thoughts = [];
 	time = 0;
 	width = 0;
 	height = 0;
@@ -2244,6 +2246,7 @@ export default class Ship {
 	draw(ctx, ratio = 1) {
 		setTrim(this.own?.hue);
 		this.hits = [];
+		this.thoughts = [];
 		ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
 		ctx.imageSmoothingEnabled = false;
 		ctx.fillStyle = '#07090f';
@@ -2542,6 +2545,7 @@ export default class Ship {
 				this.drawWalker(ctx, walker);
 				this.drawWatchersOver(ctx, walker);
 			}
+		for (const thought of this.thoughts) this.drawConcentrating(ctx, thought);
 
 		const cover = this.coverOf();
 
@@ -4300,7 +4304,13 @@ export default class Ship {
 
 		drawSprite(ctx, (asking && !thinking) || prompting ? 'watcherPoint' : 'watcher', at.x, at.y, { colors });
 		if (thinking)
-			this.drawConcentrating(ctx, { x: at.x, top: at.y - WATCHER_TALL, w: 9, h: 16, seed: worker.seed ?? 0 });
+			this.thoughts.push({
+				x: at.x,
+				top: at.y - WATCHER_TALL,
+				w: 9,
+				seed: worker.seed ?? 0,
+				ceiling: this.ceilingOf(this.bridge),
+			});
 		if (raised > 0) {
 			const bob = raised === 1 && !prompting && Math.floor(this.time * 3) % 2 ? 1 : 0;
 
@@ -5305,7 +5315,7 @@ export default class Ship {
 		}
 		if (!watching && !walking && worker.seat && drinkOf(session) && this.drinking(worker))
 			this.drawSip(ctx, worker, at, neck);
-		if (thinking) this.drawConcentrating(ctx, { x: at.x, top, w, h, seed: worker.seed });
+		if (thinking) this.thoughts.push({ x: at.x, top, w, seed: worker.seed, ceiling: this.ceilingOf(worker.room) });
 		if (dozing) {
 			const rise = (this.time * 0.8 + worker.seed) % 1;
 
@@ -5635,14 +5645,32 @@ export default class Ship {
 	// its skull glowing softly, brightening and dimming slowly as it mulls it over
 	// Thinking: a thought bubble up and to the right of its head (`top` its crown, `w` its width), two small bubbles
 	// leading to a cloud in which three dots come one after another, the whole drifting up and down a pixel
-	drawConcentrating(ctx, { x, top, w, seed }) {
+	// The top of a room in art pixels, under which what's drawn in it stays lit; nothing, for one not in a room
+	ceilingOf(room) {
+		return room?.y === undefined ? undefined : this.art({ x: 0, y: room.y }).y;
+	}
+
+	// A thought bubble up and to the right of a head whose crown is at (x, top): two small bubbles leading to a cloud in
+	// which three dots come one after another. Where the cloud would rise past `ceiling` (the room's top, beyond which
+	// it's dark), it sits beside the head instead, as high as it may. Drawn over the whole scene, after the lighting, so
+	// it reads the same in every room.
+	drawConcentrating(ctx, { x, top, w, seed, ceiling }) {
 		const drift = Math.round(Math.sin((this.time / THINK_DRIFT + seed) * TAU));
 		const temple = x + Math.ceil(w / 2);
 		const cloud = { x: temple + 1, y: top - 14 + drift, w: 11, h: 7 };
 		const dots = Math.floor(this.time * 2.5 + seed * 3) % 3;
 
-		rect(ctx, temple, top - 2 + drift, 1, 1, PALETTE.W);
-		rect(ctx, temple + 2, top - 6 + drift, 2, 2, PALETTE.W);
+		if (ceiling !== undefined && cloud.y < ceiling + 1) {
+			cloud.x += Math.min(10, ceiling + 1 - cloud.y);
+			cloud.y = ceiling + 1;
+		}
+
+		// The small bubbles, from the temple toward the cloud's near corner
+		const foot = { x: temple, y: top - 1 + drift };
+		const span = { x: cloud.x + 1 - foot.x, y: foot.y - (cloud.y + cloud.h) };
+
+		rect(ctx, foot.x + Math.round(span.x * 0.2), foot.y - 1 - Math.round(span.y * 0.2), 1, 1, PALETTE.W);
+		rect(ctx, foot.x + Math.round(span.x * 0.55), foot.y - 3 - Math.round(span.y * 0.55), 2, 2, PALETTE.W);
 		// The cloud: a box with its corners off, rimmed in grey so it reads against a white screen too
 		rect(ctx, cloud.x + 1, cloud.y, cloud.w - 2, cloud.h, PALETTE.l);
 		rect(ctx, cloud.x, cloud.y + 1, cloud.w, cloud.h - 2, PALETTE.l);
