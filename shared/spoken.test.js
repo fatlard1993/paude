@@ -56,7 +56,8 @@ describe('emojiName', () => {
 		expect(emojiName('⭐')).toBe('star');
 		expect(emojiName('❤️')).toBe('heart');
 		expect(emojiName('👍🏽')).toBe('thumbs up');
-		expect(emojiName('👩‍🚀')).toMatch(/woman/);
+		expect(emojiName('👩‍🚀')).toBe('astronaut');
+		expect(emojiName('👩‍🎤')).toMatch(/woman/);
 		expect(emojiName('🧀')).toBe('cheese wedge');
 		expect(emojiName('x')).toBe('');
 	});

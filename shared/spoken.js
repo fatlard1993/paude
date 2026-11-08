@@ -21,9 +21,10 @@ export const spokenText = text =>
 // What a voice says for an emoji (a voice given the emoji itself says nothing): its name, short, or '' for one with
 // none. A joined sequence (a family, a woman astronaut) goes by its first part.
 export const emojiName = emoji => {
-	const base = String(emoji).replace(DRESSING, '').split('\u200D')[0];
+	const whole = String(emoji).replace(DRESSING, '');
+	const base = whole.split('\u200D')[0];
 
-	return EMOJI_NAMES[base] ?? EMOJI_NAMES[[...base][0]] ?? '';
+	return EMOJI_NAMES[whole] ?? EMOJI_NAMES[base] ?? EMOJI_NAMES[[...base][0]] ?? '';
 };
 
 // The words of a text, each with where it starts in the text
