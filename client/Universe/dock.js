@@ -49,6 +49,9 @@ export const VERBS = [
 	{ key: 'game', hotkey: 'v', allowed: () => true },
 ].map(verb => ({ ...verb, label: PANELS[verb.key].label }));
 
+// The arcade's panels, for a session that is one (a game a kid builds)
+export const ARCADE_VERBS = ['arcade', 'game'];
+
 // A session's panels docked beside the universe, one showing at a time, each built when first wanted and wired to the
 // others as on the session page; the chat on a connection of its own
 export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose, onForked }) => {
@@ -58,7 +61,9 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose,
 	const panels = new Map();
 	// Another paude's session's panels reach it through this paude, its side shell's socket among them
 	const { remote } = session.engine;
-	const verbs = VERBS.filter(({ key, allowed }) => allowed() && (key !== 'terminal' || live));
+	const verbs = VERBS.filter(
+		({ key, allowed }) => allowed() && (key !== 'terminal' || live) && (!ARCADE_VERBS.includes(key) || session.arcade),
+	);
 	let connection;
 	let showing;
 

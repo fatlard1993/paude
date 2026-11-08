@@ -7,6 +7,7 @@ import { sessionHue } from '../shared/hues';
 import { roleAllows } from '../shared/roles';
 import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
+import { isArcade } from './arcade';
 
 import { activitySummary, identityKey, watchedBy, watchesProject } from './activity';
 import { isArchived } from './archive';
@@ -514,6 +515,7 @@ const stoppedOf = async (identity, id) => {
 		...activitySummary(identity, id, { running: false, project }),
 		tool: null,
 		reply: replyOf(id),
+		arcade: (await isArcade(record.cwd)) || undefined,
 		born: (await bornOf(id, record.cwd)) ?? record.stored?.lastModified ?? undefined,
 		stoppedAgo: record.stored?.lastModified ? Date.now() - record.stored.lastModified : undefined,
 		coldAgo: await coldAt(id, record.cwd, record.stored?.lastModified).then(at =>
@@ -602,6 +604,8 @@ export const universe = async identity => {
 				...activitySummary(identity, session.id, { running: true, busy: session.busy, project }),
 				tool: lastTools.get(session) ?? null,
 				reply: replyOf(session.id),
+				// A game a kid builds: its dock offers the arcade's panels
+				arcade: (await isArcade(session.cwd)) || undefined,
 				asking: session.asking() ?? undefined,
 				checkout: roots.get(session) ?? undefined,
 				context: context ?? undefined,

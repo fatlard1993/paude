@@ -294,6 +294,25 @@ export const acceptTrust = async (session, { waitMs = TRUST_WAIT_MS, pollMs = TR
 	return false;
 };
 
+// Whether a folder is an arcade, for every session summary the universe makes: the marker's presence, remembered a
+// little while so a poll doesn't stat every session's folder
+const ARCADE_KNOWN_MS = 30_000;
+const arcadeKnown = new Map();
+
+export const isArcade = async cwd => {
+	if (!cwd) return false;
+
+	const known = arcadeKnown.get(cwd);
+
+	if (known && known.until > Date.now()) return known.is;
+
+	const is = Boolean(await arcadeOf(cwd));
+
+	arcadeKnown.set(cwd, { is, until: Date.now() + ARCADE_KNOWN_MS });
+
+	return is;
+};
+
 // The arcade a folder is, from its marker: { title, player, reading, made, shelf? }, or null for an ordinary project
 export const arcadeOf = async cwd => {
 	if (!cwd) return null;

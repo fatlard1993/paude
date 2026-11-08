@@ -273,12 +273,15 @@ export default class TerminalView extends View {
 			this.lifetimeButton.append(this.lifetimeText, this.lifetimeWas);
 			this.showLifetime('ordinary');
 		}
-		if (identity()?.owner)
-			ghostButton(header, {
+		// For a session that is an arcade (a game a kid builds), once the session says so
+		if (identity()?.owner) {
+			this.arcadeButton = ghostButton(header, {
 				icon: 'gamepad',
 				title: 'Arcade: this session as a kid plays it, the game beside the talk, read aloud',
 				onPress: () => (window.location.hash = `#/arcade/${this.options.id}`),
 			});
+			this.arcadeButton.style.display = 'none';
+		}
 		this.sharesButton = ghostButton(header, {
 			icon: PANELS.shares.icon,
 			title: panelTitle('shares'),
@@ -516,6 +519,7 @@ export default class TerminalView extends View {
 		if (!response?.ok) return;
 
 		this.project = body.project;
+		if (this.arcadeButton) this.arcadeButton.style.display = body.arcade ? '' : 'none';
 		this.paint(body.hue);
 		this.showWatching(body.watching);
 		this.showLifetime(body.lifetime, body.warmUntil, body.switched);
