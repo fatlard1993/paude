@@ -402,7 +402,7 @@ export const Stage = styled(
 			z-index: 3;
 			top: 12px;
 			right: 16px;
-			bottom: 72px;
+			bottom: 12px;
 			display: flex;
 			flex-direction: column;
 			gap: ${space.xs};
