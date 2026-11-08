@@ -1,4 +1,4 @@
-import { View } from '@vanilla-bean/components';
+import { View, appendStyles } from '@vanilla-bean/components';
 
 import { logout, shelveArcade } from '../api';
 import { Bar, ghostButton } from '../Bar';
@@ -14,6 +14,13 @@ import ArcadeTalk from './ArcadeTalk';
 // read aloud, answered by tapping a choice or talking. No terminal. The same session as its own page shows; this is
 // its arcade twin, for the owner too (to try it, or to sit beside the kid). The ship has the same two as panels of
 // the session's dock.
+const TOASTS_UP = `
+	body.arcade > .stacked {
+		bottom: auto !important;
+		top: calc(56px + env(safe-area-inset-top, 0px));
+	}
+`;
+
 export default class Arcade extends View {
 	build() {
 		this.id = this.options.id;
@@ -34,6 +41,11 @@ export default class Arcade extends View {
 			},
 		});
 		this.page.elem.append(stage);
+		// Whatever toasts the page still gets (a watched session needing the owner) go to the top: the bottom is where the
+		// kid's choices and box are
+		appendStyles(TOASTS_UP, 'arcade-toasts');
+		document.body.classList.add('arcade');
+		this.addCleanup('toasts', () => document.body.classList.remove('arcade'));
 		this.addCleanup('tabTitle', () => updateTabTitle({ page: '' }));
 		updateTabTitle({ page: 'Arcade' });
 	}

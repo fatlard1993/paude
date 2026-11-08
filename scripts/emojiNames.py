@@ -8,7 +8,15 @@ import unicodedata
 
 RANGES = [(0x2600, 0x27BF), (0x2B00, 0x2BFF), (0x1F000, 0x1F02F), (0x1F0A0, 0x1F0FF), (0x1F300, 0x1FAFF)]
 DROP = re.compile(r'^(white|black|heavy|medium|large|small|hollow)( (white|black|heavy|medium|large|small|hollow))*\s+(?=\w+( \w+)*$)')
+ANIMALS = ['zebra', 'frog', 'dog', 'cat', 'lion', 'tiger', 'cow', 'pig', 'monkey', 'horse', 'mouse', 'hamster', 'rabbit',
+           'bear', 'panda', 'koala', 'wolf', 'fox', 'unicorn', 'dragon', 'chicken', 'bird', 'polar bear']
 BY_HAND = {
+    '🔁': 'repeat', '🔄': 'again', '🔀': 'shuffle', '➡': 'right', '⬅': 'left', '⬆': 'up', '⬇': 'down', '▶': 'play',
+    '⏸': 'pause', '⏹': 'stop', '⏩': 'fast forward', '💥': 'boom', '🌊': 'wave', '💫': 'dizzy', '💤': 'sleepy',
+    '💬': 'speech bubble', '📣': 'megaphone', '🔔': 'bell', '🔑': 'key', '🔒': 'lock', '🔓': 'unlocked', '🧭': 'compass',
+    '🗺': 'map', '⏰': 'alarm clock', '⏳': 'hourglass', '🧮': 'abacus', '✏': 'pencil', '📝': 'notes', '🖍': 'crayon',
+    '🪣': 'bucket', '🏖': 'beach', '🏜': 'desert', '🏔': 'mountain', '🌋': 'volcano', '🪐': 'planet', '🌍': 'earth',
+    '🌎': 'earth', '🌏': 'earth', '🛰': 'satellite', '👨‍🚀': 'astronaut', '👩‍🚀': 'astronaut', '🧑‍🚀': 'astronaut',
     '⭐': 'star', '🌟': 'star', '✨': 'sparkles', '🚀': 'rocket', '🐸': 'frog', '👀': 'eyes', '💡': 'idea',
     '❤': 'heart', '💖': 'heart', '👍': 'thumbs up', '👎': 'thumbs down', '🎉': 'party', '🏁': 'finish flag',
     '🎮': 'game', '🕹': 'joystick', '↩': 'back', '✖': 'no', '✅': 'yes', '❌': 'no', '🐶': 'puppy', '🐱': 'kitty',
@@ -36,6 +44,11 @@ for start, end in RANGES:
             continue
         name = DROP.sub('', name)
         name = re.sub(r'\s+(sign|symbol|button)$', '', name)
+        # Said aloud, not read: what follows "with" is detail, and two words name a thing
+        name = re.sub(r'\s+with\s.*$', '', name)
+        name = ' '.join(name.split()[:2])
+        # An animal's face is the animal
+        name = re.sub(r'^(' + '|'.join(ANIMALS) + r') face$', r'\1', name)
         names[char] = name
 names.update(BY_HAND)
 

@@ -390,7 +390,9 @@ export default class ArcadeTalk extends Talk {
 		const card = element('div', 'card claude');
 		const words = [];
 
-		// Each token the voice says is a word to light, an emoji by its name among them
+		// Each token the voice says lights as it's said, an emoji by its name (a word or a few) among them
+		const owners = [];
+
 		for (const paragraph of displayTokens(text)) {
 			const line = element('p');
 
@@ -399,6 +401,7 @@ export default class ArcadeTalk extends Talk {
 
 				if (token.spoken) {
 					span.dataset.spoken = token.spoken;
+					for (const _ of wordsOf(token.spoken)) owners.push(words.length);
 					words.push(span);
 				}
 				line.append(span, ' ');
@@ -407,9 +410,14 @@ export default class ArcadeTalk extends Talk {
 		}
 		card.words = words;
 		card.spokenText = words.map(span => span.dataset.spoken).join(' ');
+		card.lightWord = index => {
+			const owner = index === -1 ? -1 : owners[index];
+
+			words.forEach((span, at) => span.classList.toggle('lit', at === owner));
+		};
 		if (canSpeak() && words.length)
 			card.prepend(
-				button('', () => this.say(card.spokenText, card), {
+				button('', () => this.sayAgain(card), {
 					icon: 'volume-high',
 					className: 'say icon-only variant-flat',
 					title: 'Say it again',
@@ -515,16 +523,25 @@ export default class ArcadeTalk extends Talk {
 			card?.lightWord
 				? card.lightWord(index)
 				: card?.words?.forEach((span, at) => span.classList.toggle('lit', at === index));
-
-		this.saying = speak(text, {
+		const saying = speak(text, {
 			session: this.id,
 			onWord: light,
 			onEnd: () => {
 				light(-1);
+				// Stopped for a newer line, this one's end is not the queue's turn: that line has it
+				if (this.saying !== saying) return;
 				this.saying = null;
 				then?.();
 			},
 		});
+
+		this.saying = saying;
+	}
+
+	// A line asked for again, by its speaker button: said now, alone; whatever was queued waits for the next thing
+	sayAgain(card) {
+		this.queue = [];
+		this.say(card.spokenText, card);
 	}
 
 	// Choices

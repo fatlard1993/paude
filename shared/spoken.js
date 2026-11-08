@@ -36,8 +36,8 @@ export const wordsOf = text => {
 };
 
 // A text as the arcade shows it: paragraphs of tokens, each a word or one emoji (its own token, however it was
-// written), with what the voice says for each (`spoken`: the word, or the emoji's name, or '' for an emoji with none),
-// so the tokens spoken are exactly the voice's words, in order
+// written), with what the voice says for each (`spoken`: the word, or the emoji's name in a word or a few, or '' for
+// an emoji with none), so the tokens spoken, in order, are the voice's words
 export const displayTokens = text =>
 	String(text ?? '')
 		.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
@@ -52,7 +52,7 @@ export const displayTokens = text =>
 				.map(token => {
 					const emoji = token.replace(EMOJI, '') === '';
 
-					return { text: token, emoji, spoken: emoji ? emojiName(token).replace(/\s+/g, '-') : token };
+					return { text: token, emoji, spoken: emoji ? emojiName(token) : token };
 				}),
 		)
 		.filter(paragraph => paragraph.length);

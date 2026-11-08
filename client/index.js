@@ -71,7 +71,8 @@ updateTabTitle();
 
 if (authenticated) {
 	registerNotificationWorker();
-	startWatchAlerts(identity);
+	// A guest in the arcade has one session, in front of them: no alerts about it over their page
+	if (identity.view !== 'arcade') startWatchAlerts(identity);
 }
 
 const content = () => {
