@@ -165,7 +165,7 @@ export const Body = styled.Component`
 		top: auto;
 		left: 8px;
 		right: 8px;
-		height: min(var(--shell-height, 42%), calc(100% - 16px));
+		height: min(var(--shell-height, 100%), calc(100% - 16px));
 		transform: translateY(12px);
 	}
 
