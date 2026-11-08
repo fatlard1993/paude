@@ -47,6 +47,8 @@ const LAMPS = {
 const LONG_MS = 90_000;
 const STUCK_MS = 4 * 60_000;
 const LAMP_TICK_MS = 1000;
+// With nothing read aloud, a question for the player counts as taken in after this long
+const UNSPOKEN_REST_MS = 6000;
 
 const ago = ms => {
 	const seconds = Math.round(ms / 1000);
@@ -75,7 +77,8 @@ const splitEmoji = label => {
 
 export default class ArcadeTalk extends Talk {
 	// Options of the talk's own, not attributes of its element
-	static schema = { sessionId: {}, onStatus: {}, onArcade: {} };
+	// onRested: Claude waits on a question for the player and everything has been read; onBusy: Claude is at work
+	static schema = { sessionId: {}, onStatus: {}, onArcade: {}, onRested: {}, onBusy: {} };
 
 	build() {
 		this.id = this.options.sessionId;
@@ -85,7 +88,7 @@ export default class ArcadeTalk extends Talk {
 		this.gameUrl = null;
 		this.status = null;
 		this.ticks = 0;
-		this.voice = sayQueue({ session: this.id, say: speak });
+		this.voice = sayQueue({ session: this.id, say: speak, onIdle: () => this.rested() });
 		this.sent = [];
 		this.did = null;
 		this.asking = null;
@@ -310,6 +313,7 @@ export default class ArcadeTalk extends Talk {
 			this.statusSince = Date.now();
 			this.heardFromAt = Date.now();
 			this.lastAct = '';
+			if (session.status === 'working') this.options.onBusy?.();
 		}
 		this.status = session.status;
 		if (session.title !== undefined) this.options.onStatus?.(session);
@@ -605,8 +609,21 @@ export default class ArcadeTalk extends Talk {
 			this.choices.append(more);
 		}
 		this.feed.scrollTop = this.feed.scrollHeight;
-		if (player && this.prefs.speak)
-			this.readChoices(question, asking.options, { more: Boolean(player && asking.typing) });
+		this.shown = player ? { question, options: asking.options, more: Boolean(asking.typing) } : null;
+		clearTimeout(this.restTimer);
+		if (player && this.prefs.speak) this.readChoices(question, asking.options, { more: Boolean(asking.typing) });
+		else if (player) this.restTimer = setTimeout(() => this.rested(), UNSPOKEN_REST_MS);
+	}
+
+	// The question and its choices read again, for whoever comes back to them
+	readAsking() {
+		if (!this.shown || !this.prefs.speak) return;
+		this.readChoices(this.shown.question, this.shown.options, { more: this.shown.more });
+	}
+
+	// Nothing left to say, and Claude waiting on the player: time to play
+	rested() {
+		if (this.status === 'waiting' && this.asking && forPlayer(this.asking)) this.options.onRested?.();
 	}
 
 	async moreIdeas(asking) {
@@ -647,6 +664,8 @@ export default class ArcadeTalk extends Talk {
 
 	clearAsking() {
 		this.asking = null;
+		this.shown = null;
+		clearTimeout(this.restTimer);
 		if (this.asked === null) return;
 		this.asked = null;
 		this.choices.hidden = true;

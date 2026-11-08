@@ -3,7 +3,7 @@ import { View, appendStyles } from '@vanilla-bean/components';
 import { logout, shelveArcade } from '../api';
 import { Bar, ghostButton } from '../Bar';
 import confirmDialog from '../confirmDialog';
-import { element } from '../dom';
+import { button, element } from '../dom';
 import { identity } from '../identity';
 import { updateTabTitle } from '../tabTitle';
 import ArcadePage from './Arcade.styles';
@@ -39,7 +39,17 @@ export default class Arcade extends View {
 				this.arcade = arcade;
 				if (arcade && shelf && this.shelfButton) this.shelfButton.style.display = '';
 			},
+			// The loop a kid plays in: a change asked for, Claude's word on it read out, then the game alone to play,
+			// until the big button brings the talk back and reads the choices again
+			onRested: () => this.arcade && this.play(true),
+			onBusy: () => this.play(false),
 		});
+		this.changeButton = button('Change the game', () => this.changeIt(), {
+			icon: 'wand-magic-sparkles',
+			className: 'change-button',
+			title: 'Back to Claude: hear the choices and pick what happens next',
+		});
+		stage.append(this.changeButton);
 		this.page.elem.append(stage);
 		// Whatever toasts the page still gets (a watched session needing the owner) go to the top: the bottom is where the
 		// kid's choices and box are
@@ -94,6 +104,17 @@ export default class Arcade extends View {
 					window.location.reload();
 				},
 			});
+	}
+
+	// The game alone to play, or the talk beside it
+	play(on) {
+		this.page.elem.classList.toggle('playing', on);
+	}
+
+	// The big button: the talk comes back, and the question is read again, now, for a hand that just pressed
+	changeIt() {
+		this.play(false);
+		this.talk.readAsking();
 	}
 
 	async shelve() {

@@ -2,8 +2,8 @@
 // with its choices, a word to the kid. A line asked for again (a card's speaker button) is said now, alone: what was
 // queued waits for the next thing. A line stopped for a newer one is over, but its end is not the queue's turn: the
 // newer line has it, so nothing starts under it. `say` is speak() from speech.js, given rather than imported so the
-// queue can be tested with a voice of the test's own.
-const sayQueue = ({ session, say }) => {
+// queue can be tested with a voice of the test's own; `onIdle` hears when the last queued line has ended.
+const sayQueue = ({ session, say, onIdle }) => {
 	const queue = [];
 	let saying = null;
 
@@ -32,7 +32,7 @@ const sayQueue = ({ session, say }) => {
 	const next = () => {
 		const line = queue.shift();
 
-		if (!line) return;
+		if (!line) return onIdle?.();
 		sayOne(line.text, line.target, next);
 	};
 

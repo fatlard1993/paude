@@ -58,6 +58,22 @@ describe('sayQueue', () => {
 		expect(queue.busy).toBe(false);
 	});
 
+	test('says when the last queued line has ended, and not for a line said alone', () => {
+		const voice = fakeVoice();
+		let idle = 0;
+		const queue = sayQueue({ say: voice.say, onIdle: () => (idle += 1) });
+
+		queue.enqueue('one');
+		queue.enqueue('two');
+		voice.finish(voice.lines[0]);
+		expect(idle).toBe(0);
+		voice.finish(voice.lines[1]);
+		expect(idle).toBe(1);
+		queue.sayNow('again');
+		voice.finish(voice.lines[2]);
+		expect(idle).toBe(1);
+	});
+
 	test('lights the words of what it says, and clears them at the end', () => {
 		const voice = fakeVoice();
 		const queue = sayQueue({ say: voice.say });
