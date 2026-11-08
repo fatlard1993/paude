@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { displayTokens, spokenText, wordsOf } from './spoken';
+import { displayTokens, emojiName, spokenText, wordsOf } from './spoken';
 
 describe('spokenText', () => {
 	test('drops what a voice would stumble on', () => {
@@ -27,17 +27,17 @@ describe('displayTokens', () => {
 
 		expect(paragraphs).toEqual([
 			[
-				{ text: 'Nice!', emoji: false },
-				{ text: '🚀', emoji: true },
-				{ text: 'The', emoji: false },
-				{ text: 'rocket', emoji: false },
-				{ text: 'flies.', emoji: false },
+				{ text: 'Nice!', emoji: false, spoken: 'Nice!' },
+				{ text: '🚀', emoji: true, spoken: 'rocket' },
+				{ text: 'The', emoji: false, spoken: 'The' },
+				{ text: 'rocket', emoji: false, spoken: 'rocket' },
+				{ text: 'flies.', emoji: false, spoken: 'flies.' },
 			],
 			[
-				{ text: 'Tap', emoji: false },
-				{ text: '⭐', emoji: true },
-				{ text: 'to', emoji: false },
-				{ text: 'go', emoji: false },
+				{ text: 'Tap', emoji: false, spoken: 'Tap' },
+				{ text: '⭐', emoji: true, spoken: 'star' },
+				{ text: 'to', emoji: false, spoken: 'to' },
+				{ text: 'go', emoji: false, spoken: 'go' },
 			],
 		]);
 		expect(
@@ -47,5 +47,17 @@ describe('displayTokens', () => {
 				.map(token => token.text)
 				.join(' '),
 		).toBe(spokenText('**Nice!**🚀 The rocket flies.\n\nTap ⭐ to go'));
+	});
+});
+
+describe('emojiName', () => {
+	test('names an emoji as a voice should say it, dressed or joined or not', () => {
+		expect(emojiName('🚀')).toBe('rocket');
+		expect(emojiName('⭐')).toBe('star');
+		expect(emojiName('❤️')).toBe('heart');
+		expect(emojiName('👍🏽')).toBe('thumbs up');
+		expect(emojiName('👩‍🚀')).toMatch(/woman/);
+		expect(emojiName('🧀')).toBe('cheese wedge');
+		expect(emojiName('x')).toBe('');
 	});
 });
