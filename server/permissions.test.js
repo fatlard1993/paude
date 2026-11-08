@@ -30,6 +30,12 @@ describe('guestMayRequest', () => {
 		const ana = guest('comment');
 
 		expect(guestMayRequest(ana, 'POST', '/api/sessions/s1/catch-up')).toBe(true);
+		// The arcade's: what a guest answers, says and hears in their session, and the game put back
+		for (const route of ['/answer', '/prompt', '/speech', '/hear', '/arcade/undo'])
+			expect(guestMayRequest(ana, 'POST', `/api/sessions/s1${route}`)).toBe(true);
+		expect(guestMayRequest(ana, 'GET', '/api/sessions/s1/arcade')).toBe(true);
+		expect(guestMayRequest(ana, 'POST', '/api/sessions/s2/answer')).toBe(false);
+		expect(guestMayRequest(ana, 'POST', '/api/sessions/s1/arcade/shelf')).toBe(false);
 		expect(guestMayRequest(ana, 'POST', '/api/sessions/s1/tour')).toBe(true);
 		expect(guestMayRequest(ana, 'POST', '/api/sessions/s2/tour')).toBe(false);
 	});

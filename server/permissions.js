@@ -25,13 +25,7 @@ export const mayManage = (identity, comment) =>
 const OWN_SESSION_ROUTES = [
 	'/attach',
 	'/asking',
-	'/answer',
-	'/prompt',
-	'/speech',
-	'/hear',
 	'/arcade',
-	'/arcade/undo',
-	'/continue',
 	'/artifacts',
 	'/artifact',
 	'/shell',
@@ -50,12 +44,17 @@ const OWN_SESSION_ROUTES = [
 	'/decisions',
 ];
 
+// What a guest sends to their session: an answer to what Claude asks, a prompt, a line to say and a recording to hear
+// (the arcade's), the game put back, and carrying on after a limit; each route checks the role allows it
+const OWN_SESSION_POSTS = ['/answer', '/prompt', '/speech', '/hear', '/arcade/undo', '/continue'];
+
 export const guestMayRequest = (identity, method, pathname) => {
 	const own = `/api/sessions/${identity.sessionId}`;
 
 	return (
 		(method === 'GET' &&
 			(pathname === '/api/auth' || pathname === own || OWN_SESSION_ROUTES.some(route => pathname === own + route))) ||
+		(method === 'POST' && OWN_SESSION_POSTS.some(route => pathname === own + route)) ||
 		// The Git panel's reads and actions; the route checks which the role allows
 		(['GET', 'POST'].includes(method) && pathname.startsWith(`${own}/git/`)) ||
 		// Its tasks and processes; the route checks who may start or stop them
