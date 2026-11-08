@@ -118,7 +118,7 @@ export default class ArcadeTalk extends Talk {
 		if (!response?.ok) return;
 		this.arcade = body.arcade;
 		this.reading = body.arcade?.reading ?? 'reading';
-		if (this.arcade && canType()) this.putBack.hidden = false;
+		if (this.arcade && canType()) this.putBack.style.display = '';
 		this.options.onArcade?.(body.arcade, body.shelf);
 	}
 
@@ -130,7 +130,8 @@ export default class ArcadeTalk extends Talk {
 			className: 'put-back variant-flat',
 			title: "Undo Claude's last change to the game",
 		});
-		this.putBack.hidden = true;
+		// Not the hidden attribute: the button's own display rule outranks it
+		this.putBack.style.display = 'none';
 		// The talk's own controls, in the status row, so they're the same wherever the talk is
 		this.controls = [this.putBack];
 		if (canSpeak()) {

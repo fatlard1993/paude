@@ -30,7 +30,7 @@ export default class Arcade extends View {
 			onStatus: session => (this.title.textContent = session.title || session.project || 'Arcade'),
 			onArcade: (arcade, shelf) => {
 				this.arcade = arcade;
-				if (arcade && shelf && identity()?.owner) this.shelfButton.hidden = false;
+				if (arcade && shelf && this.shelfButton) this.shelfButton.style.display = '';
 			},
 		});
 		this.page.elem.append(stage);
@@ -63,12 +63,16 @@ export default class Arcade extends View {
 		this.title.style.whiteSpace = 'nowrap';
 		bar.elem.append(this.title);
 		ghostButton(bar, { icon: 'rotate-right', title: 'Reload the game', onPress: () => this.game.reload() });
-		this.shelfButton = ghostButton(bar, {
-			icon: 'box-archive',
-			title: "Put it on the house shelf: run as one of the house's games, at a name of its own",
-			onPress: () => this.shelve(),
-		});
-		this.shelfButton.hidden = true;
+		// The shelf is the owner's alone, and shown only once this paude is known to have one. Not the hidden attribute:
+		// the button's own display rule outranks it.
+		if (owner) {
+			this.shelfButton = ghostButton(bar, {
+				icon: 'box-archive',
+				title: "Put it on the house shelf: run as one of the house's games, at a name of its own",
+				onPress: () => this.shelve(),
+			});
+			this.shelfButton.style.display = 'none';
+		}
 		if (!owner)
 			ghostButton(bar, {
 				icon: 'right-from-bracket',
