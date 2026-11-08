@@ -30,6 +30,30 @@ const pickVoice = () => {
 // What's being said now, whichever voice says it: { stop }
 let current = null;
 
+// A line the browser refused to play because nothing on the page has been pressed yet (its rule for sound): kept,
+// and said on the first press. One at a time: the queue waits on it, so the lines after it follow in order.
+const PRESSES = ['pointerdown', 'keydown'];
+let heldBack = null;
+
+const onPress = () => {
+	const held = heldBack;
+
+	heldBack = null;
+	for (const type of PRESSES) document.removeEventListener(type, onPress, true);
+	held?.();
+};
+
+const sayOnFirstPress = replay => {
+	if (!heldBack) for (const type of PRESSES) document.addEventListener(type, onPress, true);
+	heldBack = replay;
+};
+
+const letGo = replay => {
+	if (heldBack !== replay || !replay) return;
+	heldBack = null;
+	for (const type of PRESSES) document.removeEventListener(type, onPress, true);
+};
+
 const browserVoice = (spoken, words, { rate, onWord, onEnd }) => {
 	if (!canSpeak()) {
 		onEnd?.();
@@ -39,6 +63,7 @@ const browserVoice = (spoken, words, { rate, onWord, onEnd }) => {
 
 	const utterance = new SpeechSynthesisUtterance(spoken);
 	let ended = false;
+	let replay = null;
 	const finish = () => {
 		if (ended) return;
 		ended = true;
@@ -47,6 +72,7 @@ const browserVoice = (spoken, words, { rate, onWord, onEnd }) => {
 	const saying = {
 		stop() {
 			if (ended) return;
+			letGo(replay);
 			speechSynthesis.cancel();
 			finish();
 		},
@@ -63,7 +89,11 @@ const browserVoice = (spoken, words, { rate, onWord, onEnd }) => {
 		if (index !== -1) onWord?.(index);
 	};
 	utterance.onend = finish;
-	utterance.onerror = finish;
+	utterance.onerror = event => {
+		if (event?.error !== 'not-allowed' || ended) return finish();
+		replay = () => speechSynthesis.speak(utterance);
+		sayOnFirstPress(replay);
+	};
 	// Chrome needs the voices loaded before the first utterance picks one
 	if (!utterance.voice && speechSynthesis.getVoices().length === 0)
 		speechSynthesis.addEventListener('voiceschanged', () => (utterance.voice = pickVoice()), { once: true });
@@ -90,6 +120,7 @@ const playServerVoice = ({ audio, words }, { onWord, onEnd }) => {
 	let ended = false;
 	let frame = null;
 	let lit = -1;
+	let replay = null;
 	const finish = () => {
 		if (ended) return;
 		ended = true;
@@ -99,6 +130,7 @@ const playServerVoice = ({ audio, words }, { onWord, onEnd }) => {
 	const saying = {
 		stop() {
 			if (ended) return;
+			letGo(replay);
 			player.pause();
 			finish();
 		},
@@ -119,11 +151,14 @@ const playServerVoice = ({ audio, words }, { onWord, onEnd }) => {
 
 	player.addEventListener('ended', finish);
 	player.addEventListener('error', finish);
-	player
-		.play()
-		.then(() => follow())
-		// Not allowed yet (nothing pressed on the page so far): said when the next press lets it
-		.catch(finish);
+
+	const start = () => player.play().then(() => follow());
+
+	start().catch(error => {
+		if (error?.name !== 'NotAllowedError' || ended) return finish();
+		replay = () => start().catch(finish);
+		sayOnFirstPress(replay);
+	});
 
 	return saying;
 };
