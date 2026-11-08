@@ -21,6 +21,12 @@ export const PANELS = {
 	links: { label: 'Links', about: 'the docs, tickets, repos and servers that came up', icon: 'link' },
 	shares: { label: 'Shared', about: 'services this session runs, files and sites', icon: 'share-nodes' },
 	shell: { label: 'Shell', about: 'a terminal in this folder that ends when you close it', icon: 'terminal' },
+	arcade: {
+		label: 'Arcade',
+		about: 'the talk with Claude as a kid has it: big, read aloud, answered by tapping or talking',
+		icon: 'gamepad',
+	},
+	game: { label: 'Game', about: 'the game this session builds, live', icon: 'play' },
 };
 
 // A tooltip: the label, then what it holds. The phone menu takes the label back from before the colon.

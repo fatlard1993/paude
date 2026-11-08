@@ -92,12 +92,16 @@ const content = () => {
 			}
 		}
 
-		// Invited to the arcade, the guest gets the arcade and nothing else of the session, whatever page the link or
-		// an old bookmark named
+		// Invited to the arcade, the guest gets the arcade and the ship (with the arcade's panels on their session's
+		// dock), never the session's own page, whatever page the link or an old bookmark named
 		if (identity.view === 'arcade') {
-			if (!window.location.hash.startsWith('#/arcade/')) window.location.replace(`#/arcade/${identity.sessionId}`);
+			if (!/^#\/(arcade|universe)\b/.test(window.location.hash))
+				window.location.replace(`#/arcade/${identity.sessionId}`);
 
-			return new Router({ views: { '/arcade/:id': GuestArcade }, defaultPath: `/arcade/${identity.sessionId}` });
+			return new Router({
+				views: { '/arcade/:id': GuestArcade, '/universe': Universe, '/universe/sessions/:session': Universe },
+				defaultPath: `/arcade/${identity.sessionId}`,
+			});
 		}
 
 		return new Router({

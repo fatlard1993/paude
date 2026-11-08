@@ -11,6 +11,8 @@ import {
 } from '../api';
 import { canBrowse, canNote, canType } from '../identity';
 import { button, element } from '../dom';
+import ArcadeGame from '../Arcade/ArcadeGame';
+import ArcadeTalk from '../Arcade/ArcadeTalk';
 import { NOTE_TYPES } from '../../shared/protocol';
 import attach from '../Terminal/attach';
 import ActivityPanel from '../Terminal/ActivityPanel';
@@ -42,6 +44,9 @@ export const VERBS = [
 	{ key: 'links', hotkey: 'l', allowed: canBrowse },
 	{ key: 'shares', hotkey: 'p', allowed: () => true },
 	{ key: 'shell', hotkey: 's', allowed: canType },
+	// The session as a kid plays it: the talk, and the game it builds
+	{ key: 'arcade', hotkey: 'e', allowed: () => true },
+	{ key: 'game', hotkey: 'v', allowed: () => true },
 ].map(verb => ({ ...verb, label: PANELS[verb.key].label }));
 
 // A session's panels docked beside the universe, one showing at a time, each built when first wanted and wired to the
@@ -191,6 +196,8 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose,
 				onForked,
 			}),
 		shares: () => new SharesPanel({ ...common('shares') }),
+		arcade: () => new ArcadeTalk({ ...common('arcade') }),
+		game: () => new ArcadeGame({ ...common('game') }),
 		shell: () =>
 			new SideShell({
 				...common('shell'),
