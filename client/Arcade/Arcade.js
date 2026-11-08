@@ -1,9 +1,23 @@
 import { Notify, View } from '@vanilla-bean/components';
 
-import { answerAsking, getAsking, getFeed, getSession, getShares, getTasks, logout, runTask, sendPrompt } from '../api';
+import {
+	answerAsking,
+	getArcade,
+	getAsking,
+	getFeed,
+	getSession,
+	getShares,
+	getTasks,
+	logout,
+	runTask,
+	sendPrompt,
+	shelveArcade,
+	undoArcadeTurn,
+} from '../api';
 import { Bar, ghostButton } from '../Bar';
+import confirmDialog from '../confirmDialog';
 import { button, element, icon } from '../dom';
-import { identity } from '../identity';
+import { canType, identity } from '../identity';
 import { openMenu } from '../menu';
 import { canListen, canSpeak, displayTokens, listen, speak, spokenText, stopSpeaking } from '../speech';
 import { recall, remember } from '../storage';
@@ -58,6 +72,9 @@ export default class Arcade extends View {
 		this.saying = null;
 		this.sent = [];
 		this.did = null;
+		// What arcade this is ({ title, player, reading, shelf? }), once asked; null for an ordinary session
+		this.arcade = null;
+		this.reading = 'reading';
 		this.prefs = {
 			speak: (recall(PREFS.speak) || (canSpeak() ? 'yes' : 'no')) === 'yes',
 			size: Math.min(Math.max(Number(recall(PREFS.size)) || 0, 0), SIZES.length - 1),
@@ -78,7 +95,17 @@ export default class Arcade extends View {
 		});
 		this.addCleanup('tabTitle', () => updateTabTitle({ page: '' }));
 		updateTabTitle({ page: 'Arcade' });
-		this.tick();
+		this.learnArcade().finally(() => this.tick());
+	}
+
+	async learnArcade() {
+		const { body, response } = await getArcade(this.id).catch(() => ({}));
+
+		if (!response?.ok) return;
+		this.arcade = body.arcade;
+		this.reading = body.arcade?.reading ?? 'reading';
+		if (this.arcade && canType()) this.putBack.hidden = false;
+		if (this.arcade && body.shelf && identity()?.owner) this.shelfButton.hidden = false;
 	}
 
 	buildBar() {
@@ -101,6 +128,12 @@ export default class Arcade extends View {
 		this.title.style.whiteSpace = 'nowrap';
 		bar.elem.append(this.title);
 		ghostButton(bar, { icon: 'rotate-right', title: 'Reload the game', onPress: () => this.reloadGame() });
+		this.shelfButton = ghostButton(bar, {
+			icon: 'box-archive',
+			title: "Put it on the house shelf: run as one of the house's games, at a name of its own",
+			onPress: () => this.shelve(),
+		});
+		this.shelfButton.hidden = true;
 		if (canSpeak())
 			this.speakButton = ghostButton(bar, {
 				icon: this.prefs.speak ? 'volume-high' : 'volume-xmark',
@@ -125,6 +158,13 @@ export default class Arcade extends View {
 		this.game = element('div', 'game');
 		this.talk = element('div', 'talk');
 		this.lamp = element('div', 'lamp');
+		this.lampWords = element('span', 'words');
+		this.putBack = button('Put it back', () => this.offerPutBack(), {
+			icon: 'rotate-left',
+			className: 'put-back variant-flat',
+			title: "Undo Claude's last change to the game",
+		});
+		this.putBack.hidden = true;
 		this.feed = element('div', 'feed');
 		this.choices = element('div', 'choices');
 		this.choices.hidden = true;
@@ -267,7 +307,8 @@ export default class Arcade extends View {
 		const lamp = LAMPS[session.status] ?? LAMPS.stopped;
 
 		this.lamp.className = `lamp ${session.status}`;
-		this.lamp.replaceChildren(icon(lamp.icon), element('span', '', lamp.words));
+		this.lampWords.textContent = lamp.words;
+		this.lamp.replaceChildren(icon(lamp.icon), this.lampWords, this.putBack);
 	}
 
 	showEntries(entries) {
@@ -439,9 +480,14 @@ export default class Arcade extends View {
 				{ className: 'choice' },
 			);
 
+			const label = element('span', 'label');
+
 			if (emoji) choice.append(element('span', 'emoji', emoji));
-			choice.append(element('span', 'words', words));
-			if (!player && option.detail) choice.append(element('small', '', ` ${option.detail}`));
+			label.append(element('span', 'words', words));
+			// A reader gets the line under each choice; a listener hears the choices alone
+			if (option.detail && (!player || this.reading !== 'listening'))
+				label.append(element('small', 'detail', option.detail));
+			choice.append(label);
 			this.choices.append(choice);
 		}
 		this.feed.scrollTop = this.feed.scrollHeight;
@@ -495,22 +541,91 @@ export default class Arcade extends View {
 		let heard = '';
 
 		this.ear = listen({
+			session: this.id,
 			onHeard: text => {
 				heard = text;
 				this.heard.textContent = text;
 			},
+			onThinking: () => {
+				this.mic.classList.remove('hearing');
+				this.mic.classList.add('thinking');
+				this.heard.textContent = 'Thinking…';
+			},
 			onEnd: reason => {
 				this.ear = null;
-				this.mic.classList.remove('hearing');
+				this.mic.classList.remove('hearing', 'thinking');
 				this.input.hidden = false;
 				this.heard.hidden = true;
 				if (reason === 'done' && heard.trim()) this.send(heard);
+				else if (reason === 'failed') new Notify({ intent: 'warning', content: "I couldn't hear that. Try again" });
 				else if (reason === 'denied')
 					new Notify({ intent: 'warning', content: 'The microphone is blocked here: allow it in the address bar' });
 				else if (reason === 'unsupported')
 					new Notify({ intent: 'warning', content: "This browser can't listen; type instead" });
 			},
 		});
+	}
+
+	// Putting the game back to before Claude's last turn: offered, then done
+
+	offerPutBack() {
+		if (this.status === 'working') {
+			new Notify({ intent: 'warning', content: 'Claude is still working. Wait for it to finish' });
+
+			return;
+		}
+		stopSpeaking();
+		this.queue = [];
+		this.asked = 'put-back';
+		this.choices.replaceChildren(element('div', 'question', 'Put the game back the way it was?'));
+
+		const yes = button('', () => this.putItBack(), { className: 'choice' });
+		const no = button('', () => this.clearAsking(), { className: 'choice' });
+
+		yes.append(element('span', 'emoji', '↩️'), element('span', 'label', 'Yes, put it back'));
+		no.append(element('span', 'emoji', '✖️'), element('span', 'label', 'No, keep it'));
+		this.choices.append(yes, no);
+		this.choices.hidden = false;
+		this.feed.scrollTop = this.feed.scrollHeight;
+		if (this.prefs.speak) this.enqueue('Put the game back the way it was? Yes, put it back. No, keep it.');
+	}
+
+	async putItBack() {
+		this.clearAsking();
+
+		const { body, response } = await undoArcadeTurn(this.id);
+
+		if (!response?.ok) {
+			new Notify({ intent: 'warning', content: typeof body === 'string' && body ? body : 'It could not be put back' });
+
+			return;
+		}
+		this.feed.append(element('div', 'card you', `Put it back: ${body.undone}`));
+		this.feed.scrollTop = this.feed.scrollHeight;
+		this.showStatus({ status: 'working', title: this.title.textContent });
+		if (this.prefs.speak) this.enqueue("It's back the way it was.");
+	}
+
+	async shelve() {
+		const name = this.arcade?.title || this.title.textContent;
+		const confirmed = await confirmDialog({
+			header: `Put ${name} on the house shelf?`,
+			body: "It runs as one of the house's games from now on, at a name of its own, built as it is right now. Shelving it again later puts the newer game there.",
+			confirmLabel: 'Put it on the shelf',
+		});
+
+		if (!confirmed) return;
+
+		const working = new Notify({ intent: 'info', content: 'Putting it on the shelf…', timeout: 0 });
+		const { body, response } = await shelveArcade(this.id);
+
+		working.destroy?.();
+		if (!response?.ok) {
+			new Notify({ intent: 'danger', content: typeof body === 'string' && body ? body : 'The shelf refused it' });
+
+			return;
+		}
+		new Notify({ intent: 'success', content: `On the shelf, on port ${body.port}`, timeout: 6000 });
 	}
 
 	// The game

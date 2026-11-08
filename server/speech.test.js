@@ -4,7 +4,7 @@ import { join } from 'path';
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { SpeechError, initSpeech, readAloud, voiceSettings, wordTimes } from './speech';
+import { SpeechError, hear, initSpeech, readAloud, voiceSettings, wordTimes } from './speech';
 
 // "Tap the star", each character 0.1s apart
 const TEXT = 'Tap the star';
@@ -122,5 +122,29 @@ describe('readAloud', () => {
 
 		expect(failure).toBeInstanceOf(SpeechError);
 		expect(failure.status).toBe(404);
+	});
+});
+
+describe('hear', () => {
+	test('sends the recording to Scribe and answers its text', async () => {
+		const calls = [];
+		const fetcher = async (url, options) => {
+			calls.push({ url, options });
+
+			return Response.json({ text: ' Make the frog green. ' });
+		};
+
+		expect(await hear(new Uint8Array([1, 2, 3]).buffer, 'audio/webm;codecs=opus', { fetcher })).toEqual({
+			text: 'Make the frog green.',
+		});
+		expect(calls[0].url).toContain('/speech-to-text');
+		expect(calls[0].options.body.get('model_id')).toBe('scribe_v1');
+		expect(calls[0].options.body.get('file').name).toBe('said.webm');
+	});
+
+	test('an empty recording is refused before it goes anywhere', async () => {
+		await expect(hear(new ArrayBuffer(0), 'audio/webm', { fetcher: async () => Response.json({}) })).rejects.toThrow(
+			'Nothing was recorded',
+		);
 	});
 });

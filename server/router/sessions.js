@@ -29,8 +29,18 @@ import { catchUp } from '../catchUp';
 import { sessionDecisions } from '../decisions';
 import { findHome, localCandidates } from '../promptHome';
 import { askClaude } from '../claudeInbox';
-import { ArcadeError, acceptTrust, createArcadeProject, folderName, openingPrompt } from '../arcade';
-import { SpeechError, readAloud } from '../speech';
+import {
+	ArcadeError,
+	acceptTrust,
+	arcadeOf,
+	createArcadeProject,
+	folderName,
+	openingPrompt,
+	shelfCommand,
+	shelveGame,
+	undoLastTurn,
+} from '../arcade';
+import { SpeechError, hear, readAloud } from '../speech';
 import { runTask } from '../tasks';
 import { pinName, pinnedName } from '../names';
 import { may } from '../permissions';
@@ -528,6 +538,73 @@ const sessionsRoutes = async (request, server) => {
 			return Response.json(await readAloud((await request.json()).text));
 		} catch (error) {
 			if (error instanceof SpeechError) return new Response(error.message, { status: error.status });
+			throw error;
+		}
+	}
+
+	// What was said into a page's microphone, as text, by this paude's ear; 404 when it has none
+	match = requestMatch('POST', '/api/sessions/:id/hear', request);
+	if (match) {
+		if (!identity.owner && identity.sessionId !== match.id)
+			return new Response('Not part of your invite', { status: 403 });
+
+		try {
+			const type = request.headers.get('content-type') || 'audio/webm';
+
+			return Response.json(await hear(await request.arrayBuffer(), type));
+		} catch (error) {
+			if (error instanceof SpeechError) return new Response(error.message, { status: error.status });
+			throw error;
+		}
+	}
+
+	// What arcade a session's folder is, for the arcade page: who it's for, how they read, where it's shelved
+	match = requestMatch('GET', '/api/sessions/:id/arcade', request);
+	if (match) {
+		if (!identity.owner && identity.sessionId !== match.id)
+			return new Response('Not part of your invite', { status: 403 });
+
+		const record = await sessionRecord(match.id);
+
+		if (!record) return new Response('Session not found', { status: 404 });
+
+		return Response.json({ arcade: await arcadeOf(record.cwd), shelf: identity.owner ? await shelfCommand() : null });
+	}
+
+	// The game put back to before Claude's last turn, for whoever may drive
+	match = requestMatch('POST', '/api/sessions/:id/arcade/undo', request);
+	if (match) {
+		if (!may(identity, 'type', match.id)) return new Response('Putting it back takes the drive role', { status: 403 });
+
+		const record = await sessionRecord(match.id);
+
+		if (!record) return new Response('Session not found', { status: 404 });
+
+		try {
+			return Response.json(await undoLastTurn(match.id, record.cwd));
+		} catch (error) {
+			if (error instanceof ArcadeError) return new Response(error.message, { status: 409 });
+			throw error;
+		}
+	}
+
+	// The game made one of the house's own, by the shelf command this paude is given; the owner's
+	match = requestMatch('POST', '/api/sessions/:id/arcade/shelf', request);
+	if (match) {
+		if (!identity.owner) return new Response("The shelf is the owner's", { status: 403 });
+
+		const record = await sessionRecord(match.id);
+
+		if (!record) return new Response('Session not found', { status: 404 });
+
+		let output = '';
+
+		try {
+			const { port } = await shelveGame(record.cwd, projectOf(record.cwd), text => (output += text));
+
+			return Response.json({ port, output });
+		} catch (error) {
+			if (error instanceof ArcadeError) return new Response(`${error.message}\n${output}`.trim(), { status: 409 });
 			throw error;
 		}
 	}

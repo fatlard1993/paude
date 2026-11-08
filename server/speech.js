@@ -17,6 +17,9 @@ const DEFAULT_MODEL = 'eleven_flash_v2_5';
 const OUTPUT = 'mp3_44100_128';
 const MAX_CHARACTERS = 2500;
 const TIMEOUT_MS = 30_000;
+const EAR_MODEL = 'scribe_v1';
+const MAX_AUDIO_BYTES = 15 * 1024 * 1024;
+const EAR_TIMEOUT_MS = 60_000;
 
 let folder = null;
 
@@ -119,4 +122,41 @@ export const readAloud = async (text, { fetcher = fetch } = {}) => {
 	if (file) await writeJsonFile(file, () => spoken).catch(() => {});
 
 	return spoken;
+};
+
+// What was said in a recording (webm, mp4, ogg or mp3 from a page's microphone): { text }, '' for silence. The same
+// key hears as speaks.
+export const hear = async (audio, type = 'audio/webm', { fetcher = fetch } = {}) => {
+	const voice = await voiceSettings();
+
+	if (!voice) throw new SpeechError('No voice is set up on this paude', 404);
+	if (!audio?.byteLength) throw new SpeechError('Nothing was recorded', 400);
+	if (audio.byteLength > MAX_AUDIO_BYTES) throw new SpeechError('That recording is too long', 413);
+
+	const form = new FormData();
+
+	form.append('model_id', EAR_MODEL);
+	form.append('tag_audio_events', 'false');
+	form.append('file', new Blob([audio], { type }), `said.${type.split('/')[1]?.split(';')[0] || 'webm'}`);
+
+	const response = await fetcher(`${API}/speech-to-text`, {
+		method: 'POST',
+		headers: { 'xi-api-key': voice.apiKey },
+		body: form,
+		signal: AbortSignal.timeout(EAR_TIMEOUT_MS),
+	}).catch(error => {
+		throw new SpeechError(`ElevenLabs could not be reached: ${error.message}`);
+	});
+
+	if (!response.ok) {
+		const detail = await response.text().catch(() => '');
+
+		if (response.status === 401) throw new SpeechError('ElevenLabs refused the key');
+		if (response.status === 429) throw new SpeechError('ElevenLabs is out of quota or rate limited for now');
+		throw new SpeechError(`ElevenLabs answered ${response.status}${detail ? `: ${detail.slice(0, 200)}` : ''}`);
+	}
+
+	const { text } = await response.json();
+
+	return { text: String(text ?? '').trim() };
 };

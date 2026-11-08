@@ -283,6 +283,27 @@ export const getFeed = async (sessionId, after) =>
 export const readAloud = async (sessionId, text) =>
 	await POST('/api/sessions/:id/speech', { urlParameters: { id: sessionId }, body: { text } });
 
+// What arcade a session's folder is, for the arcade page: { arcade: { title, player, reading, shelf? } | null }
+export const getArcade = async sessionId =>
+	await GET('/api/sessions/:id/arcade', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
+
+export const undoArcadeTurn = async sessionId =>
+	await POST('/api/sessions/:id/arcade/undo', { urlParameters: { id: sessionId } });
+
+export const shelveArcade = async sessionId =>
+	await POST('/api/sessions/:id/arcade/shelf', { urlParameters: { id: sessionId } });
+
+// A recording from the page's microphone, heard by this paude's ear: { text }, or 404 when it has none
+export const hear = async (sessionId, blob) => {
+	const response = await fetch(`${sessionBase(sessionId)}/api/sessions/${encodeURIComponent(sessionId)}/hear`, {
+		method: 'POST',
+		headers: { 'content-type': blob.type || 'audio/webm' },
+		body: blob,
+	}).catch(() => null);
+
+	return { response, body: response?.ok ? await response.json() : await response?.text() };
+};
+
 export const getAsking = async sessionId =>
 	await GET('/api/sessions/:id/asking', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 

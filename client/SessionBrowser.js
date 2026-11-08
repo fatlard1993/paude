@@ -175,7 +175,19 @@ const Box = styled(
 // project, [{ name, server, hue, watching, liveCount, sessionCount, lastActivity, href, onOpen, menu() }] and
 // fetchProject(project, page) its sessions.
 export default class SessionBrowser {
-	constructor({ appendTo, key, placeholder, empty, fetchPage, renderCard, bulk, projects, fetchProject, extra = [] }) {
+	constructor({
+		appendTo,
+		key,
+		placeholder,
+		empty,
+		fetchPage,
+		renderCard,
+		bulk,
+		projects,
+		fetchProject,
+		extra = [],
+		always = [],
+	}) {
 		Object.assign(this, { key, empty, fetchPage, renderCard, bulk, projects, fetchProject });
 		this.box = new Box({ appendTo });
 		this.filter = '';
@@ -224,9 +236,12 @@ export default class SessionBrowser {
 		this.list = element('div', 'cards');
 		this.extra = element('div', 'cards');
 		this.extra.append(...extra);
+		// Shown however the list is grouped or narrowed, after it
+		this.always = element('div', 'cards');
+		this.always.append(...always);
 		this.bulkBar = element('div', 'bulk');
 		this.bulkBar.style.display = 'none';
-		this.box.elem.append(this.search, toolbar, this.summary, this.list, this.extra, this.bulkBar);
+		this.box.elem.append(this.search, toolbar, this.summary, this.list, this.extra, this.always, this.bulkBar);
 		this.paintToolbar();
 	}
 

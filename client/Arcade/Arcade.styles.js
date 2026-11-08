@@ -75,6 +75,17 @@ const ArcadePage = styled(
 			text-align: center;
 		}
 
+		.lamp .words {
+			flex: 1;
+			min-width: 0;
+		}
+
+		.lamp .put-back {
+			flex-shrink: 0;
+			font-size: 0.8em;
+			color: ${colors.alpha(colors.white, 0.75)};
+		}
+
 		.lamp.working i {
 			color: ${colors.light(colors.blue)};
 		}
@@ -207,6 +218,17 @@ const ArcadePage = styled(
 			line-height: 1;
 		}
 
+		.choices button .label {
+			display: flex;
+			flex-direction: column;
+			gap: 2px;
+		}
+
+		.choices button .detail {
+			font-size: 0.75em;
+			color: ${colors.alpha(colors.white, 0.65)};
+		}
+
 		.choices .grown-up {
 			color: ${colors.alpha(colors.white, 0.7)};
 		}
@@ -243,6 +265,11 @@ const ArcadePage = styled(
 		.composer .mic.hearing {
 			background: ${colors.red};
 			animation: arcade-pulse 1s ease-in-out infinite;
+		}
+
+		.composer .mic.thinking {
+			background: ${colors.purple};
+			animation: arcade-pulse 0.6s ease-in-out infinite;
 		}
 
 		.composer .heard {

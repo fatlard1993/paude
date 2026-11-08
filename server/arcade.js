@@ -2,10 +2,23 @@ import { mkdir, stat, writeFile } from 'fs/promises';
 import { join } from 'path';
 
 import pkg from '../package.json';
+import readJsonFile from '../shared/readJsonFile';
 import { READING } from '../shared/arcade';
+import writeJsonFile from '../shared/writeJsonFile';
+import { statusOf } from './activity';
+import { askClaude } from './claudeInbox';
 import { projectPath } from './projects';
+import { serverSettings } from './serverSettings';
 import { sessionEnvironment } from './sessions/PtySession';
+import { sessionTimeline } from './timeline';
 import gitEnvironment from './utils/gitEnvironment';
+
+// What marks a project as an arcade game, kept in it: who it's for and how they read, and where it's shelved
+const MARKER = '.paude-arcade.json';
+const SNAPSHOT = 'turn: ';
+const SNAPSHOT_WORDS = 72;
+const SHELF_PORTS = [3100, 3999];
+const SHELF_TIMEOUT_MS = 5 * 60 * 1000;
 
 // An arcade project: a game made from web-game-framework's scaffold, in a folder of its own under the projects root,
 // with a file telling Claude it's building the game with a kid who may not read yet. Its session is an ordinary one;
@@ -168,6 +181,14 @@ export const createArcadeProject = async ({ name, player, reading }, onOutput = 
 	);
 	await mkdir(join(folder, '.claude'), { recursive: true });
 	await writeFile(join(folder, '.claude', 'settings.json'), `${JSON.stringify(claudeSettings, null, '\t')}\n`);
+	await writeJsonFile(join(folder, MARKER), () => ({
+		title,
+		player: String(player ?? '')
+			.trim()
+			.slice(0, 40),
+		reading,
+		made: new Date().toISOString(),
+	}));
 
 	onOutput('Installing its libraries\n');
 
@@ -231,4 +252,135 @@ export const acceptTrust = async (session, { waitMs = TRUST_WAIT_MS, pollMs = TR
 	}
 
 	return false;
+};
+
+// The arcade a folder is, from its marker: { title, player, reading, made, shelf? }, or null for an ordinary project
+export const arcadeOf = async cwd => {
+	if (!cwd) return null;
+
+	const marker = await readJsonFile(join(cwd, MARKER), null).catch(() => null);
+
+	return marker && typeof marker === 'object' && marker.reading in READING ? marker : null;
+};
+
+const gitOut = async (folder, args) => {
+	const child = Bun.spawn(['git', ...args], {
+		cwd: folder,
+		env: gitEnvironment(),
+		stdin: 'ignore',
+		stdout: 'pipe',
+		stderr: 'pipe',
+	});
+	const [out, err] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
+
+	return { ok: (await child.exited) === 0, out: out.trim(), err: err.trim() };
+};
+
+const asPaude = ['-c', 'user.name=paude', '-c', 'user.email=paude@localhost'];
+
+// After each of Claude's turns in an arcade, what the turn left in the game is committed as one snapshot named for
+// what was asked, so "put it back" has something to put back and the parent can read the game's history as the
+// kid's asks. A turn Claude committed itself, or that changed nothing, leaves no snapshot. Resolves to the subject,
+// or null.
+export const snapshotTurn = async (sessionId, cwd) => {
+	if (!(await arcadeOf(cwd))) return null;
+
+	await gitOut(cwd, ['add', '-A']);
+	if ((await gitOut(cwd, ['diff', '--cached', '--quiet'])).ok) return null;
+
+	const [latest] = (await sessionTimeline(sessionId, cwd).catch(() => ({ turns: [] }))).turns;
+	const asked = String(latest?.prompt ?? '')
+		.replace(/\s+/g, ' ')
+		.trim()
+		.slice(0, SNAPSHOT_WORDS);
+	const subject = `${SNAPSHOT}${asked || 'a change'}`;
+	const committed = await gitOut(cwd, [...asPaude, 'commit', '-q', '-m', subject]);
+
+	return committed.ok ? subject : null;
+};
+
+// The last snapshot undone: the game goes back to how it was before that turn, as a new commit, so nothing is lost
+// and it can be put forward again by hand. Refused while Claude is working (its edits would land on the revert) and
+// when the newest commit isn't a snapshot (Claude's own commit, or the scaffold's first). { undone } or throws.
+export const undoLastTurn = async (sessionId, cwd) => {
+	if (!(await arcadeOf(cwd))) throw new ArcadeError('This is not an arcade game.');
+	if (statusOf(sessionId) === 'working') throw new ArcadeError('Claude is still working. Wait for it to finish.');
+
+	const head = await gitOut(cwd, ['log', '-1', '--format=%s']);
+
+	if (!head.ok || !head.out.startsWith(SNAPSHOT)) throw new ArcadeError("There is nothing of Claude's to put back.");
+	if ((await gitOut(cwd, ['status', '--porcelain'])).out)
+		throw new ArcadeError('Something is half changed. Try again in a moment.');
+
+	const reverted = await gitOut(cwd, [...asPaude, 'revert', '--no-edit', 'HEAD']);
+
+	if (!reverted.ok) {
+		await gitOut(cwd, ['revert', '--abort']);
+		throw new ArcadeError('It could not be put back cleanly.');
+	}
+
+	const undone = head.out.slice(SNAPSHOT.length);
+
+	askClaude(sessionId, {
+		prompt: `We put the game back to how it was before your last change ("${undone}"): that change is reverted in git, so read the files again before changing them. Say in one short line that it is back the way it was, then ask what to do next.`,
+	});
+
+	return { undone };
+};
+
+// The house shelf: a command this paude is given (server.json: { "arcade": { "shelf": "shelf-game {name} {port}" } })
+// that makes a finished game one of the house's own, run in the game's folder with {name}, {path} and {port} filled
+// in (and in PAUDE_SHELF_NAME, PAUDE_SHELF_PATH, PAUDE_SHELF_PORT). The port is picked once, free in the arcade's
+// range, and kept in the marker, so shelving again (after more building) keeps the game's address.
+export const shelfCommand = async () => {
+	const { arcade = {} } = await serverSettings();
+
+	return typeof arcade.shelf === 'string' && arcade.shelf.trim() ? arcade.shelf.trim() : null;
+};
+
+const portFree = port => {
+	try {
+		Bun.listen({ hostname: '0.0.0.0', port, socket: { data() {} } }).stop(true);
+
+		return true;
+	} catch {
+		return false;
+	}
+};
+
+const pickPort = () => {
+	const [from, to] = SHELF_PORTS;
+
+	for (let tries = 0; tries < 200; tries++) {
+		const port = from + Math.floor(Math.random() * (to - from + 1));
+
+		if (portFree(port)) return port;
+	}
+	throw new ArcadeError('No free port for the shelf.');
+};
+
+export const shelveGame = async (cwd, name, onOutput = () => {}) => {
+	const marker = await arcadeOf(cwd);
+
+	if (!marker) throw new ArcadeError('This is not an arcade game.');
+
+	const command = await shelfCommand();
+
+	if (!command) throw new ArcadeError('This paude has no shelf: set arcade.shelf in ~/.config/paude/server.json.');
+
+	const port = marker.shelf?.port ?? pickPort();
+	const filled = command.replaceAll('{name}', name).replaceAll('{path}', cwd).replaceAll('{port}', String(port));
+
+	onOutput(`${filled}\n`);
+
+	const code = await run(['sh', '-c', filled], cwd, onOutput, {
+		env: { ...sessionEnvironment(), PAUDE_SHELF_NAME: name, PAUDE_SHELF_PATH: cwd, PAUDE_SHELF_PORT: String(port) },
+		timeout: SHELF_TIMEOUT_MS,
+	});
+
+	if (code !== 0) throw new ArcadeError(`The shelf command ended with ${code}.`);
+
+	await writeJsonFile(join(cwd, MARKER), () => ({ ...marker, shelf: { port, at: new Date().toISOString() } }));
+
+	return { port };
 };

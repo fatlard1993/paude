@@ -139,7 +139,8 @@ export default class Home extends View {
 			bulk: sessions => bulkActions(sessions, () => this.load()),
 			projects: () => this.projectList(),
 			fetchProject: (project, page) => this.projectSessions(project, page),
-			extra: [this.adder, newArcadeCard()],
+			extra: [this.adder],
+			always: [newArcadeCard()],
 		});
 
 		this.load();

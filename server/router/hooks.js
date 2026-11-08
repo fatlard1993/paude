@@ -19,6 +19,7 @@ import { noteEmpty } from '../fuel';
 import { PROPOSING_TOOLS, trackProposals } from '../sessions/proposals';
 import { runningSession } from '../sessions/running';
 import { noteHook, notePrompt, noteTool, noteTurnDone } from '../universe';
+import { snapshotTurn } from '../arcade';
 
 // The checks a project runs after each of Claude's turns, when the turn edited something: the problems they find
 // are then about what Claude just did
@@ -124,6 +125,8 @@ const hooksRoutes = async request => {
 	// noted, so a decision finds the commit its turn made
 	const ended = ['Stop', 'StopFailure'].includes(payload.hook_event_name);
 
+	// An arcade's turn is kept as one commit before the turn's commits are noted, so the snapshot is the turn's
+	if (ended) await snapshotTurn(id, cwd).catch(error => console.error('The arcade snapshot failed:', error));
 	if (ended || payload.hook_event_name === 'UserPromptSubmit')
 		(ended ? sessionTurns(id, cwd).then(turns => noteTurnCommits(id, turns.at(-1))) : Promise.resolve())
 			.then(() => followDecisions(id, cwd))
