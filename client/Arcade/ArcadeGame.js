@@ -13,6 +13,8 @@ const DEV_TASK = 'package.json:dev';
 const RESTART_EVERY_MS = 60_000;
 
 export default class ArcadeGame extends GameFrame {
+	static schema = { sessionId: {} };
+
 	build() {
 		this.sessionId = this.options.sessionId;
 		this.url = null;

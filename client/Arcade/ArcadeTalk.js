@@ -72,6 +72,9 @@ const splitEmoji = label => {
 };
 
 export default class ArcadeTalk extends Talk {
+	// Options of the talk's own, not attributes of its element
+	static schema = { sessionId: {}, onStatus: {}, onArcade: {} };
+
 	build() {
 		this.id = this.options.sessionId;
 		this.elem.classList.add('arcade-talk');
