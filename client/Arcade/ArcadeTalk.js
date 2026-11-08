@@ -53,6 +53,8 @@ const ago = ms => {
 
 	return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 };
+// What answers a question when the kid wants other choices
+const MORE_IDEAS = 'None of these. Ask the same question again with different ideas, all new.';
 // What Claude is told when the kid picks again, after the game is put back
 const PICK_AGAIN_PROMPT =
 	'They want to choose differently: the game is back to how it was before. Ask your last question again, with the same choices.';
@@ -590,17 +592,37 @@ export default class ArcadeTalk extends Talk {
 			choice.append(label);
 			this.choices.append(choice);
 		}
+		// A question for the player always has one more way out: other ideas, asked for in words through the question's
+		// own typing option, so Claude asks again with a fresh set
+		if (player && asking.typing) {
+			const more = button('', () => this.moreIdeas(asking), { className: 'choice more-ideas' });
+
+			more.append(element('span', 'emoji', '🎲'), element('span', 'label', 'More ideas'));
+			this.choices.append(more);
+		}
 		this.feed.scrollTop = this.feed.scrollHeight;
-		if (player && this.prefs.speak) this.readChoices(question, asking.options);
+		if (player && this.prefs.speak)
+			this.readChoices(question, asking.options, { more: Boolean(player && asking.typing) });
+	}
+
+	async moreIdeas(asking) {
+		const answered = await answerAsking(this.id, asking.question, asking.typing, MORE_IDEAS);
+
+		if (!answered.response?.ok) return this.notice('Claude is no longer asking that', 'warning');
+		this.clearAsking();
+		this.feed.append(element('div', 'card you', '🎲 More ideas'));
+		this.feed.scrollTop = this.feed.scrollHeight;
+		this.showStatus({ status: 'working' });
 	}
 
 	// The question and each choice read in turn, each lit while it is said, so a kid learning to read hears which is
 	// which: the question's words as spans, then the choices' buttons, one lit at a time
-	readChoices(question, options) {
+	readChoices(question, options, { more = false } = {}) {
 		const parts = [spokenText(question.firstChild?.textContent ?? question.textContent)];
 		const buttons = [...this.choices.querySelectorAll('button.choice')];
 
 		for (const option of options) parts.push(spokenText(option.label));
+		if (more) parts.push('More ideas');
 
 		// Which part each spoken word belongs to, by the words' count
 		const owners = [];
