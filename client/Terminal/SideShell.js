@@ -173,8 +173,37 @@ export default class SideShell extends Panel {
 		this.copyButton.disabled = true;
 	}
 
+	// Whole rows leave up to a row's height unused at the foot; once the panel's size settles, the line height takes up
+	// the slack
 	fit() {
-		if (this.terminal && this.screen.clientHeight) this.fitter.fit();
+		const { terminal, screen } = this;
+
+		if (!terminal || !screen.clientHeight) return;
+
+		const size = `${screen.clientWidth}x${screen.clientHeight}`;
+
+		if (this.size !== size) {
+			this.size = size;
+			terminal.options.lineHeight = xtermOptions.lineHeight;
+		}
+		this.fitter.fit();
+		cancelAnimationFrame(this.stretching);
+		this.stretching = requestAnimationFrame(() => this.stretch(size));
+	}
+
+	stretch(size) {
+		const { terminal, screen } = this;
+		const cell = terminal?._core?._renderService?.dimensions?.css.cell.height;
+
+		if (!cell || this.size !== size || !terminal.rows) return;
+
+		const style = getComputedStyle(screen);
+		const room = screen.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+		const { lineHeight } = terminal.options;
+		const wanted = (Math.floor(room / terminal.rows) + 0.3) / (cell / lineHeight);
+
+		if (Math.abs(wanted - lineHeight) > 0.005 && wanted >= xtermOptions.lineHeight && wanted < 1.6)
+			terminal.options.lineHeight = wanted;
 	}
 
 	attachSelection() {
