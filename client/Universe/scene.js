@@ -1,6 +1,6 @@
 import { facilitiesFor, facilityOf } from '../../shared/facilities';
 import { cksum, huesApart } from '../../shared/hues';
-import { PALETTE, drawSprite, spriteSize } from './art';
+import { PALETTE, cheeksOf, drawSprite, spriteSize } from './art';
 import { drawLighting, lightOf } from './lighting';
 import { FORMS, drawCore, drawHousing } from './machine';
 import { pixelText, textWidth } from './retro';
@@ -4543,25 +4543,41 @@ export default class Ship {
 		return Math.min(1, coldOf(worker.session) / (PASS_OUT_CANS * CAN_MS));
 	}
 
-	// How a lounger holds itself on the couch, by how drunk it is: swaying more the more it's had, its eyes shut longer
-	// and more often, a hiccup now and then; passed out, slumped against the couch's arm with its eyes shut, its can
-	// dropped, and nothing of the rest
+	// How a lounger holds itself on the couch, by how drunk it is: its cheeks flushing (`flush`, 0 to 1) and its head
+	// swaying more the more it's had, its whole body lurching with it past the half, its eyes shut longer and more
+	// often, a hiccup now and then; passed out, its head hung forward and sunk into its shoulders (`lean`), eyes shut,
+	// its can dropped, and nothing of the rest
 	loungerPose(worker) {
 		const drunk = this.drunkOf(worker);
 		const out = drunk >= 1;
 		const beat = this.time + worker.seed;
 
-		if (out) return { drunk, out, sway: 0, hiccup: 0, shut: true, sag: 0, lean: { x: 3, y: 3 } };
+		if (out) return { drunk, out, sway: 0, lurch: 0, hiccup: 0, shut: true, sag: 0, lean: { x: 1, y: 4 }, flush: 1 };
+
+		const sway = Math.round(Math.sin(this.time * (0.7 + drunk) + worker.seed * 6) * drunk * 2.4);
 
 		return {
 			drunk,
 			out,
-			sway: Math.round(Math.sin(this.time * (0.7 + drunk) + worker.seed * 6) * drunk * 2.4),
+			sway,
+			lurch: drunk >= 0.5 ? Math.round(sway / 2) : 0,
 			hiccup: drunk >= 0.35 && (this.time * 1.1 + worker.seed * 7) % 4 < 0.12 ? 1 : 0,
 			shut: drunk > 0 && beat % 4 < 0.15 + drunk * 1.2,
 			sag: drunk >= 0.5 && Math.floor(beat * 0.6) % 3 === 0 ? 1 : 0,
 			lean: { x: 0, y: 0 },
+			flush: Math.max(0, (drunk - 0.15) / 0.85),
 		};
+	}
+
+	// A lounger's cheeks, pinker the more it has had (`flush`, 0 to 1), on its head drawn with its chin at (x, neck)
+	drawFlush(ctx, size, x, neck, flush) {
+		const { w, h } = spriteSize(`head-${size}`);
+		const left = Math.round(x - w / 2);
+		const top = Math.round(neck - h);
+
+		ctx.globalAlpha = Math.min(1, flush) * 0.85;
+		for (const cheek of cheeksOf(size)) rect(ctx, left + cheek.x, top + cheek.y, 2, 1, '#ff7a8c');
+		ctx.globalAlpha = 1;
 	}
 
 	// The seat it left at its island while it rests: its chair empty, its terminal frosted over gone cold or switched off
@@ -5197,7 +5213,8 @@ export default class Ship {
 		const shut = dozing || blinking || Boolean(pose?.shut);
 		const size = this.headOf(session, worker);
 		const squeezing = size !== this.headOf(session);
-		const head = `head-${size}${shut ? '-shut' : ''}`;
+		// Passed out, its head hangs forward: the back of its skull shows, its face hidden
+		const head = pose?.out ? `head-${size}-back` : `head-${size}${shut ? '-shut' : ''}`;
 		const colors = { c: `hsl(${session.hue ?? 200} 55% 55%)`, s: rankOf(session.context?.model) };
 		const drowsing =
 			(drowse >= 0.85 && 2) || (drowse >= 0.6 && Math.floor((this.time + worker.seed) * 0.8) % 3 === 0 ? 1 : 0);
@@ -5209,7 +5226,7 @@ export default class Ship {
 		const body = (waving && (sitting ? 'bodySitWave' : 'bodyWave')) || (sitting ? 'bodySit' : `body${stride}`);
 		const neck = at.y - lift - (sitting ? 6 : 5) + sag;
 
-		drawSprite(ctx, body, at.x, at.y - lift, {
+		drawSprite(ctx, body, at.x + (pose?.lurch ?? 0), at.y - lift, {
 			colors,
 			flip: (walking && worker.facing < 0) || (!walking && worker.seat?.side < 0),
 		});
@@ -5231,6 +5248,7 @@ export default class Ship {
 		drawSprite(ctx, head, at.x + aside, neck, {
 			colors: size === 'bursting' ? { ...colors, r: '#ff4a3a' } : colors,
 		});
+		if (pose?.flush && !pose.out) this.drawFlush(ctx, size, at.x + aside, neck, pose.flush);
 		ctx.globalAlpha = 1;
 		if (making < 1) ctx.restore();
 

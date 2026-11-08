@@ -493,6 +493,19 @@ const imageOf = (name, colors) => {
 
 export const spriteSize = name => ({ w: Math.max(...SPRITES[name].map(row => row.length)), h: SPRITES[name].length });
 
+// Where a head's cheeks are, the row under its eyes out from each eye's outer corner, as (x, y) within the sprite and
+// two pixels wide: a flush goes there
+export const cheeksOf = size => {
+	const rows = HEADS[size];
+	const lowest = rows.findLastIndex(row => row.includes('e'));
+	const row = rows[lowest];
+
+	return [
+		{ x: row.indexOf('e') - 1, y: lowest + 1 },
+		{ x: row.lastIndexOf('e'), y: lowest + 1 },
+	];
+};
+
 // A sprite with its feet (bottom middle) at (x, y), in art pixels; `flip` mirrors it
 export const drawSprite = (ctx, name, x, y, { colors = {}, flip = false } = {}) => {
 	const image = imageOf(name, colors);
