@@ -175,6 +175,11 @@ export const Stage = styled(
 			align-self: flex-end;
 		}
 
+		.pane .new-arcade textarea {
+			min-height: 4em;
+			resize: vertical;
+		}
+
 		.pane .new-arcade .progress {
 			max-height: 10em;
 			overflow: auto;

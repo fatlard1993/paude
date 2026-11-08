@@ -35,11 +35,11 @@ import {
 	arcadeOf,
 	createArcadeProject,
 	isArcade,
-	folderName,
 	openingPrompt,
 	shelfCommand,
 	shelveGame,
 	undoLastTurn,
+	workingTitle,
 } from '../arcade';
 import { SpeechError, hear, readAloud } from '../speech';
 import { askingAsWritten } from '../sessions/askedQuestion';
@@ -150,7 +150,7 @@ const HEARTBEAT_MS = 5000;
 // A new session, kept warm, kept going, fabled or short-lived from the start when asked, on the model asked for: mode
 // is 'warm', 'going', 'fabled', 'brief' or anything else for none, model one of MODEL_NAMES or anything else for the default.
 // Whoever starts it watches its project from then on, unless they turned that off themselves
-const startWith = async (folder, text, { mode, model, identity, project } = {}) => {
+const startWith = async (folder, text, { mode, model, identity, project = projectOf(folder) } = {}) => {
 	const known = MODEL_NAMES.includes(model) ? model : undefined;
 	const { id } = startSession(folder, text?.trim(), known);
 
@@ -852,18 +852,17 @@ const sessionsRoutes = async (request, server) => {
 	// A new arcade game: a project from the game scaffold, its session started on the opening prompt, and its dev server
 	// run as the project's task so the arcade page has the game to show. Streamed, as a worktree's creation is.
 	if (requestMatch('POST', '/api/arcade', request)) {
-		const { name, player, reading, model } = await request.json();
-		const title = String(name ?? '').trim();
-
-		if (!title) return new Response('Name the game.', { status: 400 });
+		const { name, idea, player, reading, model } = await request.json();
+		const named = Boolean(String(name ?? '').trim());
 
 		return creatingSession(
-			async onOutput => ({ folder: (await createArcadeProject({ name: title, player, reading }, onOutput)).folder }),
-			openingPrompt({ title, player: String(player ?? '').trim() }),
+			async onOutput => ({
+				folder: (await createArcadeProject({ name, idea, player, reading }, onOutput)).folder,
+			}),
+			openingPrompt({ title: workingTitle({ name, idea }), named, idea, player: String(player ?? '').trim() }),
 			{
 				model,
 				identity,
-				project: folderName(title),
 				started: async (id, folder) => {
 					await runTask(id, folder, 'package.json:dev').catch(error =>
 						console.error('The game could not start', error),

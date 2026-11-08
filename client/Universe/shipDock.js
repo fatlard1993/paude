@@ -378,8 +378,9 @@ export const foldersPane = ({ onAdded, machines = [] }) => ({
 	},
 });
 
-// A new arcade game on one of `machines` ({ name, url }, url null for this one): named, for whom, how they read, and
-// made there from the game scaffold with Claude started in it; then the browser goes to its arcade there
+// A new arcade game on one of `machines` ({ name, url }, url null for this one): what it's called if that's known, the
+// idea so far if there is one, for whom, how they read, and made there from the game scaffold with Claude started in
+// it; then the browser goes to its arcade there
 export const arcadePane = ({ machines = [] }) => ({
 	key: 'arcade',
 	label: 'New arcade game',
@@ -388,14 +389,17 @@ export const arcadePane = ({ machines = [] }) => ({
 		const form = element('form', 'new-arcade');
 		const where = whereSelect(machines.filter(({ url }) => url));
 		const name = element('input');
+		const idea = element('textarea');
 		const player = element('input');
 		const { reading, hint } = readingSelect();
 		const make = element('button', '', 'Make it');
 		const progress = element('pre', 'progress');
 
-		name.placeholder = "What's the game called?";
+		name.placeholder = "What's it called? (or leave that to find out together)";
 		name.maxLength = 60;
-		name.required = true;
+		idea.placeholder = 'The idea so far, as rough or detailed as you like; or leave it for Claude to ask';
+		idea.rows = 3;
+		idea.maxLength = 4000;
 		player.placeholder = "Who's building it? (their name)";
 		player.maxLength = 40;
 		progress.hidden = true;
@@ -407,6 +411,7 @@ export const arcadePane = ({ machines = [] }) => ({
 			),
 			where,
 			name,
+			idea,
 			player,
 			reading,
 			hint,
@@ -415,7 +420,7 @@ export const arcadePane = ({ machines = [] }) => ({
 		);
 		form.addEventListener('submit', async event => {
 			event.preventDefault();
-			if (!name.value.trim() || make.disabled) return;
+			if (make.disabled) return;
 
 			const remote = machines.find(machine => machine.url && machine.url === where.value) ?? null;
 
@@ -424,7 +429,7 @@ export const arcadePane = ({ machines = [] }) => ({
 			progress.textContent = '';
 
 			const made = await makeArcade(
-				{ name: name.value.trim(), player: player.value.trim(), reading: reading.value },
+				{ name: name.value.trim(), idea: idea.value.trim(), player: player.value.trim(), reading: reading.value },
 				remote,
 				progress,
 			);

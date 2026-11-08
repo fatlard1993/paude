@@ -45,7 +45,7 @@ export const readingSelect = () => {
 	return { reading, hint };
 };
 
-// Makes the game ({ name, player, reading }) here, or on `remote` ({ name, url }); what the making prints goes to
+// Makes the game ({ name, idea, player, reading }, name and idea each optional) here, or on `remote` ({ name, url }); what the making prints goes to
 // `progress` (a pre) as it comes. { id } once its session runs, or { error }.
 export const makeArcade = async (game, remote, progress) => {
 	const response = await fetch(remote ? '/api/remotes/arcade' : '/api/arcade', {

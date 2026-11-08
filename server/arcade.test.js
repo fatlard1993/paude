@@ -14,7 +14,17 @@ import {
 	openingPrompt,
 	snapshotTurn,
 	undoLastTurn,
+	workingTitle,
 } from './arcade';
+
+describe('workingTitle', () => {
+	test("is the name, or the idea's first words while there is none, or nothing much", () => {
+		expect(workingTitle({ name: ' Moon Rocks ', idea: 'a frog jumps' })).toBe('Moon Rocks');
+		expect(workingTitle({ name: '', idea: 'A frog that jumps over logs, and eats flies.' })).toBe('A frog that jumps');
+		expect(workingTitle({ name: '', idea: 'Frogs!' })).toBe('Frogs');
+		expect(workingTitle({})).toBe('New game');
+	});
+});
 
 describe('folderName', () => {
 	test('is the title as a folder and package name', () => {
@@ -25,6 +35,27 @@ describe('folderName', () => {
 });
 
 describe('arcadeInstructions', () => {
+	test('keeps the idea they started with, and says how to name a game that has no name', () => {
+		const text = arcadeInstructions({
+			title: 'rocks fall',
+			named: false,
+			idea: 'rocks fall\nyou dodge',
+			player: 'Ada',
+			reading: 'reading',
+		});
+
+		expect(text).toContain('# Building a game together');
+		expect(text).toContain('## The idea they started with\n\nrocks fall\nyou dodge\n');
+		expect(text).toContain('## It has no name yet');
+		expect(text).toContain('.paude-arcade.json');
+
+		const named = arcadeInstructions({ title: 'Moon Rocks', player: 'Ada', reading: 'reading' });
+
+		expect(named).toContain('# Building Moon Rocks together');
+		expect(named).not.toContain('idea they started with');
+		expect(named).not.toContain('no name yet');
+	});
+
 	test('names who it is for and how they read', () => {
 		const text = arcadeInstructions({ title: 'Moon Rocks', player: 'Ada', reading: 'listening' });
 
@@ -49,6 +80,21 @@ describe('openingPrompt', () => {
 			'Say hello to Ada. The game is called "Moon Rocks". Ask what it should be about, offering a few ideas as choices.',
 		);
 		expect(openingPrompt({ title: 'Moon Rocks' })).toContain('the kid you are building with');
+	});
+
+	test('carries the idea so far on one line, and asks for a name when the game has none', () => {
+		const withIdea = openingPrompt({ title: 'Moon Rocks', player: 'Ada', idea: 'rocks fall\n\nyou dodge them' });
+
+		expect(withIdea).toContain(
+			'The game is called "Moon Rocks". Their idea so far: rocks fall you dodge them Start on it',
+		);
+		expect(withIdea).not.toContain('Offer a few names');
+
+		const unnamed = openingPrompt({ title: 'rocks fall', named: false, player: 'Ada', idea: 'rocks fall' });
+
+		expect(unnamed).toContain('The game has no name yet.');
+		expect(unnamed).toContain('Offer a few names once the idea is clear.');
+		expect(openingPrompt({ title: 'New game', named: false })).toContain('find a name together once that is clear');
 	});
 });
 

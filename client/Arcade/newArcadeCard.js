@@ -44,6 +44,12 @@ const Card = styled(
 			min-width: 0;
 		}
 
+		form textarea {
+			flex: 1 1 100%;
+			min-height: 3em;
+			resize: vertical;
+		}
+
 		form select {
 			flex: 1 1 160px;
 		}
@@ -99,6 +105,7 @@ const newArcadeCard = () => {
 	const opener = element('button', 'open-form variant-flat', '🕹️ New arcade game');
 	const form = element('form');
 	const name = element('input');
+	const idea = element('textarea');
 	const player = element('input');
 	const { reading, hint } = readingSelect();
 	let where = whereSelect([]);
@@ -107,16 +114,20 @@ const newArcadeCard = () => {
 	const close = () => {
 		card.elem.classList.remove('open', 'making');
 		name.value = '';
+		idea.value = '';
 		player.value = '';
 	};
 
-	name.placeholder = "What's the game called?";
+	name.placeholder = "What's it called? (or leave that to find out together)";
 	name.maxLength = 60;
-	name.required = true;
+	idea.placeholder = 'The idea so far, as rough or detailed as you like; or leave it for Claude to ask';
+	idea.rows = 2;
+	idea.maxLength = 4000;
 	player.placeholder = "Who's building it? (their name)";
 	player.maxLength = 40;
 	form.append(
 		name,
+		idea,
 		player,
 		reading,
 		where,
@@ -141,7 +152,7 @@ const newArcadeCard = () => {
 	form.addEventListener('keydown', event => event.key === 'Escape' && close());
 	form.addEventListener('submit', async event => {
 		event.preventDefault();
-		if (!name.value.trim() || card.elem.classList.contains('making')) return;
+		if (card.elem.classList.contains('making')) return;
 
 		card.elem.classList.add('making');
 		make.disabled = true;
@@ -149,7 +160,7 @@ const newArcadeCard = () => {
 
 		const remote = remotes.find(other => other.url === where.value) ?? null;
 		const made = await makeArcade(
-			{ name: name.value.trim(), player: player.value.trim(), reading: reading.value },
+			{ name: name.value.trim(), idea: idea.value.trim(), player: player.value.trim(), reading: reading.value },
 			remote,
 			progress,
 		);

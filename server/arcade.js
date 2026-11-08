@@ -1,5 +1,5 @@
 import { mkdir, stat, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { basename, join } from 'path';
 
 import pkg from '../package.json';
 import readJsonFile from '../shared/readJsonFile';
@@ -25,6 +25,8 @@ const SHELF_TIMEOUT_MS = 5 * 60 * 1000;
 // the arcade page (client/Arcade) is what the kid sees of it.
 
 const NAME_LENGTH = 60;
+// The idea a game starts from, as rough or detailed as the person cares to write
+const IDEA_LENGTH = 4000;
 const INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
 // How long a new session is watched for Claude's trust question about its folder
 const TRUST_WAIT_MS = 90_000;
@@ -88,6 +90,25 @@ export { READING };
 
 export class ArcadeError extends Error {}
 
+// What the game is called for now: its name, or while it has none, the first words of the idea, or nothing much
+export const workingTitle = ({ name, idea }) => {
+	const named = String(name ?? '')
+		.trim()
+		.slice(0, NAME_LENGTH);
+
+	if (named) return named;
+
+	const words = String(idea ?? '')
+		.trim()
+		.split(/\s+/)
+		.filter(Boolean)
+		.slice(0, 4)
+		.join(' ')
+		.replace(/[.,;:!?]+$/, '');
+
+	return words ? words.slice(0, NAME_LENGTH) : 'New game';
+};
+
 // The game's folder (and package) name from what it's called
 export const folderName = name =>
 	String(name)
@@ -129,12 +150,30 @@ const WRITING = {
 
 // What Claude is told, in the project's CLAUDE.local.md: who it's building with and how to talk with them. The code's
 // conventions are the scaffold's own CLAUDE.md.
-export const arcadeInstructions = ({ title, player, reading }) =>
+export const arcadeInstructions = ({ title, named = true, idea = '', player, reading }) =>
 	[
-		`# Building ${title} together`,
+		named ? `# Building ${title} together` : '# Building a game together',
 		'',
 		`You are making this game with ${player || 'a kid'}, who is young. They decide what the game is and what happens next; you do all the building. A grown-up who owns this paude may write in the same conversation now and then; follow what they say.`,
 		'',
+		...(idea
+			? [
+					'## The idea they started with',
+					'',
+					idea,
+					'',
+					'Build toward it, and keep asking what comes next: it is theirs to change as they go.',
+					'',
+				]
+			: []),
+		...(named
+			? []
+			: [
+					'## It has no name yet',
+					'',
+					'Once you both know what the game is about, offer a few names as choices, a question like any other. When one is picked, put it in the title of `client/index.html` and on the Start view in `client/Start.js`, and set it as "title" in `.paude-arcade.json`, which is where paude reads the name from.',
+					'',
+				]),
 		'## The game is already running',
 		'',
 		'The game\'s server runs under paude as the project\'s `dev` task, and the kid sees the game live beside this conversation: it rebuilds and reloads itself every time you save a file. Never start, stop or restart it, and never run `bun run dev` yourself. "Show me" means say in a line what to look at or tap in the game they already see. If the game looks broken, fix the file; paude restarts the server itself if it ever dies.',
@@ -162,8 +201,28 @@ export const arcadeInstructions = ({ title, player, reading }) =>
 	].join('\n');
 
 // The first thing Claude is asked, when the session starts
-export const openingPrompt = ({ title, player }) =>
-	`Say hello to ${player || 'the kid you are building with'}. The game is called "${title}". Ask what it should be about, offering a few ideas as choices.`;
+export const openingPrompt = ({ title, named = true, idea = '', player }) => {
+	const hello = `Say hello to ${player || 'the kid you are building with'}.`;
+	const called = named ? `The game is called "${title}".` : 'The game has no name yet.';
+	const soFar = String(idea).trim().replace(/\s+/g, ' ');
+
+	if (!soFar)
+		return named
+			? `${hello} ${called} Ask what it should be about, offering a few ideas as choices.`
+			: `${hello} ${called} Ask what it should be about, offering a few ideas as choices, and find a name together once that is clear.`;
+
+	return `${hello} ${called} Their idea so far: ${soFar} Start on it: do the first thing they can see in the game, then ask what should happen next with a few choices.${named ? '' : ' Offer a few names once the idea is clear.'}`;
+};
+
+// The next folder free under `base` for a game with no name of its own: base, then base-2, base-3, ...
+const freeFolder = async base => {
+	for (let n = 1; n < 100; n++) {
+		const folder = projectPath(n === 1 ? base : `${base}-${n}`);
+
+		if (folder && !(await exists(folder))) return folder;
+	}
+	throw new ArcadeError(`No room for another ${base} here.`);
+};
 
 const exists = async path => Boolean(await stat(path).catch(() => null));
 
@@ -183,15 +242,17 @@ const git = (folder, args) =>
 
 // Make the game: the scaffold copied into a new folder under the projects root, Claude's instructions written beside
 // it, its libraries installed (what that prints goes to onOutput), and the first commit made. { folder, name }
-export const createArcadeProject = async ({ name, player, reading }, onOutput = () => {}) => {
-	const title = String(name ?? '')
+export const createArcadeProject = async ({ name, idea, player, reading }, onOutput = () => {}) => {
+	const named = Boolean(String(name ?? '').trim());
+	const title = workingTitle({ name, idea });
+	const theIdea = String(idea ?? '')
 		.trim()
-		.slice(0, NAME_LENGTH);
+		.slice(0, IDEA_LENGTH);
 
-	if (!title) throw new ArcadeError('Name the game.');
 	if (!(reading in READING)) throw new ArcadeError(`Say how well they read: ${Object.keys(READING).join(', ')}.`);
 
-	const folder = projectPath(folderName(title));
+	// A named game takes its name's folder, and another of the same name is a mistake; an unnamed one takes the next free
+	const folder = named ? projectPath(folderName(title)) : await freeFolder(folderName(title));
 
 	if (!folder) throw new ArcadeError(`${folderName(title)} can't be a project here.`);
 	if (await exists(folder)) throw new ArcadeError(`There's already a project called ${folderName(title)}.`);
@@ -203,9 +264,9 @@ export const createArcadeProject = async ({ name, player, reading }, onOutput = 
 		);
 	});
 
-	onOutput(`Making ${folderName(title)} from the game scaffold\n`);
+	onOutput(`Making ${basename(folder)} from the game scaffold\n`);
 	await newGame(folder, {
-		name: folderName(title),
+		name: basename(folder),
 		framework: spec,
 		vbc: pkg.dependencies['@vanilla-bean/components'],
 	});
@@ -213,6 +274,8 @@ export const createArcadeProject = async ({ name, player, reading }, onOutput = 
 		join(folder, 'CLAUDE.local.md'),
 		arcadeInstructions({
 			title,
+			named,
+			idea: theIdea,
 			player: String(player ?? '')
 				.trim()
 				.slice(0, 40),
@@ -223,6 +286,8 @@ export const createArcadeProject = async ({ name, player, reading }, onOutput = 
 	await writeFile(join(folder, '.claude', 'settings.json'), `${JSON.stringify(claudeSettings, null, '\t')}\n`);
 	await writeJsonFile(join(folder, MARKER), () => ({
 		title,
+		named,
+		idea: theIdea,
 		player: String(player ?? '')
 			.trim()
 			.slice(0, 40),
@@ -252,7 +317,7 @@ export const createArcadeProject = async ({ name, player, reading }, onOutput = 
 			`${title}: a new game from the scaffold`,
 		]));
 
-	return { folder, name: folderName(title) };
+	return { folder, name: basename(folder) };
 };
 
 const screenLines = session => {
