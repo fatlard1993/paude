@@ -6944,8 +6944,6 @@ export default class Ship {
 			drawSprite(ctx, 'suit', at.x, at.y - 4, { colors });
 		} else if (there && walker.pose === 'overseer') {
 			drawSprite(ctx, 'suit', at.x, at.y, { colors, flip: walker.stand < 0 });
-			if ((this.time + seeded(walker.name) * 5) % 5 < 1.2)
-				rect(ctx, at.x + walker.stand * 3, at.y - 8, 2, 2, PALETTE.t);
 		} else if (there && walker.pose === 'tourist') {
 			drawSprite(ctx, 'suitBack', at.x, at.y, { colors });
 			if ((this.time + seeded(walker.name) * 7) % 7 < 0.12) {
