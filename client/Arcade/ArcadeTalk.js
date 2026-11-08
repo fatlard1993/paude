@@ -16,6 +16,7 @@ import { canListen, canSpeak, displayTokens, listen, speak, spokenText, stopSpea
 import { recall, remember } from '../storage';
 import { toolIcon, toolWord } from '../toolIcons';
 import Talk from './ArcadeTalk.styles';
+import sayQueue from './sayQueue';
 
 // The talk with Claude as a kid has it: what Claude says in big type, read aloud with the words lit as they're said,
 // what it did as a quiet row, its questions as big choices (lit as they're read), and a box with an ear to answer.
@@ -77,8 +78,7 @@ export default class ArcadeTalk extends Talk {
 		this.gameUrl = null;
 		this.status = null;
 		this.ticks = 0;
-		this.queue = [];
-		this.saying = null;
+		this.voice = sayQueue({ session: this.id, say: speak });
 		this.sent = [];
 		this.did = null;
 		this.asking = null;
@@ -208,7 +208,7 @@ export default class ArcadeTalk extends Talk {
 		remember(PREFS.speak, on ? 'yes' : 'no');
 		if (this.speakButton) this.speakButton.firstChild.className = `fa-solid fa-${on ? 'volume-high' : 'volume-xmark'}`;
 		if (!on) {
-			this.queue = [];
+			this.voice.clear();
 			stopSpeaking();
 		}
 	}
@@ -456,7 +456,7 @@ export default class ArcadeTalk extends Talk {
 			return;
 		}
 		stopSpeaking();
-		this.queue = [];
+		this.voice.clear();
 		this.asked = 'pick-again';
 		this.choices.replaceChildren(element('div', 'question', `Undo "${spokenText(label)}" and pick something else?`));
 
@@ -499,49 +499,15 @@ export default class ArcadeTalk extends Talk {
 		this.feed.scrollTop = this.feed.scrollHeight;
 	}
 
-	// Reading aloud: one thing at a time, in the order it arrived
+	// Reading aloud, in the order it arrived (sayQueue.js)
 
-	enqueue(text, card) {
-		if (!text) return;
-		this.queue.push({ text, card });
-		if (!this.saying) this.sayNext();
-	}
-
-	sayNext() {
-		const next = this.queue.shift();
-
-		if (!next) {
-			this.saying = null;
-
-			return;
-		}
-		this.say(next.text, next.card, () => this.sayNext());
-	}
-
-	say(text, card, then) {
-		const light = index =>
-			card?.lightWord
-				? card.lightWord(index)
-				: card?.words?.forEach((span, at) => span.classList.toggle('lit', at === index));
-		const saying = speak(text, {
-			session: this.id,
-			onWord: light,
-			onEnd: () => {
-				light(-1);
-				// Stopped for a newer line, this one's end is not the queue's turn: that line has it
-				if (this.saying !== saying) return;
-				this.saying = null;
-				then?.();
-			},
-		});
-
-		this.saying = saying;
+	enqueue(text, target) {
+		this.voice.enqueue(text, target);
 	}
 
 	// A line asked for again, by its speaker button: said now, alone; whatever was queued waits for the next thing
 	sayAgain(card) {
-		this.queue = [];
-		this.say(card.spokenText, card);
+		this.voice.sayNow(card.spokenText, card);
 	}
 
 	// Choices
@@ -648,7 +614,7 @@ export default class ArcadeTalk extends Talk {
 	// "My idea": the ear opens (or the box takes focus), and what comes answers the question in words
 	askInOwnWords() {
 		stopSpeaking();
-		this.queue = [];
+		this.voice.clear();
 		if (this.mic && !this.ear) this.toggleEar();
 		else this.input.focus();
 		this.input.placeholder = 'Say your idea';
@@ -662,7 +628,7 @@ export default class ArcadeTalk extends Talk {
 
 		if (!typed) return;
 		stopSpeaking();
-		this.queue = [];
+		this.voice.clear();
 
 		// Words while a question with a typing option is up answer that question; otherwise they're the next prompt
 		const asking = this.asking;
@@ -698,7 +664,7 @@ export default class ArcadeTalk extends Talk {
 			return;
 		}
 		stopSpeaking();
-		this.queue = [];
+		this.voice.clear();
 		this.mic.classList.add('hearing');
 		this.input.hidden = true;
 		this.heard.hidden = false;
@@ -740,7 +706,7 @@ export default class ArcadeTalk extends Talk {
 			return;
 		}
 		stopSpeaking();
-		this.queue = [];
+		this.voice.clear();
 		this.asked = 'put-back';
 		this.choices.replaceChildren(element('div', 'question', 'Put the game back the way it was?'));
 
