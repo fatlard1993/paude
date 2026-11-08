@@ -96,6 +96,12 @@ const DOORWAY_SECONDS = 0.6;
 // How fast the view's zoom eases to where it's going, as a rate
 const ZOOM_EASE = 2.6;
 const SHUTTLE_WAITS = 20;
+// Who a shuttle carries, and who has climbed its tube to leave: a monitor's craft, or one from before people shared
+// them, says so by its key and `climbAt` alone
+const ridersOf = shuttle => shuttle.riders ?? [{ key: shuttle.key, hue: shuttle.hue }];
+const climbsOf = shuttle =>
+	shuttle.climbs ??
+	(shuttle.climbAt === undefined ? [] : [{ key: shuttle.key, hue: shuttle.hue, at: shuttle.climbAt }]);
 // How long a can's toss onto its pile takes, and a drink of a grey's coffee or energy drink
 const TOSS_SECONDS = 0.7;
 // How far apart the crew's bots wait in line below engineering's door, and the first of them below it
@@ -924,7 +930,9 @@ export default class Ship {
 	walkers = new Map();
 	haulers = [];
 	refuels = [];
-	// The shuttles on their way to or from the airlock: [{ key, hue, kind: 'in' | 'out', at, climbAt }]; `at` not yet
+	// The shuttles on their way to or from the airlock: [{ key, hue, kind: 'in' | 'out', at, riders, climbs, climbAt }],
+	// the people aboard one as `riders` [{ key, hue }], down its tube one after another, and those taken off as
+	// `climbs` [{ key, hue, at }] in the order they climbed (a monitor's craft has neither: one aboard, `climbAt`); `at` not yet
 	// set for one that waits for the ship to come in out of warp
 	shuttles = [];
 	// Monitors on their way off the ship, to the airlock, where a craft of their own comes for each: [{ key, session,
@@ -1944,7 +1952,7 @@ export default class Ship {
 			else {
 				Object.assign(walker, { leaving: true, path: this.route(walker, walker.room, airlock, this.bridge) });
 				// A shuttle comes for them while they walk to the airlock
-				this.shuttles.push({ key: name, hue: walker.person?.hue, kind: 'out', at: this.time });
+				this.shuttleFor('out', name, walker.person?.hue, this.time);
 			}
 		}
 
@@ -1976,8 +1984,7 @@ export default class Ship {
 			else if (walker.x === undefined) {
 				Object.assign(walker, airlock, { path: this.route(airlock, this.bridge, spot, room), room: this.bridge });
 				// Brought by shuttle, held at the airlock till they've come down its tube
-				walker.shuttle = { key: name, hue: walker.person?.hue, kind: 'in', at: joining ? undefined : this.time };
-				this.shuttles.push(walker.shuttle);
+				this.ride(walker, this.shuttleFor('in', name, walker.person?.hue, joining ? undefined : this.time));
 			}
 			// Beamed in on the transporter's pad: from there to where they belong
 			else if (!walker.spot) walker.path = this.route(walker, walker.room, spot, room);
@@ -6294,8 +6301,46 @@ export default class Ship {
 			path: walker.spot ? this.route(airlock, this.bridge, walker.spot, walker.room) : [],
 			room: this.bridge,
 		});
-		walker.shuttle = { key, hue: walker.person?.hue, kind: 'in', at: this.arrived() ? this.time : undefined };
-		this.shuttles.push(walker.shuttle);
+		this.ride(walker, this.shuttleFor('in', key, walker.person?.hue, this.arrived() ? this.time : undefined));
+	}
+
+	// The shuttle for `key` coming aboard or going, flown in at `at`: one already on its way in for someone else, still
+	// in flight, takes them too, so people arriving or leaving together share a shuttle rather than overlapping over
+	// the airlock; otherwise a new one
+	shuttleFor(kind, key, hue, at) {
+		const shared = this.shuttles.find(
+			shuttle =>
+				shuttle.kind === kind &&
+				!shuttle.craft &&
+				!shuttle.join &&
+				!shuttle.empty &&
+				shuttle.at !== undefined &&
+				at !== undefined &&
+				at - shuttle.at < SHUTTLE.fly,
+		);
+
+		if (shared) {
+			shared.riders.push({ key, hue });
+
+			return shared;
+		}
+
+		const shuttle = { key, hue, kind, at, riders: [{ key, hue }] };
+
+		this.shuttles.push(shuttle);
+
+		return shuttle;
+	}
+
+	// Someone on a shuttle in, held at the airlock till their turn down its tube
+	ride(walker, shuttle) {
+		walker.shuttle = shuttle;
+		walker.ride = Math.max(0, ridersOf(shuttle).length - 1);
+	}
+
+	// When someone coming aboard by `shuttle` is down its tube, into the airlock: the `ride`th rider after those before
+	downAt(shuttle, ride = 0) {
+		return this.approachOf(shuttle) + SHUTTLE.tube + SHUTTLE.walk * (ride + 1);
 	}
 
 	// How long into its visit a shuttle is, in seconds; null while it waits for the ship to come in
@@ -6313,7 +6358,7 @@ export default class Ship {
 		const { shuttle } = walker;
 		const age = shuttle && this.shuttleAge(shuttle);
 
-		return Boolean(shuttle) && (age === null || age < this.approachOf(shuttle) + SHUTTLE.tube + SHUTTLE.walk);
+		return Boolean(shuttle) && (age === null || age < this.downAt(shuttle, walker.ride));
 	}
 
 	// Whether it's come in and opened with the one looking aboard: its plating gone and nobody still on their way in to
@@ -6330,7 +6375,7 @@ export default class Ship {
 
 		if (!shuttle?.join || !walker.path.length) return false;
 
-		return this.time - shuttle.at - this.approachOf(shuttle) - SHUTTLE.tube - SHUTTLE.walk < WALK_IN_MOST;
+		return this.time - shuttle.at - this.downAt(shuttle, walker.ride) < WALK_IN_MOST;
 	}
 
 	// Whether someone just down a shuttle's tube is still in the airlock's doorway, its door opening on them, before
@@ -6343,7 +6388,7 @@ export default class Ship {
 			Boolean(shuttle) &&
 			shuttle.kind === 'in' &&
 			age !== null &&
-			age < this.approachOf(shuttle) + SHUTTLE.tube + SHUTTLE.walk + DOORWAY_SECONDS
+			age < this.downAt(shuttle, walker.ride) + DOORWAY_SECONDS
 		);
 	}
 
@@ -6361,15 +6406,20 @@ export default class Ship {
 		const { fly, tube, walk: down, retract } = SHUTTLE;
 
 		for (const shuttle of this.shuttles) if (shuttle.at === undefined && this.arrived()) shuttle.at = this.time;
-		// Whether the craft come for `key`, at the airlock, takes them now: its tube is down, or it's waited long enough
+		// Whether the craft come for `key`, at the airlock, takes them now: its tube is down and nobody else is still
+		// climbing it, or it's waited long enough
 		const taken = key => {
 			const shuttle = this.shuttles.find(
-				({ key: of, kind, climbAt }) => of === key && kind === 'out' && climbAt === undefined,
+				shuttle =>
+					shuttle.kind === 'out' &&
+					ridersOf(shuttle).some(rider => rider.key === key) &&
+					!climbsOf(shuttle).some(climb => climb.key === key),
 			);
 			const age = shuttle ? this.shuttleAge(shuttle) : Infinity;
+			const last = shuttle && climbsOf(shuttle).at(-1);
 
-			if (age < fly + tube && age < SHUTTLE_WAITS) return false;
-			if (shuttle) shuttle.climbAt = this.time;
+			if (age < SHUTTLE_WAITS && (age < fly + tube || (last && this.time < last.at + down))) return false;
+			if (shuttle) this.climb(shuttle, key);
 
 			return true;
 		};
@@ -6377,17 +6427,39 @@ export default class Ship {
 		for (const [name, walker] of this.walkers)
 			if (walker.leaving && !walker.path.length && taken(name)) this.walkers.delete(name);
 		this.monitorsGone = this.monitorsGone.filter(({ key, watcher }) => watcher.path.length || !taken(`${key}|monitor`));
+		// Waited long enough: it goes without whoever hasn't come
 		for (const shuttle of this.shuttles)
-			if (shuttle.kind === 'out' && shuttle.climbAt === undefined && this.shuttleAge(shuttle) > SHUTTLE_WAITS)
-				shuttle.climbAt = this.time;
+			if (shuttle.kind === 'out' && this.shuttleAge(shuttle) > SHUTTLE_WAITS)
+				for (const rider of ridersOf(shuttle))
+					if (!climbsOf(shuttle).some(climb => climb.key === rider.key)) this.climb(shuttle, rider.key);
 		this.shuttles = this.shuttles.filter(shuttle => {
 			const age = this.shuttleAge(shuttle);
 
 			if (age === null) return true;
-			if (shuttle.kind === 'in') return age < this.approachOf(shuttle) + tube + down + retract + fly;
+			if (shuttle.kind === 'in') return age < this.downAt(shuttle, ridersOf(shuttle).length - 1) + retract + fly;
 
-			return shuttle.climbAt === undefined || this.time - shuttle.climbAt < down + retract + fly;
+			const lastUp = this.lastUp(shuttle);
+
+			return lastUp === null || this.time - lastUp < retract + fly;
 		});
+	}
+
+	// `key` climbs a shuttle's tube now, after whoever climbed before
+	climb(shuttle, key) {
+		const rider = ridersOf(shuttle).find(rider => rider.key === key) ?? { key, hue: shuttle.hue };
+
+		shuttle.climbs = [...climbsOf(shuttle), { ...rider, at: this.time }];
+		shuttle.climbAt ??= this.time;
+	}
+
+	// When the last of those a shuttle came for is up its tube; null while any is still to come or climbing
+	lastUp(shuttle) {
+		const climbs = climbsOf(shuttle);
+		const last = climbs.at(-1);
+
+		if (!last || climbs.length < ridersOf(shuttle).length) return null;
+
+		return this.time < last.at + SHUTTLE.walk ? null : last.at + SHUTTLE.walk;
 	}
 
 	// Where the shuttles dock: over the airlock on the hull's back, in art pixels
@@ -6396,8 +6468,8 @@ export default class Ship {
 	}
 
 	// A shuttle at this point of its visit: how far off its dock it is (`away`, 0 to 1), how far down its tube is, and
-	// how far down it someone is (null for nobody): where it's flown in, its tube let down, someone walking it, drawn
-	// back, flown off
+	// how far down it someone is (null for nobody) and their color (`rider`): where it's flown in, its tube let down,
+	// each aboard walking it in turn, drawn back, flown off
 	shuttleState(shuttle) {
 		const age = this.shuttleAge(shuttle);
 		const { fly, tube, walk: down, retract } = SHUTTLE;
@@ -6405,7 +6477,10 @@ export default class Ship {
 
 		if (shuttle.kind === 'in') {
 			const approach = this.approachOf(shuttle);
-			const left = age - approach - tube - down;
+			const riders = ridersOf(shuttle);
+			const walked = age - approach - tube;
+			const left = walked - down * riders.length;
+			const turn = Math.floor(walked / down);
 			// Come in with the ship: held far off in warp, drawn near as the ship pulls in under it, settled as it shimmers
 			const coming = shuttle.join
 				? 1 -
@@ -6416,17 +6491,20 @@ export default class Ship {
 			return {
 				away: coming + ease((left - retract) / fly),
 				tube: Math.min(ease((age - approach) / tube), 1 - ease(left / retract)),
-				walker: !shuttle.empty && age >= approach + tube && left < 0 ? (age - approach - tube) / down : null,
+				walker: !shuttle.empty && walked >= 0 && left < 0 ? (walked - turn * down) / down : null,
+				rider: riders[turn]?.hue,
 			};
 		}
 
-		const climbed = shuttle.climbAt === undefined ? -Infinity : this.time - shuttle.climbAt;
-		const after = climbed - down;
+		const climbing = climbsOf(shuttle).find(climb => this.time >= climb.at && this.time < climb.at + down);
+		const lastUp = this.lastUp(shuttle);
+		const after = lastUp === null ? -Infinity : this.time - lastUp;
 
 		return {
 			away: 1 - ease(age / fly) + ease((after - retract) / fly),
-			tube: Math.min(ease((age - fly) / tube), climbed === -Infinity ? 1 : 1 - ease(after / retract)),
-			walker: !shuttle.empty && climbed >= 0 && climbed < down ? 1 - climbed / down : null,
+			tube: Math.min(ease((age - fly) / tube), 1 - ease(after / retract)),
+			walker: !shuttle.empty && climbing ? 1 - (this.time - climbing.at) / down : null,
+			rider: climbing?.hue,
 		};
 	}
 

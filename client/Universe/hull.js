@@ -608,9 +608,15 @@ export const shuttleAt = (dock, away) => ({
 	y: Math.round(dock.y - SHUTTLE_HOVER - away * 90),
 });
 
-export const drawShuttle = (ctx, dock, { away, tube, walker, hue, time, craft = 'shuttle', accent = PALETTE.p }) => {
+// `hue` is the stripe along its hull, `rider` the color of the one in its tube (the stripe's when not given)
+export const drawShuttle = (
+	ctx,
+	dock,
+	{ away, tube, walker, hue, rider, time, craft = 'shuttle', accent = PALETTE.p },
+) => {
 	const { x, y } = shuttleAt(dock, away);
 	const stripe = `hsl(${hue ?? 200} 60% 55%)`;
+	const band = rider === undefined ? stripe : `hsl(${rider} 60% 55%)`;
 
 	if (craft === 'monitor') return drawMonitorCraft(ctx, dock, { x, y, away, tube, walker, stripe, accent, time });
 
@@ -631,7 +637,7 @@ export const drawShuttle = (ctx, dock, { away, tube, walker, hue, time, craft = 
 
 			rect(ctx, x - 1, at, 3, 3, '#e8eef6');
 			rect(ctx, x, at + 1, 1, 1, '#f0c040');
-			rect(ctx, x - 1, at + 3, 3, 2, stripe);
+			rect(ctx, x - 1, at + 3, 3, 2, band);
 			rect(ctx, x - 1, at + 5, 1, 2, '#e8eef6');
 			rect(ctx, x + 1, at + 5 - (Math.floor(time * 6) % 2), 1, 2, '#e8eef6');
 		}

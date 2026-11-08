@@ -2912,3 +2912,42 @@ test("each person aboard wears a suit of their own color: two going by one name 
 	]);
 	expect(made.people.get('k2').hue).toBe(hues[1]);
 });
+
+test('people coming aboard or leaving together share one shuttle, down and up its tube one after another', () => {
+	const people = keys => keys.map(key => ({ key, name: key, role: 'comment', sessions: ['b'] }));
+	const looks = who => [
+		answer('here', [session(), session({ id: 'b', project: 'site' })], { projects: ['paude', 'site'], people: who }),
+	];
+	const made = shipWith(looks([]));
+
+	run(made, 10);
+	made.update(looks(people(['sam', 'pat'])));
+
+	const sam = walkerNamed(made, 'sam');
+	const pat = walkerNamed(made, 'pat');
+
+	const [first, second] = [sam, pat].sort((a, b) => a.ride - b.ride);
+
+	expect(made.shuttles).toHaveLength(1);
+	expect(made.shuttles[0].kind).toBe('in');
+	expect(made.shuttles[0].riders.map(({ key }) => key).sort()).toEqual(['pat', 'sam']);
+	expect(sam.shuttle).toBe(pat.shuttle);
+	// One is down the tube first, the other a walk's length later; the shuttle goes once both are in
+	run(made, 1.6 + 0.6 + 1.6 + 0.1);
+	expect(made.boarding(first)).toBe(false);
+	expect(made.boarding(second)).toBe(true);
+	expect(made.shuttleState(made.shuttles[0]).walker).not.toBeNull();
+	run(made, 1.6);
+	expect(made.boarding(second)).toBe(false);
+	run(made, 30);
+	expect(made.shuttles).toEqual([]);
+
+	made.update(looks([]));
+	expect(made.shuttles).toHaveLength(1);
+	expect(made.shuttles[0].kind).toBe('out');
+	expect(made.shuttles[0].riders.map(({ key }) => key).sort()).toEqual(['pat', 'sam']);
+	run(made, 30);
+	expect(walkerNamed(made, 'sam')).toBeUndefined();
+	expect(walkerNamed(made, 'pat')).toBeUndefined();
+	expect(made.shuttles).toEqual([]);
+});
