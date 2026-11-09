@@ -34,7 +34,8 @@ import {
 	acceptTrust,
 	arcadeOf,
 	createArcadeProject,
-	hostArcade,
+	hostingNow,
+	startHosting,
 	isArcade,
 	openingPrompt,
 	refreshArcade,
@@ -627,7 +628,10 @@ const sessionsRoutes = async (request, server) => {
 
 		if (!record) return new Response('Session not found', { status: 404 });
 
-		return Response.json({ arcade: await arcadeOf(record.cwd), host: identity.owner ? { hub: await hubLink() } : null });
+		return Response.json({
+			arcade: await arcadeOf(record.cwd),
+			host: identity.owner ? { hub: await hubLink(), hosting: await hostingNow(record.cwd) } : null,
+		});
 	}
 
 	// The game put back to before Claude's last turn, for whoever may drive
@@ -656,16 +660,11 @@ const sessionsRoutes = async (request, server) => {
 
 		if (!record) return new Response('Session not found', { status: 404 });
 
-		let output = '';
+		// On purpose (again): a game forgotten in the hub comes back. It runs on after the answer, since a first build
+		// takes longer than a request may; the page follows it in the arcade's hosting
+		if (!startHosting(record.cwd, projectOf(record.cwd))) return new Response('Already updating', { status: 409 });
 
-		try {
-			const hosted = await hostArcade(record.cwd, projectOf(record.cwd), text => (output += text));
-
-			return Response.json({ ...hosted, output });
-		} catch (error) {
-			if (error instanceof ArcadeError) return new Response(`${error.message}\n${output}`.trim(), { status: 409 });
-			throw error;
-		}
+		return Response.json({ started: true }, { status: 202 });
 	}
 
 	match = requestMatch('POST', '/api/sessions/:id/answer', request);

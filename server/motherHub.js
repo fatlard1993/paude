@@ -4,6 +4,8 @@ import { chmod, readFile, rm, writeFile } from 'fs/promises';
 import os from 'os';
 import { join } from 'path';
 
+import readJsonFile from '../shared/readJsonFile';
+import updateJsonFile from '../shared/updateJsonFile';
 import { serverSettings } from './serverSettings';
 import gitEnvironment from './utils/gitEnvironment';
 
@@ -21,7 +23,13 @@ let dataDir = null;
 const tokenFile = () => join(dataDir, 'mother-hub-token');
 const databaseFile = () => join(dataDir, 'mother-hub.json');
 
-export class HubError extends Error {}
+// `status` is the hub's answer, when it gave one: 409 for a game busy with something else, 410 for one forgotten there
+export class HubError extends Error {
+	constructor(message, status = null) {
+		super(message);
+		this.status = status;
+	}
+}
 
 const configured = async () => {
 	const { arcade = {} } = await serverSettings();
@@ -114,6 +122,15 @@ const internal = async () => {
 	throw new HubError("paude's own mother hub didn't start.");
 };
 
+// What paude knows of its games' hosting, kept here rather than in the games' repos (where it would be a change of
+// Claude's to commit, and stop Undo): { [folder]: { id, port, url, hub, head, state: hosted|waiting|forgotten, at } }
+const recordsFile = () => join(dataDir, 'arcade-hosting.json');
+
+export const hostingOf = async cwd => (await readJsonFile(recordsFile(), {}))[cwd] ?? null;
+
+export const recordHosting = (cwd, record) =>
+	updateJsonFile(recordsFile(), {}, records => ({ ...records, [cwd]: { ...record, at: new Date().toISOString() } }));
+
 export const motherHub = async () => (await configured()) ?? internal();
 
 // Where it is, for the arcade page to link: the configured hub, or the copy's, once there is one
@@ -149,14 +166,44 @@ const call = async (hub, path, init = {}) => {
 	});
 	const body = await response.json().catch(() => null);
 
-	if (!response.ok) throw new HubError(body?.error ?? `The mother hub answered ${response.status}`);
+	if (!response.ok) throw new HubError(body?.error ?? `The mother hub answered ${response.status}`, response.status);
 
 	return body;
 };
 
-// A game with the house's: hosted by the hub in place when it can see this folder (the same machine), or sent to it as
-// a git bundle when it can't. What's committed is what's hosted. { id, name, port, url, hub }
-export const hostGame = async (cwd, name, onOutput = () => {}, { whenIdle = false } = {}) => {
+// Hosting answers when it's begun; the game's host operation is followed here to its end. Up to 20 minutes: a first
+// install on a slow machine is long.
+const FOLLOW_MS = 20 * 60 * 1000;
+
+const follow = async (hub, id, startedAt, onOutput) => {
+	const until = Date.now() + FOLLOW_MS;
+	let printed = 0;
+
+	while (Date.now() < until) {
+		await Bun.sleep(1500);
+
+		const { operation } = await call(hub, `/api/games/${encodeURIComponent(id)}`);
+
+		if (!operation || operation.kind !== 'host' || operation.startedAt !== startedAt) continue;
+
+		for (const line of operation.lines?.slice(printed) ?? []) onOutput(`${line}\n`);
+		printed = operation.lines?.length ?? printed;
+
+		if (!operation.running) {
+			if (!operation.ok) throw new HubError(operation.error ?? 'Hosting failed');
+
+			return;
+		}
+	}
+
+	throw new HubError('The mother hub was still hosting it after twenty minutes');
+};
+
+// A game with the house's: hosted by the hub from this folder when it can see it at this commit (the same machine; the
+// house's copy then runs this folder), or sent to it as a git bundle when it can't (another machine; a clone there).
+// { id, name, port, url, hub, head, deferred? }, once the hosting is done or, asked to wait for an idle game that has
+// players, once it's waiting for them.
+export const hostGame = async (cwd, name, onOutput = () => {}, { whenIdle = false, again = false } = {}) => {
 	const hub = await motherHub();
 	const head = await git(cwd, 'rev-parse', 'HEAD');
 
@@ -167,7 +214,7 @@ export const hostGame = async (cwd, name, onOutput = () => {}, { whenIdle = fals
 	let hosted = await call(hub, '/api/host', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ name, dir: cwd, head: head.out, whenIdle }),
+		body: JSON.stringify({ name, dir: cwd, head: head.out, whenIdle, again }),
 	});
 
 	if (hosted.needsBundle) {
@@ -180,7 +227,9 @@ export const hostGame = async (cwd, name, onOutput = () => {}, { whenIdle = fals
 
 			if (!made.ok) throw new HubError(`The game couldn't be bundled: ${made.err}`);
 
-			hosted = await call(hub, `/api/host/${encodeURIComponent(name)}/bundle${whenIdle ? '?whenIdle=1' : ''}`, {
+			const query = new URLSearchParams({ ...(whenIdle && { whenIdle: '1' }), ...(again && { again: '1' }) });
+
+			hosted = await call(hub, `/api/host/${encodeURIComponent(name)}/bundle?${query}`, {
 				method: 'POST',
 				headers: { 'content-type': 'application/octet-stream' },
 				body: Bun.file(bundle),
@@ -190,7 +239,7 @@ export const hostGame = async (cwd, name, onOutput = () => {}, { whenIdle = fals
 		}
 	}
 
-	for (const line of hosted.lines ?? []) onOutput(`${line}\n`);
+	if (hosted.operation) await follow(hub, hosted.id, hosted.operation.startedAt, onOutput);
 
-	return { ...hosted, hub: hub.internal ? null : hub.url };
+	return { ...hosted, head: head.out, hub: hub.internal ? null : hub.url };
 };

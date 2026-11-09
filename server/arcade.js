@@ -10,7 +10,7 @@ import { askClaude } from './claudeInbox';
 import { listProjects, projectOf, projectPath } from './projects';
 import { sessionEnvironment } from './sessions/PtySession';
 import { feedFrom } from './feed';
-import { HubError, hostGame } from './motherHub';
+import { HubError, hostGame, hostingOf, recordHosting } from './motherHub';
 import { transcriptLines } from './sessions/transcript';
 import gitEnvironment from './utils/gitEnvironment';
 
@@ -485,6 +485,9 @@ const asPaude = ['-c', 'user.name=paude', '-c', 'user.email=paude@localhost'];
 export const snapshotTurn = async (sessionId, cwd) => {
 	if (!(await arcadeOf(cwd))) return null;
 
+	// Whatever the turn left (a snapshot here, or a commit Claude made itself), the house's copy follows it
+	keepHosted(cwd);
+
 	await gitOut(cwd, ['add', '-A']);
 	if ((await gitOut(cwd, ['diff', '--cached', '--quiet'])).ok) return null;
 
@@ -493,8 +496,6 @@ export const snapshotTurn = async (sessionId, cwd) => {
 		.catch(() => []);
 	const subject = `${SNAPSHOT}${turnName(entries)}`;
 	const committed = await gitOut(cwd, [...asPaude, 'commit', '-q', '-m', subject]);
-
-	if (committed.ok) keepHosted(cwd);
 
 	return committed.ok ? subject : null;
 };
@@ -521,6 +522,9 @@ export const undoLastTurn = async (sessionId, cwd) => {
 
 	const undone = head.out.slice(SNAPSHOT.length);
 
+	// What was put back is put back in the house's copy too
+	keepHosted(cwd);
+
 	askClaude(sessionId, {
 		prompt: `We put the game back to how it was before your last change ("${undone}"): that change is reverted in git, so read the files again before changing them. Say in one short line that it is back the way it was, then ask what to do next.`,
 	});
@@ -530,42 +534,41 @@ export const undoLastTurn = async (sessionId, cwd) => {
 
 // The game put with the house's games, hosted by the mother hub (motherHub.js): the one this paude is wired to, or its
 // own copy. Where it went is kept in the marker, so the arcade page can say. { id, name, port, url }
-export const hostArcade = async (cwd, name, onOutput = () => {}, { whenIdle = false } = {}) => {
-	const marker = await arcadeOf(cwd);
-
-	if (!marker) throw new ArcadeError('This is not an arcade game.');
+export const hostArcade = async (cwd, name, onOutput = () => {}, { whenIdle = false, again = false } = {}) => {
+	if (!(await arcadeOf(cwd))) throw new ArcadeError('This is not an arcade game.');
 
 	let hosted;
 
 	try {
-		hosted = await hostGame(cwd, name, onOutput, { whenIdle });
+		hosted = await hostGame(cwd, name, onOutput, { whenIdle, again });
 	} catch (error) {
-		if (error instanceof HubError) throw new ArcadeError(error.message);
-		throw error;
+		if (!(error instanceof HubError)) throw error;
+
+		// Forgotten in the hub: paude stops sending it until someone hosts it again on purpose
+		if (error.status === 410) await recordHosting(cwd, { ...(await hostingOf(cwd)), state: 'forgotten' });
+
+		throw new ArcadeError(error.message);
 	}
 
-	// Where the old shelf kept its port, which hosting replaces
-	const { shelf: _shelf, ...rest } = marker;
-
-	await writeJsonFile(join(cwd, MARKER), () => ({
-		...rest,
-		hosted: {
-			id: hosted.id,
-			port: hosted.port,
-			url: hosted.url ?? null,
-			hub: hosted.hub,
-			at: new Date().toISOString(),
-		},
-	}));
+	await recordHosting(cwd, {
+		id: hosted.id,
+		port: hosted.port,
+		url: hosted.url ?? null,
+		hub: hosted.hub,
+		head: hosted.head,
+		state: hosted.deferred ? 'waiting' : 'hosted',
+	});
 
 	return hosted;
 };
 
 // Every arcade game is hosted by the mother hub, without anyone asking: made, it's hosted at once, and as it's built it's
 // hosted again once a spell of building has gone quiet for a while (so the house's copy follows a few minutes behind,
-// rather than rebuilding under every turn), each time asking the hub to wait while anyone's playing the house's copy.
-// The timers live on globalThis, so a hot reload doesn't double them.
+// rather than rebuilding under every turn), each time asking the hub to wait while anyone's playing the house's copy. A
+// game whose committed state is already the house's is left alone; one forgotten in the hub, until it's hosted again on
+// purpose; one busy there, tried again shortly. The timers live on globalThis, so a hot reload doesn't double them.
 const HOST_AFTER_QUIET_MS = 10 * 60 * 1000;
+const RETRY_BUSY_MS = 2 * 60 * 1000;
 const hostTimers = (globalThis.paudeHostTimers ??= new Map());
 
 export const keepHosted = (cwd, { delay = HOST_AFTER_QUIET_MS } = {}) => {
@@ -575,27 +578,51 @@ export const keepHosted = (cwd, { delay = HOST_AFTER_QUIET_MS } = {}) => {
 		setTimeout(async () => {
 			hostTimers.delete(cwd);
 
+			const known = await hostingOf(cwd);
+			const head = await gitOut(cwd, ['rev-parse', 'HEAD']);
+
+			if (known?.state === 'forgotten' || (known?.state === 'hosted' && head.ok && known.head === head.out)) return;
+
 			try {
 				await hostArcade(cwd, projectOf(cwd), () => {}, { whenIdle: true });
 			} catch (error) {
-				console.warn(`The mother hub didn't host ${cwd}: ${error.message}`);
+				if (/busy/i.test(error.message)) keepHosted(cwd, { delay: RETRY_BUSY_MS });
+				else console.warn(`The mother hub didn't host ${cwd}: ${error.message}`);
 			}
 		}, delay),
 	);
 };
 
-// At start, the arcade games the hub doesn't have yet (made before it hosted them all) are handed to it, a little
-// apart so they don't all build at once
+// At start, the arcade games paude has no record of hosting (made before it hosted them all) are handed to the hub, a
+// little apart so they don't all build at once
 export const hostUnhosted = async ({ apartMs = 30_000 } = {}) => {
 	let delay = apartMs;
 
 	for (const name of await listProjects()) {
 		const cwd = projectPath(name);
-		const marker = cwd && (await arcadeOf(cwd));
 
-		if (!marker || marker.hosted) continue;
+		if (!cwd || !(await arcadeOf(cwd)) || (await hostingOf(cwd))) continue;
 
 		keepHosted(cwd, { delay });
 		delay += apartMs;
 	}
 };
+
+// The house button's hosting, run on after the request that started it: on purpose, so a game forgotten in the hub comes
+// back. While it runs, and what came of it, is what the arcade page shows.
+const hostingRuns = (globalThis.paudeHostingRuns ??= new Map());
+
+export const startHosting = (cwd, name) => {
+	if (hostingRuns.get(cwd)?.running) return false;
+
+	const run = { running: true, error: null };
+
+	hostingRuns.set(cwd, run);
+	hostArcade(cwd, name, () => {}, { again: true })
+		.catch(error => (run.error = error.message.split('\n')[0]))
+		.finally(() => (run.running = false));
+
+	return true;
+};
+
+export const hostingNow = async cwd => ({ ...(await hostingOf(cwd)), ...hostingRuns.get(cwd) });

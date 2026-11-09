@@ -1,6 +1,6 @@
 import { View, appendStyles } from '@vanilla-bean/components';
 
-import { hostArcadeGame, logout } from '../api';
+import { getArcade, hostArcadeGame, logout } from '../api';
 import { Bar, ghostButton } from '../Bar';
 import { button, element } from '../dom';
 import { identity } from '../identity';
@@ -105,7 +105,7 @@ export default class Arcade extends View {
 			this.hostButton = ghostButton(bar, {
 				icon: 'house-signal',
 				title:
-					"Update the house's copy now: the mother hub hosts it, and otherwise catches up a few minutes after building stops",
+					"Update the house's copy now, even under whoever's playing it: otherwise the mother hub catches up a few minutes after building stops, waiting for players",
 				onPress: () => this.host(),
 			});
 			this.hostButton.style.display = 'none';
@@ -132,19 +132,45 @@ export default class Arcade extends View {
 		this.talk.readAsking();
 	}
 
+	// Started, then followed in the arcade's hosting until it's done: a first build takes longer than one request may
 	async host() {
+		if (this.hosting) return;
+
+		this.hosting = true;
+		this.hostButton.disabled = true;
 		this.talk.notice("Updating the house's copy…", 'info');
 
 		const { body, response } = await hostArcadeGame(this.id);
 
 		if (!response?.ok) {
 			this.talk.notice(typeof body === 'string' && body ? body : 'The mother hub refused it', 'danger');
+			this.doneHosting();
 
 			return;
 		}
-		this.talk.notice(
-			`The house's copy is up to date${body.url ? `: ${body.url}` : `, on port ${body.port}`}`,
-			'success',
-		);
+
+		for (;;) {
+			await new Promise(resolve => setTimeout(resolve, 2000));
+
+			const hosting = (await getArcade(this.id)).body?.host?.hosting;
+
+			if (hosting?.running) continue;
+
+			if (hosting?.error) this.talk.notice(hosting.error, 'danger');
+			else
+				this.talk.notice(
+					`The house's copy is up to date${hosting?.url ? `: ${hosting.url}` : `, on port ${hosting?.port}`}`,
+					'success',
+				);
+
+			break;
+		}
+
+		this.doneHosting();
+	}
+
+	doneHosting() {
+		this.hosting = false;
+		this.hostButton.disabled = false;
 	}
 }
