@@ -4601,14 +4601,23 @@ export default class Ship {
 
 	// How a lounger holds itself on the couch, by how drunk it is: its cheeks flushing (`flush`, 0 to 1) and its head
 	// swaying more the more it's had, its whole body lurching with it past the half, its eyes shut longer and more
-	// often, a hiccup now and then; passed out, its head hung forward and sunk into its shoulders (`lean`), eyes shut,
-	// its can dropped, and nothing of the rest
+	// often, a hiccup now and then; passed out, its head slumped to the side, off to the couch's arm or now and then onto
+	// the other on its couch (`lean`), eyes shut, face still showing, its can dropped, and nothing of the rest
 	loungerPose(worker) {
 		const drunk = this.drunkOf(worker);
 		const out = drunk >= 1;
 		const beat = this.time + worker.seed;
 
-		if (out) return { drunk, out, sway: 0, lurch: 0, hiccup: 0, shut: true, sag: 0, lean: { x: 1, y: 4 }, flush: 1 };
+		if (out) {
+			const key = worker.session.key;
+			const index = this.lounge.sessions.indexOf(key);
+			// Its couch holds two: the arm is on its own outer side
+			const arm = index % 2 ? 1 : -1;
+			const onto = this.lounge.sessions[index ^ 1] && seeded(`${key}|slump`) < 0.25;
+			const side = onto ? -arm : arm;
+
+			return { drunk, out, sway: 0, lurch: side, hiccup: 0, shut: true, sag: 0, lean: { x: side * 5, y: 1 }, flush: 1 };
+		}
 
 		const sway = Math.round(Math.sin(this.time * (0.7 + drunk) + worker.seed * 6) * drunk * 2.4);
 
@@ -5269,8 +5278,7 @@ export default class Ship {
 		const shut = dozing || blinking || Boolean(pose?.shut);
 		const size = this.headOf(session, worker);
 		const squeezing = size !== this.headOf(session);
-		// Passed out, its head hangs forward: the back of its skull shows, its face hidden
-		const head = pose?.out ? `head-${size}-back` : `head-${size}${shut ? '-shut' : ''}`;
+		const head = `head-${size}${shut ? '-shut' : ''}`;
 		const colors = { c: `hsl(${session.hue ?? 200} 55% 55%)`, s: rankOf(session.context?.model) };
 		const drowsing =
 			(drowse >= 0.85 && 2) || (drowse >= 0.6 && Math.floor((this.time + worker.seed) * 0.8) % 3 === 0 ? 1 : 0);
@@ -5304,7 +5312,7 @@ export default class Ship {
 		drawSprite(ctx, head, at.x + aside, neck, {
 			colors: size === 'bursting' ? { ...colors, r: '#ff4a3a' } : colors,
 		});
-		if (pose?.flush && !pose.out) this.drawFlush(ctx, size, at.x + aside, neck, pose.flush);
+		if (pose?.flush) this.drawFlush(ctx, size, at.x + aside, neck, pose.flush);
 		ctx.globalAlpha = 1;
 		if (making < 1) ctx.restore();
 

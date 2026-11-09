@@ -98,8 +98,6 @@ const HEADS = {
 	],
 };
 
-// Seen from behind: no face, the back of its skull shaded down one side
-const back = rows => rows.map(row => row.replaceAll(/[eW]/g, 'a').replaceAll('r', 'a'));
 
 // Its eyes shut: all but the lowest row of each eye go the color of its face, leaving the line of its lids
 const shut = rows => {
@@ -429,7 +427,6 @@ const SPRITES = {
 		Object.entries(HEADS).flatMap(([size, rows]) => [
 			[`head-${size}`, rows],
 			[`head-${size}-shut`, shut(rows)],
-			[`head-${size}-back`, back(rows)],
 		]),
 	),
 	body: BODIES.stand,

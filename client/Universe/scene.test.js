@@ -828,7 +828,7 @@ test('each half hour a lounger tosses a can onto its pile, landing there at the 
 	expect(made.cansOf(worker)).toBe(1);
 });
 
-test("a lounger's empties go to its head by the same clock as its pile: steady at first, flushed, swaying and blinking long by the half, passed out with its head hung at eight cans' worth", () => {
+test("a lounger's empties go to its head by the same clock as its pile: steady at first, flushed, swaying and blinking long by the half, passed out with its head slumped to the side at eight cans' worth", () => {
 	const at = minutes => {
 		const made = shipWith([lounger(minutes * MINUTE)]);
 		const worker = made.workers.get('here/a');
@@ -872,15 +872,35 @@ test("a lounger's empties go to its head by the same clock as its pile: steady a
 		drunk: 1,
 		out: true,
 		sway: 0,
-		lurch: 0,
+		lurch: -1,
 		hiccup: 0,
 		shut: true,
 		sag: 0,
-		lean: { x: 1, y: 4 },
+		// Alone on its couch: off to the arm on its outer side, not down into its lap
+		lean: { x: -5, y: 1 },
 		flush: 1,
 	});
 	// Its pile still counts every half hour
 	expect(gone.made.cansOf(gone.worker)).toBe(10);
+});
+
+test("two passed out on one couch slump to the side, mostly to their own arms and now and then onto each other, faces never lost in the lap", () => {
+	const made = shipWith([
+		answer('here', [
+			session({ id: 'a', status: 'stopped', tool: null, coldAgo: 5 * 60 * MINUTE, stoppedAgo: 5 * 60 * MINUTE }),
+			session({ id: 'b', status: 'stopped', tool: null, coldAgo: 5 * 60 * MINUTE, stoppedAgo: 5 * 60 * MINUTE }),
+		]),
+	]);
+
+	run(made, 2);
+
+	const [left, right] = ['here/a', 'here/b'].map(key => made.loungerPose(made.workers.get(key)));
+
+	for (const pose of [left, right]) {
+		expect(pose.out).toBe(true);
+		expect(Math.abs(pose.lean.x)).toBe(5);
+		expect(pose.lean.y).toBeLessThanOrEqual(1);
+	}
 });
 
 test("a lounger's pile goes when it's resumed, so stopping again starts a fresh one; and with it when it's removed", () => {
