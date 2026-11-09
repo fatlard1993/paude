@@ -124,6 +124,8 @@ const feelSection = () => [
 	'- Saved games (`data/games.json`) outlive changes to the game: when `state` changes shape, a game saved the old way still loads.',
 	'- `README.md` says how to play, with the rules as they are now: when a rule changes, the README changes in the same turn.',
 	'',
+	"A game made from the newer scaffold already does these with the framework's kits (`act` and `enterGame`, `createInput`, `Stage`, `createSound`, `JoinCard`; its `CLAUDE.md` says where): build on them rather than writing your own.",
+	'',
 ];
 
 // When this paude's voice performs cues: Claude acts through the cues the voice takes, in the one voice every game
@@ -156,7 +158,7 @@ const soundsSection = () => [
 	'- "description" is what it sounds like: what makes it, how it feels, how it ends.',
 	'- "seconds" is 0.5 to 10 (1.5 when left out). Game sounds are short: most under a second.',
 	'- "loop": true makes one that repeats without a seam, for a music bed or an engine hum.',
-	"- Import it where it plays and play it: `import coin from './sounds/coin.mp3'` gives its address once built, then `new Audio(coin).play()` (keep one Audio per sound and rewind it, or clone it for overlaps).",
+	"- Import it where it plays: `import coin from './sounds/coin.mp3'` gives its address once built. Play it through the framework's sound kit when the game has one (`createSound` from `@fatlard1993/web-game-framework/client`: `createSound({ effects: { coin }, music: { level } })`, then `sound.play('coin')`, `sound.music('level')`, and a `SoundToggle` in the bar); on an older framework, an `Audio` per sound, rewound or cloned for overlaps.",
 	'',
 	'The same request again comes from the cache and costs nothing; every new second of sound is paid for, and a game has 90 new seconds a day. So make the sounds the game needs, keep them short, and reuse them. If the answer says the budget is spent, use the sounds already made.',
 	'',
@@ -168,7 +170,7 @@ const soundsSection = () => [
 	'',
 	'- A track per mood the game has (the menu, a level, a boss, a win), not one per screen. It is instrumental unless you say "instrumental": false.',
 	'- "seconds" is 3 to 120 (45 when left out); 30 to 60 loops well. Ask for no intro, build-up or ending, so it loops without a seam.',
-	'- Play it on a loop under the game, quiet beside the sounds (`audio.loop = true`, `audio.volume = 0.3`), started on the first tap (browsers hold sound until then), and let it be turned off.',
+	'- Play it on a loop under the game, quiet beside the sounds, started on the first tap (browsers hold sound until then), and let it be turned off: `sound.music(name)` does all of that, crossfading from the track before.',
 	'',
 	'Music is dear: a game has 120 new seconds of it a day, apart from the sounds, and a track asked for again costs nothing. Make each one count, and reuse it.',
 	'',

@@ -192,7 +192,7 @@ describe('arcadeInstructions', () => {
 		expect(text).toContain('"$PAUDE_SOUNDS"');
 		expect(text).toContain("import coin from './sounds/coin.mp3'");
 		expect(text).toContain('"music"');
-		expect(text).toContain('audio.loop = true');
+		expect(text).toContain('sound.music(name)');
 		expect(arcadeInstructions({ title: 'X', player: 'Ada', reading: 'reading' })).not.toContain('PAUDE_SOUNDS');
 	});
 
