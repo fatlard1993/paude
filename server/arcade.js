@@ -142,6 +142,18 @@ const soundsSection = () => [
 	'',
 	'The same request again comes from the cache and costs nothing; every new second of sound is paid for, and a game has 90 new seconds a day. So make the sounds the game needs, keep them short, and reuse them. If the answer says the budget is spent, use the sounds already made.',
 	'',
+	'Music too: give "music" (what it is: genre, mood, tempo, instruments) in place of "description", and paude composes a track:',
+	'',
+	'```sh',
+	'curl -fsS -X POST "$PAUDE_SOUNDS" -H \'content-type: application/json\' -d \'{"music": "bouncy chiptune for a sunny desert puzzle level, steady mid tempo, square-wave lead, no build-up or ending", "seconds": 60, "file": "client/sounds/level.mp3"}\'',
+	'```',
+	'',
+	'- A track per mood the game has (the menu, a level, a boss, a win), not one per screen. It is instrumental unless you say "instrumental": false.',
+	'- "seconds" is 3 to 120 (45 when left out); 30 to 60 loops well. Ask for no intro, build-up or ending, so it loops without a seam.',
+	'- Play it on a loop under the game, quiet beside the sounds (`audio.loop = true`, `audio.volume = 0.3`), started on the first tap (browsers hold sound until then), and let it be turned off.',
+	'',
+	'Music is dear: a game has 120 new seconds of it a day, apart from the sounds, and a track asked for again costs nothing. Make each one count, and reuse it.',
+	'',
 ];
 
 // What Claude is told, in the project's CLAUDE.local.md: who it's building with and how to talk with them. The code's

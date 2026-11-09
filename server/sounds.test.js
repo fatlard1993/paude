@@ -4,7 +4,7 @@ import { join } from 'path';
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
-import { initSounds, makeSound, secondsLeft, soundRequest, soundToken } from './sounds';
+import { initSounds, makeSound, musicRequest, secondsLeft, soundRequest, soundToken } from './sounds';
 
 let dir;
 let game;
@@ -110,4 +110,42 @@ test("a session's token is its own", () => {
 	expect(soundToken('secret', 'a')).toBe(soundToken('secret', 'a'));
 	expect(soundToken('secret', 'a')).not.toBe(soundToken('secret', 'b'));
 	expect(soundToken('other', 'a')).not.toBe(soundToken('secret', 'a'));
+});
+
+describe('music', () => {
+	test('a track is instrumental unless asked otherwise, 3 to 120 seconds, into a file inside the game', () => {
+		expect(musicRequest({ music: 'calm harp', file: 'client/sounds/menu.mp3' })).toEqual({
+			music: 'calm harp',
+			seconds: 45,
+			instrumental: true,
+			file: 'client/sounds/menu.mp3',
+		});
+		expect(musicRequest({ music: 'x', instrumental: false, seconds: 60, file: 'a.mp3' }).instrumental).toBe(false);
+		expect(() => musicRequest({ file: 'a.mp3' })).toThrow('Describe the music');
+		expect(() => musicRequest({ music: 'x', seconds: 600, file: 'a.mp3' })).toThrow('120');
+		expect(() => musicRequest({ music: 'x', file: '../a.mp3' })).toThrow('"file"');
+	});
+
+	test('composes with the music model, from its own budget, apart from sounds', async () => {
+		const { calls, fetcher } = answering();
+		const made = await makeSound(
+			'm1',
+			game,
+			{ music: 'chiptune desert level', seconds: 60, file: 'client/sounds/level.mp3' },
+			{ fetcher },
+		);
+
+		expect(made).toMatchObject({ file: 'client/sounds/level.mp3', seconds: 60, cached: false, left: 60 });
+		expect(calls[0].url).toBe('https://api.elevenlabs.io/v1/music');
+		expect(JSON.parse(calls[0].options.body)).toEqual({
+			prompt: 'chiptune desert level',
+			music_length_ms: 60_000,
+			force_instrumental: true,
+			model_id: 'music_v2_5',
+		});
+		expect(secondsLeft('m1')).toBe(90);
+		await expect(
+			makeSound('m1', game, { music: 'another long one', seconds: 61, file: 'b.mp3' }, { fetcher }),
+		).rejects.toThrow('music budget');
+	});
 });
