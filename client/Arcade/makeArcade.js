@@ -104,7 +104,8 @@ export const newArcadeForm = ({ remotes = [], onMade } = {}) => {
 
 	name.placeholder = "What's it called? (or leave that to find out together)";
 	name.maxLength = 60;
-	idea.placeholder = 'The idea so far, as rough or detailed as you like; or leave it for Claude to ask';
+	idea.placeholder =
+		'The idea so far, as rough or detailed as you like; or leave it and Claude will brainstorm one with them';
 	idea.rows = 2;
 	idea.maxLength = 4000;
 	player.placeholder = "Who's building it? (their name)";

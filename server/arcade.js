@@ -156,22 +156,48 @@ const WRITING = {
 
 // What Claude is told, in the project's CLAUDE.local.md: who it's building with and how to talk with them. The code's
 // conventions are the scaffold's own CLAUDE.md.
-export const arcadeInstructions = ({ title, named = true, idea = '', player, reading }) =>
+// The rules' section on the idea: the one they started with, carried on from; a game under way before any idea was
+// recorded, to be read from its files; or none yet, found together first
+const ideaSection = ({ idea, underWay }) => {
+	if (idea)
+		return [
+			'## The idea they started with',
+			'',
+			idea,
+			'',
+			'Build toward it, and keep asking what comes next: it is theirs to change as they go.',
+			'',
+		];
+	if (underWay)
+		return [
+			'## Already under way',
+			'',
+			'The game was begun before these rules were written down, so what it is about is in its files: read `Game.js` and `client/Play.js` before changing anything, and carry on from there. Do not start over or ask what the game should be.',
+			'',
+		];
+
+	return [
+		'## Finding the idea first',
+		'',
+		'There is no idea yet. Find one together before building anything, one question at a time, each with the AskUserQuestion tool and two to four picture choices (the page adds "More ideas" itself):',
+		'',
+		'1. What they love: a few worlds to pick from, say 🐸 animals, 🚀 space, 🏎️ racing, 🏰 castles, 🌊 the sea, 🍕 food. Pick ones a kid their age lights up at; vary them if they ask for more.',
+		'2. What they want to do in it: say 🎯 catch things, 🏃 dodge things, 🎨 draw, 🧱 build, 🔍 find what is hidden, 🏁 race.',
+		'3. Three game ideas that fit both answers, each a short title with its emoji and one line under it saying what you do, so they can picture it. The ideas should be small enough to see working in a few turns.',
+		'4. Once one is picked, say the idea back in one short line, then offer a few names for it as choices.',
+		'',
+		'When the idea and name are settled, write the idea in one or two sentences into "idea" in `.paude-arcade.json` (and the name into "title"), so paude remembers it for you, then build the first thing they can see and carry on as below. If they already know what they want at any step, skip the rest of the steps and go with it.',
+		'',
+	];
+};
+
+export const arcadeInstructions = ({ title, named = true, idea = '', underWay = false, player, reading }) =>
 	[
 		named ? `# Building ${title} together` : '# Building a game together',
 		'',
 		`You are making this game with ${player || 'a kid'}, who is young. They decide what the game is and what happens next; you do all the building. A grown-up who owns this paude may write in the same conversation now and then; follow what they say.`,
 		'',
-		...(idea
-			? [
-					'## The idea they started with',
-					'',
-					idea,
-					'',
-					'Build toward it, and keep asking what comes next: it is theirs to change as they go.',
-					'',
-				]
-			: []),
+		...ideaSection({ idea, underWay }),
 		...(named
 			? []
 			: [
@@ -213,9 +239,7 @@ export const openingPrompt = ({ title, named = true, idea = '', player }) => {
 	const soFar = String(idea).trim().replace(/\s+/g, ' ');
 
 	if (!soFar)
-		return named
-			? `${hello} ${called} Ask what it should be about, offering a few ideas as choices.`
-			: `${hello} ${called} Ask what it should be about, offering a few ideas as choices, and find a name together once that is clear.`;
+		return `${hello} ${called} There is no idea yet: find one together as your rules say, starting by asking what they love, with a few picture choices.${named ? '' : ' Find a name together once the idea is clear.'}`;
 
 	return `${hello} ${called} Their idea so far: ${soFar} Start on it: do the first thing they can see in the game, then ask what should happen next with a few choices.${named ? '' : ' Offer a few names once the idea is clear.'}`;
 };
@@ -390,12 +414,16 @@ export const refreshArcade = async cwd => {
 
 	if (!marker) return false;
 
+	// Past the scaffold's first commit, the game is what its files say, idea recorded or not
+	const commits = await gitOut(cwd, ['rev-list', '--count', 'HEAD']);
+
 	await writeFile(
 		join(cwd, RULES),
 		arcadeInstructions({
 			title: marker.title,
 			named: marker.named ?? true,
 			idea: marker.idea ?? '',
+			underWay: commits.ok && Number(commits.out) > 1,
 			player: marker.player,
 			reading: marker.reading,
 		}),

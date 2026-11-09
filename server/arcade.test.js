@@ -70,6 +70,27 @@ describe('refreshArcade', () => {
 		expect(await readFile(join(game, 'CLAUDE.local.md'), 'utf8')).toBe('@./.paude-arcade.md\n\nAda likes purple.\n');
 	});
 
+	test('a game past its first commit, with no idea recorded, is told it is under way rather than to brainstorm', async () => {
+		await writeFile(
+			join(game, '.paude-arcade.json'),
+			JSON.stringify({ title: 'Old', player: 'Ada', reading: 'reading' }),
+		);
+		await refreshArcade(game);
+		expect(await readFile(join(game, '.paude-arcade.md'), 'utf8')).toContain('## Finding the idea first');
+
+		const sh = command => Bun.spawnSync(['sh', '-c', command], { cwd: game });
+
+		sh(
+			'git init -q && git -c user.name=t -c user.email=t@x commit -q --allow-empty -m scaffold && git -c user.name=t -c user.email=t@x commit -q --allow-empty -m "turn: a frog"',
+		);
+		await refreshArcade(game);
+
+		const rules = await readFile(join(game, '.paude-arcade.md'), 'utf8');
+
+		expect(rules).toContain('## Already under way');
+		expect(rules).not.toContain('Finding the idea first');
+	});
+
 	test('an ordinary folder is left alone', async () => {
 		const plain = await mkdtemp(join(tmpdir(), 'plain-'));
 
@@ -115,6 +136,10 @@ describe('arcadeInstructions', () => {
 		expect(named).toContain('# Building Moon Rocks together');
 		expect(named).not.toContain('idea they started with');
 		expect(named).not.toContain('no name yet');
+		// Without an idea, the brainstorm: what they love, what they want to do, three ideas, then a name, kept in the marker
+		expect(named).toContain('## Finding the idea first');
+		expect(named).toContain('"idea" in `.paude-arcade.json`');
+		expect(text).not.toContain('Finding the idea first');
 	});
 
 	test('names who it is for and how they read', () => {
@@ -138,7 +163,7 @@ describe('arcadeInstructions', () => {
 describe('openingPrompt', () => {
 	test('asks Claude to open the conversation about the named game', () => {
 		expect(openingPrompt({ title: 'Moon Rocks', player: 'Ada' })).toBe(
-			'Say hello to Ada. The game is called "Moon Rocks". Ask what it should be about, offering a few ideas as choices.',
+			'Say hello to Ada. The game is called "Moon Rocks". There is no idea yet: find one together as your rules say, starting by asking what they love, with a few picture choices.',
 		);
 		expect(openingPrompt({ title: 'Moon Rocks' })).toContain('the kid you are building with');
 	});
@@ -155,7 +180,9 @@ describe('openingPrompt', () => {
 
 		expect(unnamed).toContain('The game has no name yet.');
 		expect(unnamed).toContain('Offer a few names once the idea is clear.');
-		expect(openingPrompt({ title: 'New game', named: false })).toContain('find a name together once that is clear');
+		expect(openingPrompt({ title: 'New game', named: false })).toContain(
+			'Find a name together once the idea is clear.',
+		);
 	});
 });
 
