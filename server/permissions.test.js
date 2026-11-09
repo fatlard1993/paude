@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { guestMayRequest, may, mayManage } from './permissions';
+import { guestMayRequest, may, mayManage, ownsSession } from './permissions';
 
 const owner = { owner: true, name: 'chase' };
 const guest = role => ({ owner: false, name: 'ana', role, sessionId: 's1' });
@@ -70,4 +70,38 @@ test('files are part of comment and drive, not view', async () => {
 
 	expect(may({ owner: false, role: 'comment', sessionId: 's' }, 'files', 's')).toBe(true);
 	expect(may({ owner: false, role: 'watch', sessionId: 's' }, 'files', 's')).toBe(false);
+});
+
+describe('a game maker', () => {
+	const ben = {
+		owner: false,
+		maker: true,
+		name: 'Ben',
+		role: 'drive',
+		view: 'arcade',
+		sessionId: null,
+		sessionIds: ['g1', 'g2'],
+	};
+
+	test('drives every game they made, and no other session', () => {
+		expect([may(ben, 'type', 'g1'), may(ben, 'type', 'g2'), may(ben, 'type', 's9')]).toEqual([true, true, false]);
+		expect([ownsSession(ben, 'g2'), ownsSession(ben, 's9'), ownsSession(null, 'g1')]).toEqual([true, false, false]);
+	});
+
+	test("reaches each of their games as that game's guest would, makes new games, lists theirs, and nothing else", () => {
+		expect(guestMayRequest(ben, 'GET', '/api/sessions/g1/arcade')).toBe(true);
+		expect(guestMayRequest(ben, 'POST', '/api/sessions/g2/answer')).toBe(true);
+		expect(guestMayRequest(ben, 'GET', '/api/sessions/s9/arcade')).toBe(false);
+		expect(guestMayRequest(ben, 'POST', '/api/sessions/s9/prompt')).toBe(false);
+		expect(guestMayRequest(ben, 'POST', '/api/arcade')).toBe(true);
+		expect(guestMayRequest(ben, 'GET', '/api/arcade/mine')).toBe(true);
+		expect(guestMayRequest(ben, 'GET', '/api/universe')).toBe(false);
+		expect(guestMayRequest(ben, 'GET', '/api/projects')).toBe(false);
+		expect(guestMayRequest(ben, 'POST', '/api/makers')).toBe(false);
+	});
+
+	test("an ordinary guest still can't make games", () => {
+		expect(guestMayRequest(guest('drive'), 'POST', '/api/arcade')).toBe(false);
+		expect(guestMayRequest(guest('drive'), 'GET', '/api/arcade/mine')).toBe(false);
+	});
 });

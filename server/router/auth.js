@@ -8,12 +8,14 @@ import {
 	getServerId,
 	createInvite,
 	createLogin,
+	createMakerInvite,
 	createToken,
 	credentialOf,
 	endLogin,
 	identityOf,
 	inviteFromToken,
 	listInvites,
+	listMakers,
 	loginCookie,
 	passwordIsSet,
 	redeemHandoff,
@@ -21,6 +23,7 @@ import {
 	revokeToken,
 	setPassword,
 } from '../auth';
+import { READING } from '../../shared/arcade';
 import { ROLES, guestMayRequest } from '../permissions';
 import { publicOrigin } from '../publicOrigin';
 
@@ -85,11 +88,17 @@ const authRoutes = async request => {
 
 		if (!invite) return deadInvite();
 
-		await watchIfNew({ owner: false, inviteId: invite.id }, invite.sessionId);
+		if (invite.sessionId) await watchIfNew({ owner: false, inviteId: invite.id }, invite.sessionId);
 
 		return Response.json(
-			{ sessionId: invite.sessionId },
-			{ headers: { 'Set-Cookie': loginCookie(await createLogin({ invite })) } },
+			{ sessionId: invite.sessionId, ...(invite.maker && { maker: true }) },
+			{
+				headers: {
+					'Set-Cookie': loginCookie(await createLogin({ invite }), {
+						until: invite.maker ? invite.expires : undefined,
+					}),
+				},
+			},
 		);
 	}
 
@@ -174,6 +183,29 @@ const authRoutes = async request => {
 			role,
 			expires: invite.expires,
 			token,
+			link: `${publicOrigin(request, await serverSettings())}/#/join/${token}`,
+		});
+	}
+
+	// Game makers: someone given their own arcade, to make games and come back to them (the owner's to give)
+	if (requestMatch('GET', '/api/makers', request)) return Response.json(listMakers());
+
+	if (requestMatch('POST', '/api/makers', request)) {
+		const { name, reading } = await request.json();
+		const cleanName = String(name ?? '')
+			.trim()
+			.slice(0, 40);
+
+		if (!cleanName) return new Response('A game maker needs a name', { status: 400 });
+		if (!(reading in READING))
+			return new Response(`Say how well they read: ${Object.keys(READING).join(', ')}`, { status: 400 });
+
+		const { invite, token } = await createMakerInvite({ name: cleanName, reading });
+
+		return Response.json({
+			id: invite.id,
+			name: invite.name,
+			reading,
 			link: `${publicOrigin(request, await serverSettings())}/#/join/${token}`,
 		});
 	}

@@ -585,7 +585,8 @@ export const isOwnProject = folder => {
 
 // A guest's ship is their session and its project alone: nothing else aboard, and none of the ship's figures (fuel,
 // usage, the log, the crew, the journey, the tools), which are the machine's, not the session's. The owner sees all.
-const scopeOf = identity => (identity.owner ? null : new Set([identity.sessionId]));
+const scopeOf = identity =>
+	identity.owner ? null : new Set(identity.maker ? identity.sessionIds : [identity.sessionId]);
 
 export const universe = async identity => {
 	forgetStale();

@@ -173,8 +173,12 @@ export const createLogin = async ({ invite, local } = {}) => {
 	return token;
 };
 
-export const loginCookie = (token, { clear = false } = {}) =>
-	`${COOKIE}=${clear ? '' : token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${clear ? 0 : LOGIN_MS / 1000}`;
+// `until`: the login lasts as long as an invite that outlives the usual login (a game maker's), so the browser keeps it
+export const loginCookie = (token, { clear = false, until } = {}) => {
+	const seconds = clear ? 0 : Math.round(Math.max(LOGIN_MS, (until ?? 0) - Date.now()) / 1000);
+
+	return `${COOKIE}=${clear ? '' : token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${seconds}`;
+};
 
 export const createToken = async (name, { invite, local } = {}) => {
 	const token = randomToken();
@@ -222,7 +226,20 @@ export const identityOf = credential => {
 	if (!record) return null;
 	if (!record.invite) return { owner: true, ...(record.local && { local: true }) };
 
-	const { id, name, role, sessionId, view } = liveInvite(record.invite);
+	const { id, name, role, sessionId, view, maker } = liveInvite(record.invite);
+
+	if (maker)
+		return {
+			owner: false,
+			inviteId: id,
+			name,
+			role,
+			view,
+			maker: true,
+			reading: maker.reading,
+			sessionId: null,
+			sessionIds: [...maker.sessionIds],
+		};
 
 	return { owner: false, inviteId: id, name, role, sessionId, ...(view && { view }) };
 };
@@ -285,6 +302,50 @@ export const createInvite = async ({ sessionId, name, role, hours, view }) => {
 
 	return { invite, token };
 };
+
+// A game maker's invite: their own arcade, to make games in and come back to, each game one session. Not tied to a
+// session, and long-lived (revoked rather than left to lapse); the games they make are added to it as they're made.
+const MAKER_YEARS = 10;
+
+export const createMakerInvite = async ({ name, reading }) => {
+	const token = randomToken();
+	const invite = {
+		id: randomToken().slice(0, 10),
+		name,
+		role: 'drive',
+		sessionId: null,
+		view: 'arcade',
+		maker: { reading, sessionIds: [] },
+		hash: digest(token),
+		created: Date.now(),
+		expires: Date.now() + MAKER_YEARS * 365 * 24 * 60 * 60 * 1000,
+	};
+
+	state.invites.push(invite);
+	await save();
+
+	return { invite, token };
+};
+
+export const addMakerGame = async (inviteId, sessionId) => {
+	const invite = liveInvite(inviteId);
+
+	if (!invite?.maker || invite.maker.sessionIds.includes(sessionId)) return;
+
+	invite.maker.sessionIds.push(sessionId);
+	await save();
+};
+
+export const listMakers = () =>
+	state.invites
+		.filter(invite => invite.maker && invite.expires > Date.now())
+		.map(({ id, name, created, maker }) => ({
+			id,
+			name,
+			created,
+			reading: maker.reading,
+			games: maker.sessionIds.length,
+		}));
 
 export const inviteFromToken = token =>
 	typeof token === 'string'

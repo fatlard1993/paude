@@ -5,7 +5,7 @@ import { requestMatch } from '@vanilla-bean/components/app';
 
 import { credentialOf, identityOf } from '../auth';
 import { isSecret } from '../files';
-import { may } from '../permissions';
+import { may, ownsSession } from '../permissions';
 import { previewOrigin as previewOriginOf } from '../publicOrigin';
 import { serverSettings } from '../serverSettings';
 import { sessionRecord } from '../sessions/record';
@@ -59,8 +59,7 @@ const sharesRoutes = async request => {
 
 	const identity = identityOf(credentialOf(request));
 
-	if (!identity || !(identity.owner || identity.sessionId === match.id))
-		return new Response('Not part of your invite', { status: 403 });
+	if (!ownsSession(identity, match.id)) return new Response('Not part of your invite', { status: 403 });
 	if (!listing && !may(identity, 'type', match.id))
 		return new Response('Your invite does not include sharing', { status: 403 });
 

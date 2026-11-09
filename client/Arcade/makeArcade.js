@@ -89,8 +89,9 @@ export const goToArcade = async (id, remote) => {
 // called if that's known, the idea so far if there is one, who's building it, how they read, and where it's made
 // (`remotes`, { name, url }, hidden until there are any). Making it streams into the progress line; made, the browser
 // goes to its arcade, and `onMade` hears. { form, hint, setRemotes, reset, focus }: `hint` is the form's last child,
-// for whoever adds a button before it.
-export const newArcadeForm = ({ remotes = [], onMade } = {}) => {
+// for whoever adds a button before it. `asMaker`: for a game maker, who builds as themself, here: no who, how they
+// read, or where.
+export const newArcadeForm = ({ remotes = [], onMade, asMaker = false } = {}) => {
 	const form = element('form', 'new-arcade');
 	const name = element('input');
 	const idea = element('textarea');
@@ -111,7 +112,7 @@ export const newArcadeForm = ({ remotes = [], onMade } = {}) => {
 	player.placeholder = "Who's building it? (their name)";
 	player.maxLength = 40;
 	progress.style.display = 'none';
-	form.append(name, idea, player, reading, where, make, progress, hint);
+	form.append(...(asMaker ? [name, idea, make, progress] : [name, idea, player, reading, where, make, progress, hint]));
 
 	const reset = () => {
 		name.value = '';

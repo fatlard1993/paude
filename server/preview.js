@@ -1,3 +1,4 @@
+import { ownsSession } from './permissions';
 import { readdir, realpath, stat } from 'fs/promises';
 import path from 'path';
 
@@ -192,7 +193,7 @@ const site = async (share, rest) => {
 const allowedTo = (request, share) => {
 	const identity = identityOf(credentialOf(request));
 
-	return identity && (identity.owner || identity.sessionId === share.sessionId);
+	return ownsSession(identity, share.sessionId);
 };
 
 export const previewFetch = async (request, server) => {

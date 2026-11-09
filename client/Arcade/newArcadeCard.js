@@ -5,6 +5,7 @@ import { button, element } from '../dom';
 import { identity } from '../identity';
 import { knownServers, setServers } from '../servers';
 import { newArcadeForm } from './makeArcade';
+import makersPanel from './makersPanel';
 
 // The home page's way into the arcade: name the game and who's building it, and paude makes a project from the game
 // scaffold, starts Claude in it on the kid's terms, and opens the arcade page on it. On this paude, or on any other
@@ -75,7 +76,20 @@ const Card = styled(
 			display: none;
 		}
 
-		&.open form {
+		&.open form.new-arcade {
+			display: flex;
+		}
+
+		.makers {
+			margin-top: ${space.sm};
+		}
+
+		.makers .open-form {
+			width: 100%;
+			min-height: 40px;
+		}
+
+		.makers.open form {
 			display: flex;
 		}
 
@@ -105,7 +119,7 @@ const newArcadeCard = () => {
 	};
 
 	form.insertBefore(button('', close, { icon: 'xmark', title: 'Cancel (Esc)', className: 'icon-only' }), hint);
-	card.elem.append(opener, form);
+	card.elem.append(opener, form, makersPanel());
 	opener.addEventListener('click', () => {
 		card.elem.classList.add('open');
 		focus();

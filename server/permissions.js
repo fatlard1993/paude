@@ -3,11 +3,19 @@ import { identityKey } from './activity';
 
 export { ROLES } from '../shared/roles';
 
-// The owner may do everything, everywhere; a guest what their role allows, in the session their invite names
+// Whether a session is theirs: every session is the owner's; a guest's is the one their invite names, or, for a game
+// maker (an invite to make arcade games of their own), each game they've made
+export const ownsSession = (identity, sessionId) =>
+	Boolean(
+		identity &&
+		(identity.owner || (identity.maker ? identity.sessionIds.includes(sessionId) : identity.sessionId === sessionId)),
+	);
+
+// The owner may do everything, everywhere; a guest what their role allows, in a session of theirs
 export const may = (identity, action, sessionId) => {
 	if (!identity) return false;
 	if (identity.owner) return true;
-	if (identity.sessionId !== sessionId) return false;
+	if (!ownsSession(identity, sessionId)) return false;
 
 	return roleAllows(identity.role, action);
 };
@@ -48,7 +56,22 @@ const OWN_SESSION_ROUTES = [
 // (the arcade's), the game put back, and carrying on after a limit; each route checks the role allows it
 const OWN_SESSION_POSTS = ['/answer', '/prompt', '/speech', '/hear', '/arcade/undo', '/continue'];
 
+// A game maker reaches what a guest of each of their games would, and makes new games and lists theirs. Not the
+// universe: it's scoped to one session, and theirs are many.
 export const guestMayRequest = (identity, method, pathname) => {
+	if (!identity.maker) return sessionGuestMayRequest(identity, method, pathname);
+
+	if (method === 'POST' && pathname === '/api/arcade') return true;
+	if (method === 'GET' && pathname === '/api/arcade/mine') return true;
+	if (pathname.startsWith('/api/universe') || pathname.startsWith('/api/projects/')) return false;
+
+	const named = /^\/api\/sessions\/([^/]+)/.exec(pathname)?.[1];
+	const sessionId = named && identity.sessionIds.includes(decodeURIComponent(named)) ? decodeURIComponent(named) : null;
+
+	return sessionGuestMayRequest({ ...identity, sessionId }, method, pathname);
+};
+
+const sessionGuestMayRequest = (identity, method, pathname) => {
 	const own = `/api/sessions/${identity.sessionId}`;
 
 	return (

@@ -10,6 +10,7 @@ import Project from './Project';
 import { keepDraft } from './PromptHome';
 import TerminalView from './Terminal/TerminalView';
 import Arcade from './Arcade/Arcade';
+import MakerHome from './Arcade/MakerHome';
 import Universe from './Universe/Universe';
 import { updateTabTitle } from './tabTitle';
 import { startWatchAlerts } from './watchAlerts';
@@ -41,7 +42,8 @@ if (joinToken) {
 
 	if (response?.ok) {
 		remember(GUEST_KEY, 'yes');
-		window.location.replace(`#/sessions/${body.sessionId}`);
+		// A game maker has no one session: their arcade, their games in it
+		window.location.replace(body.maker ? '#/arcade' : `#/sessions/${body.sessionId}`);
 	} else joinFailed = true;
 }
 
@@ -81,6 +83,14 @@ const content = () => {
 	if (identity.owner) remember(GUEST_KEY, '');
 
 	// A guest has exactly one session, and the universe with that session's grey and its project's machine alone
+	// A game maker gets their own arcade: their games, each one session to come back to, and making new ones; each
+	// game's arcade page as its guest would; nothing else
+	if (identity.maker) {
+		if (!/^#\/arcade\b/.test(window.location.hash)) window.location.replace('#/arcade');
+
+		return new Router({ views: { '/arcade': MakerHome, '/arcade/:id': Arcade }, defaultPath: '/arcade' });
+	}
+
 	if (!identity.owner) {
 		class GuestTerminal extends TerminalView {
 			constructor(options) {

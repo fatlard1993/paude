@@ -78,11 +78,15 @@ export default class Arcade extends View {
 				onPress: () => (window.location.hash = `#/sessions/${this.id}`),
 			});
 		}
-		ghostButton(bar, {
-			icon: 'rocket',
-			title: 'The ship: this session at its desk in the universe, with the talk and the game as panels',
-			onPress: () => (window.location.hash = `#/universe/sessions/${encodeURIComponent(this.id)}`),
-		});
+		// A game maker goes back to their games; the ship is one session's, and theirs are many
+		if (identity()?.maker)
+			ghostButton(bar, { icon: 'gamepad', title: 'My games', onPress: () => (window.location.hash = '#/arcade') });
+		else
+			ghostButton(bar, {
+				icon: 'rocket',
+				title: 'The ship: this session at its desk in the universe, with the talk and the game as panels',
+				onPress: () => (window.location.hash = `#/universe/sessions/${encodeURIComponent(this.id)}`),
+			});
 		this.title = element('span', 'title', 'Arcade');
 		this.title.style.flex = '1';
 		this.title.style.minWidth = '0';

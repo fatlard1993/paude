@@ -14,7 +14,7 @@ import {
 	watchesProject,
 } from '../activity';
 import { setArchived } from '../archive';
-import { credentialOf, identityOf } from '../auth';
+import { addMakerGame, credentialOf, identityOf } from '../auth';
 import { sessionHue } from '../../shared/hues';
 import { brandFields, iconOf } from '../brand';
 import { FILTERS, matchesFilter, matchesQuery } from '../../shared/sessionSearch';
@@ -47,7 +47,7 @@ import { SpeechError, hear, readAloud } from '../speech';
 import { askingAsWritten } from '../sessions/askedQuestion';
 import { runTask } from '../tasks';
 import { pinName, pinnedName } from '../names';
-import { may } from '../permissions';
+import { may, ownsSession } from '../permissions';
 import {
 	connectRemote,
 	listRemotes,
@@ -544,8 +544,7 @@ const sessionsRoutes = async (request, server) => {
 	// Read somewhere other than the session itself (the universe view's reply card): what changed is seen
 	match = requestMatch('PUT', '/api/sessions/:id/seen', request);
 	if (match) {
-		if (!identity.owner && identity.sessionId !== match.id)
-			return new Response('Not part of your invite', { status: 403 });
+		if (!ownsSession(identity, match.id)) return new Response('Not part of your invite', { status: 403 });
 
 		await markSeen(identity, match.id);
 
@@ -554,8 +553,7 @@ const sessionsRoutes = async (request, server) => {
 
 	match = requestMatch('PUT', '/api/sessions/:id/watch', request);
 	if (match) {
-		if (!identity.owner && identity.sessionId !== match.id)
-			return new Response('Not part of your invite', { status: 403 });
+		if (!ownsSession(identity, match.id)) return new Response('Not part of your invite', { status: 403 });
 		if (!(await sessionRecord(match.id))) return new Response('Session not found', { status: 404 });
 
 		await setWatching(identity, match.id, Boolean((await request.json()).watching));
@@ -566,8 +564,7 @@ const sessionsRoutes = async (request, server) => {
 	match = requestMatch('GET', '/api/sessions/:id/asking', request);
 	if (match) {
 		// Anyone in the session sees the question on its screen anyway
-		if (!identity.owner && identity.sessionId !== match.id)
-			return new Response('Not part of your invite', { status: 403 });
+		if (!ownsSession(identity, match.id)) return new Response('Not part of your invite', { status: 403 });
 
 		const session = runningSession(match.id);
 
@@ -577,8 +574,7 @@ const sessionsRoutes = async (request, server) => {
 	// A text said by this paude's voice, for anyone in the session; 404 when it has none, and the page uses its own
 	match = requestMatch('POST', '/api/sessions/:id/speech', request);
 	if (match) {
-		if (!identity.owner && identity.sessionId !== match.id)
-			return new Response('Not part of your invite', { status: 403 });
+		if (!ownsSession(identity, match.id)) return new Response('Not part of your invite', { status: 403 });
 
 		try {
 			return Response.json(await readAloud((await request.json()).text));
@@ -605,8 +601,7 @@ const sessionsRoutes = async (request, server) => {
 	// What was said into a page's microphone, as text, by this paude's ear; 404 when it has none
 	match = requestMatch('POST', '/api/sessions/:id/hear', request);
 	if (match) {
-		if (!identity.owner && identity.sessionId !== match.id)
-			return new Response('Not part of your invite', { status: 403 });
+		if (!ownsSession(identity, match.id)) return new Response('Not part of your invite', { status: 403 });
 
 		try {
 			const type = request.headers.get('content-type') || 'audio/webm';
@@ -621,8 +616,7 @@ const sessionsRoutes = async (request, server) => {
 	// What arcade a session's folder is, for the arcade page: who it's for, how they read, where it's shelved
 	match = requestMatch('GET', '/api/sessions/:id/arcade', request);
 	if (match) {
-		if (!identity.owner && identity.sessionId !== match.id)
-			return new Response('Not part of your invite', { status: 403 });
+		if (!ownsSession(identity, match.id)) return new Response('Not part of your invite', { status: 403 });
 
 		const record = await sessionRecord(match.id);
 
@@ -725,8 +719,7 @@ const sessionsRoutes = async (request, server) => {
 	// A tour of what happened since a time (or lately), for anyone in the session: Haiku tells it, on the owner's login
 	match = requestMatch('POST', '/api/sessions/:id/catch-up', request);
 	if (match) {
-		if (!identity.owner && identity.sessionId !== match.id)
-			return new Response('Not part of your invite', { status: 403 });
+		if (!ownsSession(identity, match.id)) return new Response('Not part of your invite', { status: 403 });
 
 		const record = await sessionRecord(match.id);
 
@@ -856,7 +849,11 @@ const sessionsRoutes = async (request, server) => {
 	// A new arcade game: a project from the game scaffold, its session started on the opening prompt, and its dev server
 	// run as the project's task so the arcade page has the game to show. Streamed, as a worktree's creation is.
 	if (requestMatch('POST', '/api/arcade', request)) {
-		const { name, idea, player, reading, model } = await request.json();
+		const asked = await request.json();
+		const { name, idea, model } = asked;
+		// A game maker builds as themself: their name and how they read are their invite's, whatever's sent
+		const player = identity.maker ? identity.name : asked.player;
+		const reading = identity.maker ? identity.reading : asked.reading;
 		const named = Boolean(String(name ?? '').trim());
 
 		return creatingSession(
@@ -868,6 +865,9 @@ const sessionsRoutes = async (request, server) => {
 				model,
 				identity,
 				started: async (id, folder) => {
+					// The game is theirs from here on: its session joins the ones their invite reaches
+					if (identity.maker) await addMakerGame(identity.inviteId, id);
+
 					await runTask(id, folder, 'package.json:dev').catch(error =>
 						console.error('The game could not start', error),
 					);
@@ -876,6 +876,22 @@ const sessionsRoutes = async (request, server) => {
 				},
 			},
 		);
+	}
+
+	// A game maker's games, one session each, newest first: what each is called and whether it's running now
+	if (requestMatch('GET', '/api/arcade/mine', request)) {
+		if (!identity.maker) return Response.json([]);
+
+		const games = await Promise.all(
+			identity.sessionIds.map(async id => {
+				const record = await sessionRecord(id);
+				const arcade = record && (await arcadeOf(record.cwd));
+
+				return arcade && { id, title: arcade.title, made: arcade.made ?? null, running: Boolean(runningSession(id)) };
+			}),
+		);
+
+		return Response.json(games.filter(Boolean).sort((a, b) => String(b.made).localeCompare(String(a.made))));
 	}
 
 	match = requestMatch('POST', '/api/projects/:project/sessions', request);

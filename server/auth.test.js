@@ -9,6 +9,9 @@ import {
 	createToken,
 	endLogin,
 	createInvite,
+	createMakerInvite,
+	addMakerGame,
+	listMakers,
 	credentialOf,
 	credentialValid,
 	identityOf,
@@ -193,6 +196,46 @@ describe('guard', () => {
 
 	test('lets a logged-in request through', async () => {
 		expect(guard(request({ cookie: await createLogin() }))).toBeNull();
+	});
+});
+
+describe('game makers', () => {
+	test("a game maker is a guest with games of their own, each added as it's made, and a login that lasts", async () => {
+		const { invite, token } = await createMakerInvite({ name: 'Ben', reading: 'learning' });
+		const cookie = await createLogin({ invite: inviteFromToken(token) });
+		const ben = () => identityOf(credentialOf(request({ cookie })));
+
+		expect(ben()).toMatchObject({
+			owner: false,
+			maker: true,
+			name: 'Ben',
+			role: 'drive',
+			view: 'arcade',
+			reading: 'learning',
+			sessionIds: [],
+		});
+
+		await addMakerGame(invite.id, 'g1');
+		await addMakerGame(invite.id, 'g2');
+		await addMakerGame(invite.id, 'g1');
+
+		expect(ben().sessionIds).toEqual(['g1', 'g2']);
+		expect(listMakers()).toEqual([expect.objectContaining({ name: 'Ben', reading: 'learning', games: 2 })]);
+		expect(invite.expires - Date.now()).toBeGreaterThan(5 * 365 * 24 * 60 * 60 * 1000);
+
+		const maxAge = Number(/Max-Age=(\d+)/.exec(loginCookie('t', { until: invite.expires }))[1]);
+
+		expect(maxAge).toBeGreaterThan(5 * 365 * 24 * 60 * 60);
+	});
+
+	test('revoking a game maker ends their access to every game', async () => {
+		const { invite, token } = await createMakerInvite({ name: 'Ben', reading: 'listening' });
+		const cookie = await createLogin({ invite: inviteFromToken(token) });
+
+		await addMakerGame(invite.id, 'g1');
+		await revokeInvite(invite.id);
+
+		expect(isAuthenticated(request({ cookie }))).toBe(false);
 	});
 });
 
