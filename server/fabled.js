@@ -226,7 +226,21 @@ export const outcomeOf = ({ exitCode, out, err, first, killed = false }) => {
 export const askMonitor = (id, cwd, prompt, { first = false } = {}) =>
 	crewJob('watching a session', () => ask(id, cwd, prompt, { first }));
 
-const ask = async (id, cwd, prompt, { first, turns = MOST_TURNS }) => {
+// Each monitor's asks one at a time: two resumes of one conversation at once would each carry it on from the same
+// point, and one would lose what the other added. A verdict, a keep-warm ping and a handover can all fall together.
+const asking = new Map();
+
+const ask = (id, cwd, prompt, options) => {
+	const after = (asking.get(id) ?? Promise.resolve()).then(() => askNow(id, cwd, prompt, options));
+	const settled = after.catch(() => {});
+
+	asking.set(id, settled);
+	settled.then(() => asking.get(id) === settled && asking.delete(id));
+
+	return after;
+};
+
+const askNow = async (id, cwd, prompt, { first, turns = MOST_TURNS }) => {
 	if (!folder) return outcomeOf({ exitCode: 1, out: '', err: 'the monitors folder is not set up', first });
 	await mkdir(monitorHome(id), { recursive: true });
 

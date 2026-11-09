@@ -1,13 +1,14 @@
 import { expect, test } from 'bun:test';
 
 import { existsSync } from 'fs';
-import { mkdir, mkdtemp, writeFile } from 'fs/promises';
+import { chmod, mkdir, mkdtemp, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
 
 import {
 	MONITOR_PING,
 	MOST_TURNS,
+	askMonitor,
 	briefFor,
 	deltaFor,
 	forgetMonitor,
@@ -20,6 +21,7 @@ import {
 	rulesFor,
 	usageWords,
 } from './fabled';
+import { setClaudePath } from './sessions/running';
 
 test('the monitor runs on Fable, carrying its conversation on, reading the project and its git history and nothing more', () => {
 	const first = monitorCommand('m1', '/work/app', { first: true });
@@ -270,4 +272,28 @@ test("a compaction reaches the monitor as Claude losing the run's detail, not as
 	expect(
 		deltaFor({ since: [{ theirs: false, asked: 'nudge', steps: 1, last: true }], settled: [], reply: 'Ok.' }),
 	).not.toContain('compacted');
+});
+
+test("one monitor's asks go one at a time, since two resumes of a conversation at once would fork it", async () => {
+	const data = await mkdtemp(path.join(os.tmpdir(), 'paude-fabled-'));
+	const log = path.join(data, 'log');
+	const fake = path.join(data, 'fake-claude');
+
+	// A Claude that notes when each ask starts and ends, taking a moment over it
+	await writeFile(
+		fake,
+		`#!/bin/sh\necho start >> "${log}"\nsleep 0.2\necho end >> "${log}"\necho '{"result":"ok","num_turns":1}'\n`,
+	);
+	await chmod(fake, 0o755);
+	await initFabled(data);
+	setClaudePath(fake);
+	try {
+		const id = crypto.randomUUID();
+		const answers = await Promise.all([1, 2, 3].map(() => askMonitor(id, data, 'look')));
+
+		expect(answers.map(({ answer }) => answer)).toEqual(['ok', 'ok', 'ok']);
+		expect((await Bun.file(log).text()).trim().split('\n')).toEqual(['start', 'end', 'start', 'end', 'start', 'end']);
+	} finally {
+		setClaudePath('claude');
+	}
 });
