@@ -4615,21 +4615,8 @@ export default class Ship {
 			const arm = index % 2 ? 1 : -1;
 			const onto = this.lounge.sessions[index ^ 1] && seeded(`${key}|slump`) < 0.25;
 			const side = onto ? -arm : arm;
-			// Some have their legs pulled up onto the couch, off to the side their head isn't
-			const curled = seeded(`${key}|curled`) < 0.4 ? -side : 0;
 
-			return {
-				drunk,
-				out,
-				sway: 0,
-				lurch: side,
-				hiccup: 0,
-				shut: true,
-				sag: 0,
-				lean: { x: side * 3, y: 2 },
-				flush: 1,
-				curled,
-			};
+			return { drunk, out, sway: 0, lurch: side, hiccup: 0, shut: true, sag: 0, lean: { x: side * 3, y: 2 }, flush: 1 };
 		}
 
 		const sway = Math.round(Math.sin(this.time * (0.7 + drunk) + worker.seed * 6) * drunk * 2.4);
@@ -4643,7 +4630,6 @@ export default class Ship {
 			shut: drunk > 0 && beat % 4 < 0.15 + drunk * 1.2,
 			sag: drunk >= 0.5 && Math.floor(beat * 0.6) % 3 === 0 ? 1 : 0,
 			lean: { x: 0, y: 0 },
-			curled: 0,
 			flush: Math.max(0, (drunk - 0.15) / 0.85),
 		};
 	}
@@ -4712,24 +4698,8 @@ export default class Ship {
 					const at = this.art(this.placeOf(worker));
 					const swing = Math.floor(this.time * 1.5 + worker.seed) % 2;
 
-					const { out, curled } = this.loungerPose(worker);
-
-					// Legs pulled up onto the couch: thighs out along the cushion, knees up, boots at the far end
-					if (out && curled) {
-						const span = (from, to, y, h, color) =>
-							rect(ctx, curled > 0 ? at.x + from : at.x - to, y, to - from, h, color);
-
-						span(2, 6, at.y - 5, 4, PALETTE.k);
-						span(3, 6, at.y - 4, 2, PALETTE.a);
-						span(5, 8, at.y - 8, 4, PALETTE.k);
-						span(6, 7, at.y - 7, 2, PALETTE.a);
-						span(7, 10, at.y - 5, 3, PALETTE.k);
-
-						return;
-					}
-
 					// Passed out, its legs go slack: splayed apart, the boots flopped out to either side, no swinging
-					if (out) {
+					if (this.loungerPose(worker).out) {
 						for (const side of [-1, 1]) {
 							rect(ctx, at.x + side * 3 - 1, at.y - 6, 3, 4, PALETTE.k);
 							rect(ctx, at.x + side * 3, at.y - 6, 1, 3, PALETTE.a);
