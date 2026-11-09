@@ -34,9 +34,14 @@ export default class Arcade extends View {
 		this.talk = new ArcadeTalk({
 			sessionId: this.id,
 			appendTo: stage,
-			onStatus: session => (this.title.textContent = session.title || session.project || 'Arcade'),
+			// The bar names the game, from its marker (which Claude writes a chosen name into); Claude's own title for
+			// the conversation only until that is known
+			onStatus: session => {
+				if (!this.arcade?.title) this.title.textContent = session.title || session.project || 'Arcade';
+			},
 			onArcade: (arcade, shelf) => {
 				this.arcade = arcade;
+				if (arcade?.title) this.title.textContent = arcade.title;
 				if (arcade && shelf && this.shelfButton) this.shelfButton.style.display = '';
 				// Rested before this session was known to be an arcade (a fresh load finding a question up)
 				if (arcade && this.resting) this.play(true);

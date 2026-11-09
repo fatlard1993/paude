@@ -52,6 +52,8 @@ const UNSPOKEN_REST_MS = 6000;
 // Words sent while Claude works go into its box, and Claude takes them up when the turn ends: a question that turn
 // ends with is about to be interrupted by them, so it's not shown or read, for this long at most
 const PENDING_MS = 30_000;
+// How many things sent from here are remembered while their record in the transcript is awaited
+const SENT_REMEMBERED = 20;
 
 const ago = ms => {
 	const seconds = Math.round(ms / 1000);
@@ -329,6 +331,8 @@ export default class ArcadeTalk extends Talk {
 				this.fresh = false;
 				this.options.onBusy?.();
 			}
+			// A turn's end: the game's marker read again, since Claude may have named or renamed the game in it
+			if (this.status === 'working' && this.arcade) this.learnArcade();
 		}
 		this.status = session.status;
 		if (session.title !== undefined) this.options.onStatus?.(session);
@@ -492,11 +496,17 @@ export default class ArcadeTalk extends Talk {
 		return card;
 	}
 
+	// Shown now, so the transcript's record of it is not shown again; a record that never comes (words that
+	// interrupted a question are recorded as a prompt, not as what was typed) is let go once enough has followed
+	noteSent(text) {
+		this.sent.push(text);
+		if (this.sent.length > SENT_REMEMBERED) this.sent.splice(0, this.sent.length - SENT_REMEMBERED);
+	}
+
 	noteChoice(label) {
 		const card = this.answerCard(label);
 
-		// Shown now; the transcript's record of it is not shown again
-		this.sent.push(label);
+		this.noteSent(label);
 		this.pickAgain?.remove();
 		if (this.arcade && canType()) {
 			this.pickAgain = button('Pick again', () => this.offerPickAgain(label), {
@@ -544,7 +554,7 @@ export default class ArcadeTalk extends Talk {
 		}
 		this.pickAgain?.remove();
 		this.pickAgain = null;
-		this.sent.push(PICK_AGAIN_PROMPT);
+		this.noteSent(PICK_AGAIN_PROMPT);
 		await sendPrompt(this.id, PICK_AGAIN_PROMPT);
 		this.feed.append(element('div', 'card you', `Pick again instead of "${spokenText(label)}"`));
 		this.feed.scrollTop = this.feed.scrollHeight;
@@ -759,8 +769,7 @@ export default class ArcadeTalk extends Talk {
 
 		if (!answered.response?.ok) return this.notice('Claude is no longer asking that', 'warning');
 		this.clearAsking();
-		// Shown now; the transcript's record of it is not shown again
-		this.sent.push(MORE_IDEAS);
+		this.noteSent(MORE_IDEAS);
 		this.feed.append(this.answerCard(MORE_IDEAS));
 		this.feed.scrollTop = this.feed.scrollHeight;
 		this.showStatus({ status: 'working' });
@@ -838,7 +847,7 @@ export default class ArcadeTalk extends Talk {
 			return;
 		}
 		this.input.placeholder = 'Tell Claude what to do';
-		this.sent.push(typed);
+		this.noteSent(typed);
 		this.feed.append(element('div', 'card you', typed));
 		// Sent while Claude works, the words wait their turn: what comes next is the end of what it was doing, and a
 		// question it ends with is kept from the player, since the words are about to interrupt it
