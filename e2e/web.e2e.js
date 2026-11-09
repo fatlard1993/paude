@@ -3063,7 +3063,7 @@ test(
 			await eventually(async () =>
 				expect(await page.$eval('.git', panel => panel.textContent)).not.toContain('app.js'),
 			);
-			await press('[title^="Terminal"]');
+			await press('[title^="Shell"]');
 			await page.waitForSelector('.shell.open .xterm-screen');
 			await wait(1500);
 			await page.keyboard.type('pwd\n');
