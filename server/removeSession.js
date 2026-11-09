@@ -10,7 +10,7 @@ import { noteProjectActivity, projectOf, projectPath } from './projects';
 import { sessionRecord } from './sessions/record';
 import { allRunning, stopSession } from './sessions/running';
 import { forgetSessionShares } from './shares';
-import { runsOf, stopRun } from './tasks';
+import { stopTasksOf } from './tasks';
 import { releaseWorktree } from './worktrees';
 
 // A session gone for good: Claude ended, the tasks it was running stopped, its transcript, chat and comments deleted,
@@ -27,7 +27,7 @@ const removeSession = async id => {
 	await noteProjectActivity({ [projectOf(cwd)]: stored?.lastModified });
 	await stopSession(id);
 	// A server it ran as a task (a game's dev server) would otherwise outlive it
-	for (const run of runsOf(id)) if (run.code === undefined) await stopRun(id, run.id).catch(() => {});
+	await stopTasksOf(id).catch(() => {});
 	// A session that never got a prompt has no transcript to delete
 	await deleteSession(id, { dir: cwd }).catch(error => {
 		if (!/not found/i.test(error.message)) throw error;

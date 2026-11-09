@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 
-import { discoverTasks, findProblems, runOutput, runTask, runsOf, stopRun, testCounts } from './tasks';
+import { discoverTasks, findProblems, runOutput, runTask, runsOf, stopRun, stopTasksOf, testCounts } from './tasks';
 
 let cwd;
 
@@ -105,4 +105,18 @@ test('runs a task, keeps what it prints, and stops one with what it started', as
 	for (let tries = 0; runsOf('session-a')[1].code === undefined && tries < 50; tries++) await Bun.sleep(100);
 	expect(runsOf('session-a')[1]).toMatchObject({ stopped: true });
 	expect(runsOf('session-a')[1].code).not.toBe(0);
+});
+
+test("stops a session's tasks paude forgot when it restarted, found by their mark", async () => {
+	const forgotten = Bun.spawn(['sleep', '30'], {
+		env: { ...process.env, PAUDE_SESSION: 'session-forgotten', PAUDE_TASK: 'run-before-restart' },
+	});
+	const bystander = Bun.spawn(['sleep', '30'], {
+		env: { ...process.env, PAUDE_SESSION: 'session-other', PAUDE_TASK: 'run-elsewhere' },
+	});
+
+	await stopTasksOf('session-forgotten');
+	expect(await forgotten.exited).not.toBe(0);
+	expect(bystander.exitCode).toBeNull();
+	bystander.kill();
 });

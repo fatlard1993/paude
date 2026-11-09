@@ -309,6 +309,11 @@ const signal = (pid, name) => {
 	}
 };
 
+const terminate = pids => {
+	for (const pid of pids) signal(pid, 'SIGTERM');
+	setTimeout(() => pids.forEach(pid => signal(pid, 'SIGKILL')), STOP_AFTER_MS).unref();
+};
+
 // A run, with everything it started (marked with it), whatever they did with their process groups
 export const stopRun = async (sessionId, runId) => {
 	const run = (runs.get(sessionId) ?? []).find(found => found.id === runId);
@@ -316,11 +321,16 @@ export const stopRun = async (sessionId, runId) => {
 	if (!run || run.code !== undefined) throw new TaskError('That run has finished');
 
 	run.stopped = true;
+	terminate((await sessionProcesses()).filter(found => found.task === runId).map(found => found.pid));
+};
 
-	const tree = (await sessionProcesses()).filter(found => found.task === runId).map(found => found.pid);
-
-	for (const pid of tree) signal(pid, 'SIGTERM');
-	setTimeout(() => tree.forEach(pid => signal(pid, 'SIGKILL')), STOP_AFTER_MS).unref();
+// Every run of a session, found by the mark its processes carry, so one started before paude last restarted (and
+// so forgotten here) stops too
+export const stopTasksOf = async sessionId => {
+	for (const run of runs.get(sessionId) ?? []) if (run.code === undefined) run.stopped = true;
+	terminate(
+		(await sessionProcesses()).filter(found => found.session === sessionId && found.task).map(found => found.pid),
+	);
 };
 
 // A process the session runs (Claude itself excepted), on someone's say-so in the Tasks panel
