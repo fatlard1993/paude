@@ -4,6 +4,7 @@ import { Notify } from '@vanilla-bean/components';
 
 import { openRemote } from '../api';
 import { element } from '../dom';
+import { forget, recall, remember } from '../storage';
 
 // Making a new arcade game, from wherever a page offers it (the home page's card, the universe's dock): the game
 // made on this paude or on another this machine is logged into, where it then lives and runs, and the browser taken
@@ -85,12 +86,23 @@ export const goToArcade = async (id, remote) => {
 	return true;
 };
 
+const DRAFT_KEY = 'paude.arcade.draft';
+
+const savedDraft = () => {
+	try {
+		return JSON.parse(recall(DRAFT_KEY) || '{}') ?? {};
+	} catch {
+		return {};
+	}
+};
+
 // The form that makes a game, the same wherever it's offered (the home page's card, the ship's dock): what it's
 // called if that's known, the idea so far if there is one, who's building it, how they read, and where it's made
 // (`remotes`, { name, url }, hidden until there are any). Making it streams into the progress line; made, the browser
 // goes to its arcade, and `onMade` hears. { form, hint, setRemotes, reset, focus }: `hint` is the form's last child,
 // for whoever adds a button before it. `asMaker`: for a game maker, who builds as themself, here: no who, how they
-// read, or where.
+// read, or where. What's typed in it is kept in this browser until the game is made, so closing it or leaving the
+// page doesn't lose it.
 export const newArcadeForm = ({ remotes = [], onMade, asMaker = false } = {}) => {
 	const form = element('form', 'new-arcade');
 	const name = element('input');
@@ -112,12 +124,24 @@ export const newArcadeForm = ({ remotes = [], onMade, asMaker = false } = {}) =>
 	player.placeholder = "Who's building it? (their name)";
 	player.maxLength = 40;
 	progress.style.display = 'none';
+	const draft = savedDraft();
+
+	name.value = draft.name ?? '';
+	idea.value = draft.idea ?? '';
+	player.value = draft.player ?? '';
+	form.addEventListener('input', () => {
+		const typed = { name: name.value, idea: idea.value, player: player.value };
+
+		if (Object.values(typed).some(Boolean)) remember(DRAFT_KEY, JSON.stringify(typed));
+		else forget(DRAFT_KEY);
+	});
 	form.append(...(asMaker ? [name, idea, make, progress] : [name, idea, player, reading, where, make, progress, hint]));
 
 	const reset = () => {
 		name.value = '';
 		idea.value = '';
 		player.value = '';
+		forget(DRAFT_KEY);
 		progress.textContent = '';
 		progress.style.display = 'none';
 	};

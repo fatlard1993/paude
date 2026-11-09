@@ -112,10 +112,9 @@ const otherPaudes = async onFound => {
 const newArcadeCard = () => {
 	const card = new Card({});
 	const opener = element('button', 'open-form variant-flat', '🕹️ New arcade game');
-	const { form, hint, setRemotes, reset, focus } = newArcadeForm({ onMade: () => close() });
+	const { form, hint, setRemotes, focus } = newArcadeForm({ onMade: () => close() });
 	const close = () => {
 		card.elem.classList.remove('open');
-		reset();
 	};
 
 	form.insertBefore(button('', close, { icon: 'xmark', title: 'Cancel (Esc)', className: 'icon-only' }), hint);
