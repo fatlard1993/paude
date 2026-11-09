@@ -1,5 +1,7 @@
 import { READING } from '../../shared/arcade';
 import { readProgress, recentLines } from '../../shared/progress';
+import { Notify } from '@vanilla-bean/components';
+
 import { openRemote } from '../api';
 import { element } from '../dom';
 
@@ -81,4 +83,86 @@ export const goToArcade = async (id, remote) => {
 	window.location.href = body.link;
 
 	return true;
+};
+
+// The form that makes a game, the same wherever it's offered (the home page's card, the ship's dock): what it's
+// called if that's known, the idea so far if there is one, who's building it, how they read, and where it's made
+// (`remotes`, { name, url }, hidden until there are any). Making it streams into the progress line; made, the browser
+// goes to its arcade, and `onMade` hears. { form, hint, setRemotes, reset, focus }: `hint` is the form's last child,
+// for whoever adds a button before it.
+export const newArcadeForm = ({ remotes = [], onMade } = {}) => {
+	const form = element('form', 'new-arcade');
+	const name = element('input');
+	const idea = element('textarea');
+	const player = element('input');
+	const { reading, hint } = readingSelect();
+	const make = element('button', '', 'Make it');
+	const progress = element('pre', 'progress');
+	let where = whereSelect(remotes);
+	let known = remotes;
+	let busy = false;
+
+	name.placeholder = "What's it called? (or leave that to find out together)";
+	name.maxLength = 60;
+	idea.placeholder = 'The idea so far, as rough or detailed as you like; or leave it for Claude to ask';
+	idea.rows = 2;
+	idea.maxLength = 4000;
+	player.placeholder = "Who's building it? (their name)";
+	player.maxLength = 40;
+	progress.style.display = 'none';
+	form.append(name, idea, player, reading, where, make, progress, hint);
+
+	const reset = () => {
+		name.value = '';
+		idea.value = '';
+		player.value = '';
+		progress.textContent = '';
+		progress.style.display = 'none';
+	};
+
+	form.addEventListener('submit', async event => {
+		event.preventDefault();
+		if (busy) return;
+		busy = true;
+		make.disabled = true;
+		progress.textContent = '';
+		progress.style.display = 'block';
+
+		const remote = known.find(other => other.url && other.url === where.value) ?? null;
+		const made = await makeArcade(
+			{ name: name.value.trim(), idea: idea.value.trim(), player: player.value.trim(), reading: reading.value },
+			remote,
+			progress,
+		);
+
+		busy = false;
+		make.disabled = false;
+		if (!made?.id) {
+			progress.style.display = 'none';
+			new Notify({ intent: 'danger', content: made?.error || 'The game could not be made.' });
+
+			return;
+		}
+		reset();
+		onMade?.(made, remote);
+		if (!(await goToArcade(made.id, remote)))
+			new Notify({ intent: 'danger', content: `The game is made, but ${remote.name} could not be opened from here.` });
+	});
+
+	return {
+		form,
+		hint,
+		// The paudes to pick from, found later or again; a pick already made is kept when it's still among them
+		setRemotes: found => {
+			known = found;
+
+			const picker = whereSelect(found);
+
+			picker.value = found.some(remote => remote.url === where.value) ? where.value : '';
+			where.replaceWith(picker);
+			where = picker;
+		},
+		reset,
+		focus: () => name.focus({ preventScroll: true }),
+	};
 };

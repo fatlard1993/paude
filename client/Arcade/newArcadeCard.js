@@ -1,10 +1,10 @@
-import { Elem, Notify, styled } from '@vanilla-bean/components';
+import { Elem, styled } from '@vanilla-bean/components';
 
 import { getRemotes } from '../api';
 import { button, element } from '../dom';
 import { identity } from '../identity';
 import { knownServers, setServers } from '../servers';
-import { goToArcade, makeArcade, readingSelect, whereSelect } from './makeArcade';
+import { newArcadeForm } from './makeArcade';
 
 // The home page's way into the arcade: name the game and who's building it, and paude makes a project from the game
 // scaffold, starts Claude in it on the kid's terms, and opens the arcade page on it. On this paude, or on any other
@@ -61,7 +61,6 @@ const Card = styled(
 		}
 
 		pre {
-			display: none;
 			max-height: 10em;
 			overflow: auto;
 			margin: ${space.sm} 0 0;
@@ -80,9 +79,6 @@ const Card = styled(
 			display: flex;
 		}
 
-		&.making pre {
-			display: block;
-		}
 	`,
 );
 
@@ -101,83 +97,21 @@ const otherPaudes = async onFound => {
 
 const newArcadeCard = () => {
 	const card = new Card({});
-	let remotes = [];
 	const opener = element('button', 'open-form variant-flat', '🕹️ New arcade game');
-	const form = element('form');
-	const name = element('input');
-	const idea = element('textarea');
-	const player = element('input');
-	const { reading, hint } = readingSelect();
-	let where = whereSelect([]);
-	const make = element('button', '', 'Make it');
-	const progress = element('pre');
+	const { form, hint, setRemotes, reset, focus } = newArcadeForm({ onMade: () => close() });
 	const close = () => {
-		card.elem.classList.remove('open', 'making');
-		name.value = '';
-		idea.value = '';
-		player.value = '';
+		card.elem.classList.remove('open');
+		reset();
 	};
 
-	name.placeholder = "What's it called? (or leave that to find out together)";
-	name.maxLength = 60;
-	idea.placeholder = 'The idea so far, as rough or detailed as you like; or leave it for Claude to ask';
-	idea.rows = 2;
-	idea.maxLength = 4000;
-	player.placeholder = "Who's building it? (their name)";
-	player.maxLength = 40;
-	form.append(
-		name,
-		idea,
-		player,
-		reading,
-		where,
-		make,
-		button('', close, { icon: 'xmark', title: 'Cancel (Esc)', className: 'icon-only' }),
-		hint,
-	);
-	card.elem.append(opener, form, progress);
+	form.insertBefore(button('', close, { icon: 'xmark', title: 'Cancel (Esc)', className: 'icon-only' }), hint);
+	card.elem.append(opener, form);
 	opener.addEventListener('click', () => {
 		card.elem.classList.add('open');
-		name.focus();
-		otherPaudes(found => {
-			remotes = found;
-
-			const picker = whereSelect(remotes);
-
-			picker.value = remotes.some(remote => remote.url === where.value) ? where.value : '';
-			where.replaceWith(picker);
-			where = picker;
-		});
+		focus();
+		otherPaudes(setRemotes);
 	});
 	form.addEventListener('keydown', event => event.key === 'Escape' && close());
-	form.addEventListener('submit', async event => {
-		event.preventDefault();
-		if (card.elem.classList.contains('making')) return;
-
-		card.elem.classList.add('making');
-		make.disabled = true;
-		progress.textContent = '';
-
-		const remote = remotes.find(other => other.url === where.value) ?? null;
-		const made = await makeArcade(
-			{ name: name.value.trim(), idea: idea.value.trim(), player: player.value.trim(), reading: reading.value },
-			remote,
-			progress,
-		);
-
-		make.disabled = false;
-		if (made?.id) {
-			close();
-			if (!(await goToArcade(made.id, remote)))
-				new Notify({
-					intent: 'danger',
-					content: `The game is made, but ${remote.name} could not be opened from here.`,
-				});
-		} else {
-			card.elem.classList.remove('making');
-			new Notify({ intent: 'danger', content: made?.error || 'The game could not be made.' });
-		}
-	});
 
 	return card.elem;
 };

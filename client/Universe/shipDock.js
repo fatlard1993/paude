@@ -16,7 +16,7 @@ import {
 	remoteBase,
 } from '../api';
 import { button, element } from '../dom';
-import { goToArcade, makeArcade, readingSelect, whereSelect } from '../Arcade/makeArcade';
+import { newArcadeForm } from '../Arcade/makeArcade';
 import { sessionCard } from '../Layout';
 import SessionBrowser from '../SessionBrowser';
 import { bulkActions, sessionMenu } from '../sessionActions';
@@ -386,70 +386,19 @@ export const arcadePane = ({ machines = [] }) => ({
 	label: 'New arcade game',
 	make: appendTo => {
 		const elem = element('div', 'pane');
-		const form = element('form', 'new-arcade');
-		const where = whereSelect(machines.filter(({ url }) => url));
-		const name = element('input');
-		const idea = element('textarea');
-		const player = element('input');
-		const { reading, hint } = readingSelect();
-		const make = element('button', '', 'Make it');
-		const progress = element('pre', 'progress');
+		const { form, focus } = newArcadeForm({ remotes: machines.filter(({ url }) => url) });
 
-		name.placeholder = "What's it called? (or leave that to find out together)";
-		name.maxLength = 60;
-		idea.placeholder = 'The idea so far, as rough or detailed as you like; or leave it for Claude to ask';
-		idea.rows = 3;
-		idea.maxLength = 4000;
-		player.placeholder = "Who's building it? (their name)";
-		player.maxLength = 40;
-		progress.hidden = true;
-		form.append(
+		form.prepend(
 			element(
 				'p',
 				'about',
 				'A game a kid builds with Claude: a project from the game scaffold, Claude told who it is building with, the game beside the talk in the arcade, read aloud and answered by tapping or talking. It is made and runs on the paude you pick.',
 			),
-			where,
-			name,
-			idea,
-			player,
-			reading,
-			hint,
-			make,
-			progress,
 		);
-		form.addEventListener('submit', async event => {
-			event.preventDefault();
-			if (make.disabled) return;
-
-			const remote = machines.find(machine => machine.url && machine.url === where.value) ?? null;
-
-			make.disabled = true;
-			progress.hidden = false;
-			progress.textContent = '';
-
-			const made = await makeArcade(
-				{ name: name.value.trim(), idea: idea.value.trim(), player: player.value.trim(), reading: reading.value },
-				remote,
-				progress,
-			);
-
-			make.disabled = false;
-			if (!made?.id) {
-				progress.hidden = true;
-
-				return new Notify({ intent: 'danger', content: made?.error || 'The game could not be made.' });
-			}
-			if (!(await goToArcade(made.id, remote)))
-				new Notify({
-					intent: 'danger',
-					content: `The game is made, but ${remote.name} could not be opened from here.`,
-				});
-		});
 		elem.append(form);
 		appendTo.append(elem);
 
-		return { elem, refresh: () => name.focus({ preventScroll: true }) };
+		return { elem, refresh: focus };
 	},
 });
 
