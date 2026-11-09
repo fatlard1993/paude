@@ -1,4 +1,4 @@
-import { spokenText, wordsOf } from '../shared/spoken';
+import { spokenText, withoutCues, wordsOf } from '../shared/spoken';
 import { hear, readAloud } from './api';
 
 export { displayTokens, spokenText, wordsOf } from '../shared/spoken';
@@ -61,7 +61,8 @@ const browserVoice = (spoken, words, { rate, onWord, onEnd }) => {
 		return { stop() {} };
 	}
 
-	const utterance = new SpeechSynthesisUtterance(spoken);
+	// The browser's voice would read a cue out: blanked, each word kept where it was, so its places still match `words`
+	const utterance = new SpeechSynthesisUtterance(withoutCues(spoken));
 	let ended = false;
 	let replay = null;
 	const finish = () => {

@@ -145,6 +145,24 @@ const Talk = styled(
 			background: ${colors.alpha(colors.orange, 0.6)};
 		}
 
+		/* A performance cue (a laugh, a whisper, an explosion): a stage direction, quieter than the words, lit as it plays */
+		.card .cue {
+			font-size: 0.7em;
+			font-style: italic;
+			letter-spacing: 0.02em;
+			color: ${colors.alpha(colors.white, 0.6)};
+			border-radius: ${radius.pill};
+			padding: 0.1em 0.55em;
+			background: ${colors.alpha(colors.purple, 0.25)};
+			vertical-align: 0.15em;
+			white-space: nowrap;
+		}
+
+		.card .cue.lit {
+			color: ${colors.white};
+			background: ${colors.alpha(colors.purple, 0.7)};
+		}
+
 		.card .say {
 			float: right;
 			margin: -${space.xs} -${space.xs} 0 ${space.sm};

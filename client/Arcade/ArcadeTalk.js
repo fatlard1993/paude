@@ -450,7 +450,8 @@ export default class ArcadeTalk extends Talk {
 			const line = element('p');
 
 			for (const token of paragraph) {
-				const span = element('span', token.emoji ? 'emoji' : 'word', token.text);
+				const kind = (token.cue && 'cue') || (token.emoji && 'emoji') || 'word';
+				const span = element('span', kind, token.text);
 
 				if (token.spoken) {
 					span.dataset.spoken = token.spoken;

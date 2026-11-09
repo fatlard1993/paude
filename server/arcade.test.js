@@ -172,6 +172,25 @@ describe('arcadeInstructions', () => {
 			);
 	});
 
+	test('with a voice that performs, Claude acts as a character it keeps, through the cues the voice takes', () => {
+		const plain = arcadeInstructions({ title: 'X', player: 'Ada', reading: 'reading' });
+		const fresh = arcadeInstructions({ title: 'X', player: 'Ada', reading: 'reading', performs: true });
+		const kept = arcadeInstructions({
+			title: 'X',
+			player: 'Ada',
+			reading: 'reading',
+			performs: true,
+			character: 'Grumble, a grumpy dwarf smith who secretly loves sparkles.',
+		});
+
+		expect(plain).not.toContain('## Your voice');
+		expect(fresh).toContain('## Your voice');
+		expect(fresh).toContain('[laughs]');
+		expect(fresh).toContain('"character" in `.paude-arcade.json`');
+		expect(kept).toContain('Your character: Grumble, a grumpy dwarf smith who secretly loves sparkles. Stay in it');
+		expect(kept).not.toContain('Give yourself a character');
+	});
+
 	test("keeps the game's face, its README's opening and manifest, saying what the game is", () => {
 		const text = arcadeInstructions({ title: 'Moon Rocks', player: 'Ada', reading: 'reading' });
 

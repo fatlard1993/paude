@@ -7,6 +7,13 @@ const EMOJI = /[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu;
 const DRESSING = /\u{FE0E}|\u{FE0F}|[\u{1F3FB}-\u{1F3FF}]/gu;
 const EMOJI_RUN = /\p{Extended_Pictographic}\u{FE0F}?(?:\u{200D}\p{Extended_Pictographic}\u{FE0F}?)*/gu;
 const MARKS = /[*_`#>~]+/g;
+// A performance cue in square brackets, as the voice takes them: [laughs], [whispers], [explosion]. Not a markdown
+// link's text, and short, so a bracket in ordinary prose isn't mistaken for one.
+const CUE = /\[([^\]\n]{1,40})\](?!\()/g;
+
+// A text with its cues blanked to spaces of the same length, for a voice that would read them out: every other
+// character stays where it was, so word positions found in the text still hold
+export const withoutCues = text => String(text ?? '').replace(CUE, cue => ' '.repeat(cue.length));
 
 // A text as it should be heard: no markdown's marks, no emoji (a voice names them), links as their words
 export const spokenText = text =>
@@ -46,14 +53,19 @@ export const displayTokens = text =>
 		.replace(MARKS, '')
 		.split(/\n\s*\n/)
 		.map(paragraph =>
-			paragraph
-				.replace(EMOJI_RUN, ' $& ')
-				.split(/\s+/)
-				.filter(Boolean)
-				.map(token => {
-					const emoji = token.replace(EMOJI, '') === '';
+			// Odd pieces are the cues: each one token, shown as what it says and sent to the voice as the cue
+			paragraph.split(CUE).flatMap((piece, at) =>
+				at % 2
+					? [{ text: piece.trim(), emoji: false, cue: true, spoken: `[${piece.trim()}]` }]
+					: piece
+							.replace(EMOJI_RUN, ' $& ')
+							.split(/\s+/)
+							.filter(Boolean)
+							.map(token => {
+								const emoji = token.replace(EMOJI, '') === '';
 
-					return { text: token, emoji, spoken: emoji ? emojiName(token) : token };
-				}),
+								return { text: token, emoji, spoken: emoji ? emojiName(token) : token };
+							}),
+			),
 		)
 		.filter(paragraph => paragraph.length);

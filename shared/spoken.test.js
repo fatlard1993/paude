@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { displayTokens, emojiName, spokenText, wordsOf } from './spoken';
+import { displayTokens, emojiName, spokenText, withoutCues, wordsOf } from './spoken';
 
 describe('spokenText', () => {
 	test('drops what a voice would stumble on', () => {
@@ -47,6 +47,32 @@ describe('displayTokens', () => {
 				.map(token => token.text)
 				.join(' '),
 		).toBe(spokenText('**Nice!**🚀 The rocket flies.\n\nTap ⭐ to go'));
+	});
+});
+
+describe('performance cues', () => {
+	test('a cue is one token, shown as what it says and sent to the voice whole, and a link is no cue', () => {
+		expect(displayTokens('[laughs] Oh WOW... [whispers softly] nobody saw. Open [the hub](http://x)')).toEqual([
+			[
+				{ text: 'laughs', emoji: false, cue: true, spoken: '[laughs]' },
+				{ text: 'Oh', emoji: false, spoken: 'Oh' },
+				{ text: 'WOW...', emoji: false, spoken: 'WOW...' },
+				{ text: 'whispers softly', emoji: false, cue: true, spoken: '[whispers softly]' },
+				{ text: 'nobody', emoji: false, spoken: 'nobody' },
+				{ text: 'saw.', emoji: false, spoken: 'saw.' },
+				{ text: 'Open', emoji: false, spoken: 'Open' },
+				{ text: 'the', emoji: false, spoken: 'the' },
+				{ text: 'hub', emoji: false, spoken: 'hub' },
+			],
+		]);
+	});
+
+	test('a voice that would read cues out gets them blanked, every word still where it was', () => {
+		const text = '[laughs] You did it! [explosion]';
+
+		expect(withoutCues(text).trim()).toBe('You did it!');
+		expect(withoutCues(text)).toHaveLength(text.length);
+		expect(withoutCues(text).indexOf('You')).toBe(text.indexOf('You'));
 	});
 });
 

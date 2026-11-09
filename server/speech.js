@@ -13,7 +13,13 @@ import { configFile, serverSettings } from './serverSettings';
 const API = 'https://api.elevenlabs.io/v1';
 // ElevenLabs' Rachel, one of its own voices, so a key alone is enough to start
 const DEFAULT_VOICE = '21m00Tcm4TlvDq8ikWAM'; // eslint-disable-line spellcheck/spell-checker
-const DEFAULT_MODEL = 'eleven_flash_v2_5';
+// The most expressive model: it performs cues in square brackets ([laughs], [whispers], [explosion]) instead of
+// reading them out, sound effects included
+const DEFAULT_MODEL = 'eleven_v4';
+// The models that perform cues; any other reads them out, so Claude isn't told to write them
+const PERFORMING = /^eleven_v[34]/;
+// Lower is a wider emotional range, higher steadier and flatter; this leans toward range, for a voice with character
+const DEFAULT_STABILITY = 0.4;
 const OUTPUT = 'mp3_44100_128';
 const MAX_CHARACTERS = 2500;
 const TIMEOUT_MS = 30_000;
@@ -42,7 +48,7 @@ const sharedKey = async () => (await readFile(sharedKeyFile(), 'utf8').catch(() 
 
 // The voice this paude reads with: the key from ELEVENLABS_API_KEY, `elevenLabs.apiKey` in
 // ~/.config/paude/server.json, or ~/.config/elevenlabs/key; the voice and model from that same `elevenLabs` setting
-// ({ "voiceId": "...", "modelId": "..." }). null for no key
+// ({ "voiceId": "...", "modelId": "...", "stability": 0.4 }). null for no key
 export const voiceSettings = async () => {
 	const { elevenLabs = {} } = await serverSettings();
 	const apiKey = process.env.ELEVENLABS_API_KEY || elevenLabs.apiKey || (await sharedKey());
@@ -53,8 +59,12 @@ export const voiceSettings = async () => {
 		apiKey,
 		voiceId: elevenLabs.voiceId || DEFAULT_VOICE,
 		modelId: elevenLabs.modelId || DEFAULT_MODEL,
+		stability: Number.isFinite(elevenLabs.stability) ? elevenLabs.stability : DEFAULT_STABILITY,
 	};
 };
+
+// Whether this paude's voice performs cues: a voice set up, on a model that acts them rather than reading them out
+export const voicePerforms = async () => PERFORMING.test((await voiceSettings())?.modelId ?? '');
 
 // Each word's start and end, in seconds, from the characters' times; a word whose characters the voice didn't time
 // (none expected) takes the time of the one before it
@@ -73,8 +83,8 @@ export const wordTimes = (text, alignment) => {
 	});
 };
 
-const keyOf = (text, { voiceId, modelId }) =>
-	createHash('sha256').update(`${voiceId}\n${modelId}\n${text}`).digest('hex');
+const keyOf = (text, { voiceId, modelId, stability }) =>
+	createHash('sha256').update(`${voiceId}\n${modelId}\n${stability}\n${text}`).digest('hex');
 
 // `text` said by the voice: { audio (base64 MP3), words: [{ start, end }] in the order of wordsOf(text) }. A text said
 // before comes from the cache. `fetcher` is fetch, but in tests.
@@ -98,7 +108,7 @@ export const readAloud = async (text, { fetcher = fetch } = {}) => {
 		{
 			method: 'POST',
 			headers: { 'xi-api-key': voice.apiKey, 'content-type': 'application/json' },
-			body: JSON.stringify({ text: said, model_id: voice.modelId }),
+			body: JSON.stringify({ text: said, model_id: voice.modelId, voice_settings: { stability: voice.stability } }),
 			signal: AbortSignal.timeout(TIMEOUT_MS),
 		},
 	).catch(error => {

@@ -9,6 +9,7 @@ import { statusOf } from './activity';
 import { askClaude } from './claudeInbox';
 import { listProjects, projectOf, projectPath } from './projects';
 import { sessionEnvironment } from './sessions/PtySession';
+import { voicePerforms } from './speech';
 import { feedFrom } from './feed';
 import { HubError, hostGame, hostingOf, recordHosting } from './motherHub';
 import { transcriptLines } from './sessions/transcript';
@@ -29,6 +30,8 @@ const SNAPSHOT_WORDS = 72;
 // arcade page (client/Arcade) is what the person building sees of it.
 
 const NAME_LENGTH = 60;
+// How much of the character Claude wrote for itself is carried into its rules
+const CHARACTER_LENGTH = 400;
 // The idea a game starts from, as rough or detailed as the person cares to write
 const IDEA_LENGTH = 4000;
 // How much of the idea opens the game's README and manifest, until Claude writes it a proper one
@@ -160,6 +163,26 @@ const WRITING = {
 	],
 };
 
+// When this paude's voice performs cues: Claude writes as a character it keeps, acting through the cues the voice takes
+const voiceSection = character => [
+	'## Your voice',
+	'',
+	'Everything you write here is performed aloud by an expressive voice, so write it as a performance: you are a character, not a narrator.',
+	'',
+	character
+		? `Your character: ${character} Stay in it every turn.`
+		: 'Give yourself a character that fits this game and the person you are building with: a name, a personality and a way of talking (a grumpy dwarf smith for a mining game, a breathless announcer for a racer, a sleepy owl for a bedtime story). Introduce yourself in it, then write it in one or two sentences into "character" in `.paude-arcade.json` so you keep it.',
+	'',
+	'Act with cues in square brackets, right before or after the words they color:',
+	'',
+	'- How it is said: [excited], [whispers], [sarcastic], [curious], [mischievously], [nervously], [shouting], [crying], or a voice like [low, gravelly voice].',
+	'- The sounds a person makes: [laughs], [laughs harder], [giggles], [sighs], [gasps], [gulps], [coughs], [clears throat], [snorts].',
+	'- Sound effects for what happens in the game: [explosion], [applause], [clapping], [laser zap], [splash], [crowd cheering]; any short description works.',
+	'',
+	'CAPS stress a word, an ellipsis... makes a pause, and an exclamation lifts it. A cue or two per message, where it lands (a laugh at their joke, a gasp at a big change, a whisper for a secret, an explosion when the bombs go in), makes a performance; a cue in every sentence makes noise. Only what a voice or the scene would make: no [music], [pacing] or [standing]. The page shows each cue as a small stage direction, so it reads well too. Choice labels stay plain words: no cues in them.',
+	'',
+];
+
 // What Claude is told, in the project's CLAUDE.local.md: who it's building with and how to talk with them. The code's
 // conventions are the scaffold's own CLAUDE.md.
 // The rules' section on the idea: the one they started with, carried on from; a game under way before any idea was
@@ -204,7 +227,16 @@ const ideaSection = ({ idea, underWay }) => {
 	];
 };
 
-export const arcadeInstructions = ({ title, named = true, idea = '', underWay = false, player, reading }) =>
+export const arcadeInstructions = ({
+	title,
+	named = true,
+	idea = '',
+	underWay = false,
+	player,
+	reading,
+	performs = false,
+	character = '',
+}) =>
 	[
 		named ? `# Building ${title} together` : '# Building a game together',
 		'',
@@ -239,6 +271,7 @@ export const arcadeInstructions = ({ title, named = true, idea = '', underWay = 
 		'The labels of your choices are read aloud and shown as big buttons, so the emoji comes first and the words stay few.',
 		'Decide every technical question yourself, without asking. Explain how the code works only when they ask. Say so in a few words when something works; do not gush.',
 		'',
+		...(performs ? voiceSection(String(character ?? '').trim()) : []),
 		'## Working',
 		'',
 		"Work inside this project, with whatever the job needs: read and edit files, run shell commands, tests and builds, add a package when the game is better for it, curl the running server, look things up on the web. Routine work runs without asking. No one is there to answer a permission prompt: anything that would need one is turned back at once, so when something is refused, find another way to do it within the project and carry on, rather than stopping or asking for help. Don't push or rewrite history: paude keeps every turn as a commit that can be put back, and hosts the game itself.",
@@ -461,6 +494,8 @@ export const refreshArcade = async cwd => {
 			underWay: commits.ok && Number(commits.out) > 1,
 			player: marker.player,
 			reading: marker.reading,
+			performs: await voicePerforms(),
+			character: String(marker.character ?? '').slice(0, CHARACTER_LENGTH),
 		}),
 	);
 	await mkdir(join(cwd, '.claude'), { recursive: true });

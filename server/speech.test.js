@@ -4,7 +4,7 @@ import { join } from 'path';
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { SpeechError, hear, initSpeech, readAloud, voiceSettings, wordTimes } from './speech';
+import { SpeechError, hear, initSpeech, readAloud, voiceSettings, wordTimes, voicePerforms } from './speech';
 
 // "Tap the star", each character 0.1s apart
 const TEXT = 'Tap the star';
@@ -55,12 +55,30 @@ describe('voiceSettings', () => {
 			JSON.stringify({ elevenLabs: { voiceId: 'jessica' } }),
 		);
 
-		expect(await voiceSettings()).toEqual({ apiKey: 'shared-key', voiceId: 'jessica', modelId: 'eleven_flash_v2_5' });
+		expect(await voiceSettings()).toEqual({
+			apiKey: 'shared-key',
+			voiceId: 'jessica',
+			modelId: 'eleven_v4',
+			stability: 0.4,
+		});
+		expect(await voicePerforms()).toBe(true);
 	});
 
 	test('is nothing without a key anywhere', async () => {
 		delete process.env.ELEVENLABS_API_KEY;
 		expect(await voiceSettings()).toBeNull();
+		expect(await voicePerforms()).toBe(false);
+	});
+
+	test('a model that would read cues out is not a performing one', async () => {
+		process.env.ELEVENLABS_API_KEY = 'k';
+		await mkdir(join(dir, 'config', 'paude'), { recursive: true });
+		await writeFile(
+			join(dir, 'config', 'paude', 'server.json'),
+			JSON.stringify({ elevenLabs: { modelId: 'eleven_flash_v2_5' } }),
+		);
+
+		expect(await voicePerforms()).toBe(false);
 	});
 });
 
@@ -96,7 +114,11 @@ describe('readAloud', () => {
 		});
 		expect(calls[0].url).toContain('/text-to-speech/21m00Tcm4TlvDq8ikWAM/with-timestamps');
 		expect(calls[0].options.headers['xi-api-key']).toBe('test-key');
-		expect(JSON.parse(calls[0].options.body)).toEqual({ text: TEXT, model_id: 'eleven_flash_v2_5' });
+		expect(JSON.parse(calls[0].options.body)).toEqual({
+			text: TEXT,
+			model_id: 'eleven_v4',
+			voice_settings: { stability: 0.4 },
+		});
 	});
 
 	test('says a text it has said before from the cache, without asking again', async () => {
