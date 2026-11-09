@@ -385,6 +385,17 @@ export default class ArcadeTalk extends Talk {
 				}
 				this.feed.append(element('div', 'card you', entry.text));
 			}
+			// An answer to one of Claude's questions, a choice tapped or words typed: shown as it was given from here,
+			// so only one given elsewhere, or before this page opened, is drawn from the transcript
+			if (entry.kind === 'answer') {
+				const index = this.sent.indexOf(entry.text);
+
+				if (index !== -1) {
+					this.sent.splice(index, 1);
+					continue;
+				}
+				this.feed.append(this.answerCard(entry.text));
+			}
 			if (entry.kind === 'text') {
 				const card = this.claudeCard(entry.text);
 
@@ -466,12 +477,24 @@ export default class ArcadeTalk extends Talk {
 	// The choice made, in the log as the kid's own words would be, with a way to choose differently: the game put back
 	// to before Claude's answer to it, and Claude asked to ask again. Only the latest choice offers it, and only in an
 	// arcade, where there are snapshots to put back.
-	noteChoice(label) {
+	// An answer as a card of the player's own: a choice with its picture, More ideas as its button reads, or the words
+	answerCard(text) {
+		if (text === MORE_IDEAS) return element('div', 'card you', '🎲 More ideas');
+
 		const card = element('div', 'card you chosen');
-		const { emoji, words } = splitEmoji(label);
+		const { emoji, words } = splitEmoji(text);
 
 		if (emoji) card.append(element('span', 'emoji', emoji), ' ');
 		card.append(element('span', '', words));
+
+		return card;
+	}
+
+	noteChoice(label) {
+		const card = this.answerCard(label);
+
+		// Shown now; the transcript's record of it is not shown again
+		this.sent.push(label);
 		this.pickAgain?.remove();
 		if (this.arcade && canType()) {
 			this.pickAgain = button('Pick again', () => this.offerPickAgain(label), {
@@ -734,7 +757,9 @@ export default class ArcadeTalk extends Talk {
 
 		if (!answered.response?.ok) return this.notice('Claude is no longer asking that', 'warning');
 		this.clearAsking();
-		this.feed.append(element('div', 'card you', '🎲 More ideas'));
+		// Shown now; the transcript's record of it is not shown again
+		this.sent.push(MORE_IDEAS);
+		this.feed.append(this.answerCard(MORE_IDEAS));
 		this.feed.scrollTop = this.feed.scrollHeight;
 		this.showStatus({ status: 'working' });
 	}

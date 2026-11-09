@@ -7,8 +7,9 @@ import { describeTool } from './timeline';
 // keeps it picks up exactly where it left off, through restarts on either side.
 const MAX_BYTES = 4 * 1024 * 1024;
 
-// Each line in order as entries: a prompt someone sent, something Claude wrote, or a tool Claude used. A subagent's
-// own work stays out; its call shows as the tool it is.
+// Each line in order as entries: a prompt someone sent, an answer someone gave to a question Claude asked (the
+// AskUserQuestion tool's result, as Claude Code records it: a choice's label, or words typed), something Claude
+// wrote, or a tool Claude used. A subagent's own work stays out; its call shows as the tool it is.
 export const feedFrom = (lines, cwd) =>
 	lines.flatMap(line => {
 		if (line.isSidechain) return [];
@@ -16,6 +17,13 @@ export const feedFrom = (lines, cwd) =>
 		const at = line.timestamp ?? null;
 
 		if (line.type === 'user') {
+			const answers = line.toolUseResult?.answers;
+
+			if (answers && typeof answers === 'object' && !Array.isArray(answers))
+				return Object.entries(answers)
+					.filter(([, text]) => typeof text === 'string' && text.trim())
+					.map(([question, text]) => ({ kind: 'answer', at, question, text: text.trim() }));
+
 			const prompt = promptText(line);
 
 			return prompt === null ? [] : [{ kind: 'prompt', at, text: prompt }];

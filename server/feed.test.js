@@ -24,6 +24,13 @@ test('prompts, what Claude wrote and the tools it used, in order; results, marku
 			{ type: 'tool_use', name: 'Bash', input: { command: 'ls', description: 'List' } },
 		),
 		{ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'a' }] } },
+		// A question of Claude's answered: Claude Code keeps what was chosen or typed beside the tool's result
+		{
+			type: 'user',
+			timestamp: at,
+			message: { content: [{ type: 'tool_result', tool_use_id: 't2', content: 'The user answered: ...' }] },
+			toolUseResult: { questions: [], answers: { 'What next?': '🐸 A frog', 'Which color?': ' blue, like the sky ' } },
+		},
 		prompt('<system-reminder>noise</system-reminder>'),
 		{ ...said({ type: 'text', text: 'from a subagent' }), isSidechain: true },
 		said({ type: 'tool_use', name: 'Edit', input: { file_path: '/repo/src/door.js' } }, { type: 'text', text: '  ' }),
@@ -33,6 +40,8 @@ test('prompts, what Claude wrote and the tools it used, in order; results, marku
 		{ kind: 'prompt', at, text: 'fix the door' },
 		{ kind: 'text', at, text: 'Looking.' },
 		{ kind: 'tool', at, name: 'Bash', summary: 'List', command: 'ls' },
+		{ kind: 'answer', at, question: 'What next?', text: '🐸 A frog' },
+		{ kind: 'answer', at, question: 'Which color?', text: 'blue, like the sky' },
 		{ kind: 'tool', at, name: 'Edit', summary: 'src/door.js', file: 'src/door.js', edits: true },
 	]);
 });
