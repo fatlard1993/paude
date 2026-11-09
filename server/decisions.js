@@ -4,7 +4,7 @@ import path from 'path';
 import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
 import { statusOf } from './activity';
-import { changedFiles, fileInto, openConcerns, targetFor } from './backfill';
+import { changedFiles, fileInto, filedSince, openConcerns, targetFor } from './backfill';
 import { claudeWrites } from './commitMessage';
 import { designStamp, fileDesign } from './designFiling';
 import { markInterruptions, steeringOf } from './catchUp';
@@ -78,7 +78,7 @@ export const findPrompt = turns =>
 		"- finding: something found out about how things are that the work now rests on: a cause found, a limit or constraint discovered, how something actually behaves. Not what was done, and only what was shown (by a run, a read, a measurement), not guessed, even in a turn that only fixed something. Only what this conversation's own work found, about what it works on: not what Claude quotes or reports from elsewhere (an example, another run's output, another project), nor how Claude's own tools behaved (a permission refused, a command blocked)",
 		'The person\'s own words settle the most, so read each turn\'s Asked first: when it says how the work should behave, that is a decision of its own, settled by asking, whatever else the turn settled and even put as a fix: "X should do Y" settles that X does Y. Where they steered (stopped Claude, redirected it, turned something down, answered a question), look there next. What Claude proposed, offered or asked is settled only when the person agreed to it: read what they said next, and when they turned it down, it is what was rejected. What they said next is their following turn, shown here only for that: what it asks for belongs to that turn, not this one.',
 		'Questions, routine edits, and fixes that restore what was plainly meant (a typo, a crash) settle nothing. Nor does carrying the work out: committing, pushing, running the tests, opening a pull request are how work happens, never a direction. Leave a turn that settled nothing empty.',
-		'Each as {"kind", "chose", "rejected", "because"}: chose is the decision, the direction, the work put off or what was found, in one plain sentence; rejected is what was turned down (for a finding, what it was taken for before), "" when nothing was; because is why (for a finding, what showed it), in one sentence, "" when no reason was given. Never invent a reason. Call them "the person", never "the user".',
+		'Each as {"kind", "chose", "rejected", "because"}: chose is the decision, the direction, the work put off or what was found, in one plain sentence; rejected is what was turned down (for a finding, what it was taken for before), "" when nothing was; because is why (for a finding, what showed it: the run, the read, the measurement), in one sentence, "" when no reason was given. A finding with nothing that showed it is a guess, not a finding: leave it out. Never invent a reason. Call them "the person", never "the user".',
 		'Reply with only a JSON object from each turn number to its list, every number given one: {"1": [], "2": [{"kind": "decision", "chose": "…", "rejected": "…", "because": "…"}]}.',
 		turns.map(turnText).join('\n\n'),
 	].join('\n\n');
@@ -94,6 +94,8 @@ export const parseFound = reply =>
 				number,
 				found
 					.filter(item => KINDS.has(item?.kind) && plain(item.chose))
+					// A finding rests on what showed it; one with nothing to show for it is a guess, however it was written up
+					.filter(item => item.kind !== 'finding' || plain(item.because))
 					.map(item => ({
 						kind: item.kind,
 						chose: plain(item.chose),
@@ -573,8 +575,8 @@ export const waitingToPush = async (id, wait) => {
 };
 
 // Before Claude pushes from the session's folder: what the session settled is filed first, with Claude waiting on
-// it, so a push never leaves without it. Whether anything was filed: then the stack holds amend! commits to settle
-// before the push, which would otherwise carry them unfolded.
+// it, so a push never leaves without it. What was filed, as filedSince gives it ([] for nothing): then the stack holds
+// amend! commits to read and settle before the push, which would otherwise carry them unfolded.
 export const fileBeforePush = async (id, cwd) => {
 	const root = await repoRoot(cwd);
 
@@ -588,7 +590,7 @@ export const fileBeforePush = async (id, cwd) => {
 		await followDecisions(id, cwd, { every: PUSH_POLL_MS, settling: 0 });
 	});
 
-	return (await headCommit(root)) !== before;
+	return (await headCommit(root)) === before ? [] : filedSince(root, before);
 };
 
 // The person's answer to what filing one asked them: it's offered to its concern again, with the answer
@@ -647,7 +649,9 @@ const backfill = async (sessionId, decisions, turns, cwd) => {
 
 // The session's turns worth reading, each with what the person said next (which settles what Claude proposed): not a
 // cut-short marker or a keep-warm ping, and the latest only once the session has stopped, when nothing more will
-// answer it. A keep-going nudge is paude's, not the person's, so it settles nothing.
+// answer it. A keep-going nudge is paude's, not the person's: it settles nothing about the turn before it, and the
+// turn it starts is not read either, since its Asked is not the person's words and what Claude says in it (a guess
+// in a review, the nudge's own claim repeated) was found by nobody.
 export const turnsToRead = (turns, { running }) => {
 	const told = markInterruptions(turns).filter(turn => !turn.interrupted && !KEEP_WARM_PING.test(turn.prompt));
 	const read = told.map((turn, index) => ({
@@ -657,8 +661,9 @@ export const turnsToRead = (turns, { running }) => {
 				? undefined
 				: told[index + 1]?.asked?.slice(0, REPLY),
 	}));
+	const settled = running ? read.slice(0, -1) : read;
 
-	return running ? read.slice(0, -1) : read;
+	return settled.filter(turn => !isNudge(turn.prompt));
 };
 
 // What the session settled, newest first: [{ id, turnId, at, asked, kind, chose, rejected, because, place, looking,

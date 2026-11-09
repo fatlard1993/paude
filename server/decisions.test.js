@@ -92,22 +92,34 @@ test("a turn going on from a summary isn't read as the person's words, nor answe
 	expect(turnText(turns[1], 1)).toContain("nothing here is the person's words");
 });
 
-test("a keep-going nudge isn't the person agreeing to what the turn before it proposed", () => {
+test("a keep-going nudge isn't the person agreeing to what the turn before it proposed, and the turn it starts isn't read at all", () => {
 	const turns = turnsToRead(
 		[
 			{ id: 't1', prompt: 'lock accounts', asked: 'lock accounts', steps: [] },
 			{ id: 't2', prompt: nudgeWith('Do item 6.').slice(0, 200), asked: nudgeWith('Do item 6.'), steps: [] },
+			{ id: 't3', prompt: 'and log each try', asked: 'and log each try', steps: [] },
 		],
 		{ running: false },
 	);
 
+	expect(turns.map(turn => turn.id)).toEqual(['t1', 't3']);
 	expect(turns[0].reply).toBeUndefined();
+	// The latest turn is still the one left unread while the session runs, nudge or not
+	expect(
+		turnsToRead(
+			[
+				{ id: 't1', prompt: 'lock accounts', asked: 'lock accounts', steps: [] },
+				{ id: 't2', prompt: nudgeWith('Do item 6.').slice(0, 200), asked: nudgeWith('Do item 6.'), steps: [] },
+			],
+			{ running: true },
+		).map(turn => turn.id),
+	).toEqual(['t1']);
 });
 
 test('what Haiku found keeps only the four kinds, each with what was chosen or found', () => {
 	expect(
 		parseFound(
-			'Here: {"1": [], "2": [{"kind": "decision", "chose": " per user ", "rejected": "per session", "because": "a new session would reset it"}, {"kind": "musing", "chose": "x"}, {"kind": "direction", "chose": ""}, {"kind": "finding", "chose": "Jest workers leak memory", "rejected": "", "because": "RSS grew per worker"}], "3": "none"}',
+			'Here: {"1": [], "2": [{"kind": "decision", "chose": " per user ", "rejected": "per session", "because": "a new session would reset it"}, {"kind": "musing", "chose": "x"}, {"kind": "direction", "chose": ""}, {"kind": "finding", "chose": "Jest workers leak memory", "rejected": "", "because": "RSS grew per worker"}, {"kind": "finding", "chose": "the title is cached for 30 seconds", "rejected": "", "because": ""}], "3": "none"}',
 		),
 	).toEqual({
 		1: [],
@@ -116,6 +128,8 @@ test('what Haiku found keeps only the four kinds, each with what was chosen or f
 			{ kind: 'finding', chose: 'Jest workers leak memory', rejected: '', because: 'RSS grew per worker' },
 		],
 	});
+	// A finding with nothing that showed it is a guess, left out however it was written up
+	expect(findPrompt([])).toContain('A finding with nothing that showed it is a guess');
 	expect(findPrompt([])).toContain('- finding: something found out about how things are');
 	expect(findPrompt([])).toContain('not what Claude quotes or reports from elsewhere');
 	expect(findPrompt([])).toContain("nor how Claude's own tools behaved");

@@ -2,6 +2,7 @@ import path from 'path';
 
 import { claudeWrites } from './commitMessage';
 import { commitAfter, commitOf, concernFiles, explainedHash, explainsLine, fileReasoning, gitStack } from './git';
+import gitEnvironment from './utils/gitEnvironment';
 import { jsonIn } from './haiku';
 import { editedFiles } from './timeline';
 
@@ -79,7 +80,7 @@ const decisionText = (decision, index) =>
 export const backfillPrompt = ({ message, files, decisions }) =>
 	[
 		'Below is the message of a git commit not pushed yet, the files it changes, and what was settled in the conversation that made it. Write the whole message anew: keep what it says that still holds, and add what was settled that explains this change, as plain sentences of what was chosen, what was rejected, and why.',
-		'Leave out what does not explain this change. Never guess: when one would explain it but the conversation leaves unclear which way was taken, whether it still holds, or why, ask the person one short question about it instead of writing it in. Write only what the conversation or the answer says: a reason only when one was given, never one of your own.',
+		'Leave out what does not explain this change: a finding goes in only where this change rests on it, never as a fact about the code added beside a change that does not depend on it. Never guess: when one would explain it but the conversation leaves unclear which way was taken, whether it still holds, or why, ask the person one short question about it instead of writing it in. Write only what the conversation or the answer says: a reason only when one was given, never one of your own.',
 		'Keep the subject unless it is now wrong. The body is read later, from blame, by someone who was never in the conversation: say what the code does and why, not how the conversation went. No "you asked", no "then we tried", never "the user", no lists.',
 		'Reply with only a JSON object: {"message": the whole new message, or "" when it stays as it is; "says": the numbers the message holds now, whether it held them already or you added them; "ask": {number: question} for those you need the person for}. Like {"message": "", "says": [1], "ask": {"2": "…"}}.',
 		`The message now:\n${message}`,
@@ -139,3 +140,41 @@ const outcomes = (decisions, answer, into, place) =>
 
 		return { into };
 	});
+
+const gitText = async (root, args) => {
+	const child = Bun.spawn(['git', ...args], { cwd: root, env: gitEnvironment(), stdout: 'pipe', stderr: 'ignore' });
+	const out = await new Response(child.stdout).text();
+
+	return (await child.exited) === 0 ? out : '';
+};
+
+const paragraphs = text =>
+	String(text)
+		.split(/\n\s*\n/)
+		.map(paragraph => paragraph.replace(/\s+/g, ' ').trim())
+		.filter(Boolean);
+
+// What filing added to the open stack since `before` (a commit): for each concern an amend! was filed into, its
+// subject and the paragraphs the amend's message has that the concern's own commit message did not. For whoever
+// settles the stack to read before folding them in: a wrong sentence folded in reads as settled from blame.
+export const filedSince = async (root, before) => {
+	const since = new Set((await gitText(root, ['rev-list', `${before}..HEAD`])).split('\n').filter(Boolean));
+	const { concerns } = await gitStack(root);
+	const filed = [];
+
+	for (const concern of concerns) {
+		const folds = (concern.folds ?? []).filter(fold => since.has(fold.hash));
+
+		if (!folds.length) continue;
+
+		const had = new Set(paragraphs(await gitText(root, ['log', '-1', '--format=%B', concern.hash])));
+		const added = [];
+
+		for (const fold of folds)
+			for (const paragraph of paragraphs(await gitText(root, ['log', '-1', '--format=%b', fold.hash])))
+				if (!had.has(paragraph) && !added.includes(paragraph)) added.push(paragraph);
+		if (added.length) filed.push({ subject: concern.subject, added });
+	}
+
+	return filed;
+};

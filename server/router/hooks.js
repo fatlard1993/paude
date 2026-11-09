@@ -43,7 +43,10 @@ export const isPush = command =>
 // Claude waits on this answer before its push runs: turned back once anything was filed, so it settles first
 const beforePush = async (id, payload) => {
 	if (!isPush(payload.tool_input?.command)) return null;
-	if (!(await fileBeforePush(id, runningSession(id).cwd))) {
+
+	const filed = await fileBeforePush(id, runningSession(id).cwd);
+
+	if (!filed.length) {
 		pushStarted(id, payload.tool_use_id);
 
 		return null;
@@ -53,11 +56,19 @@ const beforePush = async (id, payload) => {
 		hookSpecificOutput: {
 			hookEventName: 'PreToolUse',
 			permissionDecision: 'deny',
-			permissionDecisionReason:
-				'paude filed what this session settled into the commits not pushed yet. Settle the stack so its amend! commits fold in (GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash onto where the branch left its upstream), then push again.',
+			permissionDecisionReason: settleFirst(filed),
 		},
 	});
 };
+
+// Told to the session before its push: what filing added, to read first, since a wrong sentence folded in reads as
+// settled from blame; then how to settle
+export const settleFirst = filed =>
+	[
+		'paude filed what this session settled into the commits not pushed yet, as amend! commits. Read what each adds before folding it in, and reword or drop anything that is not so:',
+		...filed.map(({ subject, added }) => `- into "${subject}": ${added.join(' ')}`),
+		'Then settle the stack so they fold in (GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash onto where the branch left its upstream), and push again.',
+	].join('\n');
 
 // Claude carrying on from a compaction reads the monitor's handover, if one was written in time, beside the summary
 const afterCompact = async (id, { source }) => {

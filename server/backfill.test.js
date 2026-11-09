@@ -187,6 +187,7 @@ test("what filing asks waits for the person's answer, and is offered again with 
 	);
 	expect(await toFile([decision], turns, { concerns: await openConcerns(repo), ...where })).toEqual([]);
 	expect(backfillPrompt({ message: 'm', files: [], decisions: [] })).toContain('Never guess');
+	expect(backfillPrompt({ message: 'm', files: [], decisions: [] })).toContain('only where this change rests on it');
 	expect(
 		backfillPrompt({ message: 'm', files: [], decisions: [{ kind: 'finding', chose: 'Workers leak memory' }] }),
 	).toContain('1. Found: Workers leak memory');
@@ -345,5 +346,26 @@ test('a commit that recorded what explains a pushed one, from before, still show
 
 	expect((await gitCommit(repo, pushed)).explainedBy).toEqual([
 		expect.objectContaining({ subject: 'why accounts lock per user', body: 'A new session would reset the count.' }),
+	]);
+});
+
+test('what filing added since a commit: for each concern amended, the paragraphs its amend has that its own message did not', async () => {
+	const { filedSince } = await import('./backfill');
+
+	await concern('lock.js', 'lock accounts', 'Locks per user.');
+	const before = git('rev-parse', 'HEAD');
+
+	expect(await filedSince(repo, before)).toEqual([]);
+	git(
+		'commit',
+		'-q',
+		'--allow-empty',
+		'-m',
+		'amend! lock accounts',
+		'-m',
+		'lock accounts\n\nLocks per user.\n\nA new session would reset the count, so not per session.',
+	);
+	expect(await filedSince(repo, before)).toEqual([
+		{ subject: 'lock accounts', added: ['A new session would reset the count, so not per session.'] },
 	]);
 });
