@@ -33,6 +33,7 @@ test('the settings post every event to a per-session address, and never fail the
 	expect(hooks.PreToolUse[1].matcher).toBe('Bash');
 	expect(hooks.PreToolUse[1].hooks[0].command).not.toMatch(/[^2]>\/dev\/null/);
 	expect(hooks.PreToolUse[1].hooks[0].timeout).toBeGreaterThan(240);
+	expect(hooks.PreToolUse[3].matcher).toBe('AskUserQuestion');
 
 	const { command } = hooks.Stop[0].hooks[0];
 

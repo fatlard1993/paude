@@ -117,6 +117,12 @@ export const openSession = async id => {
 	const cwd = await resumeFolder(id, info.cwd);
 
 	if (!cwd) return failedToStart(id, `its folder is gone (${info.cwd})`);
+	// An arcade's rules and permissions, current before Claude reads them again (imported here, not above: the arcade
+	// module reaches this one through the inbox)
+	if (!isHeld(id))
+		await import('../arcade')
+			.then(({ refreshArcade }) => refreshArcade(cwd))
+			.catch(error => console.error("The arcade's files could not be refreshed:", error));
 
 	try {
 		// A concurrent attach may have started it while this one awaited

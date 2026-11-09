@@ -36,6 +36,7 @@ import {
 	createArcadeProject,
 	isArcade,
 	openingPrompt,
+	refreshArcade,
 	shelfCommand,
 	shelveGame,
 	undoLastTurn,
@@ -152,6 +153,10 @@ const HEARTBEAT_MS = 5000;
 // Whoever starts it watches its project from then on, unless they turned that off themselves
 const startWith = async (folder, text, { mode, model, identity, project = projectOf(folder) } = {}) => {
 	const known = MODEL_NAMES.includes(model) ? model : undefined;
+
+	// An arcade's rules and permissions, current before Claude reads them
+	await refreshArcade(folder).catch(error => console.error("The arcade's files could not be refreshed:", error));
+
 	const { id } = startSession(folder, text?.trim(), known);
 
 	await setModel(id, known);

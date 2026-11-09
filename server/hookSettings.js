@@ -64,6 +64,9 @@ export const hookSettings = () => {
 				{ matcher: PROPOSING_TOOLS.join('|'), hooks: hook[0].hooks },
 				{ matcher: 'Bash', hooks: [beforeCommand] },
 				{ matcher: 'Task|Agent', hooks: hook[0].hooks },
+				// A question for the person: in an arcade, where every turn ends with one, this is the turn's end, since
+				// a Stop never comes while the question waits
+				{ matcher: 'AskUserQuestion', hooks: hook[0].hooks },
 			],
 		},
 	});

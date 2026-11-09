@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -12,10 +12,71 @@ import {
 	claudeSettings,
 	folderName,
 	openingPrompt,
+	refreshArcade,
 	snapshotTurn,
+	turnName,
 	undoLastTurn,
 	workingTitle,
 } from './arcade';
+
+describe('turnName', () => {
+	test('is the last answer or prompt given, on one line, or "a change"', () => {
+		expect(turnName([])).toBe('a change');
+		expect(
+			turnName([
+				{ kind: 'prompt', text: 'make a frog' },
+				{ kind: 'text', text: 'done' },
+				{ kind: 'answer', text: ' 🐸 A frog\nthat jumps ' },
+				{ kind: 'tool', name: 'Edit' },
+			]),
+		).toBe('🐸 A frog that jumps');
+		expect(turnName([{ kind: 'answer', text: 'x'.repeat(100) }]).length).toBe(72);
+	});
+});
+
+describe('refreshArcade', () => {
+	let game;
+
+	beforeEach(async () => {
+		game = await mkdtemp(join(tmpdir(), 'refresh-'));
+		await writeFile(
+			join(game, '.paude-arcade.json'),
+			JSON.stringify({ title: 'Moon Rocks', player: 'Ada', reading: 'listening', idea: 'rocks fall' }),
+		);
+	});
+	afterEach(() => rm(game, { recursive: true, force: true }));
+
+	test("writes Claude's rules and permissions from the marker, and a CLAUDE.local.md that imports the rules", async () => {
+		expect(await refreshArcade(game)).toBe(true);
+
+		const rules = await readFile(join(game, '.paude-arcade.md'), 'utf8');
+
+		expect(rules).toContain('# Building Moon Rocks together');
+		expect(rules).toContain('rocks fall');
+		expect(JSON.parse(await readFile(join(game, '.claude', 'settings.json'), 'utf8'))).toEqual(claudeSettings);
+		expect(await readFile(join(game, 'CLAUDE.local.md'), 'utf8')).toMatch(/^@\.\/\.paude-arcade\.md\n/);
+	});
+
+	test("replaces a CLAUDE.local.md paude wrote whole, keeps a person's own words under the import, and leaves one that imports already", async () => {
+		await writeFile(join(game, 'CLAUDE.local.md'), '# Building Old together\n\nold rules\n');
+		await refreshArcade(game);
+		expect(await readFile(join(game, 'CLAUDE.local.md'), 'utf8')).not.toContain('old rules');
+
+		await writeFile(join(game, 'CLAUDE.local.md'), 'Ada likes purple.\n');
+		await refreshArcade(game);
+		expect(await readFile(join(game, 'CLAUDE.local.md'), 'utf8')).toBe('@./.paude-arcade.md\n\nAda likes purple.\n');
+
+		await refreshArcade(game);
+		expect(await readFile(join(game, 'CLAUDE.local.md'), 'utf8')).toBe('@./.paude-arcade.md\n\nAda likes purple.\n');
+	});
+
+	test('an ordinary folder is left alone', async () => {
+		const plain = await mkdtemp(join(tmpdir(), 'plain-'));
+
+		expect(await refreshArcade(plain)).toBe(false);
+		await rm(plain, { recursive: true, force: true });
+	});
+});
 
 describe('workingTitle', () => {
 	test("is the name, or the idea's first words while there is none, or nothing much", () => {

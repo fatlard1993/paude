@@ -1,4 +1,4 @@
-import { mkdir, stat, writeFile } from 'fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'fs/promises';
 import { basename, join } from 'path';
 
 import pkg from '../package.json';
@@ -10,11 +10,17 @@ import { askClaude } from './claudeInbox';
 import { projectPath } from './projects';
 import { serverSettings } from './serverSettings';
 import { sessionEnvironment } from './sessions/PtySession';
-import { sessionTimeline } from './timeline';
+import { feedFrom } from './feed';
+import { transcriptLines } from './sessions/transcript';
 import gitEnvironment from './utils/gitEnvironment';
 
 // What marks a project as an arcade game, kept in it: who it's for and how they read, and where it's shelved
 const MARKER = '.paude-arcade.json';
+// Claude's rules for the game, paude's to rewrite whenever Claude starts there; CLAUDE.local.md imports it and is
+// the person's to add to
+const RULES = '.paude-arcade.md';
+const RULES_IMPORT = `@./${RULES}`;
+const LOCAL_STUB = `${RULES_IMPORT}\n\n<!-- paude rewrites ${RULES} from ${MARKER} whenever Claude starts here. Add your own notes for Claude below. -->\n`;
 const SNAPSHOT = 'turn: ';
 const SNAPSHOT_WORDS = 72;
 const SHELF_PORTS = [3100, 3999];
@@ -240,8 +246,9 @@ const run = async (command, cwd, onOutput, { env = sessionEnvironment(), timeout
 const git = (folder, args) =>
 	run(['git', ...args], folder, () => {}, { env: gitEnvironment() }).then(code => code === 0);
 
-// Make the game: the scaffold copied into a new folder under the projects root, Claude's instructions written beside
-// it, its libraries installed (what that prints goes to onOutput), and the first commit made. { folder, name }
+// Make the game: the scaffold copied into a new folder under the projects root, its marker and paude's files for
+// Claude written beside it, its libraries installed (what that prints goes to onOutput), and the first commit made.
+// { folder, name }
 export const createArcadeProject = async ({ name, idea, player, reading }, onOutput = () => {}) => {
 	const named = Boolean(String(name ?? '').trim());
 	const title = workingTitle({ name, idea });
@@ -270,20 +277,6 @@ export const createArcadeProject = async ({ name, idea, player, reading }, onOut
 		framework: spec,
 		vbc: pkg.dependencies['@vanilla-bean/components'],
 	});
-	await writeFile(
-		join(folder, 'CLAUDE.local.md'),
-		arcadeInstructions({
-			title,
-			named,
-			idea: theIdea,
-			player: String(player ?? '')
-				.trim()
-				.slice(0, 40),
-			reading,
-		}),
-	);
-	await mkdir(join(folder, '.claude'), { recursive: true });
-	await writeFile(join(folder, '.claude', 'settings.json'), `${JSON.stringify(claudeSettings, null, '\t')}\n`);
 	await writeJsonFile(join(folder, MARKER), () => ({
 		title,
 		named,
@@ -294,6 +287,7 @@ export const createArcadeProject = async ({ name, idea, player, reading }, onOut
 		reading,
 		made: new Date().toISOString(),
 	}));
+	await refreshArcade(folder);
 
 	onOutput('Installing its libraries\n');
 
@@ -387,6 +381,50 @@ export const arcadeOf = async cwd => {
 	return marker && typeof marker === 'object' && marker.reading in READING ? marker : null;
 };
 
+// Paude's files in a game, written again from its marker: Claude's rules and its permissions, so a game made before
+// either changed (or copied from another machine) runs under the current ones each time Claude starts there.
+// CLAUDE.local.md imports the rules; one paude wrote whole in an earlier version (its own heading first) is replaced
+// by the import, and one with a person's own words keeps them, the import put first. True when `cwd` is an arcade.
+export const refreshArcade = async cwd => {
+	const marker = await arcadeOf(cwd);
+
+	if (!marker) return false;
+
+	await writeFile(
+		join(cwd, RULES),
+		arcadeInstructions({
+			title: marker.title,
+			named: marker.named ?? true,
+			idea: marker.idea ?? '',
+			player: marker.player,
+			reading: marker.reading,
+		}),
+	);
+	await mkdir(join(cwd, '.claude'), { recursive: true });
+	await writeFile(join(cwd, '.claude', 'settings.json'), `${JSON.stringify(claudeSettings, null, '\t')}\n`);
+
+	const local = join(cwd, 'CLAUDE.local.md');
+	const current = await readFile(local, 'utf8').catch(() => null);
+
+	if (current === null || current.startsWith('# Building ')) await writeFile(local, LOCAL_STUB);
+	else if (!current.includes(RULES_IMPORT)) await writeFile(local, `${RULES_IMPORT}\n\n${current}`);
+
+	return true;
+};
+
+// What a snapshot is named for: the last thing the person gave Claude, an answer to its question (a choice's label,
+// or words typed into it) or a prompt, whichever came last; 'a change' when nothing is known
+export const turnName = entries => {
+	const last = entries.findLast(entry => entry.kind === 'answer' || entry.kind === 'prompt');
+
+	return (
+		String(last?.text ?? '')
+			.replace(/\s+/g, ' ')
+			.trim()
+			.slice(0, SNAPSHOT_WORDS) || 'a change'
+	);
+};
+
 const gitOut = async (folder, args) => {
 	const child = Bun.spawn(['git', ...args], {
 		cwd: folder,
@@ -412,12 +450,10 @@ export const snapshotTurn = async (sessionId, cwd) => {
 	await gitOut(cwd, ['add', '-A']);
 	if ((await gitOut(cwd, ['diff', '--cached', '--quiet'])).ok) return null;
 
-	const [latest] = (await sessionTimeline(sessionId, cwd).catch(() => ({ turns: [] }))).turns;
-	const asked = String(latest?.prompt ?? '')
-		.replace(/\s+/g, ' ')
-		.trim()
-		.slice(0, SNAPSHOT_WORDS);
-	const subject = `${SNAPSHOT}${asked || 'a change'}`;
+	const entries = await transcriptLines(sessionId, cwd)
+		.then(lines => feedFrom(lines, cwd))
+		.catch(() => []);
+	const subject = `${SNAPSHOT}${turnName(entries)}`;
 	const committed = await gitOut(cwd, [...asPaude, 'commit', '-q', '-m', subject]);
 
 	return committed.ok ? subject : null;

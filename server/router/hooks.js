@@ -19,7 +19,7 @@ import { noteEmpty } from '../fuel';
 import { PROPOSING_TOOLS, trackProposals } from '../sessions/proposals';
 import { runningSession } from '../sessions/running';
 import { noteHook, notePrompt, noteTool, noteTurnDone } from '../universe';
-import { snapshotTurn } from '../arcade';
+import { isArcade, snapshotTurn } from '../arcade';
 
 // The checks a project runs after each of Claude's turns, when the turn edited something: the problems they find
 // are then about what Claude just did
@@ -80,6 +80,18 @@ const hooksRoutes = async request => {
 		await commandStarting(id, payload.tool_use_id, runningSession(id).cwd).catch(() => {});
 
 		return (await beforePush(id, payload)) ?? new Response(null, { status: 204 });
+	}
+	// An arcade's turn ends at the question Claude asks, since every turn there ends with one and Claude Code's Stop
+	// never comes while a question waits: the turn's changes are kept as its snapshot, and the change recorded
+	if (payload.hook_event_name === 'PreToolUse' && payload.tool_name === 'AskUserQuestion') {
+		const { cwd } = runningSession(id);
+
+		if (await isArcade(cwd)) {
+			await snapshotTurn(id, cwd).catch(error => console.error('The arcade snapshot failed:', error));
+			await recordChange(id);
+		}
+
+		return new Response(null, { status: 204 });
 	}
 	// What the command changed, before anything reads the turn: a command editing files is an edit
 	const edited =
