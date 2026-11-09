@@ -75,7 +75,7 @@ const internal = async () => {
 	try {
 		entry = Bun.resolveSync('web-game-mother-hub', import.meta.dir);
 	} catch {
-		throw new HubError('The mother hub isn\'t installed here: bun install in paude, or give it a hub in arcade.hub.');
+		throw new HubError("The mother hub isn't installed here: bun install in paude, or give it a hub in arcade.hub.");
 	}
 
 	globalThis.paudeMotherHub ??= Bun.spawn(
@@ -117,7 +117,8 @@ const internal = async () => {
 export const motherHub = async () => (await configured()) ?? internal();
 
 // Where it is, for the arcade page to link: the configured hub, or the copy's, once there is one
-export const hubLink = async () => (await configured())?.url ?? (existsSync(databaseFile()) ? `http://127.0.0.1:${INTERNAL_PORT}` : null);
+export const hubLink = async () =>
+	(await configured())?.url ?? (existsSync(databaseFile()) ? `http://127.0.0.1:${INTERNAL_PORT}` : null);
 
 // A paude that hosted games in its own copy before starts it again with itself, so the copy keeps them updated
 export const initMotherHub = async dir => {
@@ -127,7 +128,13 @@ export const initMotherHub = async dir => {
 };
 
 const git = async (cwd, ...argv) => {
-	const child = Bun.spawn(['git', ...argv], { cwd, env: gitEnvironment(), stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
+	const child = Bun.spawn(['git', ...argv], {
+		cwd,
+		env: gitEnvironment(),
+		stdin: 'ignore',
+		stdout: 'pipe',
+		stderr: 'pipe',
+	});
 	const [out, err] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
 
 	return { ok: (await child.exited) === 0, out: out.trim(), err: err.trim() };
@@ -149,7 +156,7 @@ const call = async (hub, path, init = {}) => {
 
 // A game with the house's: hosted by the hub in place when it can see this folder (the same machine), or sent to it as
 // a git bundle when it can't. What's committed is what's hosted. { id, name, port, url, hub }
-export const hostGame = async (cwd, name, onOutput = () => {}) => {
+export const hostGame = async (cwd, name, onOutput = () => {}, { whenIdle = false } = {}) => {
 	const hub = await motherHub();
 	const head = await git(cwd, 'rev-parse', 'HEAD');
 
@@ -160,7 +167,7 @@ export const hostGame = async (cwd, name, onOutput = () => {}) => {
 	let hosted = await call(hub, '/api/host', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ name, dir: cwd, head: head.out }),
+		body: JSON.stringify({ name, dir: cwd, head: head.out, whenIdle }),
 	});
 
 	if (hosted.needsBundle) {
@@ -173,7 +180,7 @@ export const hostGame = async (cwd, name, onOutput = () => {}) => {
 
 			if (!made.ok) throw new HubError(`The game couldn't be bundled: ${made.err}`);
 
-			hosted = await call(hub, `/api/host/${encodeURIComponent(name)}/bundle`, {
+			hosted = await call(hub, `/api/host/${encodeURIComponent(name)}/bundle${whenIdle ? '?whenIdle=1' : ''}`, {
 				method: 'POST',
 				headers: { 'content-type': 'application/octet-stream' },
 				body: Bun.file(bundle),

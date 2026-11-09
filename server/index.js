@@ -105,6 +105,8 @@ await initFuel(options.data);
 await initJourney(options.data);
 await initProjects(options.data);
 await initMotherHub(options.data);
+// Arcade games the mother hub doesn't host yet go to it, in the background
+import('./arcade').then(({ hostUnhosted }) => hostUnhosted()).catch(error => console.warn(error.message));
 await initSpeech(options.data);
 await ensureLocalToken(options.data);
 await initServerId(options.data);

@@ -2,7 +2,6 @@ import { View, appendStyles } from '@vanilla-bean/components';
 
 import { hostArcadeGame, logout } from '../api';
 import { Bar, ghostButton } from '../Bar';
-import confirmDialog from '../confirmDialog';
 import { button, element } from '../dom';
 import { identity } from '../identity';
 import { updateTabTitle } from '../tabTitle';
@@ -99,12 +98,14 @@ export default class Arcade extends View {
 		});
 		bar.elem.append(this.changeButton);
 		ghostButton(bar, { icon: 'rotate-right', title: 'Reload the game', onPress: () => this.game.reload() });
-		// Hosting is the owner's alone, and shown once this is known to be an arcade. Not the hidden attribute: the button's
-		// own display rule outranks it.
+		// The mother hub hosts every arcade game by itself, a few minutes behind the building; this brings its copy up to
+		// now, the owner's alone. Shown once this is known to be an arcade; not the hidden attribute, which the button's
+		// own display rule outranks.
 		if (owner) {
 			this.hostButton = ghostButton(bar, {
 				icon: 'house-signal',
-				title: "Put it with the house's games: hosted by the mother hub, at a name of its own",
+				title:
+					"Update the house's copy now: the mother hub hosts it, and otherwise catches up a few minutes after building stops",
 				onPress: () => this.host(),
 			});
 			this.hostButton.style.display = 'none';
@@ -132,15 +133,7 @@ export default class Arcade extends View {
 	}
 
 	async host() {
-		const name = this.arcade?.title || this.title.textContent;
-		const confirmed = await confirmDialog({
-			header: `Put ${name} with the house's games?`,
-			body: "The mother hub hosts it from now on, at a name of its own, built as it's committed right now: it can be turned on and off, updated and shared from there. Doing this again later brings the newer game there.",
-			confirmLabel: 'Host it',
-		});
-
-		if (!confirmed) return;
-		this.talk.notice('Handing it to the mother hub…', 'info');
+		this.talk.notice("Updating the house's copy…", 'info');
 
 		const { body, response } = await hostArcadeGame(this.id);
 
@@ -149,6 +142,9 @@ export default class Arcade extends View {
 
 			return;
 		}
-		this.talk.notice(`Hosted${body.url ? ` at ${body.url}` : `, on port ${body.port}`}`, 'success');
+		this.talk.notice(
+			`The house's copy is up to date${body.url ? `: ${body.url}` : `, on port ${body.port}`}`,
+			'success',
+		);
 	}
 }

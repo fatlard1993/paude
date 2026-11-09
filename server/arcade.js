@@ -7,7 +7,7 @@ import { READING } from '../shared/arcade';
 import writeJsonFile from '../shared/writeJsonFile';
 import { statusOf } from './activity';
 import { askClaude } from './claudeInbox';
-import { projectPath } from './projects';
+import { listProjects, projectOf, projectPath } from './projects';
 import { sessionEnvironment } from './sessions/PtySession';
 import { feedFrom } from './feed';
 import { HubError, hostGame } from './motherHub';
@@ -342,6 +342,9 @@ export const createArcadeProject = async ({ name, idea, player, reading }, onOut
 			`${title}: a new game from the scaffold`,
 		]));
 
+	// The hub has it from the start; it builds and starts it there itself
+	keepHosted(folder, { delay: 0 });
+
 	return { folder, name: basename(folder) };
 };
 
@@ -491,6 +494,8 @@ export const snapshotTurn = async (sessionId, cwd) => {
 	const subject = `${SNAPSHOT}${turnName(entries)}`;
 	const committed = await gitOut(cwd, [...asPaude, 'commit', '-q', '-m', subject]);
 
+	if (committed.ok) keepHosted(cwd);
+
 	return committed.ok ? subject : null;
 };
 
@@ -525,7 +530,7 @@ export const undoLastTurn = async (sessionId, cwd) => {
 
 // The game put with the house's games, hosted by the mother hub (motherHub.js): the one this paude is wired to, or its
 // own copy. Where it went is kept in the marker, so the arcade page can say. { id, name, port, url }
-export const hostArcade = async (cwd, name, onOutput = () => {}) => {
+export const hostArcade = async (cwd, name, onOutput = () => {}, { whenIdle = false } = {}) => {
 	const marker = await arcadeOf(cwd);
 
 	if (!marker) throw new ArcadeError('This is not an arcade game.');
@@ -533,7 +538,7 @@ export const hostArcade = async (cwd, name, onOutput = () => {}) => {
 	let hosted;
 
 	try {
-		hosted = await hostGame(cwd, name, onOutput);
+		hosted = await hostGame(cwd, name, onOutput, { whenIdle });
 	} catch (error) {
 		if (error instanceof HubError) throw new ArcadeError(error.message);
 		throw error;
@@ -544,8 +549,53 @@ export const hostArcade = async (cwd, name, onOutput = () => {}) => {
 
 	await writeJsonFile(join(cwd, MARKER), () => ({
 		...rest,
-		hosted: { id: hosted.id, port: hosted.port, url: hosted.url ?? null, hub: hosted.hub, at: new Date().toISOString() },
+		hosted: {
+			id: hosted.id,
+			port: hosted.port,
+			url: hosted.url ?? null,
+			hub: hosted.hub,
+			at: new Date().toISOString(),
+		},
 	}));
 
 	return hosted;
+};
+
+// Every arcade game is hosted by the mother hub, without anyone asking: made, it's hosted at once, and as it's built it's
+// hosted again once a spell of building has gone quiet for a while (so the house's copy follows a few minutes behind,
+// rather than rebuilding under every turn), each time asking the hub to wait while anyone's playing the house's copy.
+// The timers live on globalThis, so a hot reload doesn't double them.
+const HOST_AFTER_QUIET_MS = 10 * 60 * 1000;
+const hostTimers = (globalThis.paudeHostTimers ??= new Map());
+
+export const keepHosted = (cwd, { delay = HOST_AFTER_QUIET_MS } = {}) => {
+	clearTimeout(hostTimers.get(cwd));
+	hostTimers.set(
+		cwd,
+		setTimeout(async () => {
+			hostTimers.delete(cwd);
+
+			try {
+				await hostArcade(cwd, projectOf(cwd), () => {}, { whenIdle: true });
+			} catch (error) {
+				console.warn(`The mother hub didn't host ${cwd}: ${error.message}`);
+			}
+		}, delay),
+	);
+};
+
+// At start, the arcade games the hub doesn't have yet (made before it hosted them all) are handed to it, a little
+// apart so they don't all build at once
+export const hostUnhosted = async ({ apartMs = 30_000 } = {}) => {
+	let delay = apartMs;
+
+	for (const name of await listProjects()) {
+		const cwd = projectPath(name);
+		const marker = cwd && (await arcadeOf(cwd));
+
+		if (!marker || marker.hosted) continue;
+
+		keepHosted(cwd, { delay });
+		delay += apartMs;
+	}
 };
