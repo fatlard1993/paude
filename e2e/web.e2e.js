@@ -739,14 +739,14 @@ test(
 			await page.goto(await server.loginLink(''));
 			await page.waitForSelector('textarea');
 			await page.evaluate(() => (window.location.hash = '#/universe'));
-			await page.waitForSelector('.focus button.summary, .focus .verbs', { timeout: 20_000 });
+			await page.waitForSelector('.focus-card button.summary, .focus-card .verbs', { timeout: 20_000 });
 			expect(await openCard()).toBe('');
 			await page.type('.reply-card textarea', 'look over the tests');
 			await page.keyboard.press('Escape');
 			await page.waitForSelector('.reply-card', { hidden: true });
 			expect(await openCard()).toBe('look over the tests');
 			await page.reload();
-			await page.waitForSelector('.focus button.summary, .focus .verbs', { timeout: 20_000 });
+			await page.waitForSelector('.focus-card button.summary, .focus-card .verbs', { timeout: 20_000 });
 			expect(await openCard()).toBe('look over the tests');
 			await page.evaluate(() => (window.location.hash = '#/'));
 			await page.waitForSelector('textarea');

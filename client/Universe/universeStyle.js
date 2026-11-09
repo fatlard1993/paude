@@ -524,7 +524,7 @@ export const Stage = styled(
 			display: none;
 		}
 
-		.focus .summary {
+		.focus-card .summary {
 			display: flex;
 			flex-direction: column;
 			gap: 2px;
@@ -537,24 +537,24 @@ export const Stage = styled(
 			cursor: pointer;
 		}
 
-		.focus.folded {
+		.focus-card.folded {
 			width: auto;
 			max-width: calc(100% - 24px);
 		}
 
-		.focus .summary .line {
+		.focus-card .summary .line {
 			white-space: nowrap;
 			color: ${colors.muted};
 			font-size: 0.85em;
 		}
 
-		.focus .title .fold {
+		.focus-card .title .fold {
 			float: right;
 			margin: -4px -6px 0 ${space.sm};
 		}
 
 		.tip img.icon,
-		.focus .title img.icon,
+		.focus-card .title img.icon,
 		.projects-list .project-row img.icon {
 			width: 1em;
 			height: 1em;
@@ -563,7 +563,7 @@ export const Stage = styled(
 			object-fit: contain;
 		}
 
-		.focus {
+		.focus-card {
 			position: absolute;
 			z-index: 2;
 			display: flex;
@@ -586,26 +586,26 @@ export const Stage = styled(
 			font-size: 0.85em;
 		}
 
-		.focus .rows {
+		.focus-card .rows {
 			display: grid;
 			grid-template-columns: auto 1fr;
 			gap: 0 ${space.sm};
 		}
 
-		.focus .key {
+		.focus-card .key {
 			color: ${colors.light(colors.teal)};
 			text-transform: uppercase;
 			font-size: 0.85em;
 		}
 
-		.focus .items {
+		.focus-card .items {
 			display: flex;
 			flex-direction: column;
 			gap: 2px;
 			margin-top: ${space.xs};
 		}
 
-		.focus .item {
+		.focus-card .item {
 			display: flex;
 			flex-direction: column;
 			padding: 2px ${space.sm};
@@ -618,23 +618,23 @@ export const Stage = styled(
 			cursor: pointer;
 		}
 
-		.focus .item:hover {
+		.focus-card .item:hover {
 			background: ${colors.alpha(colors.white, 0.06)};
 		}
 
-		.focus .item.busy {
+		.focus-card .item.busy {
 			border-left-color: ${colors.teal};
 		}
 
-		.focus .item.warn {
+		.focus-card .item.warn {
 			border-left-color: ${colors.light(colors.warning)};
 		}
 
-		.focus .item.off {
+		.focus-card .item.off {
 			opacity: 0.7;
 		}
 
-		.focus .item .detail {
+		.focus-card .item .detail {
 			color: ${colors.muted};
 			font-size: 0.9em;
 			overflow: hidden;
@@ -642,14 +642,14 @@ export const Stage = styled(
 			white-space: nowrap;
 		}
 
-		.focus .verbs {
+		.focus-card .verbs {
 			display: flex;
 			flex-wrap: wrap;
 			gap: 4px;
 			margin-top: ${space.xs};
 		}
 
-		.focus .verbs button {
+		.focus-card .verbs button {
 			display: flex;
 			align-items: center;
 			gap: 4px;
@@ -662,11 +662,11 @@ export const Stage = styled(
 			cursor: pointer;
 		}
 
-		.focus .verbs button:hover {
+		.focus-card .verbs button:hover {
 			border-color: ${colors.light(colors.teal)};
 		}
 
-		.focus kbd {
+		.focus-card kbd {
 			color: ${colors.light(colors.teal)};
 			font: inherit;
 			font-size: 0.85em;
@@ -768,7 +768,7 @@ export const Stage = styled(
 				display: none;
 			}
 
-			.drawer .focus,
+			.drawer .focus-card,
 			.drawer .dock,
 			.drawer .reply-card {
 				position: static;
@@ -785,12 +785,12 @@ export const Stage = styled(
 				-webkit-backdrop-filter: none;
 			}
 
-			.drawer .focus {
+			.drawer .focus-card {
 				flex: 0 1 auto;
 				overflow-y: auto;
 			}
 
-			.drawer .focus.folded {
+			.drawer .focus-card.folded {
 				width: auto;
 				max-width: none;
 				overflow: visible;

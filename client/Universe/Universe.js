@@ -282,7 +282,7 @@ export default class Universe extends View {
 		this.tip = element('div', 'tip');
 		this.tip.dataset.augmentedUi = FRAME.small;
 		this.tip.style.display = 'none';
-		this.focus = element('div', 'focus');
+		this.focus = element('div', 'focus-card');
 		// On a phone the card is a drawer, not a framed card
 		if (!onPhone()) this.focus.dataset.augmentedUi = FRAME.large;
 		this.focus.style.display = 'none';
