@@ -5,9 +5,13 @@ import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { launchSettings } from './arcadeSettings';
+import { initArcadeMode, setArcadeMode } from './arcadeMode';
 import {
 	READING,
 	adoptArcade,
+	arcadeFor,
+	arcadeLaunch,
+	isArcadeSession,
 	acceptTrust,
 	arcadeInstructions,
 	arcadeOf,
@@ -441,5 +445,48 @@ describe("paude's files in a game it made", () => {
 
 		await refreshArcade(game);
 		expect(sh(game, 'git rev-list --count HEAD')).toBe('2');
+	});
+});
+
+describe('arcade as a way of using any session', () => {
+	let project;
+
+	beforeEach(async () => {
+		project = await mkdtemp(join(tmpdir(), 'session-arcade-'));
+		await initArcadeMode(project);
+	});
+	afterEach(() => rm(project, { recursive: true, force: true }));
+
+	test('a session switched into the arcade in an ordinary project gets its rules and settings at launch', async () => {
+		expect(await isArcadeSession('s1', project)).toBe(false);
+		expect(await arcadeLaunch('s1', project)).toBeNull();
+
+		await setArcadeMode('s1', { on: true, reading: 'learning' });
+
+		expect(await isArcadeSession('s1', project)).toBe(true);
+		expect(await arcadeFor('s1', project)).toMatchObject({ reading: 'learning', session: true });
+
+		const launch = await arcadeLaunch('s1', project);
+
+		expect(launch.settings).toBe(claudeSettings);
+		expect(launch.systemPrompt).toContain('AskUserQuestion');
+		expect(launch.systemPrompt).toContain('short, common words');
+	});
+
+	test("a project with the arcade's marker defaults its sessions to it, and one switched out is told the rules don't apply", async () => {
+		await writeFile(
+			join(project, '.paude-arcade.json'),
+			JSON.stringify({ title: 'Moon', reading: 'reading', adopted: true }),
+		);
+
+		expect(await isArcadeSession('s2', project)).toBe(true);
+		expect(await arcadeLaunch('s2', project)).toEqual({ settings: claudeSettings });
+
+		await setArcadeMode('s2', { on: false });
+
+		expect(await isArcadeSession('s2', project)).toBe(false);
+		expect(await arcadeFor('s2', project)).toBeNull();
+		expect((await arcadeLaunch('s2', project)).systemPrompt).toContain('not in the arcade');
+		expect(await snapshotTurn('s2', project)).toBeNull();
 	});
 });

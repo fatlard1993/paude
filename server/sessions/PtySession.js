@@ -77,7 +77,7 @@ export default class PtySession {
 	ended = false;
 	startedAt = Date.now();
 
-	constructor({ id, cwd, resume, prompt, model, claudePath, onExit, adopt = false, title = '' }) {
+	constructor({ id, cwd, resume, prompt, model, claudePath, onExit, adopt = false, title = '', arcade = null }) {
 		this.id = id;
 		this.cwd = cwd;
 		// What it was called when saved, until Claude names it again (it does only when the name changes)
@@ -106,10 +106,13 @@ export default class PtySession {
 			this.broadcastPresence();
 		});
 
-		const settings = hookSettings(launchSettings(cwd));
+		// The arcade's settings when the session is in it (arcadeLaunch, worked out by whoever starts it; a project
+		// brought into the arcade is known from its marker even without that), and its rules where no file carries them
+		const settings = hookSettings(arcade ? (arcade.settings ?? null) : launchSettings(cwd));
 		// `--` keeps a prompt that starts with a dash from being read as an option
 		const args = [
 			...(settings ? ['--settings', settings] : []),
+			...(arcade?.systemPrompt ? ['--append-system-prompt', arcade.systemPrompt] : []),
 			...(model ? ['--model', model] : []),
 			...(resume ? ['--resume', id] : ['--session-id', id, ...(prompt ? ['--', prompt] : [])]),
 		];

@@ -54,9 +54,10 @@ const launch = options => {
 	return session;
 };
 
-// `model`: one of MODEL_NAMES, or none for the default
-export const startSession = (cwd, prompt, model) =>
-	launch({ id: crypto.randomUUID(), cwd, resume: false, prompt, model });
+// `model`: one of MODEL_NAMES, or none for the default; `id`, given when something about the session is settled before
+// it starts (its arcade mode); `arcade`, what arcadeLaunch gave for it
+export const startSession = (cwd, prompt, model, { id = crypto.randomUUID(), arcade = null } = {}) =>
+	launch({ id, cwd, resume: false, prompt, model, arcade });
 
 // Sessions a previous server left running under dtach, taken back so they show as live and report their status
 const savedTitle = info => info?.customTitle ?? info?.summary ?? '';
@@ -124,11 +125,24 @@ export const openSession = async id => {
 			.then(({ refreshArcade }) => refreshArcade(cwd))
 			.catch(error => console.error("The arcade's files could not be refreshed:", error));
 
+	// What the arcade adds when this session is in it (its settings, its rules), for Claude to start with
+	const arcade = isHeld(id)
+		? null
+		: await import('../arcade').then(({ arcadeLaunch }) => arcadeLaunch(id, cwd)).catch(() => null);
+
 	try {
 		// A concurrent attach may have started it while this one awaited
 		const session =
 			running.get(id) ??
-			launch({ id, cwd, resume: !isHeld(id), adopt: isHeld(id), title: savedTitle(info), model: modelOf(id) });
+			launch({
+				id,
+				cwd,
+				resume: !isHeld(id),
+				adopt: isHeld(id),
+				title: savedTitle(info),
+				model: modelOf(id),
+				arcade,
+			});
 
 		startFailures.delete(id);
 		// Opened again, it's in use: back in the lists

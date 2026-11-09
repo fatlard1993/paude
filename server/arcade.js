@@ -6,9 +6,11 @@ import readJsonFile from '../shared/readJsonFile';
 import { READING } from '../shared/arcade';
 import writeJsonFile from '../shared/writeJsonFile';
 import { statusOf } from './activity';
+import { arcadeModeOf } from './arcadeMode';
 import { claudeSettings } from './arcadeSettings';
 import { askClaude } from './claudeInbox';
 import { listProjects, projectOf, projectPath } from './projects';
+import { ownerName } from './serverSettings';
 import { sessionEnvironment } from './sessions/PtySession';
 import { voicePerforms, voiceSettings } from './speech';
 import { feedFrom } from './feed';
@@ -491,6 +493,60 @@ export const isArcade = async cwd => {
 	return is;
 };
 
+// Whether a session is in the arcade: as it was switched, or by its project's default (a marker there)
+export const isArcadeSession = async (id, cwd) => {
+	const mode = arcadeModeOf(id);
+
+	return mode ? mode.on : await isArcade(cwd);
+};
+
+// What a session's arcade is: its project's marker (a game, or a project brought in) with the session's own reading if it
+// was given one, or for a session switched into the arcade in a project without one, what paude knows of it. null when
+// the session isn't in the arcade.
+export const arcadeFor = async (id, cwd) => {
+	const mode = arcadeModeOf(id);
+
+	if (mode && !mode.on) return null;
+
+	const marker = await arcadeOf(cwd);
+
+	if (marker) return { ...marker, ...(mode?.reading && { reading: mode.reading }) };
+	if (!mode?.on) return null;
+
+	return { title: basename(cwd), named: true, reading: mode.reading ?? 'reading', session: true };
+};
+
+// Said to Claude in a project with the arcade's rules, for a session switched out of the arcade
+const ARCADE_OFF =
+	'This session is not in the arcade: the arcade rules in `.paude-arcade.md` do not apply to it. Work as an ordinary Claude Code session: write as you normally would, and end turns however fits rather than always with a question.';
+
+// What Claude starts with in a session, for the arcade: settings to go with paude's own (the arcade's permissions and the
+// hook that turns permission prompts back) and words added to its system prompt (the arcade's rules, where no file in the
+// project carries them). A game paude made has both in its own files; a project brought in has its rules in a file and
+// takes the settings here; any other session switched into the arcade takes both here. null for an ordinary session.
+export const arcadeLaunch = async (id, cwd) => {
+	const mode = arcadeModeOf(id);
+	const marker = await arcadeOf(cwd);
+
+	if (mode && !mode.on) return marker ? { systemPrompt: ARCADE_OFF } : null;
+	if (marker) return marker.adopted ? { settings: claudeSettings } : {};
+	if (!mode?.on) return null;
+
+	const devServer = Boolean((await readJsonFile(join(cwd, 'package.json'), null).catch(() => null))?.scripts?.dev);
+
+	return {
+		settings: claudeSettings,
+		systemPrompt: adoptedInstructions({
+			title: basename(cwd),
+			player: await ownerName(),
+			reading: mode.reading ?? 'reading',
+			devServer,
+			performs: await voicePerforms(),
+			sounds: Boolean(await voiceSettings()) && devServer,
+		}),
+	};
+};
+
 // The arcade a folder is, from its marker: { title, player, reading, made, hosted? }, or null for an ordinary project
 export const arcadeOf = async cwd => {
 	if (!cwd) return null;
@@ -702,10 +758,13 @@ const asPaude = ['-c', 'user.name=paude', '-c', 'user.email=paude@localhost'];
 // asked for. A turn Claude committed itself, or that changed nothing, leaves no snapshot. Resolves to the subject,
 // or null.
 export const snapshotTurn = async (sessionId, cwd) => {
-	if (!(await arcadeOf(cwd))) return null;
+	if (!(await isArcadeSession(sessionId, cwd))) return null;
 
-	// Whatever the turn left (a snapshot here, or a commit Claude made itself), the house's copy follows it
-	keepHosted(cwd);
+	const marker = await arcadeOf(cwd);
+
+	// Whatever the turn left (a snapshot here, or a commit Claude made itself), the house's copy of a game paude made
+	// follows it
+	if (marker && !marker.adopted) keepHosted(cwd);
 
 	await gitOut(cwd, ['add', '-A']);
 	if ((await gitOut(cwd, ['diff', '--cached', '--quiet'])).ok) return null;
@@ -723,7 +782,7 @@ export const snapshotTurn = async (sessionId, cwd) => {
 // and it can be put forward again by hand. Refused while Claude is working (its edits would land on the revert) and
 // when the newest commit isn't a snapshot (Claude's own commit, or the scaffold's first). { undone } or throws.
 export const undoLastTurn = async (sessionId, cwd) => {
-	if (!(await arcadeOf(cwd))) throw new ArcadeError('This is not an arcade game.');
+	if (!(await isArcadeSession(sessionId, cwd))) throw new ArcadeError('This session is not in the arcade.');
 	if (statusOf(sessionId) === 'working') throw new ArcadeError('Claude is still working. Wait for it to finish.');
 
 	const head = await gitOut(cwd, ['log', '-1', '--format=%s']);

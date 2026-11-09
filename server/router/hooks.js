@@ -20,7 +20,7 @@ import { noteEmpty } from '../fuel';
 import { PROPOSING_TOOLS, trackProposals } from '../sessions/proposals';
 import { runningSession } from '../sessions/running';
 import { noteHook, notePrompt, noteTool, noteTurnDone, peopleOf } from '../universe';
-import { isArcade, snapshotTurn } from '../arcade';
+import { isArcadeSession, snapshotTurn } from '../arcade';
 import { forgetPresence, presenceNote } from '../arcadePresence';
 
 // The checks a project runs after each of Claude's turns, when the turn edited something: the problems they find
@@ -127,7 +127,7 @@ const hooksRoutes = async request => {
 	if (payload.hook_event_name === 'PreToolUse' && payload.tool_name === 'AskUserQuestion') {
 		const { cwd } = runningSession(id);
 
-		if (await isArcade(cwd)) {
+		if (await isArcadeSession(id, cwd)) {
 			await snapshotTurn(id, cwd).catch(error => console.error('The arcade snapshot failed:', error));
 			await recordChange(id);
 		}
@@ -205,7 +205,7 @@ const toldWhoIsHere = async (id, payload) => {
 
 	if (!(event === 'UserPromptSubmit' || (event === 'PostToolUse' && payload.tool_name === 'AskUserQuestion')))
 		return null;
-	if (!session || !(await isArcade(session.cwd))) return null;
+	if (!session || !(await isArcadeSession(id, session.cwd))) return null;
 
 	const note = presenceNote(id, peopleOf([session]));
 

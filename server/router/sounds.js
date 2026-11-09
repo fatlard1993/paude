@@ -1,6 +1,6 @@
 import { requestMatch } from '@vanilla-bean/components/app';
 
-import { isArcade } from '../arcade';
+import { isArcadeSession } from '../arcade';
 import { hookSecret } from '../hookSettings';
 import { runningSession } from '../sessions/running';
 import { SpeechError } from '../speech';
@@ -17,7 +17,8 @@ const soundsRoutes = async request => {
 	const session = runningSession(match.session);
 
 	if (!session) return new Response('That session is not running', { status: 404 });
-	if (!(await isArcade(session.cwd))) return new Response('Sounds are made for arcade games', { status: 403 });
+	if (!(await isArcadeSession(match.session, session.cwd)))
+		return new Response('Sounds are made for sessions in the arcade', { status: 403 });
 
 	try {
 		return Response.json(await makeSound(match.session, session.cwd, await request.json().catch(() => ({}))));

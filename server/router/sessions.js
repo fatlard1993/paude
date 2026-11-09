@@ -23,6 +23,8 @@ import { continueSession } from '../usageLimit';
 import { LIFETIMES, WARM_LIFETIMES, lastSwitch, lifetimeOf, setLifetime, switchLifetime } from '../lifetime';
 import { MODEL_NAMES } from '../../shared/models';
 import { setModel } from '../sessionModels';
+import { setArcadeMode } from '../arcadeMode';
+import { READING } from '../../shared/arcade';
 import removeSession from '../removeSession';
 import { meterOf } from '../cacheMeter';
 import { catchUp } from '../catchUp';
@@ -33,12 +35,14 @@ import {
 	ArcadeError,
 	acceptTrust,
 	adoptArcade,
+	arcadeFor,
+	arcadeLaunch,
 	adoptedOpeningPrompt,
 	arcadeOf,
 	createArcadeProject,
 	hostingNow,
 	startHosting,
-	isArcade,
+	isArcadeSession,
 	openingPrompt,
 	refreshArcade,
 	undoLastTurn,
@@ -154,13 +158,17 @@ const HEARTBEAT_MS = 5000;
 // A new session, kept warm, kept going, fabled or short-lived from the start when asked, on the model asked for: mode
 // is 'warm', 'going', 'fabled', 'brief' or anything else for none, model one of MODEL_NAMES or anything else for the default.
 // Whoever starts it watches its project from then on, unless they turned that off themselves
-const startWith = async (folder, text, { mode, model, identity, project = projectOf(folder) } = {}) => {
+const startWith = async (folder, text, { mode, model, identity, project = projectOf(folder), arcade } = {}) => {
 	const known = MODEL_NAMES.includes(model) ? model : undefined;
+	const id = crypto.randomUUID();
 
-	// An arcade's rules and permissions, current before Claude reads them
+	// An arcade's rules and permissions, current before Claude reads them; a session started in the arcade is in it from
+	// its first word ({ reading }), and one started out of it stays out even in a project that defaults to it (false)
 	await refreshArcade(folder).catch(error => console.error("The arcade's files could not be refreshed:", error));
+	if (arcade === false) await setArcadeMode(id, { on: false });
+	else if (arcade && READING[arcade.reading]) await setArcadeMode(id, { on: true, reading: arcade.reading });
 
-	const { id } = startSession(folder, text?.trim(), known);
+	startSession(folder, text?.trim(), known, { id, arcade: await arcadeLaunch(id, folder).catch(() => null) });
 
 	await setModel(id, known);
 	if (LIFETIMES.includes(mode)) await setLifetime(id, mode);
@@ -624,9 +632,13 @@ const sessionsRoutes = async (request, server) => {
 
 		if (!record) return new Response('Session not found', { status: 404 });
 
+		const arcade = await arcadeFor(match.id, record.cwd);
+		// Only a game paude made is hosted by the house
+		const hosted = arcade && !arcade.adopted && !arcade.session;
+
 		return Response.json({
-			arcade: await arcadeOf(record.cwd),
-			host: identity.owner ? { hub: await hubLink(), hosting: await hostingNow(record.cwd) } : null,
+			arcade,
+			host: identity.owner && hosted ? { hub: await hubLink(), hosting: await hostingNow(record.cwd) } : null,
 		});
 	}
 
@@ -773,6 +785,26 @@ const sessionsRoutes = async (request, server) => {
 	// After a usage limit: carry on now ('now'), once it resets ('reset'), or stop waiting for that ('cancel')
 	// Claude started over in the same conversation: ended and resumed, so it reads its settings and instructions
 	// again, and a hung one comes back. The owner's: it ends whatever Claude was doing.
+	// Switching a session into the arcade or out of it ({ on, reading }): Claude starts again in the same conversation,
+	// with the arcade's rules and settings or without them
+	match = requestMatch('POST', '/api/sessions/:id/arcade', request);
+	if (match) {
+		if (!may(identity, 'type', match.id)) return new Response('Switching the arcade takes the drive role', { status: 403 });
+		if (!(await sessionRecord(match.id))) return new Response('Session not found', { status: 404 });
+
+		const { on, reading } = await request.json().catch(() => ({}));
+
+		if (reading !== undefined && !READING[reading])
+			return new Response(`Pick how Claude writes to them: ${Object.keys(READING).join(', ')}`, { status: 400 });
+		await setArcadeMode(match.id, { on, reading });
+		if (runningSession(match.id)) {
+			await stopSession(match.id);
+			if (!(await openSession(match.id))) return new Response('Claude could not be started again', { status: 502 });
+		}
+
+		return new Response(null, { status: 204 });
+	}
+
 	match = requestMatch('POST', '/api/sessions/:id/restart', request);
 	if (match) {
 		if (!identity.owner) return new Response("Restarting Claude is the owner's", { status: 403 });
@@ -900,7 +932,7 @@ const sessionsRoutes = async (request, server) => {
 	match = requestMatch('POST', '/api/projects/:project/sessions', request);
 	if (match) {
 		const cwd = projectPath(match.project);
-		const { text, checkout, mode, model } = await request.json();
+		const { text, checkout, mode, model, arcade } = await request.json();
 
 		if (!(await isFolder(cwd))) return new Response('Unknown project', { status: 404 });
 
@@ -922,7 +954,7 @@ const sessionsRoutes = async (request, server) => {
 					return { folder, files: start?.pr ? await pullRequestStartFiles(folder, start.pr) : [] };
 				},
 				text,
-				{ mode, model, identity, project: match.project },
+				{ mode, model, identity, project: match.project, arcade },
 			);
 		}
 
@@ -936,7 +968,7 @@ const sessionsRoutes = async (request, server) => {
 			folder = joined.path;
 		}
 
-		return Response.json({ id: await startWith(folder, text, { mode, model, identity, project: match.project }) });
+		return Response.json({ id: await startWith(folder, text, { mode, model, identity, project: match.project, arcade }) });
 	}
 
 	// An arcade session in a project that's already here, any repo: brought into the arcade (its marker and rules, its own
@@ -1088,7 +1120,7 @@ const sessionsRoutes = async (request, server) => {
 			id: match.id,
 			project: projectOf(cwd),
 			live: Boolean(running),
-			arcade: (await isArcade(cwd)) || undefined,
+			arcade: (await isArcadeSession(match.id, cwd)) || undefined,
 			title,
 			hue: sessionHue(match.id),
 			pinned: Boolean(pinnedName(match.id)),
