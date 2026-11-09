@@ -20,7 +20,7 @@ import attach from '../Terminal/attach';
 import Talk from './ArcadeTalk.styles';
 import sayQueue from './sayQueue';
 
-// The talk with Claude as a kid has it: what Claude says in big type, read aloud with the words lit as they're said,
+// The talk with Claude as the arcade has it: what Claude says in big type, read aloud with the words lit as they're said,
 // what it did as a quiet row, its questions as big choices (lit as they're read), and a box with an ear to answer.
 // Beside the game on the arcade page, and docked beside the universe's ship; the same on both. `onStatus(session)`
 // and `onArcade(arcade, host)` tell whoever holds it what it learned.
@@ -60,9 +60,9 @@ const ago = ms => {
 
 	return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 };
-// What answers a question when the kid wants other choices
+// What answers a question when the player wants other choices
 const MORE_IDEAS = 'None of these. Ask the same question again with different ideas, all new.';
-// What Claude is told when the kid picks again, after the game is put back
+// What Claude is told when the player picks again, after the game is put back
 const PICK_AGAIN_PROMPT =
 	'They want to choose differently: the game is back to how it was before. Ask your last question again, with the same choices.';
 const EMOJI_FIRST = /^(\p{Extended_Pictographic}[\u{FE0F}\u{200D}\p{Extended_Pictographic}]*)\s*(.*)$/su;
@@ -351,7 +351,7 @@ export default class ArcadeTalk extends Talk {
 		if (this.status !== 'working') {
 			this.lampWords.textContent =
 				this.status === 'waiting' && this.asking && !forPlayer(this.asking) && !identity()?.owner
-					? 'Waiting for a grown-up'
+					? 'Waiting on the owner'
 					: lamp.words;
 
 			return;
@@ -480,7 +480,7 @@ export default class ArcadeTalk extends Talk {
 		return card;
 	}
 
-	// The choice made, in the log as the kid's own words would be, with a way to choose differently: the game put back
+	// The choice made, in the log as the player's own words would be, with a way to choose differently: the game put back
 	// to before Claude's answer to it, and Claude asked to ask again. Only the latest choice offers it, and only in an
 	// arcade, where there are snapshots to put back.
 	// An answer as a card of the player's own: a choice with its picture, More ideas as its button reads, or the words
@@ -600,7 +600,7 @@ export default class ArcadeTalk extends Talk {
 		const player = forPlayer(asking);
 
 		if (!player && !identity()?.owner) {
-			this.choices.append(element('div', 'grown-up', 'Claude is asking a grown-up something. One moment.'));
+			this.choices.append(element('div', 'owner-waiting', 'Claude is waiting on the owner of this paude. One moment.'));
 
 			return;
 		}
@@ -668,7 +668,7 @@ export default class ArcadeTalk extends Talk {
 
 			if (emoji) choice.append(element('span', 'emoji', emoji));
 			label.append(element('span', 'words', words));
-			// A grown-up's prompt shows its lines; a player hears a choice's detail once they tap it
+			// The owner's prompt shows its lines; a player hears a choice's detail once they tap it
 			if (option.detail && !player) label.append(element('small', 'detail', option.detail));
 			choice.append(label);
 			this.choices.append(choice);
@@ -775,7 +775,7 @@ export default class ArcadeTalk extends Talk {
 		this.showStatus({ status: 'working' });
 	}
 
-	// The question and each choice read in turn, each lit while it is said, so a kid learning to read hears which is
+	// The question and each choice read in turn, each lit while it is said, so someone learning to read hears which is
 	// which: the question's words as spans, then the choices' buttons, one lit at a time
 	readChoices(question, options, { more = false } = {}) {
 		const parts = [spokenText(question.firstChild?.textContent ?? question.textContent)];

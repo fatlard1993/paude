@@ -1,6 +1,6 @@
 import { Component, styled } from '@vanilla-bean/components';
 
-// The talk with Claude as a kid has it: big type, scaled by --arcade-scale (the size option), the status with its
+// The talk with Claude as the arcade has it: big type, scaled by --arcade-scale (the size option), the status with its
 // controls in one row, the feed, the choices, and the box with the ear. The same column on the arcade page and in the
 // universe's dock.
 const Talk = styled(
@@ -228,7 +228,7 @@ const Talk = styled(
 			color: ${colors.alpha(colors.white, 0.65)};
 		}
 
-		.choices .grown-up {
+		.choices .owner-waiting {
 			color: ${colors.alpha(colors.white, 0.7)};
 		}
 

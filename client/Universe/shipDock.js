@@ -392,7 +392,7 @@ export const arcadePane = ({ machines = [] }) => ({
 			element(
 				'p',
 				'about',
-				'A game a kid builds with Claude: a project from the game scaffold, Claude told who it is building with, the game beside the talk in the arcade, read aloud and answered by tapping or talking. It is made and runs on the paude you pick.',
+				'A game built with Claude by tapping and talking: a project from the game scaffold, Claude told who it is building with, the game beside the talk in the arcade, read aloud and answered by tapping or talking. It is made and runs on the paude you pick.',
 			),
 		);
 		elem.append(form);

@@ -274,11 +274,11 @@ export default class TerminalView extends View {
 			this.lifetimeButton.append(this.lifetimeText, this.lifetimeWas);
 			this.showLifetime('ordinary');
 		}
-		// For a session that is an arcade (a game a kid builds), once the session says so
+		// For a session that is an arcade (a game built by tapping and talking), once the session says so
 		if (identity()?.owner) {
 			this.arcadeButton = ghostButton(header, {
 				icon: 'gamepad',
-				title: 'Arcade: this session as a kid plays it, the game beside the talk, read aloud',
+				title: 'Arcade: this session as the arcade has it, the game beside the talk, read aloud',
 				onPress: () => (window.location.hash = `#/arcade/${this.options.id}`),
 			});
 			this.arcadeButton.style.display = 'none';

@@ -9,7 +9,7 @@ import { readingSelect } from './makeArcade';
 // they've made, and can be taken back.
 const makersPanel = () => {
 	const panel = element('div', 'makers');
-	const opener = element('button', 'open-form variant-flat', '🧒 Give someone their own arcade');
+	const opener = element('button', 'open-form variant-flat', '🕹️ Give someone their own arcade');
 	const form = element('form', 'new-maker');
 	const name = element('input');
 	const { reading, hint } = readingSelect();

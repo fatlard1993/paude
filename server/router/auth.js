@@ -28,7 +28,7 @@ import { ROLES, guestMayRequest } from '../permissions';
 import { publicOrigin } from '../publicOrigin';
 
 const OPEN_ROUTES = new Set(['/api/auth', '/api/login', '/api/tokens', '/api/join', '/api/handoff/redeem']);
-// An hour, a day, a week, a month, a year: the last for a kid's own machine, revoked from the People tab like any
+// An hour, a day, a week, a month, a year: the last for someone's own machine, revoked from the People tab like any
 const INVITE_HOURS = [1, 24, 24 * 7, 24 * 30, 24 * 365];
 // Pages a guest can be sent to instead of the session's own
 const INVITE_VIEWS = ['arcade'];

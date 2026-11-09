@@ -9,9 +9,9 @@ import ArcadePage from './Arcade.styles';
 import ArcadeGame from './ArcadeGame';
 import ArcadeTalk from './ArcadeTalk';
 
-// A session as a kid plays it: the game they're building on one side, the talk with Claude on the other, in big type,
+// A session as the arcade has it: the game they're building on one side, the talk with Claude on the other, in big type,
 // read aloud, answered by tapping a choice or talking. No terminal. The same session as its own page shows; this is
-// its arcade twin, for the owner too (to try it, or to sit beside the kid). The ship has the same two as panels of
+// its arcade twin, for the owner too (to try it, or to sit beside whoever's building). The ship has the same two as panels of
 // the session's dock.
 const TOASTS_UP = `
 	body.arcade > .stacked {
@@ -45,7 +45,7 @@ export default class Arcade extends View {
 				// Rested before this session was known to be an arcade (a fresh load finding a question up)
 				if (arcade && this.resting) this.play(true);
 			},
-			// The loop a kid plays in: a change asked for, Claude's word on it read out, then the game alone to play,
+			// The loop the arcade plays in: a change asked for, Claude's word on it read out, then the game alone to play,
 			// until the big button brings the talk back and reads the choices again
 			onRested: () => {
 				this.resting = true;
@@ -58,7 +58,7 @@ export default class Arcade extends View {
 		});
 		this.page.elem.append(stage);
 		// Whatever toasts the page still gets (a watched session needing the owner) go to the top: the bottom is where the
-		// kid's choices and box are
+		// player's choices and box are
 		appendStyles(TOASTS_UP, 'arcade-toasts');
 		document.body.classList.add('arcade');
 		this.addCleanup('toasts', () => document.body.classList.remove('arcade'));

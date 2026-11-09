@@ -41,7 +41,7 @@ export const readingSelect = () => {
 		option.value = key;
 		reading.append(option);
 	}
-	reading.value = 'learning';
+	reading.value = 'reading';
 	hint.textContent = READING[reading.value].detail;
 	reading.addEventListener('change', () => (hint.textContent = READING[reading.value].detail));
 

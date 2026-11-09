@@ -8,7 +8,7 @@ import { newArcadeForm } from './makeArcade';
 
 // A game maker's own arcade (an invite to make games of their own): every game they've made, each the one session it's
 // always been, opened where it was left (Claude compacting it as it grows), and a way to make a new one. Big and
-// plain, for a kid.
+// plain.
 const STYLES = `
 	.maker-home {
 		box-sizing: border-box;

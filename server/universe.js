@@ -626,7 +626,7 @@ export const universe = async identity => {
 				...activitySummary(identity, session.id, { running: true, busy: session.busy, project }),
 				tool: lastTools.get(session) ?? null,
 				reply: replyOf(session.id),
-				// A game a kid builds: its dock offers the arcade's panels
+				// A game built in the arcade: its dock offers the arcade's panels
 				arcade: (await isArcade(session.cwd)) || undefined,
 				asking: session.asking() ?? undefined,
 				checkout: roots.get(session) ?? undefined,

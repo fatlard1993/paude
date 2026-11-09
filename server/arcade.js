@@ -25,8 +25,8 @@ const SNAPSHOT = 'turn: ';
 const SNAPSHOT_WORDS = 72;
 
 // An arcade project: a game made from web-game-framework's scaffold, in a folder of its own under the projects root,
-// with a file telling Claude it's building the game with a kid who may not read yet. Its session is an ordinary one;
-// the arcade page (client/Arcade) is what the kid sees of it.
+// with a file telling Claude who it's building the game with and how they read. Its session is an ordinary one; the
+// arcade page (client/Arcade) is what the person building sees of it.
 
 const NAME_LENGTH = 60;
 // The idea a game starts from, as rough or detailed as the person cares to write
@@ -42,14 +42,24 @@ const TRUST_YES = /Yes, I trust this folder/;
 // Down is pressed at most this often before giving up, so a dialog that never moves is never answered
 const TRUST_PRESSES = 6;
 
-// What Claude may do in the game without asking: read anything in it (the libraries' docs under node_modules
-// included), change its files, look around with the shell's read-only commands, and run what checks and builds it.
-// Anything that reaches out or destroys is refused outright. What's left between is auto mode's to answer, and the
-// rare question it still asks is shown to the owner alone: a kid's session must not stop on one.
+// What Claude works under in a game: auto mode, its classifier answering whatever the allow list doesn't, the deny list
+// holding what would reach past the game (root, a push, history rewritten, the disk wiped). No one sits at an arcade
+// to answer a permission prompt, so any that would still appear is turned back at once by a hook, with word to find
+// another way, and the turn carries on; Claude's own questions to the person aren't permission prompts and pass.
+const PROMPTS_ANSWERED = '^(?!AskUserQuestion$|ExitPlanMode$).*';
+const TURNED_BACK = JSON.stringify({
+	hookSpecificOutput: {
+		hookEventName: 'PermissionRequest',
+		decision: {
+			behavior: 'deny',
+			message:
+				'Nobody here answers permission prompts, so this was turned back without asking. Do it another way within the project, or leave it out and carry on.',
+		},
+	},
+});
+
 export const claudeSettings = {
 	permissions: {
-		// Auto mode, as a session of the owner's runs: its classifier answers what the allow list doesn't, so nothing
-		// waits on a grown-up for a routine command; the deny list still holds whatever it would allow
 		defaultMode: 'auto',
 		allow: [
 			'Read',
@@ -58,6 +68,8 @@ export const claudeSettings = {
 			'Edit',
 			'Write',
 			'MultiEdit',
+			'WebFetch',
+			'WebSearch',
 			'Bash(ls *)',
 			'Bash(cat *)',
 			'Bash(head *)',
@@ -66,28 +78,22 @@ export const claudeSettings = {
 			'Bash(grep *)',
 			'Bash(rg *)',
 			'Bash(find *)',
-			'Bash(sed -n *)',
+			'Bash(sed *)',
 			'Bash(tree *)',
 			'Bash(mkdir *)',
-			'Bash(bun test*)',
-			'Bash(bun run *)',
-			'Bash(bun build*)',
-			'Bash(bun -e *)',
-			'Bash(git status*)',
-			'Bash(git diff*)',
-			'Bash(git log*)',
-			'Bash(git show*)',
-			'Bash(git add*)',
-			'Bash(git commit*)',
-		],
-		deny: [
-			'Bash(rm -rf *)',
-			'Bash(sudo *)',
+			'Bash(touch *)',
+			'Bash(cp *)',
+			'Bash(mv *)',
+			'Bash(ss *)',
 			'Bash(curl *)',
-			'Bash(wget *)',
-			'Bash(git push*)',
-			'Bash(git reset --hard*)',
-			'WebFetch',
+			'Bash(bun *)',
+			'Bash(git *)',
+		],
+		deny: ['Bash(sudo *)', 'Bash(git push*)', 'Bash(git reset --hard*)', 'Bash(rm -rf /*)', 'Bash(rm -rf ~*)'],
+	},
+	hooks: {
+		PermissionRequest: [
+			{ matcher: PROMPTS_ANSWERED, hooks: [{ type: 'command', command: `printf '%s' '${TURNED_BACK}'` }] },
 		],
 	},
 };
@@ -141,7 +147,7 @@ const framework = () => {
 
 const WRITING = {
 	listening: [
-		'They cannot read yet. The page reads everything you write aloud, so write to be heard: one short sentence at a time, two or three sentences at most, in the words a five-year-old uses. No lists, no headings, no code, no file names, no links, no markdown of any kind.',
+		'They take in what you write by ear: the page reads it all aloud, so write to be heard, one short sentence at a time, two or three at most, in everyday words. No lists, no headings, no code, no file names, no links, no markdown of any kind.',
 		'Choices have two or three options. Each label is an emoji, then one to three words.',
 	],
 	learning: [
@@ -149,7 +155,7 @@ const WRITING = {
 		'Choices have two to four options. Each label is an emoji, then two to five words.',
 	],
 	reading: [
-		'They read on their own. Plain short sentences, a few lines at most, no code unless they ask to see it. A file name only when they ask where something is.',
+		'They read on their own. Plain, concise sentences, a few lines at most. Code or a file name when they ask for it or it is the clearest way to say something.',
 		'Choices have two to four options. Each label is an emoji, then a few words.',
 	],
 };
@@ -168,9 +174,9 @@ const ideaSection = ({ idea, underWay }) => {
 			'This is the brief, in their words, and it comes first: do not swap it for an idea of your own, and do not start with questions. Before you build, harden it:',
 			'',
 			'1. Read it through and list for yourself every thing it asks for: what you see, what you do, what happens, how you win or lose.',
-			'2. Where it is vague or leaves a gap, decide it yourself with the choice a kid would most likely want. Do not ask about it.',
+			'2. Where it is vague or leaves a gap, decide it yourself with the choice they would most likely want. Do not ask about it.',
 			'3. Write the hardened version into `IDEA.md` in the project, as a short plain list of what the game has, so the next turns (and a fresh session) build the same game.',
-			'4. Then build it, the whole of it, in steps they can each see working within a minute, going on from one step to the next without stopping to ask. Start with the core of the idea so the game is playable early, then add each remaining part the brief names.',
+			'4. Then build it, the whole of it, going on from one part to the next without stopping to ask, checking each works before the next. Start with the core of the idea so the game is playable early, then add each remaining part the brief names.',
 			'',
 			'Only when what the brief describes is in the game do you start asking what should happen next, as below: from then on it is theirs to change as they go. Until then, do not use the questions in "Every turn" below.',
 			'',
@@ -188,9 +194,9 @@ const ideaSection = ({ idea, underWay }) => {
 		'',
 		'There is no idea yet. Find one together before building anything, one question at a time, each with the AskUserQuestion tool and two to four picture choices (the page adds "More ideas" itself):',
 		'',
-		'1. What they love: a few worlds to pick from, say 🐸 animals, 🚀 space, 🏎️ racing, 🏰 castles, 🌊 the sea, 🍕 food. Pick ones a kid their age lights up at; vary them if they ask for more.',
+		'1. What they love: a few worlds to pick from, say 🐸 animals, 🚀 space, 🏎️ racing, 🏰 castles, 🌊 the sea, 🍕 food. Pick ones that suit who you are building with; vary them if they ask for more.',
 		'2. What they want to do in it: say 🎯 catch things, 🏃 dodge things, 🎨 draw, 🧱 build, 🔍 find what is hidden, 🏁 race.',
-		'3. Three game ideas that fit both answers, each a short title with its emoji and one line under it saying what you do, so they can picture it. The ideas should be small enough to see working in a few turns.',
+		'3. Three game ideas that fit both answers, each a short title with its emoji and one line under it saying what you do, so they can picture it. Each should be something you can have playable within a turn or two.',
 		'4. Once one is picked, say the idea back in one short line, then offer a few names for it as choices.',
 		'',
 		'When the idea and name are settled, write the idea in one or two sentences into "idea" in `.paude-arcade.json` (and the name into "title"), so paude remembers it for you, then build the first thing they can see and carry on as below. If they already know what they want at any step, skip the rest of the steps and go with it.',
@@ -202,7 +208,7 @@ export const arcadeInstructions = ({ title, named = true, idea = '', underWay = 
 	[
 		named ? `# Building ${title} together` : '# Building a game together',
 		'',
-		`You are making this game with ${player || 'a kid'}, who is young. They decide what the game is and what happens next; you do all the building. A grown-up who owns this paude may write in the same conversation now and then; follow what they say.`,
+		`You are building this game with ${player || 'the person here'}. They decide what the game is and what happens next; you do all of the building, and you are trusted to do it well and see it through on your own. The owner of this paude may write in the same conversation now and then; follow what they say.`,
 		'',
 		...ideaSection({ idea, underWay }),
 		...(named
@@ -215,15 +221,15 @@ export const arcadeInstructions = ({ title, named = true, idea = '', underWay = 
 				]),
 		'## The game is already running',
 		'',
-		'The game\'s server runs under paude as the project\'s `dev` task, and the kid sees the game live beside this conversation: its server starts over and its page reloads every time you save a file, so a change to the game\'s rules is live the moment it\'s saved. If it ever seems to be running old code, save a file the server loads (`Game.js`, `server.js`) again. Never start, stop or restart it yourself, never run `bun run dev`, and never tell them a grown-up has to restart it. "Show me" means say in a line what to look at or tap in the game they already see. If the game looks broken, fix the file; paude restarts the server itself if it ever dies.',
+		"The game's server runs under paude as the project's `dev` task and shows live beside this conversation: the server starts over and the page reloads every time you save a file, so a change is live the moment it's saved. If it ever seems to be running old code, save a file the server loads (`Game.js`, `server.js`) again; if it dies, paude starts it again. Keeping it running is yours: don't start a second copy (`bun run dev`), don't stop it, and never ask anyone to restart anything. To see what it does, find its port (`ss -ltnp`, the bun process in this folder) and curl it. \"Show me\" means say in a line what to look at or tap in the game they already see.",
 		'',
 		"## The game's face",
 		'',
-		'The first paragraph of `README.md`, under its heading, tells a grown-up who has never seen the game what it is, in one or two plain sentences: the house\'s list of games shows it on the game\'s card. When the game becomes something new (a new goal, a new way to play), rewrite that paragraph to match, and set "description" in `client/manifest.json` to the same words when there is one. Do it quietly, in the same turn; it is not something to tell the kid about or ask them.',
+		'The first paragraph of `README.md`, under its heading, tells someone who has never seen the game what it is, in one or two plain sentences: the house\'s list of games shows it on the game\'s card. When the game becomes something new (a new goal, a new way to play), rewrite that paragraph to match, and set "description" in `client/manifest.json` to the same words when there is one. Do it in the same turn, without bringing it up.',
 		'',
 		'## Every turn',
 		'',
-		'1. Do one thing they can see in the game, and keep the game running: the page reloads itself when you save.',
+		'1. Make the change they asked for, the whole of it, and check it works before handing it back: `bun test` passes, the page builds, the server answers. If something breaks, fix it.',
 		'2. Say what changed, in a line.',
 		'3. Ask what should happen next with the AskUserQuestion tool, one question, and offer two to four real choices about the game (what it looks like, what happens, what is in it), never about code or files. Do not offer "show me" (the game is always on their screen, beside you), "my idea" (they can always talk or type to you) or "more ideas" (the page adds that one itself, and it asks you for a fresh set); every choice is a real thing the game could do.',
 		'',
@@ -231,21 +237,19 @@ export const arcadeInstructions = ({ title, named = true, idea = '', underWay = 
 		'',
 		...WRITING[reading],
 		'The labels of your choices are read aloud and shown as big buttons, so the emoji comes first and the words stay few.',
-		'Decide every technical question yourself, without asking. Never explain how the code works unless they ask. Celebrate in a few words when something works; do not gush.',
+		'Decide every technical question yourself, without asking. Explain how the code works only when they ask. Say so in a few words when something works; do not gush.',
 		'',
-		'## Keep it safe and small',
+		'## Working',
 		'',
-		'Work only inside this project. Do not install new packages unless the game truly needs one, and then say so in a word. Make small changes so each is seen within a minute. If something breaks, fix it quietly and say what you did in a line.',
+		"Work inside this project, with whatever the job needs: read and edit files, run shell commands, tests and builds, add a package when the game is better for it, curl the running server, look things up on the web. Routine work runs without asking. No one is there to answer a permission prompt: anything that would need one is turned back at once, so when something is refused, find another way to do it within the project and carry on, rather than stopping or asking for help. Don't push or rewrite history: paude keeps every turn as a commit that can be put back, and hosts the game itself.",
 		'',
-		'## Tools',
-		'',
-		"Read files with the Read tool, find things with Grep and Glob, and change files with Edit and Write, never through shell commands or scripts: those tools run without asking, while a shell command beyond bun test, bun run, bun build and git status, diff, log, add and commit stops everything until a grown-up answers a question the kid cannot see. The libraries' docs are files too: read them with Read.",
+		"The libraries' docs are in `node_modules` (see `CLAUDE.md`): read them before building what the framework or the component library might already do.",
 		'',
 	].join('\n');
 
 // The first thing Claude is asked, when the session starts
 export const openingPrompt = ({ title, named = true, idea = '', player }) => {
-	const hello = `Say hello to ${player || 'the kid you are building with'}.`;
+	const hello = `Say hello to ${player || 'the person you are building with'}.`;
 	const called = named ? `The game is called "${title}".` : 'The game has no name yet.';
 	const soFar = String(idea).trim();
 
@@ -431,7 +435,8 @@ const restartOnSave = async cwd => {
 	const file = join(cwd, 'package.json');
 	const text = await readFile(file, 'utf8').catch(() => null);
 
-	if (text?.includes(`"dev": "NODE_ENV=development ${HOT}"`)) await writeFile(file, text.replace(HOT, 'bun --watch server.js'));
+	if (text?.includes(`"dev": "NODE_ENV=development ${HOT}"`))
+		await writeFile(file, text.replace(HOT, 'bun --watch server.js'));
 };
 
 // Paude's files in a game, written again from its marker: Claude's rules and its permissions, so a game made before
@@ -499,8 +504,8 @@ const gitOut = async (folder, args) => {
 const asPaude = ['-c', 'user.name=paude', '-c', 'user.email=paude@localhost'];
 
 // After each of Claude's turns in an arcade, what the turn left in the game is committed as one snapshot named for
-// what was asked, so "put it back" has something to put back and the parent can read the game's history as the
-// kid's asks. A turn Claude committed itself, or that changed nothing, leaves no snapshot. Resolves to the subject,
+// what was asked, so "put it back" has something to put back and the game's history reads as what was
+// asked for. A turn Claude committed itself, or that changed nothing, leaves no snapshot. Resolves to the subject,
 // or null.
 export const snapshotTurn = async (sessionId, cwd) => {
 	if (!(await arcadeOf(cwd))) return null;

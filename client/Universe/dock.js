@@ -44,16 +44,16 @@ export const VERBS = [
 	{ key: 'links', hotkey: 'l', allowed: canBrowse },
 	{ key: 'shares', hotkey: 'p', allowed: () => true },
 	{ key: 'shell', hotkey: 's', allowed: canType },
-	// The session as a kid plays it: the talk, and the game it builds
+	// The session as the arcade has it: the talk, and the game it builds
 	{ key: 'arcade', hotkey: 'e', allowed: () => true },
 	{ key: 'game', hotkey: 'v', allowed: () => true },
 ].map(verb => ({ ...verb, label: PANELS[verb.key].label }));
 
-// The arcade's panels, for a session that is one (a game a kid builds)
+// The arcade's panels, for a session that is one (a game built by tapping and talking)
 export const ARCADE_VERBS = ['arcade', 'game'];
 
 // The verbs for `session` as the viewer may have them: the arcade's only for a session that is one, and for a guest
-// invited to the arcade those alone, since the rest is the grown-up's; the terminal only while the session's live
+// invited to the arcade those alone, since the rest is the owner's; the terminal only while the session's live
 export const verbsFor = (session, { live = false } = {}) =>
 	VERBS.filter(
 		({ key, allowed }) =>

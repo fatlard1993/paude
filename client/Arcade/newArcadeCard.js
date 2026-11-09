@@ -8,7 +8,7 @@ import { newArcadeForm } from './makeArcade';
 import makersPanel from './makersPanel';
 
 // The home page's way into the arcade: name the game and who's building it, and paude makes a project from the game
-// scaffold, starts Claude in it on the kid's terms, and opens the arcade page on it. On this paude, or on any other
+// scaffold, starts Claude in it on its builder's terms, and opens the arcade page on it. On this paude, or on any other
 // this machine is logged into, asked for as the card opens, where the game then lives and runs.
 const Card = styled(
 	Elem,

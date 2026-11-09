@@ -60,8 +60,7 @@ const renderPeople = async sessionId => {
 		arcade,
 		' Opens the arcade: the game and the talk with Claude in big type, read aloud, no terminal',
 	);
-	arcadeLabel.title =
-		'For a kid, or anyone who would rather tap and talk than read a terminal; takes the drive role to answer';
+	arcadeLabel.title = 'For anyone who would rather tap and talk than read a terminal; takes the drive role to answer';
 	name.placeholder = 'Their name';
 	name.maxLength = 40;
 	expiry.value = String(24);

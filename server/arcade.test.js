@@ -57,7 +57,7 @@ describe('refreshArcade', () => {
 		expect(await readFile(join(game, 'CLAUDE.local.md'), 'utf8')).toMatch(/^@\.\/\.paude-arcade\.md\n/);
 	});
 
-	test("moves a game whose server hot-swaps its code onto one that starts over on each save, and leaves other dev scripts be", async () => {
+	test('moves a game whose server hot-swaps its code onto one that starts over on each save, and leaves other dev scripts be', async () => {
 		const dev = script => JSON.stringify({ scripts: { dev: script } }, null, '\t');
 
 		await writeFile(join(game, 'package.json'), dev('NODE_ENV=development bun --hot server.js'));
@@ -156,17 +156,20 @@ describe('arcadeInstructions', () => {
 		expect(text).not.toContain('Finding the idea first');
 	});
 
-	test('names who it is for and how they read', () => {
+	test('names who it is for and how they read, and says nothing of age', () => {
 		const text = arcadeInstructions({ title: 'Moon Rocks', player: 'Ada', reading: 'listening' });
 
 		expect(text).toContain('# Building Moon Rocks together');
-		expect(text).toContain('with Ada,');
-		expect(text).toContain('cannot read yet');
+		expect(text).toContain('with Ada.');
+		expect(text).toContain('by ear');
 		expect(text).toContain('AskUserQuestion');
 		expect(text).toContain('Do not offer "show me"');
-		expect(text).toContain('never through shell commands');
-		expect(text).toContain('Never start, stop or restart it yourself');
-		expect(text).toContain('never tell them a grown-up has to restart it');
+		expect(text).toContain('never ask anyone to restart anything');
+		expect(text).toContain('find another way to do it within the project and carry on');
+		for (const reading of Object.keys(READING))
+			expect(arcadeInstructions({ title: 'X', player: '', reading })).not.toMatch(
+				/\b(kid|child|grown-up|parent|young)/i,
+			);
 	});
 
 	test("keeps the game's face, its README's opening and manifest, saying what the game is", () => {
@@ -191,7 +194,7 @@ describe('openingPrompt', () => {
 		expect(openingPrompt({ title: 'Moon Rocks', player: 'Ada' })).toBe(
 			'Say hello to Ada. The game is called "Moon Rocks". There is no idea yet: find one together as your rules say, starting by asking what they love, with a few picture choices.',
 		);
-		expect(openingPrompt({ title: 'Moon Rocks' })).toContain('the kid you are building with');
+		expect(openingPrompt({ title: 'Moon Rocks' })).toContain('the person you are building with');
 	});
 
 	test('carries the idea in their words, to be hardened and built first, and asks for a name when the game has none', () => {
@@ -269,11 +272,25 @@ describe('acceptTrust', () => {
 });
 
 describe('claudeSettings', () => {
-	test('lets Claude read, edit and check the game without asking, and refuses what reaches out or destroys', () => {
+	test('lets Claude work and check the game without asking, and refuses what reaches past it', () => {
 		expect(claudeSettings.permissions.defaultMode).toBe('auto');
-		expect(claudeSettings.permissions.allow).toEqual(expect.arrayContaining(['Read', 'Edit', 'Bash(bun run *)']));
-		expect(claudeSettings.permissions.allow).not.toContainEqual(expect.stringMatching(/^Bash\(\*|Bash\(rm|push/));
+		expect(claudeSettings.permissions.allow).toEqual(
+			expect.arrayContaining(['Read', 'Edit', 'Bash(bun *)', 'Bash(curl *)', 'WebFetch']),
+		);
+		expect(claudeSettings.permissions.allow).not.toContainEqual(expect.stringMatching(/^Bash\(\*|Bash\(rm|Bash\(sudo/));
 		expect(claudeSettings.permissions.deny).toEqual(expect.arrayContaining(['Bash(git push*)', 'Bash(sudo *)']));
+	});
+
+	test("turns back any permission prompt at once, but lets Claude's questions to the person through", () => {
+		const [{ matcher, hooks }] = claudeSettings.hooks.PermissionRequest;
+		const answer = JSON.parse(Bun.spawnSync(['sh', '-c', hooks[0].command]).stdout.toString());
+
+		expect(answer.hookSpecificOutput).toMatchObject({
+			hookEventName: 'PermissionRequest',
+			decision: { behavior: 'deny' },
+		});
+		for (const tool of ['Bash', 'Write', 'WebFetch', 'mcp__x__y']) expect(new RegExp(matcher).test(tool)).toBe(true);
+		for (const tool of ['AskUserQuestion', 'ExitPlanMode']) expect(new RegExp(matcher).test(tool)).toBe(false);
 	});
 });
 

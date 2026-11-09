@@ -1,5 +1,5 @@
 // What the arcade reads aloud, one line at a time in the order it arrived: Claude's cards as they come, a question
-// with its choices, a word to the kid. A line asked for again (a card's speaker button) is said now, alone: what was
+// with its choices, a word to the player. A line asked for again (a card's speaker button) is said now, alone: what was
 // queued waits for the next thing. A line stopped for a newer one is over, but its end is not the queue's turn: the
 // newer line has it, so nothing starts under it. `say` is speak() from speech.js, given rather than imported so the
 // queue can be tested with a voice of the test's own; `onIdle` hears when the last queued line has ended.

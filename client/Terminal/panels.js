@@ -23,7 +23,7 @@ export const PANELS = {
 	shell: { label: 'Shell', about: 'a terminal in this folder that ends when you close it', icon: 'terminal' },
 	arcade: {
 		label: 'Arcade',
-		about: 'the talk with Claude as a kid has it: big, read aloud, answered by tapping or talking',
+		about: 'the talk with Claude as the arcade has it: big, read aloud, answered by tapping or talking',
 		icon: 'gamepad',
 	},
 	game: { label: 'Game', about: 'the game this session builds, live', icon: 'play' },

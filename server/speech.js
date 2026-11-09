@@ -8,7 +8,7 @@ import writeJsonFile from '../shared/writeJsonFile';
 import { configFile, serverSettings } from './serverSettings';
 
 // Reading aloud with ElevenLabs, for the arcade: the key stays here, the audio is fetched once per text and kept (a
-// kid plays a line again), and the voice's character timings become a start time per word, for the page to light
+// player plays a line again), and the voice's character timings become a start time per word, for the page to light
 // the word being said. Without a key the page uses the browser's own voice.
 const API = 'https://api.elevenlabs.io/v1';
 // ElevenLabs' Rachel, one of its own voices, so a key alone is enough to start
