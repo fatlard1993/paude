@@ -89,8 +89,9 @@ export const startServer = async ({
 				// The fake writes no transcript; a test writes one here. The real Claude keeps its own (its login is there).
 				...(claude === FAKE_CLAUDE && { CLAUDE_CONFIG_DIR: path.join(dir, 'claude') }),
 			},
-			stdout: 'ignore',
-			stderr: 'ignore',
+			// PAUDE_E2E_SERVER_LOG names a file that takes the server's output, for reading why a test went wrong
+			stdout: process.env.PAUDE_E2E_SERVER_LOG ? Bun.file(process.env.PAUDE_E2E_SERVER_LOG) : 'ignore',
+			stderr: process.env.PAUDE_E2E_SERVER_LOG ? Bun.file(process.env.PAUDE_E2E_SERVER_LOG) : 'ignore',
 		},
 	);
 	const url = `http://127.0.0.1:${port}`;
@@ -120,7 +121,9 @@ export const startServer = async ({
 	const writeTranscript = (sessionId, lines) =>
 		Bun.write(
 			path.join(dir, 'claude', 'projects', project.replace(/[^a-zA-Z0-9]/g, '-'), `${sessionId}.jsonl`),
-			lines.map(line => JSON.stringify({ sessionId, cwd: project, ...line })).join('\n'),
+			// Each line ended, as Claude Code writes them: a reader of the whole transcript leaves an unended last line
+			// for later, as one still being written
+			`${lines.map(line => JSON.stringify({ sessionId, cwd: project, ...line })).join('\n')}\n`,
 		);
 
 	return {
