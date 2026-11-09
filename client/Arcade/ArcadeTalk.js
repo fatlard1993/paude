@@ -319,6 +319,8 @@ export default class ArcadeTalk extends Talk {
 	}
 
 	showStatus(session) {
+		// A page that saw the session before any question is not fresh to one that comes up later
+		if (this.status === null && session.status !== 'waiting') this.fresh = false;
 		if (session.status !== this.status) {
 			this.statusSince = Date.now();
 			this.heardFromAt = Date.now();
