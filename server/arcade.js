@@ -108,6 +108,24 @@ const WRITING = {
 	],
 };
 
+// What players asked for over and over in the first arcade games (the screen half used, tools in the wrong place,
+// presses at the edge lost, keys that didn't play, a wind no one could see, players who'd left still shown, a README
+// gone stale), told up front so no one has to ask again
+const feelSection = () => [
+	'## What makes it feel good',
+	'',
+	'Players asked for these over and over in the first games built here; do them from the start rather than waiting to be told:',
+	'',
+	'- The game takes the whole screen: the play area grows to fill everything below the top bar. Score, level and the buttons that are not part of playing go in the top bar; the tools a player plays with sit right beside the play area.',
+	'- A press or drag that starts just outside the play area still counts, held to its edge: fingers miss.',
+	"- On a computer the keyboard plays it (arrow keys and WASD to move, space for the main action) and the mouse aims; on-screen touch controls show only on touch devices (`matchMedia('(pointer: coarse)')`).",
+	'- Everything that acts on the game is seen acting: wind blows visibly, a current flows, a timer drains. A force a player cannot see is a rule they cannot learn.',
+	"- A player whose page closed leaves the table: the framework marks them `online: false` and calls the game's `onPresence(id, online)` (on an older framework, notice they stopped sending), so take their ship out of space or their hand off the board until they are back.",
+	'- Saved games (`data/games.json`) outlive changes to the game: when `state` changes shape, a game saved the old way still loads.',
+	'- `README.md` says how to play, with the rules as they are now: when a rule changes, the README changes in the same turn.',
+	'',
+];
+
 // When this paude's voice performs cues: Claude acts through the cues the voice takes, in the one voice every game
 // shares (which also keeps what it has said reusable from the voice's cache)
 const voiceSection = () => [
@@ -228,6 +246,7 @@ export const arcadeInstructions = ({
 		'',
 		"The game's server runs under paude as the project's `dev` task and shows live beside this conversation: the server starts over and the page reloads every time you save a file, so a change is live the moment it's saved. If it ever seems to be running old code, save a file the server loads (`Game.js`, `server.js`) again; if it dies, paude starts it again. Keeping it running is yours: don't start a second copy (`bun run dev`), don't stop it, and never ask anyone to restart anything. To see what it does, find its port (`ss -ltnp`, the bun process in this folder) and curl it. \"Show me\" means say in a line what to look at or tap in the game they already see.",
 		'',
+		...feelSection(),
 		"## The game's face",
 		'',
 		'The first paragraph of `README.md`, under its heading, tells someone who has never seen the game what it is, in one or two plain sentences: the house\'s list of games shows it on the game\'s card. When the game becomes something new (a new goal, a new way to play), rewrite that paragraph to match, and set "description" in `client/manifest.json` to the same words when there is one. Do it in the same turn, without bringing it up.',
@@ -492,6 +511,38 @@ const restartOnSave = async cwd => {
 		await writeFile(file, text.replace(HOT, 'bun --watch server.js'));
 };
 
+// paude's files in a game it made: ignored, and taken out of the repository where an older scaffold committed them
+// (they're rewritten each sitting, so every turn's snapshot would carry them), in a commit of their own
+const IGNORED = ['.claude/', 'CLAUDE.local.md', RULES];
+
+const untrackOurs = async cwd => {
+	if (!(await exists(join(cwd, '.git')))) return;
+
+	const ignoreFile = join(cwd, '.gitignore');
+	const ignore = await readFile(ignoreFile, 'utf8').catch(() => '');
+	const missing = IGNORED.filter(line => !ignore.split('\n').includes(line));
+	const tracked = (await gitOut(cwd, ['ls-files', '--', '.claude/settings.json', 'CLAUDE.local.md', RULES])).out
+		.split('\n')
+		.filter(Boolean);
+
+	if (!missing.length && !tracked.length) return;
+	// Something else staged already is someone's work in progress: this waits for a sitting when it isn't
+	if (!(await git(cwd, ['diff', '--cached', '--quiet']))) return;
+	if (missing.length)
+		await writeFile(
+			ignoreFile,
+			`${ignore}${ignore && !ignore.endsWith('\n') ? '\n' : ''}\n# paude's files, written again each time Claude starts here\n${missing.join('\n')}\n`,
+		);
+	if (tracked.length) await git(cwd, ['rm', '-q', '--cached', '--', ...tracked]);
+	await git(cwd, ['add', '--', '.gitignore']);
+
+	// What's staged is only this: the files let go and the ignore file
+	const message = "paude's session files stay out of the repo";
+
+	(await git(cwd, ['commit', '-q', '-m', message])) ||
+		(await git(cwd, ['-c', 'user.name=paude', '-c', 'user.email=paude@localhost', 'commit', '-q', '-m', message]));
+};
+
 // Paude's files in a game, written again from its marker: Claude's rules and its permissions, so a game made before
 // either changed (or copied from another machine) runs under the current ones each time Claude starts there.
 // CLAUDE.local.md imports the rules; one paude wrote whole in an earlier version (its own heading first) is replaced
@@ -521,6 +572,9 @@ export const refreshArcade = async cwd => {
 	await mkdir(join(cwd, '.claude'), { recursive: true });
 	await writeFile(join(cwd, '.claude', 'settings.json'), `${JSON.stringify(claudeSettings, null, '\t')}\n`);
 	await restartOnSave(cwd);
+	await untrackOurs(cwd).catch(error =>
+		console.warn(`paude's files could not be untracked in ${cwd}: ${error.message}`),
+	);
 
 	const local = join(cwd, 'CLAUDE.local.md');
 	const current = await readFile(local, 'utf8').catch(() => null);

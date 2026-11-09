@@ -413,3 +413,33 @@ describe('adoptArcade', () => {
 		expect(launchSettings(repo)).toBe(claudeSettings);
 	});
 });
+
+describe("paude's files in a game it made", () => {
+	let game;
+
+	beforeEach(async () => {
+		game = await mkdtemp(join(tmpdir(), 'untrack-'));
+		await writeFile(
+			join(game, '.paude-arcade.json'),
+			JSON.stringify({ title: 'Old', player: 'Ben', reading: 'reading' }),
+		);
+		await writeFile(join(game, '.gitignore'), 'node_modules\n');
+		sh(game, 'git init -q && mkdir .claude && echo old > .claude/settings.json && echo old > CLAUDE.local.md');
+		sh(game, 'git add -A && git -c user.name=t -c user.email=t@t commit -qm scaffold');
+	});
+	afterEach(() => rm(game, { recursive: true, force: true }));
+
+	test('are taken out of the repository an older scaffold committed them to, in a commit of their own, and stay out', async () => {
+		await refreshArcade(game);
+
+		expect(sh(game, 'git ls-files')).not.toContain('.claude/settings.json');
+		expect(sh(game, 'git ls-files')).not.toContain('CLAUDE.local.md');
+		expect(sh(game, 'git ls-files')).toContain('.paude-arcade.json');
+		expect(sh(game, 'git status --porcelain')).toBe('');
+		expect(sh(game, 'git log -1 --format=%s')).toBe("paude's session files stay out of the repo");
+		expect(await readFile(join(game, '.gitignore'), 'utf8')).toContain('.claude/\nCLAUDE.local.md\n.paude-arcade.md\n');
+
+		await refreshArcade(game);
+		expect(sh(game, 'git rev-list --count HEAD')).toBe('2');
+	});
+});
