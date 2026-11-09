@@ -877,7 +877,7 @@ test("a lounger's empties go to its head by the same clock as its pile: steady a
 		shut: true,
 		sag: 0,
 		// Alone on its couch: off to the arm on its outer side, not down into its lap
-		lean: { x: -5, y: 1 },
+		lean: { x: -3, y: 2 },
 		flush: 1,
 	});
 	// Its pile still counts every half hour
@@ -898,8 +898,8 @@ test("two passed out on one couch slump to the side, mostly to their own arms an
 
 	for (const pose of [left, right]) {
 		expect(pose.out).toBe(true);
-		expect(Math.abs(pose.lean.x)).toBe(5);
-		expect(pose.lean.y).toBeLessThanOrEqual(1);
+		expect(Math.abs(pose.lean.x)).toBe(3);
+		expect(pose.lean.y).toBeLessThanOrEqual(2);
 	}
 });
 

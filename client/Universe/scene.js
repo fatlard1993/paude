@@ -4616,7 +4616,7 @@ export default class Ship {
 			const onto = this.lounge.sessions[index ^ 1] && seeded(`${key}|slump`) < 0.25;
 			const side = onto ? -arm : arm;
 
-			return { drunk, out, sway: 0, lurch: side, hiccup: 0, shut: true, sag: 0, lean: { x: side * 5, y: 1 }, flush: 1 };
+			return { drunk, out, sway: 0, lurch: side, hiccup: 0, shut: true, sag: 0, lean: { x: side * 3, y: 2 }, flush: 1 };
 		}
 
 		const sway = Math.round(Math.sin(this.time * (0.7 + drunk) + worker.seed * 6) * drunk * 2.4);
