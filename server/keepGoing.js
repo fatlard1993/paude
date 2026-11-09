@@ -97,6 +97,12 @@ const lastAsked = turns =>
 		...(turn.added ?? []).map(added => `(added while Claude worked) ${added}`),
 	]);
 
+const startedBy = turn =>
+	(theirs(turn) && 'After the person asked') ||
+	(turn.summary && 'After its context was compacted') ||
+	(KEEP_WARM_PING.test(turn.prompt ?? '') && 'After a keep-warm ping') ||
+	'After a nudge';
+
 // How Claude ended the turns before the one just ended, whoever prompted them: without them Haiku sees only the latest
 // reply, and sends Claude back to do what an earlier turn already did
 const runSoFar = turns =>
@@ -104,7 +110,7 @@ const runSoFar = turns =>
 		.slice(0, -1)
 		.filter(turn => turn.said)
 		.slice(-RUN_SHOWN)
-		.map(turn => `${theirs(turn) ? 'After the person asked' : 'After a nudge'}: ${turn.said}`);
+		.map(turn => `${startedBy(turn)}: ${turn.said}`);
 
 const SAID_AS = { decision: 'Decided', direction: 'Direction', deferred: 'Put off', finding: 'Found' };
 
@@ -172,16 +178,17 @@ export const promptFor = (reply, asked, earlier = [], settled = []) =>
 		'Reply with only a JSON object: {"go": true or false, "next": "what Claude should do next, one or two sentences spoken to Claude, specific to this work", "why": "one plain sentence"}.',
 	].join('\n');
 
-// The turns since the monitor was last told of one, for its delta: each by who prompted it (the person, a nudge, or a
-// keep-warm ping, which is nobody's and did nothing) and how it ended; the one it was told of gone (compacted away)
-// leaves only the latest
+// The turns since the monitor was last told of one, for its delta: each by who prompted it (the person, a nudge, a
+// keep-warm ping, which is nobody's and did nothing, or Claude Code's summary as it compacted the context, which Claude
+// carries on from) and how it ended; the one it was told of gone leaves only the latest
 const sinceSeen = (turns, seen) => {
 	const at = turns.findIndex(turn => turn.id === seen);
 	const since = at === -1 ? turns.slice(-1) : turns.slice(at + 1);
 
 	return since.map((turn, index) => ({
 		theirs: theirs(turn),
-		ping: KEEP_WARM_PING.test(turn.prompt ?? '') || Boolean(turn.summary),
+		ping: KEEP_WARM_PING.test(turn.prompt ?? ''),
+		compacted: Boolean(turn.summary),
 		asked: turn.asked ?? turn.prompt ?? '',
 		added: turn.added,
 		said: turn.said,

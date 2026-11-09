@@ -245,3 +245,29 @@ test("the checkout's state the monitor is given: its latest commits and what's c
 	expect(await repoStateOf(os.tmpdir())).toBe('');
 	expect(await repoStateOf('/nowhere/at/all')).toBe('');
 });
+
+test("a compaction reaches the monitor as Claude losing the run's detail, not as a keep-warm ping", () => {
+	const delta = deltaFor({
+		since: [
+			{
+				theirs: false,
+				compacted: true,
+				asked: 'This session is being continued',
+				said: 'Wired it.',
+				steps: 6,
+				last: false,
+			},
+			{ theirs: false, asked: 'nudge', said: 'Tested.', steps: 2, last: true },
+		],
+		settled: [],
+		reply: 'Tested.',
+	});
+
+	expect(delta).toContain("Claude's context was compacted, and Claude carried on from Claude Code's summary.");
+	expect(delta).toContain('Carrying on from the summary, Claude ended its turn after 6 tool calls: Wired it.');
+	expect(delta).toContain('has lost the detail you still hold');
+	expect(delta).not.toContain('keep-warm');
+	expect(
+		deltaFor({ since: [{ theirs: false, asked: 'nudge', steps: 1, last: true }], settled: [], reply: 'Ok.' }),
+	).not.toContain('compacted');
+});

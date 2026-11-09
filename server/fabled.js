@@ -264,27 +264,32 @@ export const briefFor = ({ cwd, asked, settled, earlier, reply, repo = '' }) =>
 		'What should Claude do next? Reply with only the JSON object.',
 	].join('\n');
 
-// What happened since it last looked: each turn since, by who prompted it (the person, or a nudge; keep-warm pings
-// counted apart) and what the person added while Claude worked, the latest reply whole, and what the session has
-// settled. Nothing since (its last verdict
-// was lost before it reached Claude, to a restart or a failure to type it in) asks it again.
-// A nudged turn that only ended, or nothing at all since its last look
+// A nudged turn that only ended, or nothing at all since its last look: its last verdict was lost before it reached
+// Claude, to a restart or a failure to type it in, and it's asked again
 const nothingSince = since =>
 	since.length
 		? `A nudged turn ended after ${since.at(-1).steps ?? 0} tool calls.`
 		: 'Nothing: your last verdict never reached Claude (paude restarted, or could not type it in). Say again what Claude should do next.';
 
+const COMPACTED =
+	"Claude's context was compacted since you last looked: it now works from Claude Code's summary of the run, and has lost the detail you still hold. Say what it needs in your suggestion itself (the decision, the approach rejected and why, the thread left open), not by pointing at what it no longer remembers.";
+
+// What happened since it last looked: each turn since, by who prompted it (the person, a nudge, or Claude Code
+// carrying on from its summary after compacting; keep-warm pings counted apart) and what the person added while Claude
+// worked, the latest reply whole, and what the session has settled. A compaction is said outright: Claude has lost the
+// detail the monitor still holds, and the next suggestion is where some of it can come back.
 export const deltaFor = ({ since, settled, reply, repo = '' }) => {
 	// Keep-warm pings are nobody's turns and did nothing: counted, not told as nudges that went nowhere
 	const pings = since.filter(turn => turn.ping).length;
 	const happened = since
 		.filter(turn => !turn.ping)
 		.flatMap(turn => [
+			...(turn.compacted ? ["Claude's context was compacted, and Claude carried on from Claude Code's summary."] : []),
 			...(turn.theirs ? [`The person asked: ${turn.asked.slice(0, ASKED_CHARACTERS)}`] : []),
 			...(turn.added ?? []).map(added => `The person added while Claude worked: ${added.slice(0, ASKED_CHARACTERS)}`),
 			...(turn.said && !turn.last
 				? [
-						`${turn.theirs ? 'Claude' : 'Nudged, Claude'} ended its turn after ${turn.steps} tool calls: ${turn.said.slice(0, SAID_CHARACTERS)}`,
+						`${(turn.theirs && 'Claude') || (turn.compacted && 'Carrying on from the summary, Claude') || 'Nudged, Claude'} ended its turn after ${turn.steps} tool calls: ${turn.said.slice(0, SAID_CHARACTERS)}`,
 					]
 				: []),
 		]);
@@ -297,6 +302,7 @@ export const deltaFor = ({ since, settled, reply, repo = '' }) => {
 	return [
 		'Since you last looked:',
 		...tagged('happened', happened.length ? happened : [nothingSince(since)]),
+		...(since.some(turn => turn.compacted) ? ['', COMPACTED] : []),
 		...(repo ? ['', 'The checkout as it stands:', ...tagged('repository', [repo])] : []),
 		...(settled.length ? ['', 'What the session has settled, newest first:', ...tagged('settled', settled)] : []),
 		'',

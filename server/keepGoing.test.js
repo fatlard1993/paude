@@ -662,3 +662,32 @@ test('a monitor whose last seen turn is gone from the transcript (compacted away
 	expect(monitorOf('compacted').seen).toBe('t3');
 	await keepWarm('compacted', 0);
 });
+
+test("a compaction's summary reaches the monitor as a compaction, with what Claude did carrying on from it", async () => {
+	const session = fakeSession();
+	const prompts = [];
+	const askMonitor = async (monitor, cwd, prompt) => {
+		prompts.push(prompt);
+
+		return verdict('{"go": true, "next": "Carry on."}');
+	};
+	const turns = [
+		{ ...turn('fix the build'), id: 't1' },
+		{
+			...turn('This session is being continued from a previous conversation', true, 'Wired the hook.'),
+			summary: true,
+			id: 's1',
+		},
+		{ ...turn(NUDGE), id: 't2' },
+	];
+
+	await keepWarm('summarized', 24, Date.now(), { fabled: true });
+	await noteMonitor('summarized', { monitor: monitorOf('summarized').monitor, seen: 't1' });
+	expect(await keepGoing('summarized', 'Tested it.', { ...going(session, turns), askMonitor })).toBe(true);
+	expect(prompts[0]).toContain("Claude's context was compacted");
+	expect(prompts[0]).toContain(
+		'Carrying on from the summary, Claude ended its turn after 3 tool calls: Wired the hook.',
+	);
+	expect(prompts[0]).not.toContain('keep-warm');
+	await keepWarm('summarized', 0);
+});
