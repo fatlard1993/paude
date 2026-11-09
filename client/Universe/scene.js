@@ -4698,6 +4698,17 @@ export default class Ship {
 					const at = this.art(this.placeOf(worker));
 					const swing = Math.floor(this.time * 1.5 + worker.seed) % 2;
 
+					// Passed out, its legs go slack: splayed apart, the boots flopped out to either side, no swinging
+					if (this.loungerPose(worker).out) {
+						for (const side of [-1, 1]) {
+							rect(ctx, at.x + side * 3 - 1, at.y - 6, 3, 4, PALETTE.k);
+							rect(ctx, at.x + side * 3, at.y - 6, 1, 3, PALETTE.a);
+							rect(ctx, at.x + side * 3 - 1 + (side > 0 ? 1 : -2), at.y - 3, 4, 2, PALETTE.k);
+						}
+
+						return;
+					}
+
 					for (const side of [-2, 1]) {
 						rect(ctx, at.x + side - 1, at.y - 6, 3, 4, PALETTE.k);
 						rect(ctx, at.x + side, at.y - 6, 1, 3, PALETTE.a);
