@@ -24,7 +24,7 @@
         "dompurify": "^3.4.16",
         "highlight.js": "^11.12.0",
         "marked": "^18.1.0",
-        "web-game-mother-hub": "github:fatlard1993/web-game-mother-hub#1427f28",
+        "web-game-mother-hub": "github:fatlard1993/web-game-mother-hub#2db5cff",
       },
       "devDependencies": {
         "@eslint/compat": "^2.1.1",
@@ -810,7 +810,7 @@
 
     "weasel-words": ["weasel-words@0.1.1", "", {}, "sha512-rWkTAGqs4TN6qreS06+irmFUMrQVx5KoFjD8CxMHUsAwmxw/upDcfleaEYOLsonUbornahg+VJ9xrWxp4udyJA=="],
 
-    "web-game-mother-hub": ["web-game-mother-hub@github:fatlard1993/web-game-mother-hub#1427f28", { "dependencies": { "@vanilla-bean/components": "^7.0.4", "argi-cli": "^1.0.0", "lowdb": "^7.0.1", "marked": "^18.0.6" } }, "fatlard1993-web-game-mother-hub-1427f28", "sha512-kUoCl0Q+XX0oMXvrApwRVZ2V1bgRm+p9wfgy9DXzEAAwfoB30wwIzHAcPev7Wmp/W5yHKXIzi83HsYQ5cZzwzQ=="],
+    "web-game-mother-hub": ["web-game-mother-hub@github:fatlard1993/web-game-mother-hub#2db5cff", { "dependencies": { "@vanilla-bean/components": "^7.0.4", "argi-cli": "^1.0.0", "lowdb": "^7.0.1", "marked": "^18.0.6" } }, "fatlard1993-web-game-mother-hub-2db5cff", "sha512-iwRevx9yPFVpvRFe0tTf4pViLyPsXN/gen0nJG/B0s15y+jogm88pLAkJX26oDhd4dyrW7uYki7fW9RAW+cF8A=="],
 
     "webdriver-bidi-protocol": ["webdriver-bidi-protocol@0.4.3", "", {}, "sha512-uuN0goWfxP22B7J/uAgBpOYNPttC+XVseYE+rSY5+rQ+YBeVz/VORw8WbmLVcqW78zNg5A4qnjNXYUWR3il2ig=="],
 

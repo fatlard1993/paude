@@ -50,7 +50,7 @@
 		"dompurify": "^3.4.16",
 		"highlight.js": "^11.12.0",
 		"marked": "^18.1.0",
-		"web-game-mother-hub": "github:fatlard1993/web-game-mother-hub#1427f28"
+		"web-game-mother-hub": "github:fatlard1993/web-game-mother-hub#2db5cff"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.1.1",
