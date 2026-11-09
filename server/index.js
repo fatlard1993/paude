@@ -21,6 +21,7 @@ import { setHolderFolder } from './sessions/holder';
 import { adoptHeldSessions, runningSession, setClaudePath } from './sessions/running';
 import { startPreview } from './preview';
 import { initShares, onSharesChange, watchShares } from './shares';
+import { initSounds } from './sounds';
 import { initSpeech } from './speech';
 import { initTasks, onRunsChange } from './tasks';
 import { initLinks } from './links';
@@ -108,6 +109,7 @@ await initMotherHub(options.data);
 // Arcade games the mother hub doesn't host yet go to it, in the background
 import('./arcade').then(({ hostUnhosted }) => hostUnhosted()).catch(error => console.warn(error.message));
 await initSpeech(options.data);
+await initSounds(options.data);
 await ensureLocalToken(options.data);
 await initServerId(options.data);
 await Bun.write(path.join(options.data, 'server.pid'), `${process.pid}\n`);

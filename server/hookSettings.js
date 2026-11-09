@@ -2,11 +2,13 @@ import { writeFile } from 'fs/promises';
 import { join } from 'path';
 
 import { PROPOSING_TOOLS } from './sessions/proposals';
+import { soundToken } from './sounds';
 
 // Claude Code tells paude what it's doing through hooks added to each session it starts. They post to this server
 // with a secret, so nothing else can feed it a status.
 export let hookSecret = Buffer.from(crypto.getRandomValues(new Uint8Array(24))).toString('base64url');
 let hookUrl = null;
+let serverUrl = null;
 // How long a push waits on the filing, at most
 const PUSH_WAIT_SECONDS = 240;
 // How long Claude, carrying on from a compaction, waits on the handover a fabled session's monitor is writing, at most
@@ -27,8 +29,14 @@ export const loadHookSecret = async dataDir => {
 export const setHookAddress = ({ host, port }) => {
 	const reachable = ['0.0.0.0', '::', ''].includes(host) ? '127.0.0.1' : host;
 
-	hookUrl = `http://${reachable.includes(':') ? `[${reachable}]` : reachable}:${port}/api/hooks/${hookSecret}`;
+	serverUrl = `http://${reachable.includes(':') ? `[${reachable}]` : reachable}:${port}`;
+	hookUrl = `${serverUrl}/api/hooks/${hookSecret}`;
 };
+
+// The address a session asks paude for a game sound at (see router/sounds.js), its own token in it; null before the
+// server knows where it listens
+export const soundsAddress = sessionId =>
+	serverUrl && `${serverUrl}/api/sounds/${sessionId}/${soundToken(hookSecret, sessionId)}`;
 
 export const HOOK_EVENTS = {
 	Notification: payload =>

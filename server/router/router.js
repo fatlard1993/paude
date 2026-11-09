@@ -7,6 +7,7 @@ import gitRoutes from './git';
 import sharesRoutes from './shares';
 import tasksRoutes from './tasks';
 import hooksRoutes from './hooks';
+import soundsRoutes from './sounds';
 import sessionsRoutes from './sessions';
 
 // The page, revalidated on every load, and the built files. Forms post only here, nothing frames the page, no <base>
@@ -40,6 +41,9 @@ const router = async (request, server) => {
 	if (icon) return new Response(Bun.file(`client/${icon[1]}`), { headers: { 'cache-control': 'no-cache' } });
 
 	response = await hooksRoutes(request);
+	if (response) return response;
+
+	response = await soundsRoutes(request);
 	if (response) return response;
 
 	response = guard(request);

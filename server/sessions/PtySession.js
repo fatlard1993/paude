@@ -4,7 +4,7 @@ import serializeAddon from '@xterm/addon-serialize';
 import { sessionHue } from '../../shared/hues';
 import inputKind, { FOCUS_IN } from '../../shared/inputKind';
 import { setStatus, statusOf } from '../activity';
-import { hookSettings } from '../hookSettings';
+import { hookSettings, soundsAddress } from '../hookSettings';
 import { warmUntil } from '../keepWarm';
 import { limitOf } from '../usageLimit';
 import { pinnedName } from '../names';
@@ -113,7 +113,15 @@ export default class PtySession {
 			...(resume ? ['--resume', id] : ['--session-id', id, ...(prompt ? ['--', prompt] : [])]),
 		];
 
-		const env = { ...sessionEnvironment(), TERM: 'xterm-256color', COLORTERM: 'truecolor', PAUDE_SESSION: id };
+		const sounds = soundsAddress(id);
+		const env = {
+			...sessionEnvironment(),
+			TERM: 'xterm-256color',
+			COLORTERM: 'truecolor',
+			PAUDE_SESSION: id,
+			// Where an arcade's Claude asks for a game sound (refused for any other session)
+			...(sounds && { PAUDE_SOUNDS: sounds }),
+		};
 		const command = heldCommand({ id, cwd, env, command: [claudePath, ...args] }) ?? [claudePath, ...args];
 
 		// Taken back after a restart, it's in whatever state it was left in

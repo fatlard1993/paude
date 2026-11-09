@@ -183,6 +183,15 @@ describe('arcadeInstructions', () => {
 		expect(voiced).not.toContain('"character"');
 	});
 
+	test('with an ElevenLabs key, Claude can have paude make real sounds for the game', () => {
+		const text = arcadeInstructions({ title: 'X', player: 'Ada', reading: 'reading', sounds: true });
+
+		expect(text).toContain('## Sounds for the game');
+		expect(text).toContain('"$PAUDE_SOUNDS"');
+		expect(text).toContain("import coin from './sounds/coin.mp3'");
+		expect(arcadeInstructions({ title: 'X', player: 'Ada', reading: 'reading' })).not.toContain('PAUDE_SOUNDS');
+	});
+
 	test("keeps the game's face, its README's opening and manifest, saying what the game is", () => {
 		const text = arcadeInstructions({ title: 'Moon Rocks', player: 'Ada', reading: 'reading' });
 

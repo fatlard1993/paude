@@ -9,7 +9,7 @@ import { statusOf } from './activity';
 import { askClaude } from './claudeInbox';
 import { listProjects, projectOf, projectPath } from './projects';
 import { sessionEnvironment } from './sessions/PtySession';
-import { voicePerforms } from './speech';
+import { voicePerforms, voiceSettings } from './speech';
 import { feedFrom } from './feed';
 import { HubError, hostGame, hostingOf, recordHosting } from './motherHub';
 import { transcriptLines } from './sessions/transcript';
@@ -178,6 +178,25 @@ const voiceSection = () => [
 	'',
 ];
 
+// When this paude has an ElevenLabs key: real sounds for the game, made by paude and written into it
+const soundsSection = () => [
+	'## Sounds for the game',
+	'',
+	'Give the game real sounds: a laser, a coin, a crash, footsteps, a win fanfare, a looping engine hum. Ask paude and it makes the sound and writes it into the game as an mp3:',
+	'',
+	'```sh',
+	'curl -fsS -X POST "$PAUDE_SOUNDS" -H \'content-type: application/json\' -d \'{"description": "retro 8-bit coin pickup, bright and quick", "seconds": 0.6, "file": "client/sounds/coin.mp3"}\'',
+	'```',
+	'',
+	'- "description" is what it sounds like: what makes it, how it feels, how it ends.',
+	'- "seconds" is 0.5 to 10 (1.5 when left out). Game sounds are short: most under a second.',
+	'- "loop": true makes one that repeats without a seam, for a music bed or an engine hum.',
+	"- Import it where it plays and play it: `import coin from './sounds/coin.mp3'` gives its address once built, then `new Audio(coin).play()` (keep one Audio per sound and rewind it, or clone it for overlaps).",
+	'',
+	'The same request again comes from the cache and costs nothing; every new second of sound is paid for, and a game has 90 new seconds a day. So make the sounds the game needs, keep them short, and reuse them. If the answer says the budget is spent, use the sounds already made.',
+	'',
+];
+
 // What Claude is told, in the project's CLAUDE.local.md: who it's building with and how to talk with them. The code's
 // conventions are the scaffold's own CLAUDE.md.
 // The rules' section on the idea: the one they started with, carried on from; a game under way before any idea was
@@ -230,6 +249,7 @@ export const arcadeInstructions = ({
 	player,
 	reading,
 	performs = false,
+	sounds = false,
 }) =>
 	[
 		named ? `# Building ${title} together` : '# Building a game together',
@@ -266,6 +286,7 @@ export const arcadeInstructions = ({
 		'Decide every technical question yourself, without asking. Explain how the code works only when they ask. Say so in a few words when something works; do not gush.',
 		'',
 		...(performs ? voiceSection() : []),
+		...(sounds ? soundsSection() : []),
 		'## Working',
 		'',
 		"Work inside this project, with whatever the job needs: read and edit files, run shell commands, tests and builds, add a package when the game is better for it, curl the running server, look things up on the web. Routine work runs without asking. No one is there to answer a permission prompt: anything that would need one is turned back at once, so when something is refused, find another way to do it within the project and carry on, rather than stopping or asking for help. Don't push or rewrite history: paude keeps every turn as a commit that can be put back, and hosts the game itself.",
@@ -489,6 +510,7 @@ export const refreshArcade = async cwd => {
 			player: marker.player,
 			reading: marker.reading,
 			performs: await voicePerforms(),
+			sounds: Boolean(await voiceSettings()),
 		}),
 	);
 	await mkdir(join(cwd, '.claude'), { recursive: true });
