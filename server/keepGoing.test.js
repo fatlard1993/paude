@@ -5,13 +5,11 @@ import {
 	MOST_IDLE,
 	MOST_MISSED,
 	MOST_NUDGES,
-	beginHandover,
 	holdBefore,
 	keepGoing,
 	promptFor,
 	resumeKeepingGoing,
 	settledSoFar,
-	takeHandover,
 } from './keepGoing';
 import {
 	askingSessions,
@@ -692,39 +690,4 @@ test("a compaction's summary reaches the monitor as a compaction, with what Clau
 	);
 	expect(prompts[0]).not.toContain('keep-warm');
 	await keepWarm('summarized', 0);
-});
-
-test('as Claude compacts, a fabled monitor that has looked writes a handover, taken once, and its record left as it was', async () => {
-	const session = fakeSession();
-	const asks = [];
-	const askMonitor = async (monitor, cwd, prompt, options) => {
-		asks.push({ monitor, prompt, options });
-
-		return verdict('Still waiting on: the README. Rejected: per-session counts.');
-	};
-	const deps = { ...going(session), askMonitor, repoOf: async () => '' };
-
-	await keepWarm('handover', 24, Date.now(), { fabled: true });
-	// A monitor that hasn't looked yet has nothing to hand over
-	expect(await beginHandover('handover', {}, deps)).toBe(false);
-	await noteMonitor('handover', { monitor: monitorOf('handover').monitor, seen: 't1', missed: 1 });
-	expect(await beginHandover('handover', { custom_instructions: ' the README ' }, deps)).toBe(true);
-	expect(await takeHandover('handover', 1000)).toBe('Still waiting on: the README. Rejected: per-session counts.');
-	expect(await takeHandover('handover', 1000)).toBe('');
-	expect(asks).toHaveLength(1);
-	expect(asks[0].monitor).toBe(monitorOf('handover').monitor);
-	expect(asks[0].prompt).toContain('<focus>\nthe README\n</focus>');
-	expect(asks[0].options.turns).toBeLessThan(5);
-	expect(monitorOf('handover')).toMatchObject({ seen: 't1', missed: 1 });
-
-	// One too slow to write is let go, and Claude carries on without it
-	const slow = async () => new Promise(resolve => setTimeout(() => resolve(verdict('late')), 200));
-
-	expect(await beginHandover('handover', {}, { ...deps, askMonitor: slow })).toBe(true);
-	expect(await takeHandover('handover', 10)).toBe('');
-
-	// Only fabled sessions hand over
-	await keepWarm('handover', 24, Date.now(), { going: true });
-	expect(await beginHandover('handover', {}, deps)).toBe(false);
-	await keepWarm('handover', 0);
 });

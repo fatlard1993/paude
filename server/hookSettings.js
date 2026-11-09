@@ -11,6 +11,8 @@ let hookUrl = null;
 const PUSH_WAIT_SECONDS = 240;
 // How long Claude, carrying on from a compaction, waits on the handover a fabled session's monitor is writing, at most
 export const HANDOVER_WAIT_SECONDS = 120;
+// How long compacting waits on paude's notes for the summary, read from what it already holds
+const NOTES_WAIT_SECONDS = 10;
 
 // A session held through a restart keeps the hooks it started with, so the secret outlives any one server: kept in
 // the data folder, readable only by this user
@@ -56,6 +58,12 @@ export const hookSettings = () => {
 		command: `${post.replace('curl -fsS', `curl -fsS --max-time ${PUSH_WAIT_SECONDS}`)} 2>/dev/null || true`,
 		timeout: PUSH_WAIT_SECONDS + 10,
 	};
+	// Compacting, paude answers with notes for the summary, which Claude Code takes as instructions for it
+	const beforeCompact = {
+		type: 'command',
+		command: `${post.replace('curl -fsS', `curl -fsS --max-time ${NOTES_WAIT_SECONDS}`)} 2>/dev/null || true`,
+		timeout: NOTES_WAIT_SECONDS + 5,
+	};
 	// Carrying on from a compaction, paude may answer with a handover for Claude to read beside the summary
 	const afterCompact = {
 		type: 'command',
@@ -76,8 +84,8 @@ export const hookSettings = () => {
 				// a Stop never comes while the question waits
 				{ matcher: 'AskUserQuestion', hooks: hook[0].hooks },
 			],
-			// A compaction beginning, for a fabled session's monitor to start its handover, and Claude carrying on after
-			PreCompact: hook,
+			// A compaction beginning, for notes on the summary and a fabled monitor's handover, and Claude carrying on after
+			PreCompact: [{ hooks: [beforeCompact] }],
 			SessionStart: [{ matcher: 'compact', hooks: [afterCompact] }],
 		},
 	});

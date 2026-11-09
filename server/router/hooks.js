@@ -12,7 +12,8 @@ import { turnEnded as noteTurnCommits, turnStarted } from '../turnCommits';
 import { HANDOVER_WAIT_SECONDS, HOOK_EVENTS, hookSecret } from '../hookSettings';
 import { claudeActive } from '../keepWarm';
 import { commandEnded, commandStarting, commandsSettled, noteChanged } from '../commandEdits';
-import { beginHandover, keepGoing, takeHandover } from '../keepGoing';
+import { beginHandover, summaryNotes, takeHandover } from '../compaction';
+import { keepGoing } from '../keepGoing';
 import { lookBack } from '../lookBack';
 import { limitHook } from '../usageLimit';
 import { noteEmpty } from '../fuel';
@@ -95,11 +96,14 @@ const hooksRoutes = async request => {
 
 		return (await beforePush(id, payload)) ?? new Response(null, { status: 204 });
 	}
-	// A fabled session's monitor writes a handover while Claude Code compacts, given to Claude as it carries on
+	// Compacting: the summary is told what the session settled, and a fabled session's monitor begins the handover
+	// Claude is given as it carries on
 	if (payload.hook_event_name === 'PreCompact') {
 		await beginHandover(id, payload).catch(error => console.error('Beginning a handover failed:', error));
 
-		return new Response(null, { status: 204 });
+		const notes = await summaryNotes(id).catch(() => '');
+
+		return notes ? new Response(notes) : new Response(null, { status: 204 });
 	}
 	if (payload.hook_event_name === 'SessionStart') return afterCompact(id, payload);
 	// An arcade's turn ends at the question Claude asks, since every turn there ends with one and Claude Code's Stop

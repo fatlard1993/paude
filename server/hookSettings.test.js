@@ -48,6 +48,8 @@ test('the settings post every event to a per-session address, and never fail the
 	expect(hooks.SessionStart[0].matcher).toBe('compact');
 	expect(hooks.SessionStart[0].hooks[0].command).not.toMatch(/[^2]>\/dev\/null/);
 	expect(hooks.SessionStart[0].hooks[0].timeout).toBeGreaterThan(HANDOVER_WAIT_SECONDS);
+	// Compacting keeps paude's answer too: Claude Code takes it as notes for the summary
+	expect(hooks.PreCompact[0].hooks[0].command).not.toMatch(/[^2]>\/dev\/null/);
 	expect(hooks.PreCompact[0].hooks[0].command).toEndWith('|| true');
 
 	const { command } = hooks.Stop[0].hooks[0];
