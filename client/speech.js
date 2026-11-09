@@ -116,6 +116,39 @@ const fetchServerVoice = async (session, spoken) => {
 	return body;
 };
 
+// Voices asked for ahead of their turn, by session and text: the server takes a few seconds to voice a line, so a line
+// is asked for the moment it's queued, and the lines after it are ready while it plays. The latest few are kept.
+const PREPARED_KEPT = 24;
+const prepared = new Map();
+
+const voiceFor = (session, spoken) => {
+	const key = `${session}\n${spoken}`;
+
+	if (!prepared.has(key)) {
+		prepared.set(
+			key,
+			fetchServerVoice(session, spoken)
+				.catch(() => null)
+				// A voice that couldn't be had this time is asked for again next time
+				.then(voiced => {
+					if (!voiced) prepared.delete(key);
+
+					return voiced;
+				}),
+		);
+		while (prepared.size > PREPARED_KEPT) prepared.delete(prepared.keys().next().value);
+	}
+
+	return prepared.get(key);
+};
+
+// Starts voicing `text` now, for a speak() of it to come; nothing for the browser's voice, which needs no fetching
+export const prepareVoice = (text, session) => {
+	const spoken = spokenText(text);
+
+	if (spoken && session && serverVoice !== false) voiceFor(session, spoken);
+};
+
 const playServerVoice = ({ audio, words }, { onWord, onEnd }) => {
 	const player = new Audio(`data:audio/mpeg;base64,${audio}`);
 	let ended = false;
@@ -199,14 +232,12 @@ export const speak = (text, { rate = 0.95, onWord, onEnd, session } = {}) => {
 		return saying;
 	}
 
-	fetchServerVoice(session, spoken)
-		.catch(() => null)
-		.then(voiced => {
-			if (stopped) return;
-			inner = voiced
-				? playServerVoice(voiced, { onWord, onEnd: done })
-				: browserVoice(spoken, words, { rate, onWord, onEnd: done });
-		});
+	voiceFor(session, spoken).then(voiced => {
+		if (stopped) return;
+		inner = voiced
+			? playServerVoice(voiced, { onWord, onEnd: done })
+			: browserVoice(spoken, words, { rate, onWord, onEnd: done });
+	});
 
 	return saying;
 };

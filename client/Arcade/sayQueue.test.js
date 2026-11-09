@@ -83,4 +83,27 @@ describe('sayQueue', () => {
 		voice.finish(voice.lines[0]);
 		expect(lit).toEqual([-1]);
 	});
+
+	test('starts voicing each line the moment it is queued, not when its turn comes', () => {
+		const voice = fakeVoice();
+		const prepared = [];
+		const queue = sayQueue({ say: voice.say, prepare: text => prepared.push(text) });
+
+		queue.enqueue('one');
+		queue.enqueue('two');
+		queue.enqueue('three');
+		expect(prepared).toEqual(['one', 'two', 'three']);
+		expect(voice.lines).toHaveLength(1);
+	});
+
+	test('a line given up before its turn lets its card stop waiting', () => {
+		const voice = fakeVoice();
+		const queue = sayQueue({ say: voice.say });
+		const waiting = [];
+
+		queue.enqueue('one');
+		queue.enqueue('two', { lightWord: index => waiting.push(index) });
+		queue.sayNow('now instead');
+		expect(waiting).toEqual([-1]);
+	});
 });

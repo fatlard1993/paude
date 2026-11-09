@@ -172,23 +172,15 @@ describe('arcadeInstructions', () => {
 			);
 	});
 
-	test('with a voice that performs, Claude acts as a character it keeps, through the cues the voice takes', () => {
+	test('with a voice that performs, Claude acts through the cues it takes, in the one voice every game shares', () => {
 		const plain = arcadeInstructions({ title: 'X', player: 'Ada', reading: 'reading' });
-		const fresh = arcadeInstructions({ title: 'X', player: 'Ada', reading: 'reading', performs: true });
-		const kept = arcadeInstructions({
-			title: 'X',
-			player: 'Ada',
-			reading: 'reading',
-			performs: true,
-			character: 'Grumble, a grumpy dwarf smith who secretly loves sparkles.',
-		});
+		const voiced = arcadeInstructions({ title: 'X', player: 'Ada', reading: 'reading', performs: true });
 
 		expect(plain).not.toContain('## Your voice');
-		expect(fresh).toContain('## Your voice');
-		expect(fresh).toContain('[laughs]');
-		expect(fresh).toContain('"character" in `.paude-arcade.json`');
-		expect(kept).toContain('Your character: Grumble, a grumpy dwarf smith who secretly loves sparkles. Stay in it');
-		expect(kept).not.toContain('Give yourself a character');
+		expect(voiced).toContain('## Your voice');
+		expect(voiced).toContain('[laughs]');
+		expect(voiced).toContain('the same one in every game');
+		expect(voiced).not.toContain('"character"');
 	});
 
 	test("keeps the game's face, its README's opening and manifest, saying what the game is", () => {

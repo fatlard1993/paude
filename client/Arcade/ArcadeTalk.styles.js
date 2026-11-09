@@ -93,6 +93,55 @@ const Talk = styled(
 			box-shadow: inset 3px 0 ${colors.alpha(colors.blue, 0.8)};
 		}
 
+		/* Waiting for its voice: the words dim and settle in, a sound wave where the speaker button sits, until the voice
+		   starts and they light as they're said */
+		.card .wave {
+			display: none;
+			float: right;
+			gap: 3px;
+			align-items: center;
+			height: 1.2em;
+			margin: 0 0 0 ${space.sm};
+		}
+
+		.card .wave i {
+			width: 4px;
+			height: 100%;
+			border-radius: 2px;
+			background: ${colors.light(colors.blue)};
+			animation: voice-wave 0.9s ease-in-out infinite;
+		}
+
+		.card .wave i:nth-child(2) { animation-delay: 0.15s; }
+		.card .wave i:nth-child(3) { animation-delay: 0.3s; }
+		.card .wave i:nth-child(4) { animation-delay: 0.45s; }
+
+		.card.voicing .wave {
+			display: inline-flex;
+		}
+
+		.card.voicing .say {
+			display: none;
+		}
+
+		.card.voicing p {
+			opacity: 0.45;
+			filter: blur(0.6px);
+		}
+
+		.card p {
+			transition: opacity 250ms ease-out, filter 250ms ease-out;
+		}
+
+		@keyframes voice-wave {
+			0%, 100% { transform: scaleY(0.3); }
+			50% { transform: scaleY(1); }
+		}
+
+		@media (prefers-reduced-motion: reduce) {
+			.card .wave i { animation: none; transform: scaleY(0.6); }
+		}
+
 		.card.you {
 			align-self: flex-end;
 			max-width: 85%;

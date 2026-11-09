@@ -13,7 +13,17 @@ import confirmDialog from '../confirmDialog';
 import { button, element, icon } from '../dom';
 import { canType, identity } from '../identity';
 import { openMenu } from '../menu';
-import { canListen, canSpeak, displayTokens, listen, speak, spokenText, stopSpeaking, wordsOf } from '../speech';
+import {
+	canListen,
+	canSpeak,
+	displayTokens,
+	listen,
+	prepareVoice,
+	speak,
+	spokenText,
+	stopSpeaking,
+	wordsOf,
+} from '../speech';
 import { recall, remember } from '../storage';
 import { toolDoing, toolIcon, toolWord } from '../toolIcons';
 import attach from '../Terminal/attach';
@@ -93,7 +103,12 @@ export default class ArcadeTalk extends Talk {
 		this.gameUrl = null;
 		this.status = null;
 		this.ticks = 0;
-		this.voice = sayQueue({ session: this.id, say: speak, onIdle: () => this.rested() });
+		this.voice = sayQueue({
+			session: this.id,
+			say: speak,
+			prepare: text => prepareVoice(text, this.id),
+			onIdle: () => this.rested(),
+		});
 		this.sent = [];
 		this.did = null;
 		this.asking = null;
@@ -406,7 +421,12 @@ export default class ArcadeTalk extends Talk {
 				const card = this.claudeCard(entry.text);
 
 				this.feed.append(card);
-				if (!entry.old && this.prefs.speak) this.enqueue(card.spokenText, card);
+				if (!entry.old && this.prefs.speak) {
+					// Shown waiting for its voice, the words dim and a sound wave beside them, until the voice starts
+					// and lights them: the words arrive as they're said, not as text and then a pause
+					card.classList.add('voicing');
+					this.enqueue(card.spokenText, card);
+				}
 			}
 		}
 		if (atBottom || entries.some(entry => !entry.old)) this.feed.scrollTop = this.feed.scrollHeight;
@@ -467,8 +487,14 @@ export default class ArcadeTalk extends Talk {
 		card.lightWord = index => {
 			const owner = index === -1 ? -1 : owners[index];
 
+			card.classList.remove('voicing');
 			words.forEach((span, at) => span.classList.toggle('lit', at === owner));
 		};
+		// The sound wave a card shows while its voice is on the way, in the speaker button's place
+		const wave = element('span', 'wave');
+
+		wave.append(element('i'), element('i'), element('i'), element('i'));
+		card.prepend(wave);
 		if (canSpeak() && words.length)
 			card.prepend(
 				button('', () => this.sayAgain(card), {

@@ -30,8 +30,6 @@ const SNAPSHOT_WORDS = 72;
 // arcade page (client/Arcade) is what the person building sees of it.
 
 const NAME_LENGTH = 60;
-// How much of the character Claude wrote for itself is carried into its rules
-const CHARACTER_LENGTH = 400;
 // The idea a game starts from, as rough or detailed as the person cares to write
 const IDEA_LENGTH = 4000;
 // How much of the idea opens the game's README and manifest, until Claude writes it a proper one
@@ -163,15 +161,12 @@ const WRITING = {
 	],
 };
 
-// When this paude's voice performs cues: Claude writes as a character it keeps, acting through the cues the voice takes
-const voiceSection = character => [
+// When this paude's voice performs cues: Claude acts through the cues the voice takes, in the one voice every game
+// shares (which also keeps what it has said reusable from the voice's cache)
+const voiceSection = () => [
 	'## Your voice',
 	'',
-	'Everything you write here is performed aloud by an expressive voice, so write it as a performance: you are a character, not a narrator.',
-	'',
-	character
-		? `Your character: ${character} Stay in it every turn.`
-		: 'Give yourself a character that fits this game and the person you are building with: a name, a personality and a way of talking (a grumpy dwarf smith for a mining game, a breathless announcer for a racer, a sleepy owl for a bedtime story). Introduce yourself in it, then write it in one or two sentences into "character" in `.paude-arcade.json` so you keep it.',
+	'Everything you write here is performed aloud by an expressive voice, the same one in every game: warm, lively and quick to laugh. Write it as a performance, as yourself, not as a character made up for this game.',
 	'',
 	'Act with cues in square brackets, right before or after the words they color:',
 	'',
@@ -235,7 +230,6 @@ export const arcadeInstructions = ({
 	player,
 	reading,
 	performs = false,
-	character = '',
 }) =>
 	[
 		named ? `# Building ${title} together` : '# Building a game together',
@@ -271,7 +265,7 @@ export const arcadeInstructions = ({
 		'The labels of your choices are read aloud and shown as big buttons, so the emoji comes first and the words stay few.',
 		'Decide every technical question yourself, without asking. Explain how the code works only when they ask. Say so in a few words when something works; do not gush.',
 		'',
-		...(performs ? voiceSection(String(character ?? '').trim()) : []),
+		...(performs ? voiceSection() : []),
 		'## Working',
 		'',
 		"Work inside this project, with whatever the job needs: read and edit files, run shell commands, tests and builds, add a package when the game is better for it, curl the running server, look things up on the web. Routine work runs without asking. No one is there to answer a permission prompt: anything that would need one is turned back at once, so when something is refused, find another way to do it within the project and carry on, rather than stopping or asking for help. Don't push or rewrite history: paude keeps every turn as a commit that can be put back, and hosts the game itself.",
@@ -495,7 +489,6 @@ export const refreshArcade = async cwd => {
 			player: marker.player,
 			reading: marker.reading,
 			performs: await voicePerforms(),
-			character: String(marker.character ?? '').slice(0, CHARACTER_LENGTH),
 		}),
 	);
 	await mkdir(join(cwd, '.claude'), { recursive: true });
