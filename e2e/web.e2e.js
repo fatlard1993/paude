@@ -80,7 +80,7 @@ describe.each(VARIANTS)('%s', variant => {
 			const { browser, page } = await openSession(variant, servers.turns);
 
 			try {
-				await page.click('button[title^="Terminal:"]');
+				await page.click('button[title^="Shell:"]');
 				await page.waitForFunction(() => document.querySelectorAll('.xterm-screen').length === 2, { timeout: 20_000 });
 				await wait(1500);
 				await page.keyboard.type('clear; echo side-shell-copy\n');
@@ -1636,7 +1636,7 @@ test(
 			await page.touchscreen.tap(menu.x, menu.y);
 			await wait(400);
 
-			const chat = await centerOf(page, '[role=menu] li', 'Chat and comments');
+			const chat = await centerOf(page, '[role=menu] li', 'Chat');
 
 			await page.touchscreen.tap(chat.x, chat.y);
 			await wait(600);
