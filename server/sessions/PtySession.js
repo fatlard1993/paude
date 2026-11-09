@@ -264,6 +264,7 @@ export default class PtySession {
 			this.drive(client);
 		}
 
+		if (kind === 'typing') this.typedAt = Date.now();
 		// Someone answered the question (or pressed Esc on it); hooks and the title say what follows
 		if (kind === 'typing' && statusOf(this.id) === 'waiting') setStatus(this.id, 'working');
 

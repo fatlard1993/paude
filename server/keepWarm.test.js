@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import {
+	DRAFT_LEFT_MS,
 	MAX_HOURS,
 	PING,
 	PING_AFTER_MS,
@@ -57,18 +58,44 @@ test("Claude's own turns push the ping back", async () => {
 	expect(await checkWarm(only('busy-day', session), 30 * 60 * 1000 + PING_AFTER_MS)).toEqual(['busy-day']);
 });
 
-test("a ping waits for Claude to finish and for what's typed in the prompt box", async () => {
+test("a ping waits for Claude to finish and for someone typing in the prompt box", async () => {
 	const session = fakeSession();
 	const sessionOf = only('drafting', session);
 
 	await keepWarm('drafting', 12, 0);
 	session.draft = 'half a thou';
+	session.typedAt = PING_AFTER_MS - DRAFT_LEFT_MS + 1;
 	expect(await checkWarm(sessionOf, PING_AFTER_MS)).toEqual([]);
+	expect(session.typed).toEqual([]);
 	session.draft = '';
 	session.busy = true;
 	expect(await checkWarm(sessionOf, PING_AFTER_MS + 60_000)).toEqual([]);
 	session.busy = false;
 	expect(await checkWarm(sessionOf, PING_AFTER_MS + 120_000)).toEqual(['drafting']);
+});
+
+test('a draft left in the prompt box is stashed for the ping, so the cache outlives it', async () => {
+	const session = fakeSession();
+
+	session.typeIn = data => {
+		session.typed.push(data);
+		if (data === '\x13') session.draft = '';
+	};
+	await keepWarm('left', 12, 0);
+	session.draft = 'half a thou';
+	session.typedAt = PING_AFTER_MS - DRAFT_LEFT_MS;
+	expect(await checkWarm(only('left', session), PING_AFTER_MS, { pause: async () => {} })).toEqual(['left']);
+	expect(session.typed[0]).toBe('\x13');
+	expect(session.typed[1]).toContain(PING);
+});
+
+test("a stash that doesn't empty the box sends no ping into the draft", async () => {
+	const session = fakeSession();
+
+	await keepWarm('rebound', 12, 0);
+	session.draft = 'half a thou';
+	expect(await checkWarm(only('rebound', session), PING_AFTER_MS, { pause: async () => {} })).toEqual([]);
+	expect(session.typed).toEqual(['\x13']);
 });
 
 test('past its cutoff, or no longer running, a session is let go', async () => {

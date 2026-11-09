@@ -199,10 +199,12 @@ export const claudeActive = (id, { hook_event_name: event, prompt } = {}, now = 
 const isControl = code => (code < 32 && code !== 9 && code !== 10) || (code >= 127 && code <= 159);
 const withoutControls = text => [...String(text)].filter(character => !isControl(character.charCodeAt(0))).join('');
 
+const isIdle = (id, session) => !session.busy && statusOf(id) === 'ready';
+
 // Typed in only when Claude is idle with an empty prompt box: paude's own prompt must neither answer a question Claude
 // asked nor run into what someone is halfway through typing. Whether it was.
 export const typeWhenIdle = (id, session, text, now = Date.now()) => {
-	if (session.busy || statusOf(id) !== 'ready' || session.promptDraft() !== '') return false;
+	if (!isIdle(id, session) || session.promptDraft() !== '') return false;
 
 	session.typeIn(`\x1b[200~${withoutControls(text)}\x1b[201~`);
 	setTimeout(() => session.typeIn('\r'), ENTER_AFTER_MS);
@@ -223,9 +225,33 @@ export const boostOf = (id, now = Date.now()) => {
 export const keptOf = (id, now = Date.now()) =>
 	(fabledOn(id, now) && 'fabled') || (goingOn(id, now) && 'going') || (warmUntil(id, now) && 'warm') || null;
 
+// A draft nobody has touched this long is left, not being written: the ping won't wait on it, since the cache it keeps
+// would be gone before they're back
+export const DRAFT_LEFT_MS = 2 * 60 * 1000;
+// Claude Code's stash (ctrl+s): it keeps the draft with its cursor and pastes, and puts it back once a prompt is sent
+const STASH = '\x13';
+const STASH_CHECKS = 20;
+
+// The box emptied by the stash, and the ping typed in. Whether it was; a draft still there is left as it stands.
+const stashThenPing = async (id, session, now, pause) => {
+	const draft = session.promptDraft();
+
+	if (!draft || !isIdle(id, session) || now - (session.typedAt ?? 0) < DRAFT_LEFT_MS) return false;
+	session.typeIn(STASH);
+	for (let check = 0; check < STASH_CHECKS && session.promptDraft() !== ''; check += 1) await pause();
+	if (session.promptDraft() !== '') {
+		console.log(`Keep warm ${id}: not pinged, the stash didn't empty the prompt box`);
+
+		return false;
+	}
+	console.log(`Keep warm ${id}: a draft left in the prompt box is stashed for the ping, and comes back with it`);
+
+	return typeWhenIdle(id, session, PING, now);
+};
+
 // Not typed now: tried again next check
-const ping = (id, session, now) => {
-	if (!typeWhenIdle(id, session, PING, now)) return false;
+const ping = async (id, session, now, pause) => {
+	if (!typeWhenIdle(id, session, PING, now) && !(await stashThenPing(id, session, now, pause))) return false;
 
 	noteCrew('keeping a session warm');
 	lastTurnAt.set(id, now);
@@ -234,7 +260,7 @@ const ping = (id, session, now) => {
 };
 
 // Pings each warm session gone quiet, and lets go of those past their cutoff or no longer running
-export const checkWarm = async (sessionOf, now = Date.now()) => {
+export const checkWarm = async (sessionOf, now = Date.now(), { pause = () => Bun.sleep(100) } = {}) => {
 	const pings = [];
 	let changed = false;
 
@@ -248,7 +274,7 @@ export const checkWarm = async (sessionOf, now = Date.now()) => {
 			letGo(id);
 			changed = true;
 		} else {
-			if (now - lastTurnAt.get(id) >= PING_AFTER_MS && ping(id, session, now)) pings.push(id);
+			if (now - lastTurnAt.get(id) >= PING_AFTER_MS && (await ping(id, session, now, pause))) pings.push(id);
 			// Its monitor on its own clock: pinged once it has been quiet this long, whether or not the session could be, since
 			// a session busy, asking or being typed into isn't pinged and its monitor's cache runs out regardless
 			if (fabledOn(id, now) && warm[id].monitor) {
