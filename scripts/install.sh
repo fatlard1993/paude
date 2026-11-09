@@ -250,7 +250,83 @@ install_launchd() {
 	fi
 }
 
-if [ "$PLATFORM" = macos ]; then install_launchd; else install_systemd; fi
+# Every minute, scripts/watchdog.sh restarts a paude that's running but has stopped answering, keeping what it was
+# doing in $DATA/hangs
+install_watchdog_systemd() {
+	dir="$HOME/.config/systemd/user"
+	service_text="[Unit]
+Description=paude watchdog: restarts a paude that stopped answering
+
+[Service]
+Type=oneshot
+Environment=PATH=$SERVICE_PATH
+ExecStart=/bin/sh $APP/scripts/watchdog.sh $PORT $DATA
+"
+	timer_text="[Unit]
+Description=paude watchdog, every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+
+[Install]
+WantedBy=timers.target
+"
+	if [ "$(cat "$dir/paude-watchdog.service" 2>/dev/null)" != "$service_text" ] ||
+		[ "$(cat "$dir/paude-watchdog.timer" 2>/dev/null)" != "$timer_text" ]; then
+		printf '%s' "$service_text" >"$dir/paude-watchdog.service"
+		printf '%s' "$timer_text" >"$dir/paude-watchdog.timer"
+		systemctl --user daemon-reload
+	fi
+	systemctl --user enable --now paude-watchdog.timer >/dev/null 2>&1
+}
+
+install_watchdog_launchd() {
+	watchdog_agent="$HOME/Library/LaunchAgents/$LABEL.watchdog.plist"
+	watchdog_text="<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
+<plist version=\"1.0\">
+<dict>
+	<key>Label</key>
+	<string>$LABEL.watchdog</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/sh</string>
+		<string>$APP/scripts/watchdog.sh</string>
+		<string>$PORT</string>
+		<string>$DATA</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>$SERVICE_PATH</string>
+	</dict>
+	<key>StartInterval</key>
+	<integer>60</integer>
+</dict>
+</plist>
+"
+	domain="gui/$(id -u)"
+
+	if [ "$(cat "$watchdog_agent" 2>/dev/null)" != "$watchdog_text" ]; then
+		printf '%s' "$watchdog_text" >"$watchdog_agent"
+		launchctl bootout "$domain/$LABEL.watchdog" 2>/dev/null || true
+		gone=0
+		while launchctl print "$domain/$LABEL.watchdog" >/dev/null 2>&1 && [ "$gone" -lt 20 ]; do
+			gone=$((gone + 1))
+			sleep 0.5
+		done
+	fi
+	launchctl print "$domain/$LABEL.watchdog" >/dev/null 2>&1 || launchctl bootstrap "$domain" "$watchdog_agent"
+}
+
+if [ "$PLATFORM" = macos ]; then
+	install_launchd
+	install_watchdog_launchd
+else
+	install_systemd
+	install_watchdog_systemd
+fi
 
 mkdir -p "$DATA"
 if [ "$DEV" = no ]; then git -C "$APP" rev-parse HEAD >"$STARTED"; fi
