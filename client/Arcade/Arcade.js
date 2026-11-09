@@ -44,12 +44,6 @@ export default class Arcade extends View {
 			onRested: () => this.arcade && this.play(true),
 			onBusy: () => this.play(false),
 		});
-		this.changeButton = button('Change the game', () => this.changeIt(), {
-			icon: 'wand-magic-sparkles',
-			className: 'change-button',
-			title: 'Back to Claude: hear the choices and pick what happens next',
-		});
-		stage.append(this.changeButton);
 		this.page.elem.append(stage);
 		// Whatever toasts the page still gets (a watched session needing the owner) go to the top: the bottom is where the
 		// kid's choices and box are
@@ -84,6 +78,13 @@ export default class Arcade extends View {
 		this.title.style.textOverflow = 'ellipsis';
 		this.title.style.whiteSpace = 'nowrap';
 		bar.elem.append(this.title);
+		// The big button, in the bar so it never sits over the game: shown while the game has the whole screen
+		this.changeButton = button('Change the game', () => this.changeIt(), {
+			icon: 'wand-magic-sparkles',
+			className: 'change-button',
+			title: 'Back to Claude: hear the choices and pick what happens next',
+		});
+		bar.elem.append(this.changeButton);
 		ghostButton(bar, { icon: 'rotate-right', title: 'Reload the game', onPress: () => this.game.reload() });
 		// The shelf is the owner's alone, and shown only once this paude is known to have one. Not the hidden attribute:
 		// the button's own display rule outranks it.

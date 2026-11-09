@@ -3,7 +3,7 @@ import { Elem, styled } from '@vanilla-bean/components';
 // The arcade page: the game large, the talk with Claude beside it; on a phone one over the other
 const ArcadePage = styled(
 	Elem,
-	({ colors, media, radius, safeArea, space }) => `
+	({ colors, media, radius, space }) => `
 		display: flex;
 		flex-direction: column;
 		flex: 1;
@@ -27,27 +27,22 @@ const ArcadePage = styled(
 		}
 
 		/* Playing: the game alone, and one big button back to the talk */
-		.stage {
-			position: relative;
-		}
-
 		&.playing .stage > .arcade-talk {
 			display: none;
 		}
 
+		/* The big button lives in the bar, clear of the game, and shows while the game has the whole screen */
 		.change-button {
 			display: none;
-			position: absolute;
-			right: calc(${space.lg} + ${safeArea.right});
-			bottom: calc(${space.lg} + ${safeArea.bottom});
-			z-index: 2;
-			padding: ${space.md} ${space.xl};
+			margin-inline: ${space.md};
+			padding: ${space.xs} ${space.lg};
 			border-radius: ${radius.pill};
 			background: ${colors.orange};
 			color: ${colors.white};
-			font-size: 1.4rem;
+			font-size: 1.1rem;
 			font-weight: bold;
-			box-shadow: 0 6px 24px ${colors.alpha(colors.black, 0.5)};
+			white-space: nowrap;
+			box-shadow: 0 2px 10px ${colors.alpha(colors.black, 0.45)};
 		}
 
 		.change-button i {
