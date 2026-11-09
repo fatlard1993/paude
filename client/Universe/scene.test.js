@@ -879,6 +879,8 @@ test("a lounger's empties go to its head by the same clock as its pile: steady a
 		// Alone on its couch: off to the arm on its outer side, not down into its lap
 		lean: { x: -3, y: 2 },
 		flush: 1,
+		// Its legs pulled up onto the couch, off to the side its head isn't
+		curled: 1,
 	});
 	// Its pile still counts every half hour
 	expect(gone.made.cansOf(gone.worker)).toBe(10);
