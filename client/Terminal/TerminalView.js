@@ -288,7 +288,8 @@ export default class TerminalView extends View {
 			const mic = micButton({
 				session: this.options.id,
 				onText: text => this.attachToPrompt(text),
-				className: 'ghost variant-flat',
+				// A tool like the rest: folded into the phone's menu with them
+				className: 'ghost tool variant-flat',
 				title: 'Say something into the prompt',
 			});
 
