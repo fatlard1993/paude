@@ -230,12 +230,9 @@ const TUBE_PX = 90;
 // How long a nozzle takes to come down from the ceiling, draw a part up and go back; how far above its seat's foot the
 // pipe over a row of islands runs, in art pixels
 const POP_SECONDS = 1;
-// The other ships' terminals: how far in from the bridge's near wall and its forward end they stand, and how far apart
+// The other ships' terminals: how far in from the bridge's near wall they stand, and how far apart
 const FLEET_FROM_WALL = 0.45;
-const FLEET_NOSE = 1.0;
 const FLEET_PITCH = 1.8;
-// How far up from its foot a terminal reaches, in world units, for keeping clear of islands near the wall
-const FLEET_TALL = 2.6;
 const TUBE_GLASS = { body: '#34506a', shine: 'rgba(210, 240, 255, 0.6)' };
 // How far down a tube coming out of the ceiling fades in, in art pixels
 const FADE_IN = 8;
@@ -6753,36 +6750,26 @@ export default class Ship {
 		this.hits.push({ ...this.toScreen({ x: left + 5, y: y - 6 }), r: 5 * this.camera.zoom, kind: 'talk', session });
 	}
 
-	// A reply, a capsule glowing in its grey's color with a trail; a part, a sheet riding a little float
-	// Where each other ship's unmanned terminal stands, along the bridge's near wall from its forward end aft, in the
-	// places free of the lounge and of islands standing near the wall: [{ ship, x, y }]
+	// Where each other ship's unmanned terminal stands, along the bridge's near wall from the transporter forward:
+	// [{ ship, x, y }]
 	fleetSpots() {
-		const { bridge, lounge } = this;
+		const { bridge } = this;
 
 		if (!bridge || !this.fleet?.length) return [];
 
 		const y = bridge.y + bridge.d - FLEET_FROM_WALL;
 		const half = FLEET_PITCH / 2;
-		const blocked = [
-			...(lounge?.count ? [{ from: lounge.x - 0.3, to: lounge.x + lounge.w + 0.3 }] : []),
-			// The materializer and transporter standing on the bridge
-			...[this.layout.materializer, this.layout.transporter]
-				.filter(room => room?.within)
-				.map(room => ({ from: room.x - 0.3, to: room.x + room.w + 0.3 })),
-			...(bridge.islands ?? [])
-				.filter(island => island.y > y - FLEET_TALL)
-				.map(island => ({ from: island.x - 0.3, to: island.x + island.w + 0.3 })),
-		];
-		const free = x => blocked.every(({ from, to }) => x + half <= from || x - half >= to);
 		const spots = [];
 
-		// From the bow aft, as many as stand clear of the lounge, the islands and the stations
+		const pad = this.layout.transporter?.within && this.layout.transporter;
+
+		// Butted up to the transporter's forward side, one after another toward the bow, where it stands on the bridge
 		for (
-			let x = bridge.x + bridge.w - FLEET_NOSE;
-			spots.length < this.fleet.length && x - half > bridge.x + 0.6;
-			x -= 0.25
+			let x = pad ? pad.x + pad.w + half : Infinity;
+			spots.length < this.fleet.length && x + half <= bridge.x + bridge.w;
+			x += FLEET_PITCH
 		)
-			if (free(x) && (!spots.length || spots.at(-1).x - x >= FLEET_PITCH)) spots.push({ x, y });
+			spots.push({ x, y });
 
 		return spots.map((spot, index) => ({ ...spot, ship: this.fleet[index] }));
 	}

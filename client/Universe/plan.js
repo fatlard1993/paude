@@ -38,6 +38,8 @@ const holdWidth = checkouts => Math.max(2.4, checkouts * POD_PITCH + 0.6);
 const MATERIALIZER_W = 1.8;
 // How deep the materializer and transporter stand on the bridge, from its foot
 const STATION_D = 2.4;
+// How far they stand from the bridge's aft wall
+const STATION_HUG = 0.3;
 // How far up off the bridge's foot they stand, clear of its near wall, which is drawn in front of what's at its foot
 const STATION_CLEAR = 0.6;
 // The transporter, on a ship of a fleet: its pad, and the console that hears from the other ships
@@ -139,7 +141,7 @@ const islandsOf = (
 	// The materializer and transporter at the aft end of the bottom row, where the islands start past them
 	const stationRows = stations ? Math.min(rows, Math.ceil((STATION_D + STATION_CLEAR - 0.6) / pitch - 1e-9)) : 0;
 
-	for (let row = rows - stationRows; row < rows; row++) reach[row] += stations + ISLAND_GAP;
+	for (let row = rows - stationRows; row < rows; row++) reach[row] += Math.max(0, STATION_HUG + stations - stern) + ISLAND_GAP;
 	// With fewer islands than rows left open, they spread evenly down the bridge
 	const open = Array.from({ length: rows }, (_, row) => row).filter(row => row < rows - covers);
 	const seatWidths = run => run.keys.map(seatWidth);
@@ -433,7 +435,7 @@ export const layOut = ({
 } = {}) => {
 	// A ship of a fleet has a transporter besides, on the bridge beside the materializer
 	const transporter = fleet ? TRANSPORTER_W : 0;
-	const stationsW = MATERIALIZER_W + transporter;
+	const stationsW = MATERIALIZER_W + transporter + fleetRoom(fleet);
 	const system = ({ key, name }) => ({ kind: 'system', key, name, w: SYSTEM.w, d: SYSTEM.d });
 	// Each project's machine stands on one deck, as wide as the project is big, into whichever deck reaches least far
 	// yet, in the order given (which keeps each where it was); none spans two decks. A project with nothing going on is
@@ -546,9 +548,8 @@ export const layOut = ({
 		const bridgeW =
 			sternRoom(inLine(placed)) +
 			BRIDGE_MARGIN +
-			Math.max(2 * SEAT_W, islandsReach, stationsW) +
-			BRIDGE_NAV_W +
-			fleetRoom(fleet);
+			Math.max(2 * SEAT_W, islandsReach) +
+			BRIDGE_NAV_W;
 
 		return { levels, placed, width, total, rows, pitch, bridgeW, hall };
 	};
@@ -707,9 +708,9 @@ export const layOut = ({
 
 		rooms.push({ ...placed, props: furnish(placed) });
 	}
-	// Where new sessions are made, and on a ship of a fleet the transporter's pad, stand at the aft end of the bridge's
-	// foot, past the risers' room, the islands starting beyond them
-	const stations = bridge.x + stern;
+	// Where new sessions are made, and on a ship of a fleet the transporter's pad and the terminals watching the other
+	// ships, stand at the aft end of the bridge's foot against its wall, the islands starting beyond them
+	const stations = bridge.x + STATION_HUG;
 
 	rooms.push(
 		aboard(
