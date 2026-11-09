@@ -115,7 +115,7 @@ export const splitSeats = (keys, widthOf) => {
 // from the wall itself, and an island stays put as the risers' room grows unless it grows into it
 const islandsOf = (
 	bays,
-	{ from, top, rows, lounge, agents = {}, watched = {}, brief = {}, pitch = BRIDGE_ROW, kept, stern = 0 },
+	{ from, top, rows, lounge, stations = 0, agents = {}, watched = {}, brief = {}, pitch = BRIDGE_ROW, kept, stern = 0 },
 ) => {
 	// The room a seat's small terminals take to its left
 	const smallRoom = key => (agents[key] > 0 ? SMALL_ROOM + Math.min(MOST_SMALL, agents[key]) * SMALL_W : 0);
@@ -136,6 +136,10 @@ const islandsOf = (
 	const covers = lounge ? Math.min(rows, Math.ceil((lounge.d - 0.6) / pitch - 1e-9)) : 0;
 
 	for (let row = rows - covers; row < rows; row++) reach[row] = lounge.w + ISLAND_GAP;
+	// The materializer and transporter at the aft end of the bottom row, where the islands start past them
+	const stationRows = stations ? Math.min(rows, Math.ceil((STATION_D + STATION_CLEAR - 0.6) / pitch - 1e-9)) : 0;
+
+	for (let row = rows - stationRows; row < rows; row++) reach[row] += stations + ISLAND_GAP;
 	// With fewer islands than rows left open, they spread evenly down the bridge
 	const open = Array.from({ length: rows }, (_, row) => row).filter(row => row < rows - covers);
 	const seatWidths = run => run.keys.map(seatWidth);
@@ -429,6 +433,7 @@ export const layOut = ({
 } = {}) => {
 	// A ship of a fleet has a transporter besides, on the bridge beside the materializer
 	const transporter = fleet ? TRANSPORTER_W : 0;
+	const stationsW = MATERIALIZER_W + transporter;
 	const system = ({ key, name }) => ({ kind: 'system', key, name, w: SYSTEM.w, d: SYSTEM.d });
 	// Each project's machine stands on one deck, as wide as the project is big, into whichever deck reaches least far
 	// yet, in the order given (which keeps each where it was); none spans two decks. A project with nothing going on is
@@ -520,6 +525,7 @@ export const layOut = ({
 				top: 0,
 				rows: rowsAt(pitch),
 				lounge: loungeBlock,
+				stations: stationsW,
 				agents,
 				watched,
 				brief,
@@ -540,11 +546,9 @@ export const layOut = ({
 		const bridgeW =
 			sternRoom(inLine(placed)) +
 			BRIDGE_MARGIN +
-			Math.max(2 * SEAT_W, islandsReach) +
+			Math.max(2 * SEAT_W, islandsReach, stationsW) +
 			BRIDGE_NAV_W +
-			fleetRoom(fleet) +
-			MATERIALIZER_W +
-			transporter;
+			fleetRoom(fleet);
 
 		return { levels, placed, width, total, rows, pitch, bridgeW, hall };
 	};
@@ -670,6 +674,7 @@ export const layOut = ({
 		top,
 		rows: bridgeRows,
 		lounge: loungeBlock,
+		stations: stationsW,
 		agents,
 		watched,
 		brief,
@@ -702,11 +707,9 @@ export const layOut = ({
 
 		rooms.push({ ...placed, props: furnish(placed) });
 	}
-	// Where new sessions are made, and on a ship of a fleet the transporter's pad, stand on the bridge at its foot just
-	// aft of the nav table and the terminals that keep an eye on the other ships
-	// Aft of the room the terminals watching the other ships take, so they stand on the transporter's forward side,
-	// by its pad
-	const stations = bridge.x + bridge.w - BRIDGE_NAV_W - fleetRoom(fleet) - MATERIALIZER_W - transporter;
+	// Where new sessions are made, and on a ship of a fleet the transporter's pad, stand at the aft end of the bridge's
+	// foot, past the risers' room, the islands starting beyond them
+	const stations = bridge.x + stern;
 
 	rooms.push(
 		aboard(

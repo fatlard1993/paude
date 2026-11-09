@@ -6776,23 +6776,13 @@ export default class Ship {
 		const free = x => blocked.every(({ from, to }) => x + half <= from || x - half >= to);
 		const spots = [];
 
-		const pad = this.layout.transporter?.within && this.layout.transporter;
-
-		// Butted up to the transporter's forward side, one after another toward the bow, where it stands on the bridge
-		if (pad)
-			for (
-				let x = pad.x + pad.w + half;
-				spots.length < this.fleet.length && x + half <= bridge.x + bridge.w;
-				x += FLEET_PITCH
-			)
-				spots.push({ x, y });
-		else
-			for (
-				let x = bridge.x + bridge.w - FLEET_NOSE;
-				spots.length < this.fleet.length && x - half > bridge.x + 0.6;
-				x -= 0.25
-			)
-				if (free(x) && (!spots.length || spots.at(-1).x - x >= FLEET_PITCH)) spots.push({ x, y });
+		// From the bow aft, as many as stand clear of the lounge, the islands and the stations
+		for (
+			let x = bridge.x + bridge.w - FLEET_NOSE;
+			spots.length < this.fleet.length && x - half > bridge.x + 0.6;
+			x -= 0.25
+		)
+			if (free(x) && (!spots.length || spots.at(-1).x - x >= FLEET_PITCH)) spots.push({ x, y });
 
 		return spots.map((spot, index) => ({ ...spot, ship: this.fleet[index] }));
 	}
