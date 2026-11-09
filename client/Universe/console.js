@@ -183,6 +183,11 @@ export default class TerminalPanel {
 
 		this.terminal = terminal;
 		terminal.open(this.screen);
+		// Its screen never scrolls: the foot is kept by the terminal's margin, and the browser scrolling the hidden screen to
+		// reveal xterm's input as it takes or loses focus would move the rows
+		this.screen.addEventListener('scroll', () => {
+			if (this.screen.scrollTop || this.screen.scrollLeft) this.screen.scrollTo(0, 0);
+		});
 		terminal.resize(cols, rows);
 		const send = data => Boolean(this.connection?.send({ type: 'input', data }));
 		const over = on => (this.overLink = on);
