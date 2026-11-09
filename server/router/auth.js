@@ -198,7 +198,12 @@ const authRoutes = async request => {
 
 		if (!cleanName) return new Response('A game maker needs a name', { status: 400 });
 		if (!(reading in READING))
-			return new Response(`Say how well they read: ${Object.keys(READING).join(', ')}`, { status: 400 });
+			return new Response(
+				`Pick how Claude writes to them: ${Object.values(READING)
+					.map(({ label }) => label)
+					.join(', ')}`,
+				{ status: 400 },
+			);
 
 		const { invite, token } = await createMakerInvite({ name: cleanName, reading });
 

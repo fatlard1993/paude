@@ -30,7 +30,7 @@ export const whereSelect = remotes => {
 	return where;
 };
 
-// A select of how well the person building reads, and a line saying what that means
+// A select of how Claude writes to the person building, and a line saying what that means
 export const readingSelect = () => {
 	const reading = element('select');
 	const hint = element('div', 'meta');
@@ -42,6 +42,7 @@ export const readingSelect = () => {
 		reading.append(option);
 	}
 	reading.value = 'reading';
+	reading.title = 'How Claude writes to whoever is building';
 	hint.textContent = READING[reading.value].detail;
 	reading.addEventListener('change', () => (hint.textContent = READING[reading.value].detail));
 
@@ -115,13 +116,13 @@ export const newArcadeForm = ({ remotes = [], onMade, asMaker = false } = {}) =>
 	let known = remotes;
 	let busy = false;
 
-	name.placeholder = "What's it called? (or leave that to find out together)";
+	name.placeholder = "What's it called? (optional: Claude can help name it)";
 	name.maxLength = 60;
 	idea.placeholder =
-		'The idea so far, as rough or detailed as you like; or leave it and Claude will brainstorm one with them';
+		'The idea, as rough or detailed as you like (optional: leave it blank to brainstorm one with Claude)';
 	idea.rows = 2;
 	idea.maxLength = 4000;
-	player.placeholder = "Who's building it? (their name)";
+	player.placeholder = 'Who is building it? (optional: a name for Claude to use)';
 	player.maxLength = 40;
 	progress.style.display = 'none';
 	const draft = savedDraft();

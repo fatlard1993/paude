@@ -1,9 +1,7 @@
-// How well the person building an arcade game reads: what Claude is told to write, offered when the game is made
+// How Claude writes to the person building an arcade game, offered when the game is made: plain text, or for someone
+// who'd rather listen, simple words read aloud, or everything spoken
 export const READING = {
-	listening: {
-		label: 'Listens',
-		detail: 'takes it in by ear: the page says everything aloud, and Claude writes to be heard',
-	},
-	learning: { label: 'Learning to read', detail: 'short, common words, said aloud and shown big' },
-	reading: { label: 'Reads', detail: 'reads on their own: plain, concise' },
+	listening: { label: 'Spoken aloud', detail: 'everything said aloud and written to be heard: no reading needed' },
+	learning: { label: 'Simple and read aloud', detail: 'short, common words, said aloud and shown big' },
+	reading: { label: 'Plain text', detail: 'plain, concise writing' },
 };
