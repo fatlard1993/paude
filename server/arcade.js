@@ -296,11 +296,7 @@ export const createArcadeProject = async ({ name, idea, player, reading }, onOut
 		.slice(0, IDEA_LENGTH);
 
 	if (!(reading in READING))
-		throw new ArcadeError(
-			`Pick how Claude writes to them: ${Object.values(READING)
-				.map(({ label }) => label)
-				.join(', ')}.`,
-		);
+		throw new ArcadeError(`Pick how Claude writes to them: ${Object.keys(READING).join(', ')}.`);
 
 	// A named game takes its name's folder, and another of the same name is a mistake; an unnamed one takes the next free
 	const folder = named ? projectPath(folderName(title)) : await freeFolder(folderName(title));
