@@ -246,6 +246,13 @@ test("the checkout's state the monitor is given: its latest commits and what's c
 	expect(here).toMatch(/\n[0-9a-f]{7,} /);
 	expect(here).toMatch(/Changed and not committed:|Nothing changed and not committed\./);
 	expect(here.length).toBeLessThanOrEqual(3000);
+	// However long the subjects run, what's uncommitted still fits
+	expect(
+		here
+			.split('\n')
+			.filter(line => /^[0-9a-f]{7,} /.test(line))
+			.every(line => line.length <= 123),
+	).toBe(true);
 	expect(await repoStateOf(os.tmpdir())).toBe('');
 	expect(await repoStateOf('/nowhere/at/all')).toBe('');
 });

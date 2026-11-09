@@ -78,6 +78,9 @@ export const forgetMonitor = async id => {
 // How many commits the monitor is shown, and how much of the status and diff stat
 const COMMITS_SHOWN = 12;
 const REPO_CHARACTERS = 3000;
+// Each commit by the start of its subject: long subjects would otherwise fill the whole and cut off what's changed and
+// not committed, which says more about the turn
+const SUBJECT_CHARACTERS = 120;
 const GIT_TIMEOUT_MS = 10_000;
 
 const git = async (cwd, args) => {
@@ -101,8 +104,13 @@ export const repoStateOf = async cwd => {
 
 	const [status, stat] = await Promise.all([git(cwd, ['status', '--short']), git(cwd, ['diff', '--stat'])]);
 
+	const commits = log
+		.split('\n')
+		.map(line => (line.length > SUBJECT_CHARACTERS ? `${line.slice(0, SUBJECT_CHARACTERS)}...` : line))
+		.join('\n');
+
 	return [
-		`Latest commits, newest first:\n${log}`,
+		`Latest commits, newest first:\n${commits}`,
 		status ? `Changed and not committed:\n${status}${stat ? `\n${stat}` : ''}` : 'Nothing changed and not committed.',
 	]
 		.join('\n\n')
