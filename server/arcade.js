@@ -165,7 +165,14 @@ const ideaSection = ({ idea, underWay }) => {
 			'',
 			idea,
 			'',
-			'Build toward it, and keep asking what comes next: it is theirs to change as they go.',
+			'This is the brief, in their words, and it comes first: do not swap it for an idea of your own, and do not start with questions. Before you build, harden it:',
+			'',
+			'1. Read it through and list for yourself every thing it asks for: what you see, what you do, what happens, how you win or lose.',
+			'2. Where it is vague or leaves a gap, decide it yourself with the choice a kid would most likely want. Do not ask about it.',
+			'3. Write the hardened version into `IDEA.md` in the project, as a short plain list of what the game has, so the next turns (and a fresh session) build the same game.',
+			'4. Then build it, the whole of it, in steps they can each see working within a minute, going on from one step to the next without stopping to ask. Start with the core of the idea so the game is playable early, then add each remaining part the brief names.',
+			'',
+			'Only when what the brief describes is in the game do you start asking what should happen next, as below: from then on it is theirs to change as they go. Until then, do not use the questions in "Every turn" below.',
 			'',
 		];
 	if (underWay)
@@ -240,12 +247,12 @@ export const arcadeInstructions = ({ title, named = true, idea = '', underWay = 
 export const openingPrompt = ({ title, named = true, idea = '', player }) => {
 	const hello = `Say hello to ${player || 'the kid you are building with'}.`;
 	const called = named ? `The game is called "${title}".` : 'The game has no name yet.';
-	const soFar = String(idea).trim().replace(/\s+/g, ' ');
+	const soFar = String(idea).trim();
 
 	if (!soFar)
 		return `${hello} ${called} There is no idea yet: find one together as your rules say, starting by asking what they love, with a few picture choices.${named ? '' : ' Find a name together once the idea is clear.'}`;
 
-	return `${hello} ${called} Their idea so far: ${soFar} Start on it: do the first thing they can see in the game, then ask what should happen next with a few choices.${named ? '' : ' Offer a few names once the idea is clear.'}`;
+	return `${hello} ${called} Their idea, in their words:\n\n${soFar}\n\nThat is the brief: harden it as your rules say, save it to IDEA.md, and build what it describes before asking what should happen next.${named ? '' : ' Offer a few names once what they described is built.'}`;
 };
 
 // The next folder free under `base` for a game with no name of its own: base, then base-2, base-3, ...

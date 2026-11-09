@@ -128,6 +128,8 @@ describe('arcadeInstructions', () => {
 
 		expect(text).toContain('# Building a game together');
 		expect(text).toContain('## The idea they started with\n\nrocks fall\nyou dodge\n');
+		expect(text).toContain('harden it');
+		expect(text).toContain('`IDEA.md`');
 		expect(text).toContain('## It has no name yet');
 		expect(text).toContain('.paude-arcade.json');
 
@@ -179,18 +181,19 @@ describe('openingPrompt', () => {
 		expect(openingPrompt({ title: 'Moon Rocks' })).toContain('the kid you are building with');
 	});
 
-	test('carries the idea so far on one line, and asks for a name when the game has none', () => {
+	test('carries the idea in their words, to be hardened and built first, and asks for a name when the game has none', () => {
 		const withIdea = openingPrompt({ title: 'Moon Rocks', player: 'Ada', idea: 'rocks fall\n\nyou dodge them' });
 
 		expect(withIdea).toContain(
-			'The game is called "Moon Rocks". Their idea so far: rocks fall you dodge them Start on it',
+			'The game is called "Moon Rocks". Their idea, in their words:\n\nrocks fall\n\nyou dodge them\n\nThat is the brief: harden it',
 		);
+		expect(withIdea).toContain('build what it describes before asking');
 		expect(withIdea).not.toContain('Offer a few names');
 
 		const unnamed = openingPrompt({ title: 'rocks fall', named: false, player: 'Ada', idea: 'rocks fall' });
 
 		expect(unnamed).toContain('The game has no name yet.');
-		expect(unnamed).toContain('Offer a few names once the idea is clear.');
+		expect(unnamed).toContain('Offer a few names once what they described is built.');
 		expect(openingPrompt({ title: 'New game', named: false })).toContain(
 			'Find a name together once the idea is clear.',
 		);
