@@ -4714,16 +4714,15 @@ export default class Ship {
 
 					const { out, curled } = this.loungerPose(worker);
 
-					// Legs pulled up onto the couch: thighs out along the cushion, knees up, boots at the far end
+					// Legs up on the couch: stretched out flat along the cushion to the side, a boot at the end
 					if (out && curled) {
 						const span = (from, to, y, h, color) =>
 							rect(ctx, curled > 0 ? at.x + from : at.x - to, y, to - from, h, color);
 
-						span(2, 6, at.y - 5, 4, PALETTE.k);
-						span(3, 6, at.y - 4, 2, PALETTE.a);
-						span(5, 8, at.y - 8, 4, PALETTE.k);
-						span(6, 7, at.y - 7, 2, PALETTE.a);
-						span(7, 10, at.y - 5, 3, PALETTE.k);
+						span(3, 11, at.y - 4, 3, PALETTE.k);
+						span(3, 10, at.y - 3, 1, PALETTE.a);
+						span(10, 14, at.y - 5, 3, PALETTE.k);
+						span(11, 13, at.y - 4, 1, PALETTE.a);
 
 						return;
 					}
