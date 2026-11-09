@@ -4,8 +4,10 @@ import { join } from 'path';
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
+import { launchSettings } from './arcadeSettings';
 import {
 	READING,
+	adoptArcade,
 	acceptTrust,
 	arcadeInstructions,
 	arcadeOf,
@@ -357,5 +359,55 @@ describe('snapshotTurn and undoLastTurn', () => {
 
 	test('nothing to put back when the newest commit is not a snapshot', async () => {
 		await expect(undoLastTurn('s1', game)).rejects.toThrow('nothing');
+	});
+});
+
+describe('adoptArcade', () => {
+	let repo;
+
+	beforeEach(async () => {
+		repo = await mkdtemp(join(tmpdir(), 'adopt-'));
+		sh(repo, 'git init -q && mkdir .claude');
+		await writeFile(
+			join(repo, 'package.json'),
+			JSON.stringify({ name: 'void-driller', scripts: { dev: 'bun --watch x.js' } }),
+		);
+		await writeFile(join(repo, '.claude', 'settings.json'), '{"theirs":true}');
+		await writeFile(join(repo, 'CLAUDE.local.md'), 'Our own notes.\n');
+	});
+	afterEach(() => rm(repo, { recursive: true, force: true }));
+
+	test("brings a project in without touching what's its own, and keeps paude's files out of its git status", async () => {
+		const marker = await adoptArcade(repo, { player: 'chase', reading: 'reading' });
+
+		expect(marker).toMatchObject({ title: 'void-driller', player: 'chase', adopted: true });
+		expect(await readFile(join(repo, '.claude', 'settings.json'), 'utf8')).toBe('{"theirs":true}');
+		expect(await readFile(join(repo, 'CLAUDE.local.md'), 'utf8')).toBe('@./.paude-arcade.md\n\nOur own notes.\n');
+		expect(await readFile(join(repo, '.git', 'info', 'exclude'), 'utf8')).toContain(
+			'/.paude-arcade.json\n/.paude-arcade.md\n/CLAUDE.local.md\n',
+		);
+		expect(sh(repo, 'git status --porcelain')).not.toContain('paude');
+		expect(sh(repo, 'git status --porcelain')).not.toContain('CLAUDE.local.md');
+
+		const rules = await readFile(join(repo, '.paude-arcade.md'), 'utf8');
+
+		expect(rules).toContain('# Working on void-driller together');
+		expect(rules).toContain('## It is already running');
+		expect(rules).not.toContain('Game.js');
+		expect(rules).not.toContain("## The game's face");
+	});
+
+	test('a project already in the arcade is left as it is, and how Claude writes must be known', async () => {
+		await adoptArcade(repo, { player: 'chase', reading: 'reading' });
+		await adoptArcade(repo, { player: 'someone else', reading: 'listening' });
+
+		expect(JSON.parse(await readFile(join(repo, '.paude-arcade.json'), 'utf8')).player).toBe('chase');
+		await expect(adoptArcade(await mkdtemp(join(tmpdir(), 'adopt-')), { reading: 'nope' })).rejects.toThrow('Pick how');
+	});
+
+	test("its arcade permissions come with paude's launch of Claude, and only for an adopted project", async () => {
+		expect(launchSettings(repo)).toBeNull();
+		await adoptArcade(repo, { player: 'chase', reading: 'reading' });
+		expect(launchSettings(repo)).toBe(claudeSettings);
 	});
 });

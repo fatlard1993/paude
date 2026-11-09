@@ -32,6 +32,8 @@ import { askClaude } from '../claudeInbox';
 import {
 	ArcadeError,
 	acceptTrust,
+	adoptArcade,
+	adoptedOpeningPrompt,
 	arcadeOf,
 	createArcadeProject,
 	hostingNow,
@@ -935,6 +937,40 @@ const sessionsRoutes = async (request, server) => {
 		}
 
 		return Response.json({ id: await startWith(folder, text, { mode, model, identity, project: match.project }) });
+	}
+
+	// An arcade session in a project that's already here, any repo: brought into the arcade (its marker and rules, its own
+	// settings untouched), Claude started in it told to look around first, and its dev script run when it has one
+	match = requestMatch('POST', '/api/projects/:project/arcade', request);
+	if (match) {
+		if (!identity.owner) return new Response("Bringing a project into the arcade is the owner's", { status: 403 });
+
+		const cwd = projectPath(match.project);
+
+		if (!(await isFolder(cwd))) return new Response('Unknown project', { status: 404 });
+
+		const { reading = 'reading', model } = await request.json().catch(() => ({}));
+		const player = await ownerName();
+		let marker;
+
+		try {
+			marker = await adoptArcade(cwd, { player, reading });
+		} catch (error) {
+			if (error instanceof ArcadeError) return new Response(error.message, { status: 400 });
+			throw error;
+		}
+
+		const id = await startWith(cwd, adoptedOpeningPrompt({ title: marker.title, player }), {
+			model,
+			identity,
+			project: match.project,
+		});
+
+		// No dev script, no game to show: the arcade says so
+		await runTask(id, cwd, 'package.json:dev').catch(() => {});
+		acceptTrust(runningSession(id)).catch(() => {});
+
+		return Response.json({ id });
 	}
 
 	match = requestMatch('GET', '/api/sessions/:id/attach', request);

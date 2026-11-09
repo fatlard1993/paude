@@ -52,7 +52,8 @@ export const HOOK_EVENTS = {
 export const curlMissing = () => !Bun.which('curl');
 
 // The --settings JSON that adds paude's hooks alongside the person's own (Claude Code runs both)
-export const hookSettings = () => {
+// `extra`: settings of the session's own to go with the hooks (an adopted arcade's permissions and hook), merged in
+export const hookSettings = (extra = null) => {
 	if (!hookUrl) return null;
 
 	// The session is named by paude's id, from the environment it starts Claude in: Claude's own id changes on /clear
@@ -89,7 +90,9 @@ export const hookSettings = () => {
 	};
 
 	return JSON.stringify({
+		...(extra?.permissions && { permissions: extra.permissions }),
 		hooks: {
+			...extra?.hooks,
 			...Object.fromEntries(Object.keys(HOOK_EVENTS).map(event => [event, hook])),
 			UserPromptSubmit: toldBack,
 			PostToolUse: toldBack,

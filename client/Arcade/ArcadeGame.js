@@ -130,6 +130,11 @@ export default class ArcadeGame extends GameFrame {
 		if (!identity()?.owner) return this.waitingRoom('The game is getting ready…');
 
 		const tasks = await getTasks(this.sessionId);
+
+		// A project with no dev script (one brought into the arcade, not a game) has nothing to show here
+		if (tasks.body?.tasks && !tasks.body.tasks.some(task => task.id === DEV_TASK))
+			return this.waitingRoom('Nothing to show here: this project has no dev server');
+
 		const running = tasks.body?.runs?.some(run => run.taskId === DEV_TASK && run.code === undefined);
 
 		// Down (it crashed, or the session slept and woke): started again by itself, with the button for a stubborn one

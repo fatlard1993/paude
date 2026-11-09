@@ -5,6 +5,7 @@ import { tintsOf } from '../shared/hues';
 import { readProgress, recentLines } from '../shared/progress';
 import { LIFETIMES } from '../shared/lifetimes';
 import { MODELS } from '../shared/models';
+import { READING } from '../shared/arcade';
 import {
 	createSession,
 	getCheckouts,
@@ -14,9 +15,11 @@ import {
 	getProjects,
 	markProjectLink,
 	setProjectWatching,
+	startProjectArcade,
 } from './api';
 import confirmDialog from './confirmDialog';
 import { element } from './dom';
+import { identity } from './identity';
 import { Bar, ghostButton } from './Bar';
 import { breadcrumbs } from './Breadcrumbs';
 import SessionBrowser from './SessionBrowser';
@@ -73,6 +76,22 @@ export default class Project extends View {
 			label: 'Watch',
 			onPress: () => this.toggleWatching(),
 		});
+		// An arcade session here, whatever the project: the owner's, asked how Claude should write first
+		if (identity()?.owner) {
+			const arcade = ghostButton(this.bar, {
+				icon: 'gamepad',
+				title: 'An arcade session here: big type, read aloud, a choice at the end of each turn, no terminal',
+				onPress: () =>
+					openMenu(arcade, [
+						{ heading: 'How Claude writes' },
+						...Object.entries(READING).map(([reading, { label, detail }]) => ({
+							label,
+							detail,
+							onPress: () => this.startArcade(reading),
+						})),
+					]),
+			});
+		}
 		// The universe, looking at this project's machine
 		ghostButton(this.bar, {
 			icon: 'earth-americas',
@@ -362,6 +381,18 @@ export default class Project extends View {
 		this.watchButton.title = this.watching
 			? 'Watching every session here, new ones too. Click to stop watching them all.'
 			: 'Not watching. Click to watch every session here, new ones too.';
+	}
+
+	async startArcade(reading) {
+		const { project } = this.options;
+		const { body, response } = await startProjectArcade(project, reading);
+
+		if (!response?.ok || !body?.id)
+			return new Notify({
+				intent: 'danger',
+				content: (typeof body === 'string' && body) || 'The arcade could not be started.',
+			});
+		window.location.hash = `#/arcade/${body.id}`;
 	}
 
 	async toggleWatching() {

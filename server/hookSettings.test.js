@@ -10,6 +10,7 @@ import {
 	hookSettings,
 	loadHookSecret,
 	setHookAddress,
+	soundsAddress,
 } from './hookSettings';
 
 // Recorded from Claude Code 2.1.291 (paths and ids dropped). Declining the permission prompt sent no hook at all,
@@ -71,4 +72,21 @@ test('the secret is kept for the next server, so held sessions still report afte
 	await loadHookSecret(dataDir);
 	setHookAddress({ host: '127.0.0.1', port: 8044 });
 	expect(hookSettings()).toContain('/api/hooks/kept-from-before/$PAUDE_SESSION');
+});
+
+test("a session's own settings go in beside paude's hooks, and the sound address is the session's own", () => {
+	setHookAddress({ host: '127.0.0.1', port: 8044 });
+
+	const extra = {
+		permissions: { defaultMode: 'auto', allow: ['Bash(bun *)'] },
+		hooks: { PermissionRequest: [{ matcher: 'x', hooks: [] }] },
+	};
+	const settings = JSON.parse(hookSettings(extra));
+
+	expect(settings.permissions).toEqual(extra.permissions);
+	expect(settings.hooks.PermissionRequest).toEqual(extra.hooks.PermissionRequest);
+	expect(settings.hooks.Stop).toBeDefined();
+	expect(JSON.parse(hookSettings()).permissions).toBeUndefined();
+	expect(soundsAddress('s1')).toMatch(/^http:\/\/127\.0\.0\.1:8044\/api\/sounds\/s1\/[\w-]{32}$/);
+	expect(soundsAddress('s1')).not.toBe(soundsAddress('s2'));
 });

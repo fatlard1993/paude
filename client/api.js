@@ -91,6 +91,14 @@ export const getCheckouts = async project =>
 // mode: 'warm' (kept warm), 'going' (kept warm and nudged on), 'fabled' (kept going by a Fable monitor), 'brief'
 // (short-lived), or nothing for an ordinary session;
 // model: one of shared/models' MODEL_NAMES, or nothing for the default
+// An arcade session in a project already here: { id }. `reading`: one of shared/arcade's READING keys
+export const startProjectArcade = async (project, reading) =>
+	await POST('/api/projects/:project/arcade', {
+		urlParameters: { project },
+		body: { reading },
+		invalidates: [['sessions', project]],
+	});
+
 export const createSession = async (project, text, checkout, mode, model) =>
 	await POST('/api/projects/:project/sessions', {
 		urlParameters: { project },

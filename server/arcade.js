@@ -1,11 +1,12 @@
 import { mkdir, readFile, stat, writeFile } from 'fs/promises';
-import { basename, join } from 'path';
+import { basename, join, resolve } from 'path';
 
 import pkg from '../package.json';
 import readJsonFile from '../shared/readJsonFile';
 import { READING } from '../shared/arcade';
 import writeJsonFile from '../shared/writeJsonFile';
 import { statusOf } from './activity';
+import { claudeSettings } from './arcadeSettings';
 import { askClaude } from './claudeInbox';
 import { listProjects, projectOf, projectPath } from './projects';
 import { sessionEnvironment } from './sessions/PtySession';
@@ -43,61 +44,7 @@ const TRUST_YES = /Yes, I trust this folder/;
 // Down is pressed at most this often before giving up, so a dialog that never moves is never answered
 const TRUST_PRESSES = 6;
 
-// What Claude works under in a game: auto mode, its classifier answering whatever the allow list doesn't, the deny list
-// holding what would reach past the game (root, a push, history rewritten, the disk wiped). No one sits at an arcade
-// to answer a permission prompt, so any that would still appear is turned back at once by a hook, with word to find
-// another way, and the turn carries on; Claude's own questions to the person aren't permission prompts and pass.
-const PROMPTS_ANSWERED = '^(?!AskUserQuestion$|ExitPlanMode$).*';
-const TURNED_BACK = JSON.stringify({
-	hookSpecificOutput: {
-		hookEventName: 'PermissionRequest',
-		decision: {
-			behavior: 'deny',
-			message:
-				'Nobody here answers permission prompts, so this was turned back without asking. Do it another way within the project, or leave it out and carry on.',
-		},
-	},
-});
-
-export const claudeSettings = {
-	permissions: {
-		defaultMode: 'auto',
-		allow: [
-			'Read',
-			'Glob',
-			'Grep',
-			'Edit',
-			'Write',
-			'MultiEdit',
-			'WebFetch',
-			'WebSearch',
-			'Bash(ls *)',
-			'Bash(cat *)',
-			'Bash(head *)',
-			'Bash(tail *)',
-			'Bash(wc *)',
-			'Bash(grep *)',
-			'Bash(rg *)',
-			'Bash(find *)',
-			'Bash(sed *)',
-			'Bash(tree *)',
-			'Bash(mkdir *)',
-			'Bash(touch *)',
-			'Bash(cp *)',
-			'Bash(mv *)',
-			'Bash(ss *)',
-			'Bash(curl *)',
-			'Bash(bun *)',
-			'Bash(git *)',
-		],
-		deny: ['Bash(sudo *)', 'Bash(git push*)', 'Bash(git reset --hard*)', 'Bash(rm -rf /*)', 'Bash(rm -rf ~*)'],
-	},
-	hooks: {
-		PermissionRequest: [
-			{ matcher: PROMPTS_ANSWERED, hooks: [{ type: 'command', command: `printf '%s' '${TURNED_BACK}'` }] },
-		],
-	},
-};
+export { claudeSettings };
 
 export { READING };
 
@@ -294,6 +241,51 @@ export const arcadeInstructions = ({
 		"The libraries' docs are in `node_modules` (see `CLAUDE.md`): read them before building what the framework or the component library might already do.",
 		'',
 	].join('\n');
+
+// The rules for a project that was there before the arcade: any repo, game or not, worked on the arcade's way (big
+// type, read aloud, a choice at the end of each turn) without paude's game scaffold assumed: no Game.js, no dev server
+// unless it has one, and its README left as its owners wrote it
+export const adoptedInstructions = ({ title, player, reading, devServer = false, performs = false, sounds = false }) =>
+	[
+		`# Working on ${title} together`,
+		'',
+		`You are working on this project with ${player || 'the person here'}. They decide what it should become and what happens next; you do all of the work, and you are trusted to do it well and see it through on your own. The owner of this paude may write in the same conversation now and then; follow what they say. Others may join on their own devices: paude adds a line naming who is in the arcade whenever that changes, so work with whoever is there.`,
+		'',
+		'## An existing project',
+		'',
+		"It was here before this conversation: read its README, its `CLAUDE.md` if it has one, and the files that matter before changing anything, and keep to how it's already written. Don't start over or ask what it is.",
+		'',
+		...(devServer
+			? [
+					'## It is already running',
+					'',
+					"Its `dev` script runs under paude as the project's `dev` task and shows live beside this conversation. Keeping it running is yours: don't start a second copy or stop it, and never ask anyone to restart anything; if a change doesn't show, look at how the dev script reloads and make it show. \"Show me\" means say in a line what to look at or tap in what they already see.",
+					'',
+				]
+			: []),
+		'## Every turn',
+		'',
+		'1. Make the change they asked for, the whole of it, and check it works before handing it back: its tests pass and it builds. If something breaks, fix it.',
+		'2. Say what changed, in a line.',
+		'3. Ask what should happen next with the AskUserQuestion tool, one question, and offer two to four real choices about the project (what it does, how it looks, what is in it), never about code or files. Do not offer "show me", "my idea" (they can always talk or type to you) or "more ideas" (the page adds that one itself, and it asks you for a fresh set); every choice is a real thing the project could do.',
+		'',
+		'## How to write',
+		'',
+		...WRITING[reading],
+		'The labels of your choices are read aloud and shown as big buttons, so the emoji comes first and the words stay few.',
+		'Decide every technical question yourself, without asking. Explain how the code works only when they ask. Say so in a few words when something works; do not gush.',
+		'',
+		...(performs ? voiceSection() : []),
+		...(sounds ? soundsSection() : []),
+		'## Working',
+		'',
+		"Work inside this project, with whatever the job needs: read and edit files, run shell commands, tests and builds, add a package when the project is better for it, look things up on the web. Routine work runs without asking. No one is there to answer a permission prompt: anything that would need one is turned back at once, so when something is refused, find another way to do it within the project and carry on, rather than stopping or asking for help. Don't push or rewrite history: paude keeps every turn as a commit that can be put back.",
+		'',
+	].join('\n');
+
+// The first thing Claude is asked in a project brought into the arcade
+export const adoptedOpeningPrompt = ({ title, player }) =>
+	`Say hello to ${player || 'the person you are working with'}. This is ${title}, a project that was here before: look around it as your rules say, tell them in a line or two what it is and what it can do now, then ask what they'd like to do with it.`;
 
 // The first thing Claude is asked, when the session starts
 export const openingPrompt = ({ title, named = true, idea = '', player }) => {
@@ -496,6 +488,7 @@ export const refreshArcade = async cwd => {
 	const marker = await arcadeOf(cwd);
 
 	if (!marker) return false;
+	if (marker.adopted) return refreshAdopted(cwd, marker);
 
 	// Past the scaffold's first commit, the game is what its files say, idea recorded or not
 	const commits = await gitOut(cwd, ['rev-list', '--count', 'HEAD']);
@@ -524,6 +517,88 @@ export const refreshArcade = async cwd => {
 	else if (!current.includes(RULES_IMPORT)) await writeFile(local, `${RULES_IMPORT}\n\n${current}`);
 
 	return true;
+};
+
+// What paude writes into a project it didn't make, kept out of the project's own git status by the repository's local
+// exclude file (never its .gitignore, which is the project's)
+const PAUDE_FILES = [MARKER, RULES, 'CLAUDE.local.md'];
+
+const excludeOurs = async cwd => {
+	const where = await gitOut(cwd, ['rev-parse', '--git-path', 'info/exclude']);
+
+	if (!where.ok) return;
+
+	const file = resolve(cwd, where.out);
+	const current = await readFile(file, 'utf8').catch(() => '');
+	const missing = PAUDE_FILES.filter(name => !current.split('\n').includes(`/${name}`));
+
+	if (!missing.length) return;
+	await mkdir(join(file, '..'), { recursive: true });
+	await writeFile(
+		file,
+		`${current}${current && !current.endsWith('\n') ? '\n' : ''}${missing.map(name => `/${name}`).join('\n')}\n`,
+	);
+};
+
+const hasDevScript = async cwd =>
+	Boolean((await readJsonFile(join(cwd, 'package.json'), null).catch(() => null))?.scripts?.dev);
+
+// A project brought into the arcade gets its rules and the import of them, and nothing of its own changed: its
+// .claude settings stay its own (the arcade's permissions come with paude's launch of Claude instead), its README too
+const refreshAdopted = async (cwd, marker) => {
+	const devServer = await hasDevScript(cwd);
+	const voice = await voiceSettings();
+
+	await excludeOurs(cwd);
+	await writeFile(
+		join(cwd, RULES),
+		adoptedInstructions({
+			title: marker.title,
+			player: marker.player,
+			reading: marker.reading,
+			devServer,
+			performs: await voicePerforms(),
+			sounds: Boolean(voice) && devServer,
+		}),
+	);
+
+	const local = join(cwd, 'CLAUDE.local.md');
+	const current = await readFile(local, 'utf8').catch(() => null);
+
+	if (current === null) await writeFile(local, LOCAL_STUB);
+	else if (!current.includes(RULES_IMPORT)) await writeFile(local, `${RULES_IMPORT}\n\n${current}`);
+
+	return true;
+};
+
+// Brings a project that was already here into the arcade: its marker written (named for its package or its folder,
+// marked as adopted, so it isn't treated as one of paude's games), and its rules. A project already in the arcade is
+// left as it is. Resolves to the marker.
+export const adoptArcade = async (cwd, { player, reading }) => {
+	const known = await arcadeOf(cwd);
+
+	if (known) return known;
+	if (!(reading in READING))
+		throw new ArcadeError(`Pick how Claude writes to them: ${Object.keys(READING).join(', ')}.`);
+
+	const named = (await readJsonFile(join(cwd, 'package.json'), null).catch(() => null))?.name;
+	const marker = {
+		title: String(named || basename(cwd)).slice(0, NAME_LENGTH),
+		named: true,
+		player: String(player ?? '')
+			.trim()
+			.slice(0, 40),
+		reading,
+		adopted: true,
+		made: new Date().toISOString(),
+	};
+
+	await excludeOurs(cwd);
+	await writeJsonFile(join(cwd, MARKER), () => marker);
+	arcadeKnown.delete(cwd);
+	await refreshArcade(cwd);
+
+	return marker;
 };
 
 // What a snapshot is named for: the last thing the person gave Claude, an answer to its question (a choice's label,
@@ -653,6 +728,8 @@ export const keepHosted = (cwd, { delay = HOST_AFTER_QUIET_MS } = {}) => {
 		cwd,
 		setTimeout(async () => {
 			hostTimers.delete(cwd);
+			// A project brought into the arcade isn't one of paude's games: the hub doesn't host it
+			if ((await arcadeOf(cwd))?.adopted) return;
 
 			const known = await hostingOf(cwd);
 			const head = await gitOut(cwd, ['rev-parse', 'HEAD']);
@@ -677,7 +754,9 @@ export const hostUnhosted = async ({ apartMs = 30_000 } = {}) => {
 	for (const name of await listProjects()) {
 		const cwd = projectPath(name);
 
-		if (!cwd || !(await arcadeOf(cwd)) || (await hostingOf(cwd))) continue;
+		const marker = cwd && (await arcadeOf(cwd));
+
+		if (!marker || marker.adopted || (await hostingOf(cwd))) continue;
 
 		keepHosted(cwd, { delay });
 		delay += apartMs;

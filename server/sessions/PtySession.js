@@ -4,6 +4,7 @@ import serializeAddon from '@xterm/addon-serialize';
 import { sessionHue } from '../../shared/hues';
 import inputKind, { FOCUS_IN } from '../../shared/inputKind';
 import { setStatus, statusOf } from '../activity';
+import { launchSettings } from '../arcadeSettings';
 import { hookSettings, soundsAddress } from '../hookSettings';
 import { warmUntil } from '../keepWarm';
 import { limitOf } from '../usageLimit';
@@ -105,7 +106,7 @@ export default class PtySession {
 			this.broadcastPresence();
 		});
 
-		const settings = hookSettings();
+		const settings = hookSettings(launchSettings(cwd));
 		// `--` keeps a prompt that starts with a dash from being read as an option
 		const args = [
 			...(settings ? ['--settings', settings] : []),
