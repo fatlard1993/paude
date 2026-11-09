@@ -717,7 +717,8 @@ export default class ArcadeTalk extends Talk {
 		const buttons = [...this.choices.querySelectorAll('button.choice')];
 
 		for (const option of options) parts.push(spokenText(option.label));
-		if (more) parts.push('More ideas');
+		// Tacked on by the page, not one of Claude's, so it's read as an afterthought: "...a star. Or more ideas."
+		if (more) parts.push('or more ideas');
 
 		// Which part each spoken word belongs to, by the words' count
 		const owners = [];
