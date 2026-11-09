@@ -34,7 +34,9 @@ const inboxOf = id => {
 };
 
 // Typed in only when the prompt box is empty and Claude isn't asking anything: a message must neither answer a
-// permission prompt nor run into what someone is halfway through typing. While Claude works, Claude queues it.
+// permission prompt nor run into what someone is halfway through typing. While Claude works, Claude queues it. A
+// question of Claude's that takes words (its "type something" option) takes the message as its answer, as it would
+// take the same words typed at the terminal: the words are what the person wants done next, whatever was offered.
 const deliver = id => {
 	const inbox = inboxes.get(id);
 	const session = sessionOf(id);
@@ -48,6 +50,14 @@ const deliver = id => {
 	}
 	if (!inbox.queue.length) return;
 
+	const asked = statusOf(id) === 'waiting' ? session.asking?.() : null;
+
+	if (asked?.typing && session.answer(asked.question, asked.typing, inbox.queue[0].prompt)) {
+		inbox.asked.push({ ...inbox.queue.shift(), at: Date.now() });
+		if (inbox.queue.length) inbox.timer = setTimeout(() => deliver(id), RETRY_MS);
+
+		return save();
+	}
 	if (statusOf(id) === 'waiting' || session.promptDraft() !== '') {
 		inbox.timer = setTimeout(() => deliver(id), RETRY_MS);
 

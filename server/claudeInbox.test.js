@@ -48,6 +48,38 @@ test('a turn of tools and no words answers empty', () => {
 
 const inboxFile = dir => Bun.file(path.join(dir, 'claude-inbox.json')).json();
 
+test("a message sent while Claude asks a question that takes words answers it through that option; one that doesn't waits", async () => {
+	const { initActivity, setStatus } = await import('./activity');
+	const dir = mkdtempSync(path.join(os.tmpdir(), 'inbox-'));
+
+	await initActivity(dir);
+	const answers = [];
+	const asking = { question: 'What next?', typing: '3' };
+	const session = {
+		promptDraft: () => null,
+		typeIn: () => {},
+		asking: () => asking,
+		answer: (question, key, text) => {
+			answers.push({ question, key, text });
+
+			return true;
+		},
+	};
+
+	await setStatus('asked', 'waiting');
+	await initClaudeInbox(dir, id => (id === 'asked' ? session : undefined));
+	await askClaude('asked', { prompt: 'make the frog blue' });
+	expect(answers).toEqual([{ question: 'What next?', key: '3', text: 'make the frog blue' }]);
+	expect((await inboxFile(dir)).asked.queue).toEqual([]);
+
+	// A permission prompt takes no words: the message waits
+	delete asking.typing;
+	await askClaude('asked', { prompt: 'and bigger' });
+	expect(answers).toHaveLength(1);
+	expect((await inboxFile(dir)).asked.queue).toEqual([{ prompt: 'and bigger' }]);
+	await initClaudeInbox(dir, () => undefined);
+});
+
 test("a message waiting for Claude's prompt box is handed on to the next server, which types it in and waits for its answer", async () => {
 	const dir = mkdtempSync(path.join(os.tmpdir(), 'inbox-'));
 	const typed = [];
