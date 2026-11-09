@@ -33,6 +33,8 @@ const SHELF_TIMEOUT_MS = 5 * 60 * 1000;
 const NAME_LENGTH = 60;
 // The idea a game starts from, as rough or detailed as the person cares to write
 const IDEA_LENGTH = 4000;
+// How much of the idea opens the game's README and manifest, until Claude writes it a proper one
+const FACE_DESCRIPTION_LENGTH = 300;
 const INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
 // How long a new session is watched for Claude's trust question about its folder
 const TRUST_WAIT_MS = 90_000;
@@ -203,12 +205,16 @@ export const arcadeInstructions = ({ title, named = true, idea = '', underWay = 
 			: [
 					'## It has no name yet',
 					'',
-					'Once you both know what the game is about, offer a few names as choices, a question like any other. When one is picked, put it in the title of `client/index.html` and on the Start view in `client/Start.js`, and set it as "title" in `.paude-arcade.json`, which is where paude reads the name from.',
+					'Once you both know what the game is about, offer a few names as choices, a question like any other. When one is picked, put it in the title of `client/index.html`, on the Start view in `client/Start.js`, as the heading of `README.md` and as "name" and "short_name" in `client/manifest.json` when there is one, and set it as "title" in `.paude-arcade.json`, which is where paude reads the name from.',
 					'',
 				]),
 		'## The game is already running',
 		'',
 		'The game\'s server runs under paude as the project\'s `dev` task, and the kid sees the game live beside this conversation: it rebuilds and reloads itself every time you save a file. Never start, stop or restart it, and never run `bun run dev` yourself. "Show me" means say in a line what to look at or tap in the game they already see. If the game looks broken, fix the file; paude restarts the server itself if it ever dies.',
+		'',
+		"## The game's face",
+		'',
+		'The first paragraph of `README.md`, under its heading, tells a grown-up who has never seen the game what it is, in one or two plain sentences: the house\'s list of games shows it on the game\'s card. When the game becomes something new (a new goal, a new way to play), rewrite that paragraph to match, and set "description" in `client/manifest.json` to the same words when there is one. Do it quietly, in the same turn; it is not something to tell the kid about or ask them.',
 		'',
 		'## Every turn',
 		'',
@@ -296,8 +302,11 @@ export const createArcadeProject = async ({ name, idea, player, reading }, onOut
 	});
 
 	onOutput(`Making ${basename(folder)} from the game scaffold\n`);
+	// The title and idea become the game's face (its page title, manifest and README), from a scaffold that takes them
 	await newGame(folder, {
 		name: basename(folder),
+		title,
+		description: theIdea.replace(/\s+/g, ' ').slice(0, FACE_DESCRIPTION_LENGTH) || undefined,
 		framework: spec,
 		vbc: pkg.dependencies['@vanilla-bean/components'],
 	});

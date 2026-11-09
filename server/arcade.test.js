@@ -154,6 +154,17 @@ describe('arcadeInstructions', () => {
 		expect(text).toContain('Never start, stop or restart it');
 	});
 
+	test("keeps the game's face, its README's opening and manifest, saying what the game is", () => {
+		const text = arcadeInstructions({ title: 'Moon Rocks', player: 'Ada', reading: 'reading' });
+
+		expect(text).toContain("## The game's face");
+		expect(text).toContain('first paragraph of `README.md`');
+		expect(text).toContain('"description" in `client/manifest.json`');
+		expect(arcadeInstructions({ title: 'x', named: false, player: '', reading: 'reading' })).toContain(
+			'"name" and "short_name" in `client/manifest.json`',
+		);
+	});
+
 	test('has a voice for every reading level', () => {
 		for (const reading of Object.keys(READING))
 			expect(arcadeInstructions({ title: 'X', player: '', reading })).toContain('## How to write');
