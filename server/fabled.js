@@ -222,9 +222,9 @@ export const outcomeOf = ({ exitCode, out, err, first, killed = false }) => {
 	};
 };
 
-// The monitor asked `prompt`, as outcomeOf says. Counted as the crew watching the session.
-export const askMonitor = (id, cwd, prompt, { first = false } = {}) =>
-	crewJob('watching a session', () => ask(id, cwd, prompt, { first }));
+// The monitor asked `prompt`, as outcomeOf says. Counted as the crew doing `job`.
+export const askMonitor = (id, cwd, prompt, { first = false, turns = MOST_TURNS, job = 'watching a session' } = {}) =>
+	crewJob(job, () => ask(id, cwd, prompt, { first, turns }));
 
 // Each monitor's asks one at a time: two resumes of one conversation at once would each carry it on from the same
 // point, and one would lose what the other added. A verdict, a keep-warm ping and a handover can all fall together.
@@ -326,3 +326,27 @@ export const deltaFor = ({ since, settled, reply, repo = '' }) => {
 		'What should Claude do next? Reply with only the JSON object.',
 	].join('\n');
 };
+
+// How long a handover may be, and how many rounds of tool calls it may take: it is written from what the monitor
+// already holds, with a look at the checkout at most, while the session waits to carry on
+const HANDOVER_WORDS = 500;
+export const HANDOVER_TURNS = 4;
+
+// What the monitor is asked as Claude's context is compacted: a handover for the Claude that carries on from the
+// summary, from the run the monitor has followed whole. `focus` is what the person asked the summary to keep, when they
+// compacted it themselves.
+export const handoverFor = ({ settled = [], repo = '', focus = '' }) =>
+	[
+		"Claude's context is being compacted now: Claude Code is replacing the run so far with its own summary, and the Claude that carries on will know only that summary. You have followed the run whole. This time you give no verdict: write the handover that Claude will be given beside the summary, so it carries on without losing what matters.",
+		...(focus ? ['', 'The person asked the summary to keep:', ...tagged('focus', [focus])] : []),
+		...(repo ? ['', 'The checkout as it stands:', ...tagged('repository', [repo])] : []),
+		...(settled.length ? ['', 'What the session has settled, newest first:', ...tagged('settled', settled)] : []),
+		'',
+		'Write to that Claude, most important first:',
+		'- What the person asked for and is still waiting on, and the work in hand: what is done, what is half done, the next step.',
+		"- The person's corrections and redirections, in their own words where they matter: what they turned down is what a summary loses first.",
+		'- What was decided and what was rejected, and why; approaches tried that failed, so they are not tried again.',
+		'- Where the work lives: the files, functions and tests it touches, and any state outside the code (a running process, a question waiting on the person).',
+		'',
+		`Leave out what the checkout already shows plainly and anything settled that no longer bears on the work. At most ${HANDOVER_WORDS} words. Reply with only the handover, in plain Markdown: no JSON, no preamble.`,
+	].join('\n');

@@ -7,8 +7,10 @@ import {
 	MOST_IDLE as FABLED_IDLE,
 	MOST_NUDGES as FABLED_NUDGES,
 	askMonitor as askFabledMonitor,
+	HANDOVER_TURNS,
 	briefFor,
 	deltaFor,
+	handoverFor,
 	forgetMonitor,
 	repoStateOf,
 	usageWords,
@@ -73,6 +75,13 @@ export const holdBefore = (turns, { most = MOST_NUDGES, idle: mostIdle = MOST_ID
 	while (idle < run.length && run.at(-1 - idle).steps.length <= SLIGHT) idle += 1;
 
 	return idle >= mostIdle ? `${mostIdle} nudged turns in a row did next to nothing` : null;
+};
+
+// What the session settled within the last few turns the person spoke in on, as the monitor and Haiku are shown it
+const settledIn = async (id, cwd, turns, decisionsOf) => {
+	const { decisions } = await decisionsOf(id, cwd).catch(() => ({ decisions: [] }));
+
+	return settledSoFar(decisions, new Set(lately(turns).map(turn => turn.id)));
 };
 
 const FABLED_ROOM = { most: FABLED_NUDGES, idle: FABLED_IDLE };
@@ -324,9 +333,7 @@ const answerTurnEnd = async (
 		return false;
 	}
 
-	const { decisions } = await decisionsOf(id, session.cwd).catch(() => ({ decisions: [] }));
-	const within = new Set(lately(turns).map(turn => turn.id));
-	const settled = settledSoFar(decisions, within);
+	const settled = await settledIn(id, session.cwd, turns, decisionsOf);
 	const verdict = jsonIn(
 		fabled
 			? await askFabled(id, session, reply, turns, settled, askMonitor, repoOf, forget)
@@ -384,4 +391,73 @@ export const resumeKeepingGoing = async ({
 	}
 
 	return resumed;
+};
+
+// The handover each fabled session's monitor is writing as Claude's context compacts, until the resumed Claude takes it
+const handovers = new Map();
+
+// Claude Code is about to compact a fabled session's context (its PreCompact hook): the monitor, which has followed the
+// run whole and never compacts, writes the resumed Claude a handover, while compacting takes its half a minute or more.
+// Only a monitor that has looked at the session has anything to hand over. Neither who the monitor has seen nor its
+// misses move: a handover is no verdict, and the turn in hand is told at its end as any other. Whether one was begun.
+export const beginHandover = async (
+	id,
+	{ custom_instructions: focus } = {},
+	{
+		askMonitor = askFabledMonitor,
+		repoOf = repoStateOf,
+		sessionOf = runningSession,
+		turnsOf = (sessionId, cwd) => sessionTurns(sessionId, cwd, { whole: true }),
+		decisionsOf = (sessionId, cwd) => sessionDecisions(sessionId, cwd, { onlyRead: true, whole: true }),
+	} = {},
+) => {
+	const session = sessionOf(id);
+	const { monitor, seen } = monitorOf(id) ?? {};
+
+	if (!session || !fabledOn(id) || !monitor || !seen) return false;
+
+	const written = (async () => {
+		const [turns, repo] = await Promise.all([turnsOf(id, session.cwd), repoOf(session.cwd)]);
+		const settled = await settledIn(id, session.cwd, turns, decisionsOf);
+		const prompt = handoverFor({ settled, repo, focus: typeof focus === 'string' ? focus.trim() : '' });
+		const { answer, usage, why } = await askMonitor(monitor, session.cwd, prompt, {
+			turns: HANDOVER_TURNS,
+			job: 'handing over a compacted session',
+		});
+
+		console.log(
+			`Keep fabled ${id}: ${answer ? 'handover written' : `no handover (${why})`}${usage ? `: ${usageWords(usage)}` : ''}`,
+		);
+
+		return answer.trim();
+	})().catch(error => {
+		console.error('Writing a handover failed:', error);
+
+		return '';
+	});
+
+	handovers.set(id, written);
+
+	return true;
+};
+
+// The handover for a session whose context was just compacted (its SessionStart hook, from compacting), waited for at
+// most `waitMs` since Claude waits on it to carry on; '' for none. Taken once: a later compaction gets its own.
+export const takeHandover = async (id, waitMs) => {
+	const written = handovers.get(id);
+
+	if (!written) return '';
+	handovers.delete(id);
+
+	let timer;
+	const late = new Promise(resolve => {
+		timer = setTimeout(() => resolve(null), waitMs);
+	});
+	const handover = await Promise.race([written, late]);
+
+	clearTimeout(timer);
+	if (handover === null)
+		console.log(`Keep fabled ${id}: the handover wasn't written in time; Claude carries on without it`);
+
+	return handover ?? '';
 };

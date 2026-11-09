@@ -9,8 +9,10 @@ import {
 	MONITOR_PING,
 	MOST_TURNS,
 	askMonitor,
+	HANDOVER_TURNS,
 	briefFor,
 	deltaFor,
+	handoverFor,
 	forgetMonitor,
 	initFabled,
 	monitorCommand,
@@ -296,4 +298,20 @@ test("one monitor's asks go one at a time, since two resumes of a conversation a
 	} finally {
 		setClaudePath('claude');
 	}
+});
+
+test('the handover is written for the Claude that carries on from the summary, in prose, short, from what the run settled', () => {
+	const handover = handoverFor({
+		settled: ['Rejected: per-session counts.'],
+		repo: 'Latest commits, newest first:\nabc1234 the plates',
+		focus: 'the hull work',
+	});
+
+	expect(handover).toContain('being compacted now');
+	expect(handover).toContain('<focus>\nthe hull work\n</focus>');
+	expect(handover).toContain('<settled>\nRejected: per-session counts.\n</settled>');
+	expect(handover).toContain('<repository>\nLatest commits');
+	expect(handover).toContain('no JSON');
+	expect(handoverFor({})).not.toContain('<focus>');
+	expect(HANDOVER_TURNS).toBeLessThan(MOST_TURNS);
 });

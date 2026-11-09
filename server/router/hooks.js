@@ -9,10 +9,10 @@ import { projectOf } from '../projects';
 import { afterTurnTasks, runTask } from '../tasks';
 import { sessionTimeline, sessionTurns } from '../timeline';
 import { turnEnded as noteTurnCommits, turnStarted } from '../turnCommits';
-import { HOOK_EVENTS, hookSecret } from '../hookSettings';
+import { HANDOVER_WAIT_SECONDS, HOOK_EVENTS, hookSecret } from '../hookSettings';
 import { claudeActive } from '../keepWarm';
 import { commandEnded, commandStarting, commandsSettled, noteChanged } from '../commandEdits';
-import { keepGoing } from '../keepGoing';
+import { beginHandover, keepGoing, takeHandover } from '../keepGoing';
 import { lookBack } from '../lookBack';
 import { limitHook } from '../usageLimit';
 import { noteEmpty } from '../fuel';
@@ -58,6 +58,20 @@ const beforePush = async (id, payload) => {
 	});
 };
 
+// Claude carrying on from a compaction reads the monitor's handover, if one was written in time, beside the summary
+const afterCompact = async (id, { source }) => {
+	const handover = source === 'compact' ? await takeHandover(id, HANDOVER_WAIT_SECONDS * 1000) : '';
+
+	if (!handover) return new Response(null, { status: 204 });
+
+	return Response.json({
+		hookSpecificOutput: {
+			hookEventName: 'SessionStart',
+			additionalContext: `A handover from paude's monitor of this session, which has followed the whole run and read the repository (not the person's words): weigh it against the summary and the checkout.\n\n${handover}`,
+		},
+	});
+};
+
 // Where the hooks in hookSettings report; authenticated by the secret in the address rather than a login
 const hooksRoutes = async request => {
 	const match =
@@ -81,6 +95,13 @@ const hooksRoutes = async request => {
 
 		return (await beforePush(id, payload)) ?? new Response(null, { status: 204 });
 	}
+	// A fabled session's monitor writes a handover while Claude Code compacts, given to Claude as it carries on
+	if (payload.hook_event_name === 'PreCompact') {
+		await beginHandover(id, payload).catch(error => console.error('Beginning a handover failed:', error));
+
+		return new Response(null, { status: 204 });
+	}
+	if (payload.hook_event_name === 'SessionStart') return afterCompact(id, payload);
 	// An arcade's turn ends at the question Claude asks, since every turn there ends with one and Claude Code's Stop
 	// never comes while a question waits: the turn's changes are kept as its snapshot, and the change recorded
 	if (payload.hook_event_name === 'PreToolUse' && payload.tool_name === 'AskUserQuestion') {

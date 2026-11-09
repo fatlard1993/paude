@@ -3,7 +3,14 @@ import os from 'os';
 import { join } from 'path';
 import { expect, test } from 'bun:test';
 
-import { HOOK_EVENTS, hookSecret, hookSettings, loadHookSecret, setHookAddress } from './hookSettings';
+import {
+	HANDOVER_WAIT_SECONDS,
+	HOOK_EVENTS,
+	hookSecret,
+	hookSettings,
+	loadHookSecret,
+	setHookAddress,
+} from './hookSettings';
 
 // Recorded from Claude Code 2.1.291 (paths and ids dropped). Declining the permission prompt sent no hook at all,
 // which is why typing into a waiting session clears it (PtySession.input).
@@ -26,7 +33,9 @@ test('the settings post every event to a per-session address, and never fail the
 
 	const { hooks } = JSON.parse(hookSettings());
 
-	expect(Object.keys(hooks).sort()).toEqual([...Object.keys(HOOK_EVENTS), 'PreToolUse'].sort());
+	expect(Object.keys(hooks).sort()).toEqual(
+		[...Object.keys(HOOK_EVENTS), 'PreToolUse', 'PreCompact', 'SessionStart'].sort(),
+	);
 	// Before a tool runs, only the edits report, so the page can show what Claude proposes
 	expect(hooks.PreToolUse[0].matcher).toBe('Edit|MultiEdit|Write');
 	// And every command, whose answer may hold a push while the session's decisions are filed: its output is kept
@@ -34,6 +43,12 @@ test('the settings post every event to a per-session address, and never fail the
 	expect(hooks.PreToolUse[1].hooks[0].command).not.toMatch(/[^2]>\/dev\/null/);
 	expect(hooks.PreToolUse[1].hooks[0].timeout).toBeGreaterThan(240);
 	expect(hooks.PreToolUse[3].matcher).toBe('AskUserQuestion');
+	// Only carrying on from a compaction asks, and its answer, the monitor's handover, is kept and waited for
+	expect(hooks.SessionStart).toHaveLength(1);
+	expect(hooks.SessionStart[0].matcher).toBe('compact');
+	expect(hooks.SessionStart[0].hooks[0].command).not.toMatch(/[^2]>\/dev\/null/);
+	expect(hooks.SessionStart[0].hooks[0].timeout).toBeGreaterThan(HANDOVER_WAIT_SECONDS);
+	expect(hooks.PreCompact[0].hooks[0].command).toEndWith('|| true');
 
 	const { command } = hooks.Stop[0].hooks[0];
 

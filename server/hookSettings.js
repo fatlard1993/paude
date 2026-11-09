@@ -9,6 +9,8 @@ export let hookSecret = Buffer.from(crypto.getRandomValues(new Uint8Array(24))).
 let hookUrl = null;
 // How long a push waits on the filing, at most
 const PUSH_WAIT_SECONDS = 240;
+// How long Claude, carrying on from a compaction, waits on the handover a fabled session's monitor is writing, at most
+export const HANDOVER_WAIT_SECONDS = 120;
 
 // A session held through a restart keeps the hooks it started with, so the secret outlives any one server: kept in
 // the data folder, readable only by this user
@@ -54,6 +56,12 @@ export const hookSettings = () => {
 		command: `${post.replace('curl -fsS', `curl -fsS --max-time ${PUSH_WAIT_SECONDS}`)} 2>/dev/null || true`,
 		timeout: PUSH_WAIT_SECONDS + 10,
 	};
+	// Carrying on from a compaction, paude may answer with a handover for Claude to read beside the summary
+	const afterCompact = {
+		type: 'command',
+		command: `${post.replace('curl -fsS', `curl -fsS --max-time ${HANDOVER_WAIT_SECONDS + 5}`)} 2>/dev/null || true`,
+		timeout: HANDOVER_WAIT_SECONDS + 15,
+	};
 
 	return JSON.stringify({
 		hooks: {
@@ -68,6 +76,9 @@ export const hookSettings = () => {
 				// a Stop never comes while the question waits
 				{ matcher: 'AskUserQuestion', hooks: hook[0].hooks },
 			],
+			// A compaction beginning, for a fabled session's monitor to start its handover, and Claude carrying on after
+			PreCompact: hook,
+			SessionStart: [{ matcher: 'compact', hooks: [afterCompact] }],
 		},
 	});
 };
