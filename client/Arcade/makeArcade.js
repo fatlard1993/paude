@@ -49,7 +49,7 @@ export const readingSelect = () => {
 	return { reading, hint };
 };
 
-// Makes the game ({ name, idea, player, reading }, name and idea each optional) here, or on `remote` ({ name, url }); what the making prints goes to
+// Makes the game ({ name, idea, reading }, name and idea each optional) here, or on `remote` ({ name, url }); what the making prints goes to
 // `progress` (a pre) as it comes. { id } once its session runs, or { error }.
 export const makeArcade = async (game, remote, progress) => {
 	const response = await fetch(remote ? '/api/remotes/arcade' : '/api/arcade', {
@@ -98,17 +98,17 @@ const savedDraft = () => {
 };
 
 // The form that makes a game, the same wherever it's offered (the home page's card, the ship's dock): what it's
-// called if that's known, the idea so far if there is one, who's building it, how they read, and where it's made
+// called if that's known, the idea so far if there is one, how Claude writes, and where it's made (who's building
+// is whoever made it, and Claude is told who's in the session as that changes)
 // (`remotes`, { name, url }, hidden until there are any). Making it streams into the progress line; made, the browser
 // goes to its arcade, and `onMade` hears. { form, hint, setRemotes, reset, focus }: `hint` is the form's last child,
-// for whoever adds a button before it. `asMaker`: for a game maker, who builds as themself, here: no who, how they
-// read, or where. What's typed in it is kept in this browser until the game is made, so closing it or leaving the
+// for whoever adds a button before it. `asMaker`: for a game maker, who builds as themself, here: no
+// reading or place to pick. What's typed in it is kept in this browser until the game is made, so closing it or leaving the
 // page doesn't lose it.
 export const newArcadeForm = ({ remotes = [], onMade, asMaker = false } = {}) => {
 	const form = element('form', 'new-arcade');
 	const name = element('input');
 	const idea = element('textarea');
-	const player = element('input');
 	const { reading, hint } = readingSelect();
 	const make = element('button', '', 'Make it');
 	const progress = element('pre', 'progress');
@@ -122,26 +122,22 @@ export const newArcadeForm = ({ remotes = [], onMade, asMaker = false } = {}) =>
 		'The idea, as rough or detailed as you like (optional: leave it blank to brainstorm one with Claude)';
 	idea.rows = 2;
 	idea.maxLength = 4000;
-	player.placeholder = 'Who is building it? (optional: a name for Claude to use)';
-	player.maxLength = 40;
 	progress.style.display = 'none';
 	const draft = savedDraft();
 
 	name.value = draft.name ?? '';
 	idea.value = draft.idea ?? '';
-	player.value = draft.player ?? '';
 	form.addEventListener('input', () => {
-		const typed = { name: name.value, idea: idea.value, player: player.value };
+		const typed = { name: name.value, idea: idea.value };
 
 		if (Object.values(typed).some(Boolean)) remember(DRAFT_KEY, JSON.stringify(typed));
 		else forget(DRAFT_KEY);
 	});
-	form.append(...(asMaker ? [name, idea, make, progress] : [name, idea, player, reading, where, make, progress, hint]));
+	form.append(...(asMaker ? [name, idea, make, progress] : [name, idea, reading, where, make, progress, hint]));
 
 	const reset = () => {
 		name.value = '';
 		idea.value = '';
-		player.value = '';
 		forget(DRAFT_KEY);
 		progress.textContent = '';
 		progress.style.display = 'none';
@@ -157,7 +153,7 @@ export const newArcadeForm = ({ remotes = [], onMade, asMaker = false } = {}) =>
 
 		const remote = known.find(other => other.url && other.url === where.value) ?? null;
 		const made = await makeArcade(
-			{ name: name.value.trim(), idea: idea.value.trim(), player: player.value.trim(), reading: reading.value },
+			{ name: name.value.trim(), idea: idea.value.trim(), reading: reading.value },
 			remote,
 			progress,
 		);

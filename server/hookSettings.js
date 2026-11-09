@@ -58,6 +58,15 @@ export const hookSettings = () => {
 		command: `${post.replace('curl -fsS', `curl -fsS --max-time ${PUSH_WAIT_SECONDS}`)} 2>/dev/null || true`,
 		timeout: PUSH_WAIT_SECONDS + 10,
 	};
+	// A prompt arriving or a question answered, paude may answer with a line for Claude to read with it (who's in an
+	// arcade, when that changes); otherwise nothing, and nothing is added
+	const toldBack = [
+		{
+			hooks: [
+				{ type: 'command', command: `${post.replace('curl -fsS', 'curl -fsS --max-time 2')} 2>/dev/null || true` },
+			],
+		},
+	];
 	// Compacting, paude answers with notes for the summary, which Claude Code takes as instructions for it
 	const beforeCompact = {
 		type: 'command',
@@ -74,6 +83,8 @@ export const hookSettings = () => {
 	return JSON.stringify({
 		hooks: {
 			...Object.fromEntries(Object.keys(HOOK_EVENTS).map(event => [event, hook])),
+			UserPromptSubmit: toldBack,
+			PostToolUse: toldBack,
 			// Only the edits, before any permission prompt, so the page can show what Claude proposes; and a subagent
 			// going out, so the universe view can fly it until its tool ends
 			PreToolUse: [

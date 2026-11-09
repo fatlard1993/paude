@@ -19,8 +19,9 @@ import { limitHook } from '../usageLimit';
 import { noteEmpty } from '../fuel';
 import { PROPOSING_TOOLS, trackProposals } from '../sessions/proposals';
 import { runningSession } from '../sessions/running';
-import { noteHook, notePrompt, noteTool, noteTurnDone } from '../universe';
+import { noteHook, notePrompt, noteTool, noteTurnDone, peopleOf } from '../universe';
 import { isArcade, snapshotTurn } from '../arcade';
+import { forgetPresence, presenceNote } from '../arcadePresence';
 
 // The checks a project runs after each of Claude's turns, when the turn edited something: the problems they find
 // are then about what Claude just did
@@ -116,7 +117,11 @@ const hooksRoutes = async request => {
 
 		return notes ? new Response(notes) : new Response(null, { status: 204 });
 	}
-	if (payload.hook_event_name === 'SessionStart') return afterCompact(id, payload);
+	if (payload.hook_event_name === 'SessionStart') {
+		forgetPresence(id);
+
+		return afterCompact(id, payload);
+	}
 	// An arcade's turn ends at the question Claude asks, since every turn there ends with one and Claude Code's Stop
 	// never comes while a question waits: the turn's changes are kept as its snapshot, and the change recorded
 	if (payload.hook_event_name === 'PreToolUse' && payload.tool_name === 'AskUserQuestion') {
@@ -189,7 +194,22 @@ const hooksRoutes = async request => {
 	if (['Stop', 'StopFailure'].includes(payload.hook_event_name))
 		turnEnded(id).catch(error => console.error('Answering from Claude failed:', error));
 
-	return new Response(null, { status: 204 });
+	return (await toldWhoIsHere(id, payload)) ?? new Response(null, { status: 204 });
+};
+
+// An arcade's Claude reads who is here with the prompt or answer that brought it back, when that has changed since
+// it was last told
+const toldWhoIsHere = async (id, payload) => {
+	const event = payload.hook_event_name;
+	const session = runningSession(id);
+
+	if (!(event === 'UserPromptSubmit' || (event === 'PostToolUse' && payload.tool_name === 'AskUserQuestion')))
+		return null;
+	if (!session || !(await isArcade(session.cwd))) return null;
+
+	const note = presenceNote(id, peopleOf([session]));
+
+	return note && Response.json({ hookSpecificOutput: { hookEventName: event, additionalContext: note } });
 };
 
 export default hooksRoutes;

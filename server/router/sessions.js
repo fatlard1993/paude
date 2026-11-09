@@ -58,7 +58,7 @@ import {
 	remoteSessions,
 } from '../remotes';
 import { trustedCertificates } from '../../shared/certificates';
-import { mayListRemotes } from '../serverSettings';
+import { mayListRemotes, ownerName } from '../serverSettings';
 import { sessionTurns } from '../sessions/history';
 import {
 	FolderError,
@@ -851,8 +851,9 @@ const sessionsRoutes = async (request, server) => {
 	if (requestMatch('POST', '/api/arcade', request)) {
 		const asked = await request.json();
 		const { name, idea, model } = asked;
-		// A game maker builds as themself: their name and how they read are their invite's, whatever's sent
-		const player = identity.maker ? identity.name : asked.player;
+		// Whoever makes it is who builds it, by the name they go by here (the owner's, or their invite's); a game maker
+		// writes as their invite says, whatever's sent
+		const player = identity.owner ? await ownerName() : identity.name;
 		const reading = identity.maker ? identity.reading : asked.reading;
 		const named = Boolean(String(name ?? '').trim());
 

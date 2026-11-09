@@ -208,7 +208,7 @@ export const arcadeInstructions = ({ title, named = true, idea = '', underWay = 
 	[
 		named ? `# Building ${title} together` : '# Building a game together',
 		'',
-		`You are building this game with ${player || 'the person here'}. They decide what the game is and what happens next; you do all of the building, and you are trusted to do it well and see it through on your own. The owner of this paude may write in the same conversation now and then; follow what they say.`,
+		`You are building this game with ${player || 'the person here'}. They decide what the game is and what happens next; you do all of the building, and you are trusted to do it well and see it through on your own. The owner of this paude may write in the same conversation now and then; follow what they say. Others may join on their own devices: paude adds a line naming who is in the arcade whenever that changes, so build with whoever is there.`,
 		'',
 		...ideaSection({ idea, underWay }),
 		...(named
