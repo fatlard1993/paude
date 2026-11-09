@@ -5368,11 +5368,14 @@ export default class Ship {
 			this.drawSip(ctx, worker, at, neck);
 		if (thinking) this.thoughts.push({ x: at.x, top, w, seed: worker.seed, ceiling: this.ceilingOf(worker.room) });
 		if (dozing) {
-			const rise = (this.time * 0.8 + worker.seed) % 1;
+			// One slow z at a time, drifting up and fading as it goes
+			const rise = (this.time * 0.25 + worker.seed) % 1;
 
+			ctx.globalAlpha = Math.min(1, rise * 4, (1 - rise) * 2) * 0.8;
 			pixelText(ctx, 'z', at.x + w / 2 + 1 + Math.round(rise * 3), top + 4 - Math.round(rise * 8), {
 				color: session.status === 'stopped' ? PALETTE.l : PALETTE.r,
 			});
+			ctx.globalAlpha = 1;
 		}
 		if (this.time - (worker.finishedAt ?? -Infinity) < SPARKLE_SECONDS)
 			this.drawSparkle(ctx, at.x, top + h / 2, (this.time - worker.finishedAt) / SPARKLE_SECONDS);
