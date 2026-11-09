@@ -20,6 +20,9 @@ const tourOf = prompt => {
 // message
 if (process.argv.includes('-p')) {
 	const prompt = await Bun.stdin.text();
+
+	if (process.env.PAUDE_E2E_FAKE_LOG)
+		(await import('fs')).appendFileSync(process.env.PAUDE_E2E_FAKE_LOG, `-p ${prompt.slice(0, 4000)}\n---\n`);
 	const links = [...prompt.matchAll(/^(\d+)\. (\S+)/gm)];
 
 	if (prompt.includes('as a guided tour')) {
