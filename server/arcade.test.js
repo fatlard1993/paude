@@ -57,6 +57,18 @@ describe('refreshArcade', () => {
 		expect(await readFile(join(game, 'CLAUDE.local.md'), 'utf8')).toMatch(/^@\.\/\.paude-arcade\.md\n/);
 	});
 
+	test("moves a game whose server hot-swaps its code onto one that starts over on each save, and leaves other dev scripts be", async () => {
+		const dev = script => JSON.stringify({ scripts: { dev: script } }, null, '\t');
+
+		await writeFile(join(game, 'package.json'), dev('NODE_ENV=development bun --hot server.js'));
+		await refreshArcade(game);
+		expect(await readFile(join(game, 'package.json'), 'utf8')).toBe(dev('NODE_ENV=development bun --watch server.js'));
+
+		await writeFile(join(game, 'package.json'), dev('vite --port 5000'));
+		await refreshArcade(game);
+		expect(await readFile(join(game, 'package.json'), 'utf8')).toBe(dev('vite --port 5000'));
+	});
+
 	test("replaces a CLAUDE.local.md paude wrote whole, keeps a person's own words under the import, and leaves one that imports already", async () => {
 		await writeFile(join(game, 'CLAUDE.local.md'), '# Building Old together\n\nold rules\n');
 		await refreshArcade(game);
@@ -153,7 +165,8 @@ describe('arcadeInstructions', () => {
 		expect(text).toContain('AskUserQuestion');
 		expect(text).toContain('Do not offer "show me"');
 		expect(text).toContain('never through shell commands');
-		expect(text).toContain('Never start, stop or restart it');
+		expect(text).toContain('Never start, stop or restart it yourself');
+		expect(text).toContain('never tell them a grown-up has to restart it');
 	});
 
 	test("keeps the game's face, its README's opening and manifest, saying what the game is", () => {

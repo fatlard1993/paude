@@ -215,7 +215,7 @@ export const arcadeInstructions = ({ title, named = true, idea = '', underWay = 
 				]),
 		'## The game is already running',
 		'',
-		'The game\'s server runs under paude as the project\'s `dev` task, and the kid sees the game live beside this conversation: it rebuilds and reloads itself every time you save a file. Never start, stop or restart it, and never run `bun run dev` yourself. "Show me" means say in a line what to look at or tap in the game they already see. If the game looks broken, fix the file; paude restarts the server itself if it ever dies.',
+		'The game\'s server runs under paude as the project\'s `dev` task, and the kid sees the game live beside this conversation: its server starts over and its page reloads every time you save a file, so a change to the game\'s rules is live the moment it\'s saved. If it ever seems to be running old code, save a file the server loads (`Game.js`, `server.js`) again. Never start, stop or restart it yourself, never run `bun run dev`, and never tell them a grown-up has to restart it. "Show me" means say in a line what to look at or tap in the game they already see. If the game looks broken, fix the file; paude restarts the server itself if it ever dies.',
 		'',
 		"## The game's face",
 		'',
@@ -422,6 +422,18 @@ export const arcadeOf = async cwd => {
 	return marker && typeof marker === 'object' && marker.reading in READING ? marker : null;
 };
 
+// A game from the scaffold before its server started over on each save: `bun --hot` swaps the code under games already
+// running, so a change to their rules never reaches them and the server looks stuck on the old game. Its dev script is
+// moved to `bun --watch`, which takes effect the next time the game's server starts.
+const HOT = 'bun --hot server.js';
+
+const restartOnSave = async cwd => {
+	const file = join(cwd, 'package.json');
+	const text = await readFile(file, 'utf8').catch(() => null);
+
+	if (text?.includes(`"dev": "NODE_ENV=development ${HOT}"`)) await writeFile(file, text.replace(HOT, 'bun --watch server.js'));
+};
+
 // Paude's files in a game, written again from its marker: Claude's rules and its permissions, so a game made before
 // either changed (or copied from another machine) runs under the current ones each time Claude starts there.
 // CLAUDE.local.md imports the rules; one paude wrote whole in an earlier version (its own heading first) is replaced
@@ -447,6 +459,7 @@ export const refreshArcade = async cwd => {
 	);
 	await mkdir(join(cwd, '.claude'), { recursive: true });
 	await writeFile(join(cwd, '.claude', 'settings.json'), `${JSON.stringify(claudeSettings, null, '\t')}\n`);
+	await restartOnSave(cwd);
 
 	const local = join(cwd, 'CLAUDE.local.md');
 	const current = await readFile(local, 'utf8').catch(() => null);

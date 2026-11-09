@@ -3,6 +3,7 @@ import path from 'path';
 
 import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
+import { gamePort } from './gamePort';
 import { sessionProcesses } from './ports';
 import { sessionEnvironment } from './sessions/PtySession';
 
@@ -246,6 +247,9 @@ const drain = async (stream, run) => {
 	for await (const chunk of stream) append(run, decoder.decode(chunk, { stream: true }));
 };
 
+const GAME_SERVER = 'package.json:dev';
+const ARCADE_MARKER = '.paude-arcade.json';
+
 export const runTask = async (sessionId, cwd, taskId) => {
 	const found = (await discoverTasks(cwd)).find(each => each.id === taskId);
 
@@ -261,10 +265,14 @@ export const runTask = async (sessionId, cwd, taskId) => {
 
 	const id = crypto.randomUUID();
 	const run = { id, taskId, name: found.name, command: found.command, startedAt: Date.now(), output: '' };
+	// An arcade game's server keeps one port, so starting over on a save doesn't move the game out from under its page
+	const arcadeGame = taskId === GAME_SERVER && (await stat(path.join(cwd, ARCADE_MARKER)).catch(() => null));
+	const port = arcadeGame ? gamePort(cwd) : null;
 	const child = Bun.spawn(found.command, {
 		cwd,
 		env: {
 			...sessionEnvironment(),
+			...(port ? { PORT: String(port) } : {}),
 			PAUDE_SESSION: sessionId,
 			PAUDE_TASK: id,
 			NO_COLOR: '1',
