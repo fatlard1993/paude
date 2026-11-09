@@ -8,9 +8,9 @@ import writeJsonFile from '../shared/writeJsonFile';
 import { statusOf } from './activity';
 import { askClaude } from './claudeInbox';
 import { projectPath } from './projects';
-import { serverSettings } from './serverSettings';
 import { sessionEnvironment } from './sessions/PtySession';
 import { feedFrom } from './feed';
+import { HubError, hostGame } from './motherHub';
 import { transcriptLines } from './sessions/transcript';
 import gitEnvironment from './utils/gitEnvironment';
 
@@ -23,8 +23,6 @@ const RULES_IMPORT = `@./${RULES}`;
 const LOCAL_STUB = `${RULES_IMPORT}\n\n<!-- paude rewrites ${RULES} from ${MARKER} whenever Claude starts here. Add your own notes for Claude below. -->\n`;
 const SNAPSHOT = 'turn: ';
 const SNAPSHOT_WORDS = 72;
-const SHELF_PORTS = [3100, 3999];
-const SHELF_TIMEOUT_MS = 5 * 60 * 1000;
 
 // An arcade project: a game made from web-game-framework's scaffold, in a folder of its own under the projects root,
 // with a file telling Claude it's building the game with a kid who may not read yet. Its session is an ordinary one;
@@ -405,7 +403,7 @@ export const isArcade = async cwd => {
 	return is;
 };
 
-// The arcade a folder is, from its marker: { title, player, reading, made, shelf? }, or null for an ordinary project
+// The arcade a folder is, from its marker: { title, player, reading, made, hosted? }, or null for an ordinary project
 export const arcadeOf = async cwd => {
 	if (!cwd) return null;
 
@@ -525,59 +523,29 @@ export const undoLastTurn = async (sessionId, cwd) => {
 	return { undone };
 };
 
-// The house shelf: a command this paude is given (server.json: { "arcade": { "shelf": "shelf-game {name} {port}" } })
-// that makes a finished game one of the house's own, run in the game's folder with {name}, {path} and {port} filled
-// in (and in PAUDE_SHELF_NAME, PAUDE_SHELF_PATH, PAUDE_SHELF_PORT). The port is picked once, free in the arcade's
-// range, and kept in the marker, so shelving again (after more building) keeps the game's address.
-export const shelfCommand = async () => {
-	const { arcade = {} } = await serverSettings();
-
-	return typeof arcade.shelf === 'string' && arcade.shelf.trim() ? arcade.shelf.trim() : null;
-};
-
-const portFree = port => {
-	try {
-		Bun.listen({ hostname: '0.0.0.0', port, socket: { data() {} } }).stop(true);
-
-		return true;
-	} catch {
-		return false;
-	}
-};
-
-const pickPort = () => {
-	const [from, to] = SHELF_PORTS;
-
-	for (let tries = 0; tries < 200; tries++) {
-		const port = from + Math.floor(Math.random() * (to - from + 1));
-
-		if (portFree(port)) return port;
-	}
-	throw new ArcadeError('No free port for the shelf.');
-};
-
-export const shelveGame = async (cwd, name, onOutput = () => {}) => {
+// The game put with the house's games, hosted by the mother hub (motherHub.js): the one this paude is wired to, or its
+// own copy. Where it went is kept in the marker, so the arcade page can say. { id, name, port, url }
+export const hostArcade = async (cwd, name, onOutput = () => {}) => {
 	const marker = await arcadeOf(cwd);
 
 	if (!marker) throw new ArcadeError('This is not an arcade game.');
 
-	const command = await shelfCommand();
+	let hosted;
 
-	if (!command) throw new ArcadeError('This paude has no shelf: set arcade.shelf in ~/.config/paude/server.json.');
+	try {
+		hosted = await hostGame(cwd, name, onOutput);
+	} catch (error) {
+		if (error instanceof HubError) throw new ArcadeError(error.message);
+		throw error;
+	}
 
-	const port = marker.shelf?.port ?? pickPort();
-	const filled = command.replaceAll('{name}', name).replaceAll('{path}', cwd).replaceAll('{port}', String(port));
+	// Where the old shelf kept its port, which hosting replaces
+	const { shelf: _shelf, ...rest } = marker;
 
-	onOutput(`${filled}\n`);
+	await writeJsonFile(join(cwd, MARKER), () => ({
+		...rest,
+		hosted: { id: hosted.id, port: hosted.port, url: hosted.url ?? null, hub: hosted.hub, at: new Date().toISOString() },
+	}));
 
-	const code = await run(['sh', '-c', filled], cwd, onOutput, {
-		env: { ...sessionEnvironment(), PAUDE_SHELF_NAME: name, PAUDE_SHELF_PATH: cwd, PAUDE_SHELF_PORT: String(port) },
-		timeout: SHELF_TIMEOUT_MS,
-	});
-
-	if (code !== 0) throw new ArcadeError(`The shelf command ended with ${code}.`);
-
-	await writeJsonFile(join(cwd, MARKER), () => ({ ...marker, shelf: { port, at: new Date().toISOString() } }));
-
-	return { port };
+	return hosted;
 };

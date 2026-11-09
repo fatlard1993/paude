@@ -35,7 +35,7 @@ describe('guestMayRequest', () => {
 			expect(guestMayRequest(ana, 'POST', `/api/sessions/s1${route}`)).toBe(true);
 		expect(guestMayRequest(ana, 'GET', '/api/sessions/s1/arcade')).toBe(true);
 		expect(guestMayRequest(ana, 'POST', '/api/sessions/s2/answer')).toBe(false);
-		expect(guestMayRequest(ana, 'POST', '/api/sessions/s1/arcade/shelf')).toBe(false);
+		expect(guestMayRequest(ana, 'POST', '/api/sessions/s1/arcade/host')).toBe(false);
 		expect(guestMayRequest(ana, 'POST', '/api/sessions/s1/tour')).toBe(true);
 		expect(guestMayRequest(ana, 'POST', '/api/sessions/s2/tour')).toBe(false);
 	});

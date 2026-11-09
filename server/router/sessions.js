@@ -34,14 +34,14 @@ import {
 	acceptTrust,
 	arcadeOf,
 	createArcadeProject,
+	hostArcade,
 	isArcade,
 	openingPrompt,
 	refreshArcade,
-	shelfCommand,
-	shelveGame,
 	undoLastTurn,
 	workingTitle,
 } from '../arcade';
+import { hubLink } from '../motherHub';
 import { SpeechError, hear, readAloud } from '../speech';
 import { askingAsWritten } from '../sessions/askedQuestion';
 import { runTask } from '../tasks';
@@ -627,7 +627,7 @@ const sessionsRoutes = async (request, server) => {
 
 		if (!record) return new Response('Session not found', { status: 404 });
 
-		return Response.json({ arcade: await arcadeOf(record.cwd), shelf: identity.owner ? await shelfCommand() : null });
+		return Response.json({ arcade: await arcadeOf(record.cwd), host: identity.owner ? { hub: await hubLink() } : null });
 	}
 
 	// The game put back to before Claude's last turn, for whoever may drive
@@ -647,10 +647,10 @@ const sessionsRoutes = async (request, server) => {
 		}
 	}
 
-	// The game made one of the house's own, by the shelf command this paude is given; the owner's
-	match = requestMatch('POST', '/api/sessions/:id/arcade/shelf', request);
+	// The game put with the house's games, hosted by the mother hub; the owner's
+	match = requestMatch('POST', '/api/sessions/:id/arcade/host', request);
 	if (match) {
-		if (!identity.owner) return new Response("The shelf is the owner's", { status: 403 });
+		if (!identity.owner) return new Response("Hosting is the owner's", { status: 403 });
 
 		const record = await sessionRecord(match.id);
 
@@ -659,9 +659,9 @@ const sessionsRoutes = async (request, server) => {
 		let output = '';
 
 		try {
-			const { port } = await shelveGame(record.cwd, projectOf(record.cwd), text => (output += text));
+			const hosted = await hostArcade(record.cwd, projectOf(record.cwd), text => (output += text));
 
-			return Response.json({ port, output });
+			return Response.json({ ...hosted, output });
 		} catch (error) {
 			if (error instanceof ArcadeError) return new Response(`${error.message}\n${output}`.trim(), { status: 409 });
 			throw error;

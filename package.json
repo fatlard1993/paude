@@ -49,7 +49,8 @@
 		"augmented-ui": "^2.0.0",
 		"dompurify": "^3.4.16",
 		"highlight.js": "^11.12.0",
-		"marked": "^18.1.0"
+		"marked": "^18.1.0",
+		"web-game-mother-hub": "github:fatlard1993/web-game-mother-hub#950e058"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.1.1",

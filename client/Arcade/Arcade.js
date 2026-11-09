@@ -1,6 +1,6 @@
 import { View, appendStyles } from '@vanilla-bean/components';
 
-import { logout, shelveArcade } from '../api';
+import { hostArcadeGame, logout } from '../api';
 import { Bar, ghostButton } from '../Bar';
 import confirmDialog from '../confirmDialog';
 import { button, element } from '../dom';
@@ -39,10 +39,10 @@ export default class Arcade extends View {
 			onStatus: session => {
 				if (!this.arcade?.title) this.title.textContent = session.title || session.project || 'Arcade';
 			},
-			onArcade: (arcade, shelf) => {
+			onArcade: (arcade, host) => {
 				this.arcade = arcade;
 				if (arcade?.title) this.title.textContent = arcade.title;
-				if (arcade && shelf && this.shelfButton) this.shelfButton.style.display = '';
+				if (arcade && host && this.hostButton) this.hostButton.style.display = '';
 				// Rested before this session was known to be an arcade (a fresh load finding a question up)
 				if (arcade && this.resting) this.play(true);
 			},
@@ -99,15 +99,15 @@ export default class Arcade extends View {
 		});
 		bar.elem.append(this.changeButton);
 		ghostButton(bar, { icon: 'rotate-right', title: 'Reload the game', onPress: () => this.game.reload() });
-		// The shelf is the owner's alone, and shown only once this paude is known to have one. Not the hidden attribute:
-		// the button's own display rule outranks it.
+		// Hosting is the owner's alone, and shown once this is known to be an arcade. Not the hidden attribute: the button's
+		// own display rule outranks it.
 		if (owner) {
-			this.shelfButton = ghostButton(bar, {
-				icon: 'box-archive',
-				title: "Put it on the house shelf: run as one of the house's games, at a name of its own",
-				onPress: () => this.shelve(),
+			this.hostButton = ghostButton(bar, {
+				icon: 'house-signal',
+				title: "Put it with the house's games: hosted by the mother hub, at a name of its own",
+				onPress: () => this.host(),
 			});
-			this.shelfButton.style.display = 'none';
+			this.hostButton.style.display = 'none';
 		}
 		if (!owner)
 			ghostButton(bar, {
@@ -131,24 +131,24 @@ export default class Arcade extends View {
 		this.talk.readAsking();
 	}
 
-	async shelve() {
+	async host() {
 		const name = this.arcade?.title || this.title.textContent;
 		const confirmed = await confirmDialog({
-			header: `Put ${name} on the house shelf?`,
-			body: "It runs as one of the house's games from now on, at a name of its own, built as it is right now. Shelving it again later puts the newer game there.",
-			confirmLabel: 'Put it on the shelf',
+			header: `Put ${name} with the house's games?`,
+			body: "The mother hub hosts it from now on, at a name of its own, built as it's committed right now: it can be turned on and off, updated and shared from there. Doing this again later brings the newer game there.",
+			confirmLabel: 'Host it',
 		});
 
 		if (!confirmed) return;
-		this.talk.notice('Putting it on the shelf…', 'info');
+		this.talk.notice('Handing it to the mother hub…', 'info');
 
-		const { body, response } = await shelveArcade(this.id);
+		const { body, response } = await hostArcadeGame(this.id);
 
 		if (!response?.ok) {
-			this.talk.notice(typeof body === 'string' && body ? body : 'The shelf refused it', 'danger');
+			this.talk.notice(typeof body === 'string' && body ? body : 'The mother hub refused it', 'danger');
 
 			return;
 		}
-		this.talk.notice(`On the shelf, on port ${body.port}`, 'success');
+		this.talk.notice(`Hosted${body.url ? ` at ${body.url}` : `, on port ${body.port}`}`, 'success');
 	}
 }

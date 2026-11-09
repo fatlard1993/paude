@@ -23,7 +23,7 @@ import sayQueue from './sayQueue';
 // The talk with Claude as a kid has it: what Claude says in big type, read aloud with the words lit as they're said,
 // what it did as a quiet row, its questions as big choices (lit as they're read), and a box with an ear to answer.
 // Beside the game on the arcade page, and docked beside the universe's ship; the same on both. `onStatus(session)`
-// and `onArcade(arcade, shelf)` tell whoever holds it what it learned.
+// and `onArcade(arcade, host)` tell whoever holds it what it learned.
 const POLL_MS = 2000;
 const IDLE_POLL_MS = 4000;
 const HIDDEN_POLL_MS = 8000;
@@ -101,7 +101,7 @@ export default class ArcadeTalk extends Talk {
 		this.fresh = true;
 		// { text, until }: words sent while Claude worked, not yet taken up
 		this.pending = null;
-		// What arcade this is ({ title, player, reading, shelf? }), once asked; null for an ordinary session
+		// What arcade this is ({ title, player, reading, hosted? }), once asked; null for an ordinary session
 		this.arcade = null;
 		this.reading = 'reading';
 		this.prefs = {
@@ -148,7 +148,7 @@ export default class ArcadeTalk extends Talk {
 		this.arcade = body.arcade;
 		this.reading = body.arcade?.reading ?? 'reading';
 		if (this.arcade && canType()) this.putBack.style.display = '';
-		this.options.onArcade?.(body.arcade, body.shelf);
+		this.options.onArcade?.(body.arcade, body.host);
 	}
 
 	buildTalk() {

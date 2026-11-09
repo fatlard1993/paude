@@ -289,15 +289,15 @@ export const getFeed = async (sessionId, after) =>
 export const readAloud = async (sessionId, text) =>
 	await POST('/api/sessions/:id/speech', { urlParameters: { id: sessionId }, body: { text } });
 
-// What arcade a session's folder is, for the arcade page: { arcade: { title, player, reading, shelf? } | null }
+// What arcade a session's folder is, for the arcade page: { arcade: { title, player, reading, hosted? } | null, host }
 export const getArcade = async sessionId =>
 	await GET('/api/sessions/:id/arcade', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 
 export const undoArcadeTurn = async sessionId =>
 	await POST('/api/sessions/:id/arcade/undo', { urlParameters: { id: sessionId } });
 
-export const shelveArcade = async sessionId =>
-	await POST('/api/sessions/:id/arcade/shelf', { urlParameters: { id: sessionId } });
+export const hostArcadeGame = async sessionId =>
+	await POST('/api/sessions/:id/arcade/host', { urlParameters: { id: sessionId } });
 
 // A recording from the page's microphone, heard by this paude's ear (a session's, or this paude's own for the owner):
 // { text }, or 404 when it has none
