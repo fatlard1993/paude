@@ -49,6 +49,9 @@ const STUCK_MS = 4 * 60_000;
 const LAMP_TICK_MS = 1000;
 // With nothing read aloud, a question for the player counts as taken in after this long
 const UNSPOKEN_REST_MS = 6000;
+// Words sent while Claude works go into its box, and Claude takes them up when the turn ends: a question that turn
+// ends with is about to be interrupted by them, so it's not shown or read, for this long at most
+const PENDING_MS = 30_000;
 
 const ago = ms => {
 	const seconds = Math.round(ms / 1000);
@@ -92,6 +95,10 @@ export default class ArcadeTalk extends Talk {
 		this.sent = [];
 		this.did = null;
 		this.asking = null;
+		// A page just opened: a question already up is the player's to come back to, not read at them on arrival
+		this.fresh = true;
+		// { text, until }: words sent while Claude worked, not yet taken up
+		this.pending = null;
 		// What arcade this is ({ title, player, reading, shelf? }), once asked; null for an ordinary session
 		this.arcade = null;
 		this.reading = 'reading';
@@ -268,7 +275,10 @@ export default class ArcadeTalk extends Talk {
 
 				if (session.response?.ok) this.showStatus(session.body);
 				if (entries?.length) this.showEntries(entries);
-				if (this.status === 'waiting') await this.showAsking();
+				if (this.status === 'waiting' && this.promptPending()) {
+					this.clearAsking();
+					this.lampWords.textContent = 'Claude is taking what you sent next';
+				} else if (this.status === 'waiting') await this.showAsking();
 				else this.clearAsking();
 			} catch {
 				// Offline for a moment: the next tick tries again
@@ -313,7 +323,10 @@ export default class ArcadeTalk extends Talk {
 			this.statusSince = Date.now();
 			this.heardFromAt = Date.now();
 			this.lastAct = '';
-			if (session.status === 'working') this.options.onBusy?.();
+			if (session.status === 'working') {
+				this.fresh = false;
+				this.options.onBusy?.();
+			}
 		}
 		this.status = session.status;
 		if (session.title !== undefined) this.options.onStatus?.(session);
@@ -365,6 +378,7 @@ export default class ArcadeTalk extends Talk {
 				// Already shown as it was sent from here
 				const index = this.sent.indexOf(entry.text);
 
+				if (this.pending?.text === entry.text) this.pending = null;
 				if (index !== -1) {
 					this.sent.splice(index, 1);
 					continue;
@@ -570,14 +584,29 @@ export default class ArcadeTalk extends Talk {
 			question.append(details);
 		}
 		this.dismissed = new Set();
-		this.shown = player ? { question, player, asking } : { question, player, asking };
+		this.shown = { question, player, asking };
 		this.drawChoices();
 		this.feed.scrollTop = this.feed.scrollHeight;
 		// The first reading of a new question is what the player takes in before playing; readings after a tap are not
 		this.restArmed = player;
 		clearTimeout(this.restTimer);
+		// Found already up on arrival: straight to the game, and the big button reads it when they're ready
+		if (this.fresh) {
+			this.fresh = false;
+			if (player) this.rested();
+
+			return;
+		}
 		if (player && this.prefs.speak) this.readShown();
 		else if (player) this.restTimer = setTimeout(() => this.rested(), UNSPOKEN_REST_MS);
+	}
+
+	// Words sent while Claude worked that it hasn't taken up yet: a question up meanwhile is the end of the last
+	// thing, about to be interrupted by them
+	promptPending() {
+		if (this.pending && Date.now() > this.pending.until) this.pending = null;
+
+		return Boolean(this.pending);
 	}
 
 	// The question with its choices, those not dropped; for the player each tap opens the choice to confirm, and More
@@ -784,8 +813,10 @@ export default class ArcadeTalk extends Talk {
 		this.input.placeholder = 'Tell Claude what to do';
 		this.sent.push(typed);
 		this.feed.append(element('div', 'card you', typed));
-		// Sent while Claude works, the words wait their turn: what comes next is the end of what it was doing
+		// Sent while Claude works, the words wait their turn: what comes next is the end of what it was doing, and a
+		// question it ends with is kept from the player, since the words are about to interrupt it
 		if (this.status === 'working' && !asking?.typing) {
+			this.pending = { text: typed, until: Date.now() + PENDING_MS };
 			this.notice('Claude is finishing the last thing first. This goes next.', 'info');
 			if (this.prefs.speak) this.enqueue('Claude is finishing the last thing first. This goes next.');
 		}

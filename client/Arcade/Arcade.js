@@ -38,11 +38,19 @@ export default class Arcade extends View {
 			onArcade: (arcade, shelf) => {
 				this.arcade = arcade;
 				if (arcade && shelf && this.shelfButton) this.shelfButton.style.display = '';
+				// Rested before this session was known to be an arcade (a fresh load finding a question up)
+				if (arcade && this.resting) this.play(true);
 			},
 			// The loop a kid plays in: a change asked for, Claude's word on it read out, then the game alone to play,
 			// until the big button brings the talk back and reads the choices again
-			onRested: () => this.arcade && this.play(true),
-			onBusy: () => this.play(false),
+			onRested: () => {
+				this.resting = true;
+				if (this.arcade) this.play(true);
+			},
+			onBusy: () => {
+				this.resting = false;
+				this.play(false);
+			},
 		});
 		this.page.elem.append(stage);
 		// Whatever toasts the page still gets (a watched session needing the owner) go to the top: the bottom is where the
