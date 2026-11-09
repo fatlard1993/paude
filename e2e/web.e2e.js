@@ -634,7 +634,7 @@ test(
 );
 
 test(
-	'finding where a prompt goes, with only a new session for it, starts it there without asking',
+	'finding where a prompt goes, with only a new session for it, offers that one place with its model to pick, and starts it there when pressed',
 	async () => {
 		const server = servers.turns;
 		const { browser, page } = await openBrowser('dom');
@@ -644,8 +644,11 @@ test(
 			await page.waitForSelector('textarea');
 			await page.type('textarea', 'write a fresh readme');
 			await page.click('button.primary');
+			await page.waitForSelector('dialog[open] button.place', { timeout: 20_000 });
+			expect(await page.$$eval('dialog[open] button.place', places => places.length)).toBe(1);
+			expect(await page.$eval('dialog[open]', dialog => dialog.innerText)).toContain('Default model');
+			await page.click('dialog[open] button.place');
 			await page.waitForFunction(() => window.location.hash.startsWith('#/sessions/'), { timeout: 20_000 });
-			await eventually(async () => expect(await page.$('dialog[open] button.place')).toBeNull());
 		} finally {
 			await browser.close();
 		}
