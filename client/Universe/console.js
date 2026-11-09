@@ -24,6 +24,25 @@ const DOCK_LEAST = 620;
 // The screen's padding top and bottom together, in CSS pixels, which a terminal too tall for it is lifted inside of
 const FOOT_PADDING = 4;
 
+// Keeps every ancestor of `elem` whose overflow is hidden at its origin, as the browser scrolls one to reveal a focused
+// input; returns what lets go
+const pinned = elem => {
+	const keep = event => {
+		const box = event.target;
+
+		if (box === document || !(box instanceof Element) || !box.contains(elem)) return;
+		if (!box.scrollTop && !box.scrollLeft) return;
+
+		const { overflowX, overflowY } = getComputedStyle(box);
+
+		if (/^(hidden|clip)$/.test(overflowX) && /^(hidden|clip)$/.test(overflowY)) box.scrollTo(0, 0);
+	};
+
+	window.addEventListener('scroll', keep, true);
+
+	return () => window.removeEventListener('scroll', keep, true);
+};
+
 // A session's terminal in its dock, at the session's own size so opening it here resizes nothing for anyone, its font
 // as large as lets that size fit (smaller than the least, it scrolls across). Sized by its font, never a CSS transform:
 // a transform blurs the text and puts clicks where they aren't. It works as the session's own page's does: the same
@@ -183,11 +202,10 @@ export default class TerminalPanel {
 
 		this.terminal = terminal;
 		terminal.open(this.screen);
-		// Its screen never scrolls: the foot is kept by the terminal's margin, and the browser scrolling the hidden screen to
-		// reveal xterm's input as it takes or loses focus would move the rows
-		this.screen.addEventListener('scroll', () => {
-			if (this.screen.scrollTop || this.screen.scrollLeft) this.screen.scrollTo(0, 0);
-		});
+		// What it sits in never scrolls, the screen and the panel round it, whose overflow is hidden so nobody scrolls them:
+		// the foot is kept by the terminal's margin, and the browser scrolling one of them to reveal xterm's input as a click
+		// focuses it would move the panel
+		this.unpin = pinned(this.elem);
 		terminal.resize(cols, rows);
 		const send = data => Boolean(this.connection?.send({ type: 'input', data }));
 		const over = on => (this.overLink = on);
@@ -361,6 +379,7 @@ export default class TerminalPanel {
 	}
 
 	stop() {
+		this.unpin?.();
 		this.resizing?.disconnect();
 		this.connection?.close();
 		this.terminal?.dispose();
