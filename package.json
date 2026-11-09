@@ -26,7 +26,7 @@
 		"lint:fix": "bun --bun eslint --fix",
 		"format": "bun run lint:fix && bun --bun prettier --write .",
 		"test": "bun test",
-		"test:e2e": "bun test --timeout 120000 ./e2e/web.e2e.js",
+		"test:e2e": "bun test --timeout 120000 ./e2e/web.e2e.js ./e2e/arcade.e2e.js",
 		"test:claude": "bun test --timeout 300000 ./e2e/claude.e2e.js",
 		"set-password": "bun scripts/set-password.js"
 	},
