@@ -43,17 +43,20 @@ export default class Arcade extends View {
 				if (arcade?.title) this.title.textContent = arcade.title;
 				if (arcade && host && this.hostButton) this.hostButton.style.display = '';
 				// Rested before this session was known to be an arcade (a fresh load finding a question up)
-				if (arcade && this.resting) this.play(true);
+				if (arcade && this.resting) this.playWhenSettled();
 			},
 			// The loop the arcade plays in: a change asked for, Claude's word on it read out, then the game alone to play,
 			// until the big button brings the talk back and reads the choices again
+			// The game comes back only once it has stopped reloading from the last saves, so it isn't shown ready and
+			// then pulled away
 			onRested: () => {
 				this.resting = true;
-				if (this.arcade) this.play(true);
+				if (this.arcade) this.playWhenSettled();
 			},
 			onBusy: () => {
 				this.resting = false;
 				this.play(false);
+				this.game.building();
 			},
 		});
 		this.page.elem.append(stage);
@@ -128,6 +131,11 @@ export default class Arcade extends View {
 	// The game alone to play, or the talk beside it
 	play(on) {
 		this.page.elem.classList.toggle('playing', on);
+	}
+
+	async playWhenSettled() {
+		await this.game.settle();
+		if (this.resting) this.play(true);
 	}
 
 	// The big button: the talk comes back, and the question is read again, now, for a hand that just pressed
