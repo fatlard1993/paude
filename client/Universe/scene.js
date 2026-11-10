@@ -19,6 +19,7 @@ import { FORMS, drawCore, drawHousing } from './machine';
 import { pixelText, textWidth } from './retro';
 import {
 	TANK_COLORS,
+	AIRLOCK,
 	clipToShip,
 	drawAirlock,
 	drawBridge,
@@ -2167,8 +2168,9 @@ export default class Ship {
 		return this.arcading && this.viewer === name ? TO_ARCADE : 1;
 	}
 
-	// The airlock's hatch stands up past the top of the bridge's wall, into the hull over it, where the rooms aren't
-	// drawn: its head there, and over that whoever is stood in it, who is taller than the wall too
+	// The airlock's hatch stands up past the top of the bridge's wall, into the hull's rim over it, where the rooms
+	// aren't drawn: its head there, and whoever is stood in it seen through its opening, their head behind its lintel
+	// (they're taller than the hatch, and are never drawn out past the hull)
 	drawAirlockOver(ctx) {
 		const { airlock, bridge } = this;
 
@@ -2179,13 +2181,22 @@ export default class Ship {
 			time: this.time,
 			head: true,
 		});
-		for (const walker of this.walkers.values())
-			if (
+
+		const sill = this.art({ x: airlock.x - AIRLOCK.wide / 2, y: bridge.y });
+		const stood = [...this.walkers.values()].filter(
+			walker =>
 				walker.x !== undefined &&
 				!this.boarding(walker) &&
-				Math.hypot(walker.x - airlock.x, walker.y - airlock.y) < 0.9
-			)
-				this.drawWalker(ctx, walker);
+				Math.hypot(walker.x - airlock.x, walker.y - airlock.y) < 0.9,
+		);
+
+		if (!stood.length) return;
+		ctx.save();
+		ctx.beginPath();
+		ctx.rect(sill.x, sill.y - AIRLOCK.rise + 3, Math.round(AIRLOCK.wide * UNIT.x), AIRLOCK.rise - 3);
+		ctx.clip();
+		for (const walker of stood) this.drawWalker(ctx, walker);
+		ctx.restore();
 	}
 
 	// The floor as one map of what's open and what stands where (floor.js), made again when the ship is laid again or
@@ -2991,7 +3002,7 @@ export default class Ship {
 		if (stepping?.x !== undefined && !this.boarding(stepping)) this.drawWalker(ctx, stepping);
 		if (cover >= 1) {
 			ctx.restore();
-			// Its collar stands on the hull's back sealed or not, so it doesn't appear as the plating goes
+			// The top of its hatch, up in the hull's rim, is there sealed or not, so it doesn't appear as the plating goes
 			this.drawAirlockOver(ctx);
 			for (const shuttle of this.shuttles) this.drawShuttleOf(ctx, shuttle);
 

@@ -2050,10 +2050,9 @@ export const drawLounge = (ctx, art, label, lounge, { time, lifted = [], gone = 
 // The bridge: its floor and name, consoles along its back wall, one lit blue while a session plans, and in the wall at
 // its forward end the airlock, open while someone's at it (`airlockOpen`), its lamp red
 // `ship`: its name and color, which sign the bridge, since the bridge is the one room that is the ship's own
-// The airlock: how wide its hatch is, in world units, and how far it stands up past the top of the bridge's far wall
-// into the hull over it, in art pixels. A person in their suit is taller than that wall's face, so the hatch they
-// come and go by is too
-const AIRLOCK = { wide: 1.3, rise: 15 };
+// The airlock: how wide its hatch is, in world units, and how far it stands up past the top of the bridge's far wall,
+// in art pixels: into the hull's rim over the wall and no further, so it's flush with the hull's back
+export const AIRLOCK = { wide: 1.3, rise: 6 };
 
 // The airlock in the bridge's far wall, `x` its middle: a heavy hatch in a collar standing up into the hull, two
 // leaves with a port in each, parted to either side while `open`; a lamp over it, red, flashing while it's open, and
@@ -2105,8 +2104,9 @@ export const drawAirlock = (ctx, art, bridge, { x, open, time, head: over = fals
 	// The lamp over it
 	const lit = !open || Math.floor(time * 4) % 2 === 0;
 
-	rect(ctx, middle - 3, head - 4, 7, 4, PALETTE.k);
-	rect(ctx, middle - 2, head - 3, 5, 2, lit ? PALETTE.r : '#4a1c1a');
+	// Set into its lintel, so nothing of it stands off the hull
+	rect(ctx, middle - 3, head, 7, 2, PALETTE.k);
+	rect(ctx, middle - 2, head, 5, 1, lit ? PALETTE.r : '#4a1c1a');
 	if (over) {
 		ctx.restore();
 

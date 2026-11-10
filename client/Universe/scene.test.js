@@ -14,10 +14,10 @@ import Ship, {
 	tanksOf,
 	triage,
 } from './scene';
-import { WATCHER_W, clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats, standingOf } from './plan';
+import { RIM, WATCHER_W, clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats, standingOf } from './plan';
 import { huesApart } from '../../shared/hues';
 import { SCREEN_RISE, UNIT, cableWeight, floor, setTrim, walls } from './station';
-import { drawTransporter, shuttleAt } from './hull';
+import { drawAirlock, drawTransporter, shuttleAt } from './hull';
 import { spriteSize } from './art';
 
 const session = changes => ({
@@ -2812,6 +2812,34 @@ test('a session kept until its time ran out leaves its drink on its desk, finish
 	expect(made.homeSeatParts(ctx, worker)).toHaveLength(1);
 	made.update(looks({ spent: 'fabled', context: { warm: false } }));
 	expect(made.homeSeatParts(ctx, worker)).toHaveLength(1);
+});
+
+test("the airlock's hatch is flush with the hull: nothing of it, its lamp included, is drawn above the hull's rim over the bridge's wall", () => {
+	const art = point => ({ x: Math.round(point.x * 20), y: Math.round(point.y * 14) });
+	const bridge = { x: 0, y: 0, w: 10, d: 8, face: 1 };
+	// The hull's rim over the wall: half a world unit of it, in art pixels
+	const rim = Math.round(RIM * 14);
+
+	for (const head of [false, true])
+		for (const open of [false, true])
+			for (const time of [0, 0.3]) {
+				const tops = [];
+				const ctx = {
+					fillStyle: '',
+					fillRect: (x, y) => tops.push(y),
+					save() {},
+					restore() {},
+					beginPath() {},
+					rect() {},
+					clip() {},
+				};
+
+				drawAirlock(ctx, art, bridge, { x: 5, open, time, head });
+				expect(tops.length).toBeGreaterThan(0);
+				expect(Math.min(...tops)).toBeGreaterThanOrEqual(-rim);
+				// And it does stand up into the rim, past the wall's own top
+				expect(Math.min(...tops)).toBeLessThan(0);
+			}
 });
 
 test('a couch more needed is dropped out of the tube; one no longer needed is zapped from the ceiling, the lounge its size till its ash is sucked up', () => {
