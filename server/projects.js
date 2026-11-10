@@ -1,4 +1,4 @@
-import { readFile, readdir, realpath, stat } from 'fs/promises';
+import { mkdir, readFile, readdir, realpath, stat } from 'fs/promises';
 import os from 'os';
 import { basename, dirname, join, relative, resolve, sep } from 'path';
 
@@ -182,6 +182,9 @@ export const projectOf = cwd => {
 
 export class FolderError extends Error {}
 
+// There's no folder where one was asked for: the one fault of a folder that making it would mend
+export class NoFolderError extends FolderError {}
+
 export const registerFolder = async requested => {
 	if (typeof requested !== 'string' || !requested.startsWith('/'))
 		throw new FolderError('Give the folder as a full path.');
@@ -192,7 +195,7 @@ export const registerFolder = async requested => {
 		path = await realpath(requested);
 		if (!(await stat(path)).isDirectory()) throw new Error('not a folder');
 	} catch {
-		throw new FolderError(`There is no folder at ${requested}.`);
+		throw new NoFolderError(`There is no folder at ${requested}.`);
 	}
 
 	const existing = folders.find(folder => folder.path === path);
@@ -227,13 +230,21 @@ const GLOB = /[*?[{]/;
 const MAX_ADDED = 200;
 
 // A folder, or a pattern for several ("~/Projects/minecraft/*"): each folder it matches becomes a project of its own.
-// Resolves to the names they're listed under.
-export const addFolders = async requested => {
+// Resolves to the names they're listed under. With `create`, one folder that isn't there yet is made first, the
+// folders above it too: a project begun from nothing, to start its first session in.
+export const addFolders = async (requested, { create = false } = {}) => {
 	if (typeof requested !== 'string' || !requested.trim()) throw new FolderError('Give the folder as a full path.');
 
 	const pattern = requested.trim().replace(/^~(?=\/|$)/, os.homedir());
 
-	if (!GLOB.test(pattern)) return [await registerFolder(pattern)];
+	if (!GLOB.test(pattern)) {
+		if (create && pattern.startsWith('/'))
+			await mkdir(pattern, { recursive: true }).catch(error => {
+				throw new FolderError(`Could not make a folder at ${requested}: ${error.code ?? error.message}.`);
+			});
+
+		return [await registerFolder(pattern)];
+	}
 	if (!pattern.startsWith('/')) throw new FolderError('Give the folders as a full path, like ~/Projects/mods/*.');
 
 	// Scanned from the deepest folder before the first wildcard, so only the part with wildcards is matched

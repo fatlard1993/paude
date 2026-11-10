@@ -18,7 +18,7 @@ import {
 	removeFolder,
 	setProjectWatching,
 } from './api';
-import confirmDialog from './confirmDialog';
+import confirmDialog, { addFolderOrMake } from './confirmDialog';
 import { identity, serverName } from './identity';
 import { hueOf, setServers } from './servers';
 import SessionBrowser from './SessionBrowser';
@@ -175,7 +175,7 @@ export default class Home extends View {
 			input.value = '';
 		};
 
-		input.placeholder = 'A folder to add as a project: ~/path/to/it, or ~/path/* for each folder in it';
+		input.placeholder = 'A folder to add as a project: ~/path/to/it (made if new), or ~/path/* for each folder in it';
 		form.append(input, add, button('', close, { icon: 'xmark', title: 'Cancel (Esc)', className: 'icon-only' }));
 		card.elem.append(opener, form);
 		opener.addEventListener('click', () => {
@@ -187,7 +187,11 @@ export default class Home extends View {
 			event.preventDefault();
 			if (!input.value.trim()) return;
 
-			const { body, response } = await addFolder(input.value.trim());
+			const added = await addFolderOrMake(input.value.trim(), (path, options) => addFolder(path, undefined, options));
+
+			if (!added) return;
+
+			const { body, response } = added;
 
 			if (!response?.ok) return new Notify({ intent: 'danger', content: body || 'Could not add that folder.' });
 

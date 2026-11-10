@@ -1,6 +1,7 @@
 import { Notify } from '@vanilla-bean/components';
 import { relativeTime } from '@vanilla-bean/components/utils/date';
 
+import { addFolderOrMake } from '../confirmDialog';
 import {
 	addFolder,
 	connectRemote,
@@ -342,12 +343,12 @@ export const foldersPane = ({ onAdded, machines = [] }) => ({
 		watching.type = 'checkbox';
 		watching.checked = true;
 		watch.append(watching, ' Watch it, so it comes aboard now');
-		input.placeholder = '~/path/to/it, or ~/path/* for each folder in it';
+		input.placeholder = '~/path/to/it (made if new), or ~/path/* for each folder in it';
 		form.append(
 			element(
 				'p',
 				'about',
-				'A folder on one of your machines becomes a project to start sessions in. It comes aboard, a module on the hull and a deck inside, once you watch it or a session starts there.',
+				"A folder on one of your machines becomes a project to start sessions in; one that isn't there yet is made, for a project begun from nothing. It comes aboard, a module on the hull and a deck inside, once you watch it or a session starts there.",
 			),
 			machine,
 			input,
@@ -359,7 +360,11 @@ export const foldersPane = ({ onAdded, machines = [] }) => ({
 			if (!input.value.trim()) return;
 
 			const on = machines[Number(machine.value)] ?? { name: 'this machine', url: null };
-			const { body, response } = await addFolder(input.value.trim(), on.url);
+			const added = await addFolderOrMake(input.value.trim(), (path, options) => addFolder(path, on.url, options));
+
+			if (!added) return;
+
+			const { body, response } = added;
 
 			if (!response?.ok) return new Notify({ intent: 'danger', content: body || 'Could not add that folder.' });
 

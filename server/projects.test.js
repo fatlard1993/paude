@@ -1,10 +1,11 @@
-import { mkdir, mkdtemp, writeFile } from 'fs/promises';
+import { mkdir, mkdtemp, stat, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { beforeAll, expect, test } from 'bun:test';
 
 import {
 	FolderError,
+	NoFolderError,
 	addFolders,
 	initProjects,
 	listProjects,
@@ -114,4 +115,28 @@ test("a git worktree left in the projects root is its repository's, not a projec
 	expect(listed).toContain('module');
 	expect(listed).not.toContain('repo-fix');
 	expect(projectOf(path.join(base, 'root/repo-fix'))).toBe('repo');
+});
+
+test("a folder that isn't there yet is its own fault, and made first when that's asked: a project begun from nothing", async () => {
+	const fresh = path.join(base, 'begun/brand-new');
+
+	// Not there: said so in a way that can be told from any other fault, and nothing made
+	await expect(addFolders(fresh)).rejects.toBeInstanceOf(NoFolderError);
+	expect(await stat(fresh).catch(() => null)).toBeNull();
+	// Asked to make it: the folder and those above it, then added like any other
+	expect(await addFolders(fresh, { create: true })).toEqual(['brand-new']);
+	expect((await stat(fresh)).isDirectory()).toBe(true);
+	expect(projectPath('brand-new')).toBe(fresh);
+	// One already there is only added; a pattern makes nothing; nor does a path that isn't a full one
+	expect(await addFolders(fresh, { create: true })).toEqual(['brand-new']);
+	await expect(addFolders(path.join(base, 'begun/none-*'), { create: true })).rejects.toThrow('No folders match');
+	await expect(addFolders('begun/relative', { create: true })).rejects.toThrow('full path');
+	// A trailing slash, and a home-relative path, are the folder they name
+	expect(await addFolders(`${path.join(base, 'begun/slashed')}/`, { create: true })).toEqual(['slashed']);
+	expect((await stat(path.join(base, 'begun/slashed'))).isDirectory()).toBe(true);
+	// Another user's home (~name) isn't read as a path, and nothing is made of it
+	await expect(addFolders('~nobody/project', { create: true })).rejects.toThrow('full path');
+	// Where a folder can't be made (a file in the way), that's said
+	await writeFile(path.join(base, 'begun/a-file'), '');
+	await expect(addFolders(path.join(base, 'begun/a-file/under'), { create: true })).rejects.toThrow('Could not make');
 });

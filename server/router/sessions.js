@@ -73,6 +73,7 @@ import { mayListRemotes, ownerName } from '../serverSettings';
 import { sessionTurns } from '../sessions/history';
 import {
 	FolderError,
+	NoFolderError,
 	listProjects,
 	projectOf,
 	projectPath,
@@ -276,10 +277,13 @@ const sessionsRoutes = async (request, server) => {
 
 	if (requestMatch('POST', '/api/projects', request)) {
 		try {
-			const names = await addFolders((await request.json()).path);
+			const { path, create } = await request.json();
+			const names = await addFolders(path, { create: create === true });
 
 			return Response.json({ name: names[0], names });
 		} catch (error) {
+			// No folder there is its own answer, so whoever asked can be offered its making
+			if (error instanceof NoFolderError) return new Response(error.message, { status: 404 });
 			if (error instanceof FolderError) return new Response(error.message, { status: 400 });
 			throw error;
 		}

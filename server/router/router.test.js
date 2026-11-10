@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
@@ -223,6 +223,28 @@ test("the manifest's icons are served without a login, and nothing else beside t
 	expect(icon.status).toBe(200);
 	expect(icon.headers.get('content-type')).toBe('image/png');
 	expect((await call('/build.js')).status).toBe(404);
+});
+
+test("adding a folder that isn't there is a 404, so its making can be offered, and with create it's made and added", async () => {
+	const fresh = path.join(await mkdtemp(path.join(os.tmpdir(), 'paude-new-')), 'begun-here');
+	const add = body => call('/api/projects', { token: tokens.owner, method: 'POST', body });
+
+	// The owner's alone: a guest, whatever their role, adds no folder and makes none
+	for (const token of [tokens.comment, tokens.watch]) {
+		const refused = await call('/api/projects', { token, method: 'POST', body: { path: fresh, create: true } });
+
+		expect(refused.status).toBe(403);
+	}
+	expect((await call('/api/projects', { method: 'POST', body: { path: fresh, create: true } })).status).toBe(401);
+	expect(await stat(fresh).catch(() => null)).toBeNull();
+	expect((await add({ path: fresh })).status).toBe(404);
+	expect((await add({ path: 'not/a/full/path' })).status).toBe(400);
+
+	const made = await add({ path: fresh, create: true });
+
+	expect(made.status).toBe(200);
+	expect(await made.json()).toEqual({ name: 'begun-here', names: ['begun-here'] });
+	expect((await stat(fresh)).isDirectory()).toBe(true);
 });
 
 test('a write from another site is refused', async () => {

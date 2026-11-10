@@ -78,3 +78,20 @@ export const nameDialog = ({
 			input.setSelectionRange(...(select ?? [0, input.value.length]));
 		});
 	});
+
+// A folder added as a project through `addFolder` (api's, already given where): one that isn't there yet is offered
+// to be made, a new project begun from an empty folder, and added once it is. Resolves to what the last asking
+// answered, or null when the making was turned down.
+export const addFolderOrMake = async (path, addFolder) => {
+	const first = await addFolder(path);
+
+	if (first.response?.status !== 404) return first;
+
+	const confirmed = await confirmDialog({
+		header: 'Make a new folder?',
+		body: `There is no folder at ${path} yet. Make it, as a new project to start a session in?`,
+		confirmLabel: 'Make it',
+	});
+
+	return confirmed ? await addFolder(path, { create: true }) : null;
+};
