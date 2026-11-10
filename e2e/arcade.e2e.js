@@ -42,7 +42,8 @@ test(
 		try {
 			await page.goto(await server.loginLink(''));
 			await page.waitForSelector('textarea');
-			await page.evaluate(() => localStorage.setItem('paude.arcade.speak', 'no'));
+			// Turned off for this arcade's way of writing (read aloud, left to itself)
+			await page.evaluate(() => localStorage.setItem('paude.arcade.speak.learning', 'no'));
 			await page.goto(`${server.url}/#/arcade/${id}`);
 			// The page has seen the session idle before the question comes: a question arriving later is read (here, taken
 			// in over its unspoken moment), not treated as one found up on arrival

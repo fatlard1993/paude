@@ -9,6 +9,7 @@ import {
 	sessionOrigin,
 	undoArcadeTurn,
 } from '../api';
+import { readAloudFor } from '../../shared/arcade';
 import confirmDialog from '../confirmDialog';
 import { button, element, icon } from '../dom';
 import { canType, identity } from '../identity';
@@ -120,7 +121,9 @@ export default class ArcadeTalk extends Talk {
 		this.arcade = null;
 		this.reading = 'reading';
 		this.prefs = {
-			speak: (recall(PREFS.speak) || (canSpeak() ? 'yes' : 'no')) === 'yes',
+			// Silent until it's known how this arcade is written (learnArcade, before anything is shown): then as that
+			// has it, or as was last chosen for one written that way
+			speak: false,
 			size: Math.min(Math.max(Number(recall(PREFS.size)) || 0, 0), SIZES.length - 1),
 		};
 
@@ -162,6 +165,7 @@ export default class ArcadeTalk extends Talk {
 		if (!response?.ok) return;
 		this.arcade = body.arcade;
 		this.reading = body.arcade?.reading ?? 'reading';
+		this.showSpeak(canSpeak() && readAloudFor(this.reading, recall(`${PREFS.speak}.${this.reading}`)));
 		if (this.arcade && canType()) this.putBack.style.display = '';
 		this.options.onArcade?.(body.arcade, body.host);
 	}
@@ -247,9 +251,15 @@ export default class ArcadeTalk extends Talk {
 
 	// Preferences
 
+	// Chosen by whoever's here: kept for arcades written this way, so a plain-text one turned on stays on and a spoken
+	// one turned off stays off, neither deciding for the other
 	setSpeak(on) {
+		remember(`${PREFS.speak}.${this.reading}`, on ? 'yes' : 'no');
+		this.showSpeak(on);
+	}
+
+	showSpeak(on) {
 		this.prefs.speak = on;
-		remember(PREFS.speak, on ? 'yes' : 'no');
 		if (this.speakButton) this.speakButton.firstChild.className = `fa-solid fa-${on ? 'volume-high' : 'volume-xmark'}`;
 		if (!on) {
 			this.voice.clear();
