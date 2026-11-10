@@ -14,7 +14,7 @@ import Ship, {
 	tanksOf,
 	triage,
 } from './scene';
-import { WATCHER_W, clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats, standingOf } from './plan';
+import { WATCHER_W, airlockAt, clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats, standingOf } from './plan';
 import { huesApart } from '../../shared/hues';
 import { SCREEN_RISE, UNIT, cableWeight, floor, setTrim, walls } from './station';
 import { drawAirlock, drawTransporter, shuttleAt } from './hull';
@@ -2814,9 +2814,10 @@ test('a session kept until its time ran out leaves its drink on its desk, finish
 	expect(made.homeSeatParts(ctx, worker)).toHaveLength(1);
 });
 
-test("the airlock's hatch is wholly inside the ship: nothing of it, its lamp included, is drawn above the top of the bridge's wall", () => {
+test("the airlock's hatch is a person's height and wholly inside the ship: from under the top of the bridge's wall down to its sill on the floor, nothing of it above the wall", () => {
 	const art = point => ({ x: Math.round(point.x * 20), y: Math.round(point.y * 14) });
 	const bridge = { x: 0, y: 0, w: 10, d: 8, face: 1 };
+	const sill = art(airlockAt(bridge)).y;
 
 	for (const open of [false, true])
 		for (const time of [0, 0.3]) {
@@ -2825,9 +2826,11 @@ test("the airlock's hatch is wholly inside the ship: nothing of it, its lamp inc
 
 			drawAirlock(ctx, art, bridge, { x: 5, open, time });
 			expect(boxes.length).toBeGreaterThan(0);
-			// From the wall's top down to its foot, where the sill's strip is
+			// Nothing above the wall's top, so nothing in the hull over it or out of it
 			expect(Math.min(...boxes.map(({ y }) => y))).toBeGreaterThanOrEqual(0);
-			expect(Math.max(...boxes.map(({ y, h }) => y + h))).toBeLessThanOrEqual(15);
+			// Down to where whoever comes through it stands, and tall enough for them
+			expect(Math.max(...boxes.map(({ y, h }) => y + h))).toBe(sill + 1);
+			expect(sill).toBeGreaterThanOrEqual(26);
 		}
 });
 

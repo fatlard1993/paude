@@ -1,6 +1,7 @@
 import { PALETTE, plating } from './art';
 import { tintsOf } from '../../shared/hues';
 import {
+	AIRLOCK_DROP,
 	NACELLE,
 	NOSE,
 	RIM,
@@ -2050,8 +2051,9 @@ export const drawLounge = (ctx, art, label, lounge, { time, lifted = [], gone = 
 // The bridge: its floor and name, consoles along its back wall, one lit blue while a session plans, and in the wall at
 // its forward end the airlock, open while someone's at it (`airlockOpen`), its lamp red
 // `ship`: its name and color, which sign the bridge, since the bridge is the one room that is the ship's own
-// How wide the airlock's hatch is, in world units: wider than a room's door, for a person in their suit. It's as tall
-// as the bridge's far wall and no taller, wholly inside the ship
+// How wide the airlock's hatch is, in world units: wider than a room's door, for a person in their suit. It's taller
+// than the bridge's far wall too, downward (AIRLOCK_DROP): from under the wall's top to its sill on the floor before
+// the wall, wholly inside the ship
 const AIRLOCK_W = 1.3;
 
 // The airlock in the bridge's far wall, `x` its middle: a heavy hatch in a collar, within the wall's face, two leaves
@@ -2059,7 +2061,7 @@ const AIRLOCK_W = 1.3;
 // and a hazard strip along its sill
 export const drawAirlock = (ctx, art, bridge, { x, open, time }) => {
 	const top = art({ x: 0, y: bridge.y }).y;
-	const height = Math.round((bridge.face ?? FACE) * UNIT.y);
+	const height = Math.round((bridge.face ?? FACE) * UNIT.y) + Math.round(AIRLOCK_DROP * UNIT.y);
 	const across = Math.round(AIRLOCK_W * UNIT.x);
 	const left = art({ x: x - AIRLOCK_W / 2, y: bridge.y }).x;
 	const middle = left + Math.floor(across / 2);
@@ -2087,10 +2089,10 @@ export const drawAirlock = (ctx, art, bridge, { x, open, time }) => {
 			rect(ctx, leaf, head + 3, half, tall - 3, PALETTE.d);
 			rect(ctx, leaf, head + 3, half, 1, PALETTE.l);
 			// A port in each leaf, and a brace under it
-			rect(ctx, leaf + Math.floor(half / 2) - 3, head + 4, 6, 5, PALETTE.k);
-			rect(ctx, leaf + Math.floor(half / 2) - 2, head + 5, 4, 3, '#0b1430');
-			rect(ctx, leaf + Math.floor(half / 2) - 2, head + 5, 1, 1, PALETTE.l);
-			rect(ctx, leaf + 2, head + tall - 2, half - 4, 1, PALETTE.m);
+			rect(ctx, leaf + Math.floor(half / 2) - 3, head + 7, 6, 6, PALETTE.k);
+			rect(ctx, leaf + Math.floor(half / 2) - 2, head + 8, 4, 4, '#0b1430');
+			rect(ctx, leaf + Math.floor(half / 2) - 2, head + 8, 1, 1, PALETTE.l);
+			rect(ctx, leaf + 2, head + Math.floor(tall * 0.66), half - 4, 1, PALETTE.m);
 		}
 		rect(ctx, middle, head + 3, 1, tall - 3, PALETTE.k);
 	}

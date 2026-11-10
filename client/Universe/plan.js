@@ -350,7 +350,11 @@ export const padAt = hangar => ({ x: hangar.x + (hangar.w - 0.9) / 2, y: hangar.
 // The nav table on the bridge, forward of the terminals
 // The airlock in the bridge's far wall, over its nav table where no island stands, where those who come aboard come in
 // and go out: its doorway's middle, at the foot of the wall
-export const airlockAt = bridge => ({ x: navAt(bridge).x, y: bridge.y + (bridge.face ?? FACE) });
+// How far below the foot of the bridge's far wall the airlock's sill is, in world units: its hatch is taller than the
+// wall it's in, a person's height, and has nowhere to be taller but down (over it is the hull)
+export const AIRLOCK_DROP = 1.1;
+
+export const airlockAt = bridge => ({ x: navAt(bridge).x, y: bridge.y + (bridge.face ?? FACE) + AIRLOCK_DROP });
 
 export const navAt = bridge => ({ x: bridge.x + bridge.w - BRIDGE_NAV_W / 2 - 0.2, y: bridge.y + bridge.d * 0.6 });
 
