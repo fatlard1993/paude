@@ -38,7 +38,9 @@ const MANIFESTS = [
 const STOCK = new Set(['#3475b2']);
 // Below this saturation a color is a grey, which says nothing of a brand
 const CHROMATIC = 0.2;
-const BRAND_MS = 10 * 60_000;
+// How long a project's brand is kept before its folder is read again: short, so a new icon or theme color shows
+// within the minute rather than leaving the old color up to be wondered at; it's two small files to read
+const BRAND_MS = 30_000;
 
 // The project's icon as { path, type }, or null
 export const iconOf = async folder => {
