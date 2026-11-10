@@ -161,11 +161,28 @@ const SUIT_TOP = [
 // Their legs, down to the boots: a third of them, under a long body and a big helmet
 const SUIT_LEGS = Array(6).fill('...kwwwkwwwk...');
 
+// The suit's top with one arm swung forward, as it is in a stride: seen from the front the arm is shorter, its glove
+// a row up and nothing below it. `side`: the left of the picture (0) or its right (1)
+const swung = side =>
+	SUIT_TOP.map((row, index) => {
+		const from = side ? 11 : 0;
+		const arm = { 18: 'kmmk', 19: 'kkkk', 20: side ? 'k...' : '...k' }[index];
+
+		return arm ? `${row.slice(0, from)}${arm}${row.slice(from + 4)}` : row;
+	});
+
 const SUIT = {
 	stand: [...SUIT_TOP, ...SUIT_LEGS, '...kwwwkwwwk...', '..kmmmmkmmmmk..', '..kkkkk.kkkkk..'],
-	// A boot lifted, the other planted, as the greys walk
-	stepLeft: [...SUIT_TOP, ...SUIT_LEGS, '..kmmmmkwwwk...', '..kkkkkkmmmmk..', '.......kkkkkk..'],
-	stepRight: [...SUIT_TOP, ...SUIT_LEGS, '...kwwwkmmmmk..', '..kmmmmkkkkkk..', '..kkkkk........'],
+	// A stride: a boot lifted and the other planted, as the greys walk, the arm across from the lifted boot swung
+	// forward
+	stepLeft: [...swung(1), ...SUIT_LEGS, '..kmmmmkwwwk...', '..kkkkkkmmmmk..', '.......kkkkkk..'],
+	stepRight: [...swung(0), ...SUIT_LEGS, '...kwwwkmmmmk..', '..kmmmmkkkkkk..', '..kkkkk........'],
+	// Stood still, now and then: the light across their visor from its other side, as they look about
+	glint: [...SUIT_TOP, ...SUIT_LEGS, '...kwwwkwwwk...', '..kmmmmkmmmmk..', '..kkkkk.kkkkk..'].map(
+		(row, index) => ({ 4: '.kwkyWWyyyykwk.', 5: '.kwkYWyyyyykwk.' })[index] ?? row,
+	),
+	// Sat on a stool, facing us: their legs come toward us, so only the boots show under the body
+	sit: [...SUIT_TOP.slice(0, -1), '.kkkmmmkmmmkkk.', '...kkkk.kkkk...'],
 };
 
 // Someone at an arcade cabinet to their right: the arm on that side is out to it, drawn apart as it moves, so the
@@ -462,6 +479,8 @@ const SPRITES = {
 	bodySitWave: BODIES.sitWave,
 	bodyBack: BODIES.stand.map(row => row.replace('s', 'a')),
 	suit: SUIT.stand,
+	suitGlint: SUIT.glint,
+	suitSit: SUIT.sit,
 	suitStepLeft: SUIT.stepLeft,
 	suitStepRight: SUIT.stepRight,
 	lamp: LAMP,

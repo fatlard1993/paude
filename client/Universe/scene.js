@@ -6235,8 +6235,9 @@ export default class Ship {
 
 	// A column of light, every other pixel lit so the worker shows through it, fading as `strength` goes to nothing
 	drawBeam(ctx, at, strength) {
-		const height = 34;
-		const width = 9;
+		// Round a person in their suit, and over their helmet
+		const height = SUIT_TALL + 8;
+		const width = 17;
 
 		ctx.fillStyle = PALETTE.t;
 		for (let row = 0; row < Math.round(height * strength); row++)
@@ -7618,28 +7619,38 @@ export default class Ship {
 		const there = !walker.path.length && !walker.leaving && walker.spot;
 
 		if (there && walker.pose === 'copilot') {
-			rect(ctx, at.x - 3, at.y - 4, 7, 2, PALETTE.m);
-			rect(ctx, at.x - 1, at.y - 2, 3, 3, PALETTE.k);
-			drawSprite(ctx, 'suit', at.x, at.y - 4, { colors });
+			// Sat on a stool beside their grey: its seat wide enough for the suit, on one leg with a foot
+			rect(ctx, at.x - 6, at.y - 7, 13, 3, PALETTE.k);
+			rect(ctx, at.x - 5, at.y - 7, 11, 2, PALETTE.m);
+			rect(ctx, at.x - 1, at.y - 4, 3, 4, PALETTE.k);
+			rect(ctx, at.x - 4, at.y, 9, 1, PALETTE.k);
+			drawSprite(ctx, 'suitSit', at.x, at.y - 5, { colors });
 		} else if (there && walker.pose === 'player') {
 			this.drawPersonPlaying(ctx, walker, at, colors);
 		} else if (there && walker.pose === 'overseer') {
-			drawSprite(ctx, 'suit', at.x, at.y, { colors, flip: walker.stand < 0 });
+			// Stood watching: the light crosses their visor now and then, as they look about
+			const looking = (this.time + seeded(walker.name) * 9) % 6 < 0.35;
+
+			rect(ctx, at.x - 5, at.y, 11, 1, PALETTE.k);
+			drawSprite(ctx, looking ? 'suitGlint' : 'suit', at.x, at.y, { colors, flip: walker.stand < 0 });
 		} else if (there && walker.pose === 'tourist') {
+			rect(ctx, at.x - 5, at.y, 11, 1, PALETTE.k);
 			drawSprite(ctx, 'suitBack', at.x, at.y, { colors });
+			// Their camera's flash, up by the helmet
 			if ((this.time + seeded(walker.name) * 7) % 7 < 0.12) {
-				rect(ctx, at.x - 6, at.y - SUIT_TALL + 1, 3, 3, PALETTE.W);
-				rect(ctx, at.x - 7, at.y - SUIT_TALL + 2, 5, 1, PALETTE.W);
+				rect(ctx, at.x - 9, at.y - SUIT_TALL + 3, 3, 3, PALETTE.W);
+				rect(ctx, at.x - 10, at.y - SUIT_TALL + 4, 5, 1, PALETTE.W);
 			}
 		} else {
+			// Walking: up a pixel on each stride, their shadow staying on the floor
 			rect(ctx, at.x - 5, at.y, 11, 1, PALETTE.k);
-			drawSprite(ctx, `suit${stride}`, at.x, at.y, { colors, flip: walker.facing < 0 });
+			drawSprite(ctx, `suit${stride}`, at.x, at.y - (stride ? 1 : 0), { colors, flip: walker.facing < 0 });
 		}
 		ctx.globalAlpha = 1;
 		if (beam !== null) this.drawBeam(ctx, at, Math.min(1, 0.4 + beam));
 		this.hits.push({
-			...this.toScreen({ x: at.x, y: at.y - 7 }),
-			r: 7 * this.camera.zoom,
+			...this.toScreen({ x: at.x, y: at.y - SUIT_TALL / 2 }),
+			r: 11 * this.camera.zoom,
 			kind: 'person',
 			person: walker.person,
 		});
