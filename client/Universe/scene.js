@@ -1361,6 +1361,23 @@ export default class Ship {
 		this.flying = true;
 	}
 
+	// Flown to the projects' bays, all of them at once with a little round them; nowhere with none aboard
+	lookOverBays() {
+		const bays = this.bays ?? [];
+
+		if (!bays.length) return;
+
+		const [from, to] = [
+			this.art({ x: Math.min(...bays.map(({ x }) => x)) - 1, y: Math.min(...bays.map(({ y }) => y)) - 1 }),
+			this.art({
+				x: Math.max(...bays.map(({ x, w }) => x + w)) + 1,
+				y: Math.max(...bays.map(({ y, d }) => y + d)) + 1,
+			}),
+		];
+
+		this.lookOver({ left: from.x, right: to.x, top: from.y, bottom: to.y });
+	}
+
 	// By hand: the view is the hand's from here, and nothing flies it until asked; not while coming aboard
 	pan(across, down) {
 		if (this.joinGoal()) return;

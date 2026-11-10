@@ -2757,6 +2757,31 @@ test('one gone cold with a question open or a reply unread stands about the loun
 	expect(made.drawMarker).toBeUndefined();
 });
 
+test("looking over the projects' bays flies to all of them at once, and nowhere with none aboard", () => {
+	const made = shipWith([
+		answer('here', [session(), session({ id: 'other', project: 'other' })], { projects: ['paude', 'other'] }),
+	]);
+
+	run(made, 10);
+	expect(made.bays.length).toBe(2);
+	made.flyingTo = null;
+	made.lookOverBays();
+
+	const { x, y, zoom } = made.flyingTo;
+	const [left, right] = [Math.min(...made.bays.map(bay => bay.x)), Math.max(...made.bays.map(bay => bay.x + bay.w))];
+	const [top, bottom] = [Math.min(...made.bays.map(bay => bay.y)), Math.max(...made.bays.map(bay => bay.y + bay.d))];
+
+	// The middle of them all (the panel's room aside), as near as fits
+	expect(x - made.aside / 2 / zoom).toBeCloseTo(((left + right) / 2) * UNIT.x, 0);
+	expect(y).toBeCloseTo(((top + bottom) / 2) * UNIT.y, 0);
+	expect(made.flying).toBe(true);
+
+	made.bays = [];
+	made.flyingTo = null;
+	made.lookOverBays();
+	expect(made.flyingTo).toBeNull();
+});
+
 test("the nose's tip on the screen is past the bridge's right wall by the nose and its spar", () => {
 	const made = shipWith([answer('here', [session()], { projects: ['paude'] })]);
 

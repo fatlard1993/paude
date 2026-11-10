@@ -1422,6 +1422,21 @@ export default class Universe extends View {
 
 	// Which engines and projects the ship shows, each toggled; every one listed, those hidden too
 	// A dock for the whole ship, or one engine: its sessions to find, read and wake, and folders to add as projects
+	// The projects list, with the view on where the projects are aboard: their bays, all of them
+	openProjects() {
+		this.openShipDock('projects');
+		this.aboard.lookOverBays();
+	}
+
+	// The devices that are this ship's engines, with the view on engineering, where they are
+	openDevices() {
+		this.openShipDock('devices');
+
+		const [engine] = this.aboard.engines;
+
+		if (engine) this.aboard.look(engine.key);
+	}
+
 	openShipDock(open, remotes = this.remotes, only) {
 		const withLocal = !only || only === localName();
 
@@ -2118,10 +2133,8 @@ export default class Universe extends View {
 				})),
 				commands: [
 					...owned({ label: 'All sessions', hotkey: 'h', run: () => this.openShipDock('sessions') }),
-					...owned({ label: 'Projects', hotkey: 'p', run: () => this.openShipDock('projects') }),
-					...(identity()?.remotes
-						? [{ label: 'Connect a device', hotkey: 'd', run: () => this.openShipDock('devices') }]
-						: []),
+					...owned({ label: 'Projects', hotkey: 'p', run: () => this.openProjects() }),
+					...(identity()?.remotes ? [{ label: 'Devices', hotkey: 'd', run: () => this.openDevices() }] : []),
 				],
 			};
 		if (kind === 'lounge')
@@ -2156,7 +2169,7 @@ export default class Universe extends View {
 				items: [...needed.map(workerItem), ...this.healthItems(), ...watched.map(workerItem)],
 				commands: [
 					...this.placeCommands('bridge'),
-					...owned({ label: 'Projects', hotkey: 'p', run: () => this.openShipDock('projects') }),
+					...owned({ label: 'Projects', hotkey: 'p', run: () => this.openProjects() }),
 					...(this.aboard.layout?.transporter
 						? [{ label: 'Transporter', hotkey: 'x', run: () => this.aboard.look('transporter') }]
 						: []),
@@ -2165,9 +2178,7 @@ export default class Universe extends View {
 						label: `${this.fleetShown.has(ship.key) ? 'Hide' : 'Show'} ${ship.name}'s ship`,
 						run: () => this.showShip(ship.key),
 					})),
-					...(identity()?.remotes
-						? [{ label: 'Connect a device', hotkey: 'd', run: () => this.openShipDock('devices') }]
-						: []),
+					...(identity()?.remotes ? [{ label: 'Devices', hotkey: 'd', run: () => this.openDevices() }] : []),
 				],
 			};
 		}
