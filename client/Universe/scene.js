@@ -6572,8 +6572,8 @@ export default class Ship {
 
 	// What a session runs beside Claude, as units humming behind its seat, one for each process, their lights as busy as
 	// its CPU has been; a shared port puts an antenna on them, its beacon lit
-	// A rack for each project's island (or its machine, for those jacked into it), out at its forward end where nobody
-	// stands in front of it: a sled in it for each process its sessions run beside Claude, as many as it holds, and a
+	// A rack for each project's island (or its machine, for those jacked into it), out at its aft end, on its left,
+	// where its conduit comes in and nobody stands in front of it: a sled in it for each process its sessions run beside Claude, as many as it holds, and a
 	// beacon atop it while any of them serves something. Pressed, it opens the processes of the one that runs some, or
 	// offers each that does.
 	rackParts(ctx) {
@@ -6596,7 +6596,7 @@ export default class Ship {
 
 		return [...racks.values()].map(rack => {
 			const { island, seat } = rack;
-			const spot = (island && { x: island.x + island.w + 0.3, y: island.y - 0.15 }) ||
+			const spot = (island && { x: island.x - 0.3, y: island.y - 0.15 }) ||
 				(seat.housing && { x: seat.x - 0.65, y: seat.y + 0.05 }) || { x: seat.x - 1.1, y: seat.y - 0.15 };
 
 			return { y: spot.y, draw: () => this.drawRack(ctx, this.art(spot), rack) };

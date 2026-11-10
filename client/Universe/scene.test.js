@@ -2875,6 +2875,49 @@ test('the parts of a seat at a console are drawn in their named order, each wher
 	expect(Math.max(...offsets)).toBe(SEAT_LAYER.onDesk);
 });
 
+test("an island's rack stands at its left end, behind its desk's line, where nobody stands or sits, however many islands and whoever is aboard", () => {
+	const running = [{ pid: 1, command: 'bun dev', cpu: 0.2 }];
+
+	for (const projects of [1, 3, 6]) {
+		const names = Array.from({ length: projects }, (_, index) => `p${index}`);
+		const sessions = names.flatMap(project =>
+			[0, 1].map(seat => session({ id: `${project}-${seat}`, project, status: 'working', processes: running })),
+		);
+		const people = [
+			{ key: 'me', name: 'chase', role: 'owner', sessions: [] },
+			{ key: 'guest', name: 'Sam', role: 'comment', sessions: [`${names.at(-1)}-0`] },
+		];
+		const made = shipWith([answer('here', sessions, { projects: names, people })]);
+
+		made.viewer = 'me';
+		run(made, 30);
+
+		const ctx = new Proxy({}, { get: () => () => {} });
+		const racks = made.rackParts(ctx);
+		const islands = made.bridge.islands;
+
+		// One for each island with something running, drawn where it stands: behind the island's own line
+		expect(racks).toHaveLength(islands.length);
+		expect(racks.map(({ y }) => y).sort()).toEqual(islands.map(({ y }) => y - 0.15).sort());
+		for (const island of islands) {
+			const rack = { x: island.x - 0.3, y: island.y - 0.15 };
+
+			// Left of every seat at its island
+			for (const seat of island.seats) expect(seat.x).toBeGreaterThan(rack.x + 0.3);
+			// And nobody aboard stands on it or behind it: whoever is near it across is before the island's line
+			for (const walker of made.walkers.values()) {
+				if (walker.x === undefined || Math.abs(walker.x - rack.x) > 0.6) continue;
+				expect(walker.y).toBeGreaterThan(island.y);
+			}
+			for (const worker of made.workers.values()) {
+				const watcher = worker.watcher && !worker.watcher.path?.length ? made.watcherAt(worker) : null;
+
+				if (watcher && Math.abs(watcher.x - rack.x) < 0.6) expect(Math.abs(watcher.y - rack.y)).toBeGreaterThan(0.3);
+			}
+		}
+	}
+});
+
 test('a couch more needed is dropped out of the tube; one no longer needed is zapped from the ceiling, the lounge its size till its ash is sucked up', () => {
 	const resting = ids => [
 		answer(
