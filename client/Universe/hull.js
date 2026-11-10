@@ -1810,6 +1810,52 @@ const iconOf = address => {
 	return image.ready ? image : null;
 };
 
+// A cabinet's side art: its game's icon shrunk to ART pixels square (its shape kept) and each pixel put to one of three
+// tones by how light it is among the icon's own (1 dark, 2 mid, 3 light; 0 where it's clear), worked out once per icon
+const ART = 8;
+
+const tonesOf = image => {
+	if (image.tones) return image.tones;
+
+	const canvas = Object.assign(document.createElement('canvas'), { width: ART, height: ART });
+	const paint = canvas.getContext('2d', { willReadFrequently: true });
+	const wide = image.naturalWidth || 1;
+	const tall = image.naturalHeight || 1;
+	const scale = ART / Math.max(wide, tall);
+	const [width, height] = [Math.max(1, Math.round(wide * scale)), Math.max(1, Math.round(tall * scale))];
+
+	paint.drawImage(image, Math.floor((ART - width) / 2), Math.floor((ART - height) / 2), width, height);
+
+	let pixels;
+
+	try {
+		pixels = paint.getImageData(0, 0, ART, ART).data;
+	} catch {
+		return (image.tones = new Array(ART * ART).fill(0));
+	}
+
+	const light = Array.from({ length: ART * ART }, (_, at) =>
+		pixels[at * 4 + 3] < 110 ? null : 0.3 * pixels[at * 4] + 0.59 * pixels[at * 4 + 1] + 0.11 * pixels[at * 4 + 2],
+	);
+	const seen = light.filter(value => value !== null);
+	const [least, most] = [Math.min(...seen), Math.max(...seen)];
+	const spread = most - least;
+
+	image.tones = light.map(value => {
+		if (value === null) return 0;
+		// All one lightness (a silhouette): the trim, whatever its color
+		if (spread < 24) return 2;
+
+		const share = (value - least) / spread;
+
+		if (share < 0.34) return 1;
+
+		return share < 0.72 ? 2 : 3;
+	});
+
+	return image.tones;
+};
+
 const cabinetPart = (ctx, art, lounge, cabinet, index, time) => {
 	const foot = cabinetAt(lounge, index);
 	const facing = cabinetFacing(index);
@@ -1866,20 +1912,24 @@ const cabinetPart = (ctx, art, lounge, cabinet, index, time) => {
 			span(2, 4, top + 3, 1, trim);
 			span(2, 3, top + 4, icon ? 4 : 14, trim);
 			if (icon) {
-				const smooth = ctx.imageSmoothingEnabled;
+				// Printed on the panel in its own colors, as a cabinet's side art is: dark, its trim, and a pale wash of it
+				const tones = tonesOf(icon);
 
-				ctx.imageSmoothingEnabled = false;
-				// A pale card in a dark frame, so a dark icon (a black logo) shows as well as a bright one
-				rect(ctx, Math.min(x(1), x(10)), top + 8, 10, 10, PALETTE.k);
-				rect(ctx, Math.min(x(2), x(9)), top + 9, 8, 8, '#d8dce4');
-				// Its own shape kept, fitted inside the frame's 8 pixels square
-				const wide = icon.naturalWidth || 1;
-				const tall = icon.naturalHeight || 1;
-				const scale = 8 / Math.max(wide, tall);
-				const [width, height] = [Math.max(1, Math.round(wide * scale)), Math.max(1, Math.round(tall * scale))];
+				for (let row = 0; row < ART; row++)
+					for (let column = 0; column < ART; column++) {
+						const tone = tones[row * ART + column];
 
-				ctx.drawImage(icon, Math.min(x(2), x(9)) + (8 - width) / 2, top + 9 + (8 - height) / 2, width, height);
-				ctx.imageSmoothingEnabled = smooth;
+						if (!tone) continue;
+
+						const at = { x: 1 + column, y: top + 9 + row };
+
+						span(at.x, at.x, at.y, 1, tone === 1 ? PALETTE.k : trim);
+						if (tone === 3) {
+							ctx.globalAlpha = 0.55;
+							span(at.x, at.x, at.y, 1, '#ffffff');
+							ctx.globalAlpha = 1;
+						}
+					}
 			} else span(3, 5, top + 18, 1, trim);
 			span(4, 9, top + 26, 1, trim);
 			// The deck's edge, a stick standing up from it, and the kick plate
