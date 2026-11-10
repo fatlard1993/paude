@@ -724,6 +724,27 @@ test(
 );
 
 test(
+	'the universe draws frame after frame without a page error',
+	async () => {
+		const { browser, page } = await openBrowser('dom');
+		const errors = [];
+
+		page.on('pageerror', error => errors.push(error.message));
+		try {
+			await page.goto(await servers.turns.loginLink(''));
+			await page.waitForSelector('textarea');
+			await page.evaluate(() => (window.location.hash = '#/universe'));
+			await page.waitForSelector('.focus-card', { timeout: 20_000 });
+			await wait(2000);
+			expect(errors).toEqual([]);
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
 	"a prompt typed in the universe's card is still there after the card closes or the page reloads, and on home",
 	async () => {
 		const server = servers.turns;

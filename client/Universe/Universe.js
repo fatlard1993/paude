@@ -446,9 +446,9 @@ export default class Universe extends View {
 		];
 	}
 
-	// The ships on the stage: this one aboard and those chosen, stacked down the screen in the fleet's order with their bows
+	// The ships on the screen: this one aboard and those chosen, stacked down the screen in the fleet's order with their bows
 	// in line, each by where its own origin falls from the one aboard's, in art pixels: [{ key, ship, at: { x, y } }]
-	stage() {
+	shipsShown() {
 		const shown = [...this.ships].filter(([key, ship]) => ship === this.aboard || this.fleetShown.has(key));
 		let down = 0;
 		const placed = shown.map(([key, ship]) => {
@@ -480,7 +480,7 @@ export default class Universe extends View {
 
 		if (target) return target;
 
-		for (const { key, ship } of this.stage()) {
+		for (const { key, ship } of this.shipsShown()) {
 			const other = ship !== this.aboard && ship.hit(x, y);
 
 			if (other) return { ...other, over: key };
@@ -498,7 +498,7 @@ export default class Universe extends View {
 
 		if (!ship || ship === from) return;
 		// Where it stands from this one on the stage, for the view to carry on from here without a jump
-		const apart = this.stage().find(placing => placing.ship === ship)?.at;
+		const apart = this.shipsShown().find(placing => placing.ship === ship)?.at;
 
 		this.closeCard();
 		this.closeDock();
@@ -589,7 +589,7 @@ export default class Universe extends View {
 				ship.step(Math.min(LONGEST_FRAME_S, (now - last) / 1000), this.calm.matches);
 			this.aboard.draw(ctx, ratio);
 			// The other ships shown, over the same space, seen from where they stand beside this one
-			for (const { ship, at } of this.stage()) {
+			for (const { ship, at } of this.shipsShown()) {
 				if (ship === this.aboard) continue;
 				Object.assign(ship.camera, {
 					x: this.aboard.camera.x - at.x,
