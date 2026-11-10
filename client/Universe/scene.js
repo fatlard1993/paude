@@ -1,6 +1,7 @@
 import { facilitiesFor, facilityOf } from '../../shared/facilities';
 import { cksum, huesApart } from '../../shared/hues';
 import { PALETTE, cheeksOf, drawSprite, spriteSize } from './art';
+import { CELL, SOLID, VOID, WALL, floorOf, footprintsOf } from './floor';
 import { drawLighting, lightOf } from './lighting';
 import { FORMS, drawCore, drawHousing } from './machine';
 import { pixelText, textWidth } from './retro';
@@ -2109,6 +2110,69 @@ export default class Ship {
 		return this.arcading && this.viewer === name ? TO_ARCADE : 1;
 	}
 
+	// The floor as one map of what's open and what stands where (floor.js), made again when the ship is laid again or
+	// the lounge's couches change
+	get floor() {
+		const made = `${this.couches ?? 0}`;
+
+		if (this.floorFor !== this.layout || this.floorMade !== made) {
+			this.floorFor = this.layout;
+			this.floorMade = made;
+			this.floorMap = floorOf(this.layout, footprintsOf(this.layout, { couches: this.couches }));
+		}
+
+		return this.floorMap;
+	}
+
+	// The floor's map drawn over the ship, for seeing why something walks or stands where it does: walls red, what
+	// stands on the floor amber with its footprint outlined, and the way each walker has left to go
+	drawFloorMap(ctx) {
+		const { floor } = this;
+		const tints = { [WALL]: 'rgba(255, 70, 70, 0.4)', [SOLID]: 'rgba(255, 180, 60, 0.4)' };
+
+		for (let down = 0; down < floor.rows; down++)
+			for (let across = 0; across < floor.columns; across++) {
+				const kind = floor.cells[down * floor.columns + across];
+
+				if (kind === VOID || !tints[kind]) continue;
+
+				const from = this.art({ x: floor.left + across * CELL, y: floor.top + down * CELL });
+				const to = this.art({ x: floor.left + (across + 1) * CELL, y: floor.top + (down + 1) * CELL });
+
+				rect(ctx, from.x, from.y, to.x - from.x, to.y - from.y, tints[kind]);
+			}
+		for (const thing of floor.things) {
+			const from = this.art(thing);
+			const to = this.art({ x: thing.x + thing.w, y: thing.y + thing.d });
+
+			rect(ctx, from.x, from.y, to.x - from.x, 1, '#ffd27a');
+			rect(ctx, from.x, to.y - 1, to.x - from.x, 1, '#ffd27a');
+			rect(ctx, from.x, from.y, 1, to.y - from.y, '#ffd27a');
+			rect(ctx, to.x - 1, from.y, 1, to.y - from.y, '#ffd27a');
+		}
+		for (const mover of [...this.walkers.values(), ...this.workers.values()]) {
+			if (mover.x === undefined || !mover.path?.length) continue;
+			[mover, ...mover.path].forEach((point, index, way) => {
+				const next = way[index + 1];
+
+				if (!next) return;
+
+				const [from, to] = [this.art(point), this.art(next)];
+				const steps = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y), 1);
+
+				for (let step = 0; step <= steps; step += 2)
+					rect(
+						ctx,
+						Math.round(from.x + ((to.x - from.x) * step) / steps),
+						Math.round(from.y + ((to.y - from.y) * step) / steps),
+						1,
+						1,
+						'#7af0ff',
+					);
+			});
+		}
+	}
+
 	// The one looking has opened a cabinet's game (by its id), or shut it (null): they walk over to play it, and back
 	playAt(id) {
 		if ((this.arcading ?? null) === (id ?? null)) return;
@@ -2798,6 +2862,7 @@ export default class Ship {
 				this.drawWatchersOver(ctx, walker);
 			}
 		for (const thought of this.thoughts) this.drawConcentrating(ctx, thought);
+		if (this.mapShown) this.drawFloorMap(ctx);
 
 		const cover = this.coverOf();
 

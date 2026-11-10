@@ -857,6 +857,12 @@ export default class Universe extends View {
 
 				return this.zoomBy(event.key === '-' || event.key === '_' ? 0.5 : 2);
 			}
+			// The floor's map over the ship, for seeing what's in the way of what
+			if (event.key === 'G') {
+				for (const ship of this.ships.values()) ship.mapShown = !ship.mapShown;
+
+				return undefined;
+			}
 			if (event.key !== 'Escape') return this.hotkey(event);
 			if (this.card) this.closeCard();
 			else if (this.dock) this.closeDock();
