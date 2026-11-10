@@ -1,5 +1,5 @@
 import { PALETTE, drawSprite, plating } from './art';
-import { tintsOf } from '../../shared/hues';
+import { hsl, isHue, tintsOf } from '../../shared/hues';
 import {
 	AIRLOCK_DROP,
 	NACELLE,
@@ -220,11 +220,11 @@ export const drawHullCover = (ctx, layout, cover, { time, name = '', hue = 200 }
 	// The stripe, its name over it
 	const stripe = Math.round(shape.top + tall * 0.36);
 
-	rect(ctx, from, stripe, to - from, 5, `hsl(${hue} 55% 42%)`);
-	rect(ctx, from, stripe, to - from, 1, `hsl(${hue} 60% 62%)`);
+	rect(ctx, from, stripe, to - from, 5, hsl(hue, 55, 42));
+	rect(ctx, from, stripe, to - from, 1, hsl(hue, 60, 62));
 	rect(ctx, from, stripe + 5, to - from, 1, PALETTE.k);
 	pixelText(ctx, name, from + 26, stripe - 4, { color: '#c9d3e3', size: 2, max: (to - from) * 0.6 });
-	pixelText(ctx, 'PAUDE', to - 24, stripe - 4, { color: `hsl(${hue} 45% 70%)`, align: 'right' });
+	pixelText(ctx, 'PAUDE', to - 24, stripe - 4, { color: hsl(hue, 45, 70), align: 'right' });
 
 	// Portholes, a few of them lit, one now and then blinking
 	const ports = Math.round(shape.top + tall * 0.6);
@@ -316,7 +316,7 @@ const drawCanopy = (ctx, image, { time, pace, drift, hue }) => {
 				rect(paint, to, y, 2, 1, PALETTE.k);
 			}
 			for (const { y, to } of glass) {
-				rect(paint, from, y, to - from, 1, `hsl(${hue} 45% 9%)`);
+				rect(paint, from, y, to - from, 1, hsl(hue, 45, 9));
 				rect(paint, to, y, 2, 1, PALETTE.k);
 			}
 			rect(paint, from - 1, rows[0].y, 1, rows.length, PALETTE.k);
@@ -331,7 +331,7 @@ const drawCanopy = (ctx, image, { time, pace, drift, hue }) => {
 
 			rect(paint, from, first.y - 1, first.to - from + 1, 1, PALETTE.k);
 			rect(paint, from, last.y + 1, last.to - from + 1, 1, PALETTE.k);
-			rect(paint, from, first.y, first.to - from, 1, `hsl(${hue} 45% 42%)`);
+			rect(paint, from, first.y, first.to - from, 1, hsl(hue, 45, 42));
 		}),
 	];
 	ctx.drawImage(image.canopy[0], area.left, area.top);
@@ -393,11 +393,11 @@ const drawFins = (ctx, image, engineering, { time = 0, hue = 200 } = {}) => {
 
 						if (to <= from) continue;
 						const band = part > 0.62 && part < 0.78;
-						const stripe = part < 0.66 ? `hsl(${hue} 60% 62%)` : `hsl(${hue} 55% 42%)`;
+						const stripe = part < 0.66 ? hsl(hue, 60, 62) : hsl(hue, 55, 42);
 
 						rect(paint, from, y, to - from, 1, (band && stripe) || (out < 0 ? plating(hue, 20) : plating(hue, 14)));
 						for (let seam = to - 9; seam > from + 2; seam -= 9)
-							rect(paint, seam, y, 1, 1, band ? `hsl(${hue} 55% 28%)` : '#141a26');
+							rect(paint, seam, y, 1, 1, band ? hsl(hue, 55, 28) : '#141a26');
 						rect(paint, from + 1, y, 2, 1, 'rgba(0, 0, 0, 0.3)');
 						rect(paint, from, y, 1, 1, PALETTE.k);
 						rect(paint, to - 2, y, 1, 1, out < 0 ? '#4a5670' : '#3a4458');
@@ -420,10 +420,10 @@ const drawEngine = (ctx, shape, { y, hue, thrust, limited, time }) => {
 	const front = shape.leftAt(y) + 4;
 	const back = front - Math.round(NACELLE * UNIT.x);
 	const burning = thrust > 0 && !limited;
-	const flicker = Math.sin(time * 23 + hue) > 0 ? 1 : 0;
+	const flicker = Math.sin(time * 23 + (Number(hue) || 0)) > 0 ? 1 : 0;
 	const sputter = Math.sin(time * 9) > 0.6 ? 6 : 2;
 	const length = limited ? sputter : Math.round(8 + thrust * 36) + flicker * 2;
-	const color = limited ? 'hsl(4 70% 45%)' : `hsl(${hue} 75% ${48 + thrust * 14}%)`;
+	const color = limited ? 'hsl(4 70% 45%)' : hsl(hue, 75, 48 + thrust * 14);
 	const bell = 12;
 	const mouth = back - bell;
 	const fairing = 9;
@@ -439,8 +439,7 @@ const drawEngine = (ctx, shape, { y, hue, thrust, limited, time }) => {
 		const spread = Math.max(1, Math.round(9 * (1 - part) ** 0.7));
 
 		rect(ctx, mouth - step - 1, y - spread, 1, spread * 2 + 1, color);
-		if (!limited && part < 0.6)
-			rect(ctx, mouth - step - 1, y - 1, 1, 3, part < 0.25 ? '#fff6e0' : `hsl(${hue} 90% 82%)`);
+		if (!limited && part < 0.6) rect(ctx, mouth - step - 1, y - 1, 1, 3, part < 0.25 ? '#fff6e0' : hsl(hue, 90, 82));
 	}
 	if (burning)
 		for (let diamond = 6 + (Math.floor(time * 12) % 2); diamond < length * 0.7; diamond += 9)
@@ -456,14 +455,7 @@ const drawEngine = (ctx, shape, { y, hue, thrust, limited, time }) => {
 		rect(ctx, x, y - half, 1, 1, '#8994aa');
 	}
 	rect(ctx, front - 6, y - 4, 1, 9, '#1b2130');
-	rect(
-		ctx,
-		back + fairing + 3,
-		y - chamber - 1,
-		front - back - fairing - 9,
-		1,
-		`hsl(${hue} 55% ${limited ? 30 : 45}%)`,
-	);
+	rect(ctx, back + fairing + 3, y - chamber - 1, front - back - fairing - 9, 1, hsl(hue, 55, limited ? 30 : 45));
 	// The chamber, a round tube shaded top to bottom, and the pump on its back with its feed line down into it
 	const shades = ['#8994aa', PALETTE.l, PALETTE.m, PALETTE.m, '#3a4357', '#343c4e', '#2b3242', PALETTE.d, '#1f2533'];
 
@@ -479,7 +471,7 @@ const drawEngine = (ctx, shape, { y, hue, thrust, limited, time }) => {
 				: shades[Math.round(((row + chamber) / (chamber * 2)) * (shades.length - 1))],
 		);
 	box(ctx, back + 3, y - chamber - 4, 5, 4, PALETTE.l);
-	rect(ctx, back + 4, y - chamber - 3, 1, 1, burning && Math.floor(time * 6) % 2 ? `hsl(${hue} 90% 72%)` : PALETTE.d);
+	rect(ctx, back + 4, y - chamber - 3, 1, 1, burning && Math.floor(time * 6) % 2 ? hsl(hue, 90, 72) : PALETTE.d);
 	rect(ctx, back + 8, y - chamber - 2, 3, 1, PALETTE.k);
 	// The gimbal ring
 	rect(ctx, back, y - chamber - 2, 2, chamber * 2 + 5, PALETTE.k);
@@ -496,13 +488,13 @@ const drawEngine = (ctx, shape, { y, hue, thrust, limited, time }) => {
 		rect(ctx, x, y - flare, 1, 1, '#8994aa');
 		if (burning && step < 4) {
 			ctx.globalAlpha = 0.55 - step * 0.12;
-			rect(ctx, x, y - 2, 1, 5, `hsl(${hue} 90% 72%)`);
+			rect(ctx, x, y - 2, 1, 5, hsl(hue, 90, 72));
 			ctx.globalAlpha = 1;
 		}
 	}
 	const lip = 12;
 
-	rect(ctx, mouth, y - lip, 1, lip * 2 + 1, burning ? `hsl(${hue} 90% 72%)` : PALETTE.m);
+	rect(ctx, mouth, y - lip, 1, lip * 2 + 1, burning ? hsl(hue, 90, 72) : PALETTE.m);
 	// Struts from the hull to the fairing, above and below
 	for (const side of [-1, 1]) {
 		const at = y + side * (chamber + 6);
@@ -627,7 +619,7 @@ export const drawShuttle = (
 	{ away, tube, walker, hue, rider, time, craft = 'shuttle', accent = PALETTE.p },
 ) => {
 	const { x, y } = shuttleAt(dock, away);
-	const stripe = `hsl(${hue ?? 200} 60% 55%)`;
+	const stripe = hsl(hue ?? 200, 60, 55);
 
 	if (craft === 'monitor') return drawMonitorCraft(ctx, dock, { x, y, away, tube, walker, stripe, accent, time });
 
@@ -643,7 +635,7 @@ export const drawShuttle = (
 			// Their feet from just under the craft's belly down to the hull, seen only where the tube is
 			const foot = Math.round(y + 6 + (reach - 6) * walker);
 			const stride = Math.floor(time * 6) % 2 ? 'suitSmallStep' : 'suitSmall';
-			const color = `hsl(${rider ?? hue ?? 200} 45% 45%)`;
+			const color = hsl(rider ?? hue ?? 200, 45, 45);
 
 			ctx.save();
 			ctx.beginPath();
@@ -1007,7 +999,7 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, systems 
 					const fill = Math.round(level * 10);
 
 					rect(ctx, x, top + 3, 3, 10, PALETTE.d);
-					rect(ctx, x, top + 13 - fill, 3, fill, `hsl(${hue} 70% 60%)`);
+					rect(ctx, x, top + 13 - fill, 3, fill, hsl(hue, 70, 60));
 					rect(
 						ctx,
 						x + 4,
@@ -1043,8 +1035,7 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, systems 
 				const busy = engine.busy && !engine.outage;
 				const flicker = engine.outage && Math.sin(time * 9) * Math.sin(time * 2.3) > 0.55;
 				const core =
-					(engine.outage && `hsl(4 55% ${flicker ? 42 : 24}%)`) ||
-					(busy ? `hsl(${hue} 75% 62%)` : `hsl(${hue} 25% 26%)`);
+					(engine.outage && `hsl(4 55% ${flicker ? 42 : 24}%)`) || (busy ? hsl(hue, 75, 62) : hsl(hue, 25, 26));
 				const [from, to] = corners(art, room);
 
 				// Fuel from its account's tank: out of its foot (`y`, or in through the hull at its edge), along to a riser
@@ -1111,7 +1102,7 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, systems 
 					for (let lamp = 0; lamp < 4; lamp++) {
 						const lit = busy && (Math.floor(time * 8) + lamp) % 4 === 0;
 
-						rect(ctx, x + 1, at.y - 4 - lamp * 4, 3, 2, lit ? `hsl(${hue} 80% 70%)` : PALETTE.d);
+						rect(ctx, x + 1, at.y - 4 - lamp * 4, 3, 2, lit ? hsl(hue, 80, 70) : PALETTE.d);
 					}
 				}
 				box(ctx, at.x - 5, at.y - REACTOR.tall, 11, REACTOR.tall, '#0d1520');
@@ -1137,7 +1128,7 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, systems 
 						);
 						ctx.globalAlpha = 1;
 					}
-				if (busy) pixelEllipse(ctx, at.x, at.y + 1, 14, 3, `hsla(${hue}, 80%, 60%, 0.10)`);
+				if (busy) pixelEllipse(ctx, at.x, at.y + 1, 14, 3, hsl(hue, 80, 60, 0.1));
 				if (engine.link !== undefined) {
 					const bars = engine.link === null ? 0 : 3 - [250, 1000, Infinity].findIndex(most => engine.link < most);
 					const color = [PALETTE.r, PALETTE.r, PALETTE.y, PALETTE.t][bars];
@@ -1145,8 +1136,7 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, systems 
 					for (let bar = 0; bar < 3; bar++)
 						rect(ctx, at.x + 14 + bar * 2, at.y - 8 - bar * 2, 1, 2 + bar * 2, bar < bars ? color : PALETTE.d);
 				}
-				if (zoom >= 3)
-					label(engine.name, at, { color: `hsl(${hue} 50% 74%)`, align: 'center', lift: -5, gap: 4, size: 1 });
+				if (zoom >= 3) label(engine.name, at, { color: hsl(hue, 50, 74), align: 'center', lift: -5, gap: 4, size: 1 });
 				if (engine.outage)
 					label(engine.outage, at, {
 						color: PALETTE.r,
@@ -1181,7 +1171,7 @@ const usagePanel = (ctx, at, { load, faulty, hue, time }) => {
 	box(ctx, at.x - 2, at.y - 6, 5, 6, PALETTE.m);
 	box(ctx, at.x - 11, at.y - 14, 22, 8, '#0d1218');
 	rect(ctx, at.x - 9, at.y - 10, 14, 1, PALETTE.d);
-	rect(ctx, at.x - 9, at.y - 10, Math.round(14 * load), 1, `hsl(${hue} 75% 64%)`);
+	rect(ctx, at.x - 9, at.y - 10, Math.round(14 * load), 1, hsl(hue, 75, 64));
 	rect(ctx, at.x + 7, at.y - 11, 2, 3, faulty && Math.floor(time * 3) % 2 ? PALETTE.r : PALETTE.m);
 };
 
@@ -1498,7 +1488,7 @@ const drawCompactUnit = (ctx, at, room, { active, accent, time, load = 0, failur
 	COMPACT_ART[room.key](ctx, at, { active, accent, time, tall });
 	// Its load along the plinth, and a lamp blinking red once a use has failed
 	rect(ctx, at.x - 9, at.y + 2, 16, 1, PALETTE.d);
-	rect(ctx, at.x - 9, at.y + 2, Math.round(16 * load), 1, `hsl(${hue} 75% 64%)`);
+	rect(ctx, at.x - 9, at.y + 2, Math.round(16 * load), 1, hsl(hue, 75, 64));
 	rect(ctx, at.x + 8, at.y + 1, 2, 2, failures > 0 && Math.floor(time * 3) % 2 ? PALETTE.r : PALETTE.m);
 };
 
@@ -1507,19 +1497,19 @@ export const drawSystem = (ctx, art, label, room, { time, system }) => {
 	floor(ctx, art, room);
 
 	const hue = system.hue;
-	const accent = `hsl(${hue} 75% 64%)`;
+	const accent = hsl(hue, 75, 64);
 	const foot = systemFootOf(room);
 
 	return [
-		...walls(ctx, art, label, room, { name: room.name, color: `hsl(${hue} 55% 74%)` }),
+		...walls(ctx, art, label, room, { name: room.name, color: hsl(hue, 55, 74) }),
 		{
 			y: foot.y,
 			draw: () => {
 				const at = art(foot);
 				const door = art({ x: room.door.x, y: room.door.side === 'bottom' ? room.y + room.d : room.y + FACE });
 
-				rect(ctx, at.x, at.y + 2, door.x - at.x, 1, `hsl(${hue} 30% 28%)`);
-				rect(ctx, door.x, Math.min(at.y + 2, door.y), 1, Math.abs(door.y - at.y - 2), `hsl(${hue} 30% 28%)`);
+				rect(ctx, at.x, at.y + 2, door.x - at.x, 1, hsl(hue, 30, 28));
+				rect(ctx, door.x, Math.min(at.y + 2, door.y), 1, Math.abs(door.y - at.y - 2), hsl(hue, 30, 28));
 				if (room.compact) {
 					compactMount(ctx, art, room, at, { active: system.active, accent, time });
 					drawCompactUnit(ctx, at, room, { ...system, accent, time });
@@ -1565,7 +1555,7 @@ export const drawTransporter = (ctx, art, label, room, { time, ships = [], beami
 	if (!room.within) floor(ctx, art, room);
 
 	const pad = clonerAt(room);
-	const beam = Number.isFinite(hue) ? `hsl(${hue} 70% 76%)` : '#c9b6ff';
+	const beam = isHue(hue) ? hsl(hue, 70, 76) : '#c9b6ff';
 	// What the other ships have for you: those asking something first, then news
 	const needs = ships.reduce((sum, { needs: count = 0 }) => sum + count, 0);
 	const news = ships.reduce((sum, { news: count = 0 }) => sum + count, 0);
@@ -1628,7 +1618,7 @@ export const drawTransporter = (ctx, art, label, room, { time, ships = [], beami
 						(ship.needs && (blink ? PALETTE.y : PALETTE.Y)) ||
 						(ship.news && PALETTE.b) ||
 						(ship.working && PALETTE.t) ||
-						(Number.isFinite(ship.hue) && `hsl(${ship.hue} 50% 42%)`) ||
+						(isHue(ship.hue) && hsl(ship.hue, 50, 42)) ||
 						PALETTE.d;
 
 					rect(ctx, at.x + 12 + (index % 3) * 3, at.y - 18 + Math.floor(index / 3) * 3, 2, 2, color);
@@ -1891,7 +1881,7 @@ const cabinetPart = (ctx, art, lounge, cabinet, index, time) => {
 			// Its project's colors, as the ship has them, where it's one of this paude's projects; else the game's own
 			const tints = tintsOf(cabinet.hue);
 			// A mid tone of it, light enough to stand off the dark floor
-			const body = cabinet.hue !== null && cabinet.hue !== undefined ? `hsl(${cabinet.hue} 30% 30%)` : '#3a404c';
+			const body = cabinet.hue !== null && cabinet.hue !== undefined ? hsl(cabinet.hue, 30, 30) : '#3a404c';
 			const trim = tints?.accent ?? cabinet.color ?? 'hsl(280 60% 62%)';
 			// x across the profile, from its back (0) to its front (11), turned to face its player
 			const x = from => at.x + facing * (from - 6);
@@ -1935,7 +1925,7 @@ const cabinetPart = (ctx, art, lounge, cabinet, index, time) => {
 			// Its game off, nothing of it is lit: the side art is there, in a dull tone of its color, not glowing
 			const sideArt =
 				(cabinet.running && trim) ||
-				(cabinet.hue !== null && cabinet.hue !== undefined ? `hsl(${cabinet.hue} 22% 34%)` : PALETTE.m);
+				(cabinet.hue !== null && cabinet.hue !== undefined ? hsl(cabinet.hue, 22, 34) : PALETTE.m);
 
 			span(2, 4, top + 3, 1, sideArt);
 			span(2, 3, top + 4, icon ? 4 : 14, sideArt);
@@ -2139,7 +2129,7 @@ export const drawBridge = (ctx, art, label, bridge, { time, plans, airlockOpen =
 	return [
 		...walls(ctx, art, label, bridge, {
 			name: ship?.name || bridge.name,
-			color: Number.isFinite(ship?.hue) ? `hsl(${ship.hue} 60% 70%)` : PALETTE.w,
+			color: isHue(ship?.hue) ? hsl(ship.hue, 60, 70) : PALETTE.w,
 		}),
 		{
 			y: bridge.y + ROOM_LAYER.bridgeWall,

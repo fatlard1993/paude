@@ -1,3 +1,4 @@
+import { hsl } from '../../shared/hues';
 import { PALETTE, plating } from './art';
 import { noise, pixelEllipse, rect } from './station';
 
@@ -103,10 +104,10 @@ const drawModules = (ctx, { x, top, floor, w }, { folders = [], fallback, hue, s
 };
 
 const glowOf = (hue, state, time) => {
-	if (state === 'idle') return `hsl(${hue ?? 200} 28% 26%)`;
-	if (state === 'working') return `hsl(${hue ?? 200} 75% ${60 + Math.round(Math.sin(time * 4) * 6)}%)`;
+	if (state === 'idle') return hsl(hue ?? 200, 28, 26);
+	if (state === 'working') return hsl(hue ?? 200, 75, 60 + Math.round(Math.sin(time * 4) * 6));
 
-	return `hsl(${hue ?? 200} 40% 38%)`;
+	return hsl(hue ?? 200, 40, 38);
 };
 
 const window = (ctx, { x, y, w, h }, { form, hue, state, time, seed }) => {
@@ -184,7 +185,7 @@ export const drawCore = (
 	const color = hue ?? 200;
 	const lit = state !== 'idle';
 	const speed = (state === 'working' && 5) || (state === 'ready' && 1.2) || 0;
-	const bright = (light, alpha = 1) => `hsla(${color} 90% ${light}% / ${lit ? alpha : alpha * 0.3})`;
+	const bright = (light, alpha = 1) => hsl(color, 90, light, lit ? alpha : alpha * 0.3);
 	const top = ceiling + 2;
 
 	// Its frame: a heavy pylon each side, deck to ceiling, hazard-banded at foot and head, lit up its inner edge
@@ -388,7 +389,7 @@ const SPIRE_TALL = 34;
 const drawSpire = (ctx, { left, right, row, plating, hue, state, asking, time }) => {
 	const middle = Math.round((left + right) / 2);
 	const lit = state !== 'idle';
-	const light = (l, alpha = 1) => `hsla(${hue ?? 200} 90% ${l}% / ${lit ? alpha : alpha * 0.35})`;
+	const light = (l, alpha = 1) => hsl(hue ?? 200, 90, l, lit ? alpha : alpha * 0.35);
 	const { outline, plate, lit: edge, dark } = plating;
 	// Tiers narrowing as it rises: [half width, from, rows]
 	const tiers = [
@@ -444,7 +445,7 @@ export const drawExterior = (
 	},
 ) => {
 	const glow = glowOf(hue, state, time);
-	const trim = hue === null || hue === undefined ? PALETTE.l : `hsl(${hue} 45% 52%)`;
+	const trim = hue === null || hue === undefined ? PALETTE.l : hsl(hue, 45, 52);
 	const tip = (asking && (Math.floor(time * 3) % 2 ? PALETTE.y : PALETTE.Y)) || (state === 'idle' ? PALETTE.d : glow);
 	const years = history?.since ? (Date.now() - history.since) / (365 * DAY_MS) : 1;
 	const plating = hullPlating(ship, out < 0 ? 'back' : 'belly');
@@ -528,7 +529,7 @@ export const drawHousing = (
 	const floor = art({ x: 0, y: housing.floor }).y;
 	const w = to - from;
 	const ceiling = top;
-	const trim = hue === null || hue === undefined ? PALETTE.l : `hsl(${hue} 45% 52%)`;
+	const trim = hue === null || hue === undefined ? PALETTE.l : hsl(hue, 45, 52);
 	const glow = glowOf(hue, state, time);
 	const body = { x: from + PYLON, w: w - PYLON * 2 };
 	const rows = Math.max(sockets.left.length, sockets.right.length);

@@ -23,7 +23,8 @@ test("an icon's color is the chromatic one it paints with most, the first of tho
 	expect(
 		iconColor(svg('<g style="fill:#f28c28"/><path fill="#f28c28"/><path fill="#F28C28"/><rect fill="#3475b2"/>')),
 	).toBe('#f28c28');
-	// Outlined all round in a dark color, oftener than anything is filled: the fills are still what it's the color of
+	// Outlined all round in a dark color, oftener than anything is filled: the fills are still what it's the color of,
+	// and of those the sand, the cream round it being a white however warm
 	expect(
 		iconColor(
 			svg(
@@ -31,7 +32,7 @@ test("an icon's color is the chromatic one it paints with most, the first of tho
 					'<rect fill="#e0a030" stroke="#2b2140"/>',
 			),
 		),
-	).toBe('#fdf3d6');
+	).toBe('#e0a030');
 	// Drawn in line alone, its line's color is its color
 	expect(iconColor(svg('<path fill="none" stroke="#7a3fd0"/><path fill="none" stroke="#7a3fd0"/>'))).toBe('#7a3fd0');
 	expect(iconColor(svg('<path fill="#FFFFFF"/>'))).toBeNull();
@@ -39,7 +40,7 @@ test("an icon's color is the chromatic one it paints with most, the first of tho
 	expect(iconColor(svg('<rect fill="#333333"/>'))).toBeNull();
 });
 
-test("a project's brand: its icon where it keeps one, and the hue the icon is painted in, else a theme color of its own, never a stock button color nor a grey", async () => {
+test("a project's brand: its icon where it keeps one, and the hue the icon is painted in, else a theme color of its own, a white or a black as much as a hue, never a stock button color", async () => {
 	const red = await folderWith({
 		'client/favicon.svg': svg('<rect fill="#b23434"/>'),
 		'client/manifest.json': JSON.stringify({ theme_color: '#3475b2' }),
@@ -48,6 +49,7 @@ test("a project's brand: its icon where it keeps one, and the hue the icon is pa
 	expect(await brandOf(red)).toEqual({
 		icon: { path: join(red, 'client/favicon.svg'), type: 'image/svg+xml' },
 		hue: 0,
+		tone: null,
 	});
 
 	const stock = await folderWith({
@@ -55,21 +57,30 @@ test("a project's brand: its icon where it keeps one, and the hue the icon is pa
 		'client/manifest.json': JSON.stringify({ theme_color: '#3475b2' }),
 	});
 
-	expect((await brandOf(stock)).hue).toBeNull();
+	expect(await brandOf(stock)).toMatchObject({ hue: null, tone: null });
 
 	const themed = await folderWith({ 'manifest.webmanifest': JSON.stringify({ theme_color: '#7a34b2' }) });
 
-	expect(await brandOf(themed)).toEqual({ icon: null, hue: 273 });
+	expect(await brandOf(themed)).toEqual({ icon: null, hue: 273, tone: null });
 
-	const grey = await folderWith({ 'client/manifest.json': JSON.stringify({ theme_color: '#333333' }) });
+	// A theme color with no hue to speak of is the tone it is: a black-ish, or a white-ish, paper's warm tint and all
+	const black = await folderWith({ 'client/manifest.json': JSON.stringify({ theme_color: '#1b1b1b' }) });
 
-	expect((await brandOf(grey)).hue).toBeNull();
+	expect(await brandOf(black)).toEqual({ icon: null, hue: null, tone: 'dark' });
+
+	const paper = await folderWith({
+		'client/favicon.svg': svg('<rect fill="#111"/><rect fill="#f4f1e8"/>'),
+		'client/manifest.json': JSON.stringify({ theme_color: '#e6e0d0' }),
+	});
+
+	expect(await brandOf(paper)).toMatchObject({ hue: null, tone: 'light' });
 
 	const ico = await folderWith({ 'public/favicon.ico': 'not really' });
 
 	expect(await brandOf(ico)).toEqual({
 		icon: { path: join(ico, 'public/favicon.ico'), type: 'image/x-icon' },
 		hue: null,
+		tone: null,
 	});
 	expect(await iconOf(await folderWith({}))).toBeNull();
 });

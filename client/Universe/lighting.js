@@ -1,3 +1,5 @@
+import { toned } from '../../shared/hues';
+
 // Light aboard: dark but for lamps, bright where work goes on and dim blue where nothing does, and whatever shines
 // throwing its own color round it. Painted at the art's resolution in hard bands so it stays pixel art when scaled,
 // multiplied over the scene, and what shines added again faintly as glow.
@@ -160,9 +162,10 @@ export const drawLighting = (ctx, area, { rooms = [], pools = [], lights = [] })
 
 // A color as the lighting takes it, from hsl
 export const lightOf = (hue, saturation = 60, lightness = 62) => {
-	const s = saturation / 100;
-	const l = lightness / 100;
-	const k = n => (n + hue / 30) % 12;
+	const [h, toSaturation, toLightness] = toned(hue, saturation, lightness);
+	const s = toSaturation / 100;
+	const l = toLightness / 100;
+	const k = n => (n + h / 30) % 12;
 	const a = s * Math.min(l, 1 - l);
 	const f = n => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1))));
 

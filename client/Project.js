@@ -365,9 +365,9 @@ export default class Project extends View {
 
 	// The bar underlined in the project's folder color, as its card on home is, and the open tab with it
 	async paint() {
-		const { hue, watching, arcade } =
+		const { hue, tone, watching, arcade } =
 			(await getProjects()).body?.find(({ name }) => name === this.options.project) ?? {};
-		const accent = tintsOf(hue)?.accent;
+		const accent = tintsOf(tone ?? hue)?.accent;
 
 		this.showWatching(watching);
 		this.projectArcade = arcade;

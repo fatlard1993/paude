@@ -273,7 +273,7 @@ export default class Home extends View {
 	projectList() {
 		return [...this.projects, ...this.remoteProjects].sort(byWatchedThenRecent).map(project => ({
 			...project,
-			accent: tintsOf(project.hue)?.accent,
+			accent: tintsOf(project.tone ?? project.hue)?.accent,
 			icon: project.icon && `${remoteBase(project.remote?.url)}${project.icon}`,
 			server: project.remote?.name ?? (this.otherServers ? hereName() : undefined),
 			serverHue: hueOf(project.remote?.name ?? hereName()),

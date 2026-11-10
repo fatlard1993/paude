@@ -28,6 +28,7 @@ import confirmDialog, { confirmDeleteSession } from '../confirmDialog';
 import { sessionMenu } from '../sessionActions';
 import { PANELS } from '../Terminal/panels';
 import { recall, remember } from '../storage';
+import { hsl, isHue } from '../../shared/hues';
 import { LOCAL, fleetBox, placeShips, shipsOf } from './shown';
 import olderPaude from './olderPaude';
 import { dockCard, verbsFor } from './dock';
@@ -273,7 +274,7 @@ const iconOf = bay => (bay?.icon ? Object.assign(element('img', 'icon'), { src: 
 const owned = (...commands) => (identity()?.owner ? commands : []);
 
 const tone = (panel, title, hue, titleHue = hue) => {
-	const colorOf = value => (Number.isFinite(value) ? `hsl(${value} 60% 68%)` : '');
+	const colorOf = value => (isHue(value) ? hsl(value, 60, 68) : '');
 
 	panel.style.setProperty('--aug-border-bg', colorOf(hue));
 	title.style.color = colorOf(titleHue);
@@ -2314,7 +2315,7 @@ export default class Universe extends View {
 		// Named and colored as the ship, so folded it still says which ship this is
 		const title = element('strong', 'title', aboard.own?.name || 'Bridge');
 
-		if (Number.isFinite(aboard.own?.hue)) title.style.color = `hsl(${aboard.own.hue} 60% 68%)`;
+		if (isHue(aboard.own?.hue)) title.style.color = hsl(aboard.own.hue, 60, 68);
 		open.append(title, element('span', 'line', line));
 		open.title = 'Open the bridge';
 		open.addEventListener('click', () => ((this.bridgeOpen = true), (this.bridgeFolded = false), this.paintFocus()));

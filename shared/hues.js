@@ -53,7 +53,7 @@ const sectorOf = (r, g, b, max, chroma) => {
 	return (r - g) / chroma + 4;
 };
 
-// A CSS color read as { hue (degrees), saturation, lightness (0 to 1) }: a hex color (#rgb, #rrggbb, with alpha or
+// A CSS color read as { hue (degrees), saturation, lightness, chroma (0 to 1; how far its channels stand apart) }: a hex color (#rgb, #rrggbb, with alpha or
 // not) or rgb(); null for anything else
 export const hueOfColor = color => {
 	const channels = channelsOf(String(color ?? '').trim());
@@ -66,12 +66,38 @@ export const hueOfColor = color => {
 	const lightness = (max + min(r, g, b)) / 2;
 
 	return {
+		chroma,
 		hue: chroma === 0 ? 0 : sectorOf(r, g, b, max, chroma) * 60,
 		saturation: chroma === 0 ? 0 : chroma / (1 - Math.abs(2 * lightness - 1)),
 		lightness,
 	};
 };
 const min = Math.min;
+
+// A color that's no hue: a white-ish or a black-ish, which a brand may be. Wherever a hue goes, one of these may
+export const TONES = ['light', 'dark'];
+
+export const isTone = hue => TONES.includes(hue);
+
+// Whether this is a color at all: a hue in degrees, or a tone
+export const isHue = hue => Number.isFinite(hue) || isTone(hue);
+
+// What's painted for a hue at a saturation and lightness (percent), as [hue, saturation, lightness]: a hue as asked;
+// a tone as nearly no color, a light one lifted most of the way to white (faintly warm), a dark one dropped toward
+// black (faintly cool) but not so far it's lost on a dark page
+export const toned = (hue, saturation, lightness) => {
+	if (hue === 'light') return [40, Math.round(saturation * 0.12), Math.round(lightness + (100 - lightness) * 0.6)];
+	if (hue === 'dark') return [220, Math.round(saturation * 0.15), Math.max(Math.round(lightness * 0.4), 14)];
+
+	return [hue, saturation, lightness];
+};
+
+// The CSS color of a hue (or a tone) at a saturation and lightness, in percent
+export const hsl = (hue, saturation, lightness, alpha) => {
+	const [h, s, l] = toned(hue, saturation, lightness);
+
+	return alpha === undefined ? `hsl(${h} ${s}% ${l}%)` : `hsla(${h} ${s}% ${l}% / ${alpha})`;
+};
 
 // Each named thing's color (a project, a ship), by name: its brand's hue where it has one (`branded`), kept as it is; else its folder's hue,
 // kitty-bg's for a terminal opened there, or when a project before it has that one (a brand, or one before it by
@@ -83,8 +109,10 @@ const min = Math.min;
 export const huesApart = (named, { slots = HUES } = {}) => {
 	const own = new Map();
 
-	for (const { name, hue, branded } of named) {
+	for (const { name, hue: wheel, branded, tone } of named) {
 		const had = own.get(name);
+		// A brand that's a white or a black (`tone`) is that, whatever hue came beside it for a paude older than tones
+		const hue = branded && isTone(tone) ? tone : wheel;
 		const brand = Boolean(branded) && hue !== null && hue !== undefined;
 
 		if (!had || had.hue === null || (brand && !had.branded)) own.set(name, { hue: hue ?? null, branded: brand });
@@ -110,13 +138,20 @@ export const huesApart = (named, { slots = HUES } = {}) => {
 		const found = branded ? hue : (turns.map(turn => (hue + turn * step + 360) % 360).find(free) ?? hue);
 
 		hues.set(name, found);
-		taken.push(found);
+		// A white or a black is on no wheel, and in nothing's way
+		if (!isTone(found)) taken.push(found);
 	}
 
 	return hues;
 };
 
 const hex = (hue, saturation, lightness) => {
+	if (isTone(hue)) {
+		const [h, s, l] = toned(hue, saturation * 100, lightness * 100);
+
+		return hex(h, s / 100, l / 100);
+	}
+
 	const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
 	const x = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
 	const [r, g, b] = [

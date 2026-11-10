@@ -1,4 +1,4 @@
-import { cksum } from '../../shared/hues';
+import { cksum, hsl, isHue } from '../../shared/hues';
 import { PALETTE, drawSprite } from './art';
 
 // What every room aboard is made of: floors, walls, seats and their screens. In world units, x across, y toward the
@@ -298,7 +298,7 @@ const BARE_FLOOR = { base: '#0a0d14', alt: '#141a25' };
 let trim = null;
 
 export const setTrim = hue => {
-	trim = Number.isFinite(hue) ? `hsl(${hue} 55% 48%)` : null;
+	trim = isHue(hue) ? hsl(hue, 55, 48) : null;
 };
 
 export const floor = (ctx, art, room, colors = BARE_FLOOR) => {
@@ -579,10 +579,10 @@ export const drawScreen = (ctx, area, { kind, hue, time, seed }) => {
 	const blink = Math.floor(time * 2) % 2 === 0;
 
 	const background = {
-		work: `hsl(${hue} 40% 12%)`,
+		work: hsl(hue, 40, 12),
 		terminal: PALETTE.e,
 		think: 'hsl(200 25% 14%)',
-		send: `hsl(${hue} 45% 12%)`,
+		send: hsl(hue, 45, 12),
 		ask: PALETTE.y,
 		news: '#0f2a4a',
 		limit: '#2a0f0f',
@@ -604,7 +604,7 @@ export const drawScreen = (ctx, area, { kind, hue, time, seed }) => {
 				y + 1 + row * 2,
 				Math.min(length, w - 2 - indent),
 				1,
-				kind === 'work' ? `hsl(${hue} 60% 62%)` : PALETTE.t,
+				kind === 'work' ? hsl(hue, 60, 62) : PALETTE.t,
 			);
 		}
 	if (kind === 'terminal' && blink) rect(ctx, x + w - 3, y + h - 2, 2, 1, PALETTE.W);
@@ -627,7 +627,7 @@ export const drawScreen = (ctx, area, { kind, hue, time, seed }) => {
 			const px = x + 1 + head - step;
 
 			if (px >= x + 1 && px < x + 1 + span)
-				rect(ctx, px, y + Math.floor(h / 2), 1, 1, step ? `hsl(${hue} 70% 45%)` : `hsl(${hue} 80% 72%)`);
+				rect(ctx, px, y + Math.floor(h / 2), 1, 1, step ? hsl(hue, 70, 45) : hsl(hue, 80, 72));
 		}
 	}
 	// Something new for you: a letter, lit while it waits to be looked at

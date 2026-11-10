@@ -36,7 +36,8 @@ const MANIFESTS = [
 ];
 // Theme colors that are a component library's button color, not a project's brand: vanilla-bean's blue
 const STOCK = new Set(['#3475b2']);
-// Below this saturation a color is a grey, which says nothing of a brand
+// With its channels nearer each other than this a color is a white, a grey or a black, however tinted: a tone, not a
+// hue. (Saturation won't do for it: a paper white's is high, there being so little room left above it.)
 const CHROMATIC = 0.2;
 // How long a project's brand is kept before its folder is read again: short, so a new icon or theme color shows
 // within the minute rather than leaving the old color up to be wondered at; it's two small files to read
@@ -53,10 +54,15 @@ export const iconOf = async folder => {
 	return null;
 };
 
-const chromatic = color => {
+const chromatic = color => hueOfColor(color)?.chroma >= CHROMATIC;
+
+// A color that's no hue as the tone it is, light or dark; null for a hue, or for no color
+const toneOf = color => {
 	const read = hueOfColor(color);
 
-	return read && read.saturation >= CHROMATIC && read.lightness > 0.08 && read.lightness < 0.92;
+	if (!read || read.chroma >= CHROMATIC) return null;
+
+	return read.lightness >= 0.5 ? 'light' : 'dark';
 };
 
 // The hex colors an SVG paints with, in order and as often as each is used, each as what it paints: a shape's fill
@@ -114,15 +120,21 @@ const readBrand = async folder => {
 	const icon = await iconOf(folder);
 	const painted = icon?.type === TYPES.svg ? iconColor(await readFile(icon.path, 'utf8').catch(() => '')) : null;
 	const theme = painted ? null : await themeColor(folder);
-	const color = painted ?? (theme && !STOCK.has(theme) && chromatic(theme) ? theme : null);
+	const own = theme && !STOCK.has(theme) ? theme : null;
+	const color = painted ?? (own && chromatic(own) ? own : null);
 
-	return { icon, hue: color ? Math.round(hueOfColor(color).hue) % 360 : null };
+	return {
+		icon,
+		hue: color ? Math.round(hueOfColor(color).hue) % 360 : null,
+		// A theme color that's a white or a black is the project's color as much as a hue would be
+		tone: color ? null : toneOf(own),
+	};
 };
 
 const memo = new Map();
 
 // A project's brand, from its folder: its icon ({ path, type }, or null), and the hue it's painted in, in degrees (or
-// null). The icon's own color comes first; a theme color only when the icon has none, and never a stock one (a
+// null), or the tone (`light`, `dark`) of one whose theme color is a white or a black. The icon's own color comes first; a theme color only when the icon has none, and never a stock one (a
 // component library's button color, which says nothing of the project) nor a grey. Read again once in a while.
 export const brandOf = async folder => {
 	const known = memo.get(folder);
@@ -140,11 +152,13 @@ export const brandOf = async folder => {
 // (`branded`), and where its icon is served, when it has one
 export const brandFields = async name => {
 	const folder = projectPath(name);
-	const brand = folder ? await brandOf(folder) : { icon: null, hue: null };
+	const brand = folder ? await brandOf(folder) : { icon: null, hue: null, tone: null };
 
 	return {
 		hue: brand.hue ?? folderHue(folder, os.homedir()),
-		...(brand.hue !== null && { branded: true }),
+		...((brand.hue !== null || brand.tone) && { branded: true }),
+		// Beside its folder's hue, which is what a paude older than tones goes by
+		...(brand.tone && { tone: brand.tone }),
 		...(brand.icon && { icon: `/api/projects/${encodeURIComponent(name)}/icon` }),
 	};
 };

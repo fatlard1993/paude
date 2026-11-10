@@ -1,5 +1,5 @@
 import { facilitiesFor, facilityOf } from '../../shared/facilities';
-import { cksum, huesApart } from '../../shared/hues';
+import { cksum, hsl, huesApart } from '../../shared/hues';
 import { PALETTE, cheeksOf, drawSprite, spriteSize } from './art';
 import {
 	CELL,
@@ -1047,9 +1047,9 @@ const SWAP_PASSES = 4;
 
 // A project's conduit: in its color while any of its sessions is at an island, dark with all of them away
 const wireColor = (hue, manned) => {
-	if (!manned) return hue === null || hue === undefined ? PALETTE.d : `hsl(${hue} 25% 24%)`;
+	if (!manned) return hue === null || hue === undefined ? PALETTE.d : hsl(hue, 25, 24);
 
-	return hue === null || hue === undefined ? PALETTE.l : `hsl(${hue} 60% 52%)`;
+	return hue === null || hue === undefined ? PALETTE.l : hsl(hue, 60, 52);
 };
 
 export const sessionKey = (engineKey, id) => `${engineKey}/${id}`;
@@ -2824,8 +2824,8 @@ export default class Ship {
 			.filter(({ key }) => key.startsWith('mcp:'))
 			.map(system => ({
 				...system,
-				color: `hsl(${system.hue} 75% 64%)`,
-				dim: `hsl(${system.hue} 20% 28%)`,
+				color: hsl(system.hue, 75, 64),
+				dim: hsl(system.hue, 20, 28),
 				faulty: system.failures > 0,
 			}));
 		this.labels = [];
@@ -2850,7 +2850,7 @@ export default class Ship {
 			})),
 			comms: {
 				active: Boolean(this.systems.get('dish')?.active),
-				hue: `hsl(${accentOf('dish')} 75% 64%)`,
+				hue: hsl(accentOf('dish'), 75, 64),
 				masts,
 			},
 			bayDoors: this.bayDoors,
@@ -3660,7 +3660,7 @@ export default class Ship {
 						this.labels.push({
 							text: own ? `${bay.name} core` : bay.name,
 							at: { x: this.art({ x: housing.middle, y: 0 }).x, y: upper ? ceiling + NAME_INSIDE : ceiling },
-							color: bay.hue === null ? PALETTE.w : `hsl(${bay.hue} 60% 74%)`,
+							color: bay.hue === null ? PALETTE.w : hsl(bay.hue, 60, 74),
 							align: 'center',
 							size: 1,
 							lift: upper ? 0 : 4,
@@ -3694,7 +3694,7 @@ export default class Ship {
 							const x = Math.round(top.x - bay.engines.length * 3.5 + index * 7);
 
 							rect(ctx, x, top.y + 1, 6, 5, PALETTE.k);
-							rect(ctx, x + 1, top.y + 2, 4, 3, `hsl(${hue ?? 215} 75% 66%)`);
+							rect(ctx, x + 1, top.y + 2, 4, 3, hsl(hue ?? 215, 75, 66));
 						});
 					}
 				},
@@ -3721,8 +3721,8 @@ export default class Ship {
 		// Its glow off the rim, fading inward
 		for (let depth = 0; depth < 4; depth++) {
 			ctx.globalAlpha = strength * (1 - depth / 4);
-			rect(ctx, left, top + depth, right - left, 1, `hsl(${hue} 85% 60%)`);
-			rect(ctx, left, bottom - depth, right - left, 1, `hsl(${hue} 85% 60%)`);
+			rect(ctx, left, top + depth, right - left, 1, hsl(hue, 85, 60));
+			rect(ctx, left, bottom - depth, right - left, 1, hsl(hue, 85, 60));
 		}
 		ctx.globalAlpha = 1;
 		if (state !== 'working') return;
@@ -3741,7 +3741,7 @@ export default class Ship {
 			const y = rim + inward * (step % 2 ? 2 : 0);
 
 			ctx.globalAlpha = 0.45;
-			rect(ctx, x + step * 2 - 1, y - 1, 3, 3, `hsl(${hue} 90% 62%)`);
+			rect(ctx, x + step * 2 - 1, y - 1, 3, 3, hsl(hue, 90, 62));
 			ctx.globalAlpha = 1;
 			rect(ctx, x + step * 2, y, 1, 1, '#ffffff');
 		}
@@ -4156,7 +4156,7 @@ export default class Ship {
 			const desk = this.art({ x: seat.x, y: seat.y + 0.2 });
 			const dark = {
 				screen: { ...screen, kind: 'off' },
-				engineColor: `hsl(${session.engine.hue ?? 215} 45% 50%)`,
+				engineColor: hsl(session.engine.hue ?? 215, 45, 50),
 				time: this.time,
 				seed: worker.seed,
 			};
@@ -4170,7 +4170,7 @@ export default class Ship {
 		}
 		if (worker.lounging)
 			return [...(walker.length ? walker : this.loungerParts(ctx, worker)), ...this.homeSeatParts(ctx, worker)];
-		const engineColor = `hsl(${session.engine.hue ?? 215} 45% 50%)`;
+		const engineColor = hsl(session.engine.hue ?? 215, 45, 50);
 		const at = this.art({ x: seat.x, y: seat.y + 0.2 });
 		const floor = briefOf(worker) && !walker.length && this.art(this.placeOf(worker));
 		const laptop = floor && { x: floor.x - LAPTOP_ASIDE, y: floor.y };
@@ -4262,7 +4262,7 @@ export default class Ship {
 	drawLaptopCord(ctx, worker, laptop) {
 		const { seat, session } = worker;
 		const end = this.art({ x: seat.island.x + seat.island.w, y: seat.y + 0.2 });
-		const color = `hsl(${session.hue ?? 200} 55% 55%)`;
+		const color = hsl(session.hue ?? 200, 55, 55);
 		const socket = { x: end.x + 2, y: end.y - 8 };
 		const cord = [
 			{ x: laptop.x - 5, y: laptop.y - 1 },
@@ -4307,7 +4307,7 @@ export default class Ship {
 			draw: () => {
 				const from = this.art({ x: island.x, y: island.y + 0.2 });
 				const to = this.art({ x: island.x + island.w, y: 0 });
-				const color = island.hue === null || island.hue === undefined ? PALETTE.l : `hsl(${island.hue} 55% 50%)`;
+				const color = island.hue === null || island.hue === undefined ? PALETTE.l : hsl(island.hue, 55, 50);
 				// Risen out of the floor as far as it has: sunk below it and cut off at it
 				const sunk = Math.round((1 - Math.min(1, island.rise ?? 2)) * CONSOLE_TALL);
 
@@ -4402,7 +4402,7 @@ export default class Ship {
 			// Each system's packets a set step from the others', so streams sharing a conduit take turns along it rather
 			// than landing on each other
 			const phase = Math.round((lanes.indexOf(key) * PACKET_GAP) / lanes.length);
-			const style = { dim: `hsl(${hue} 30% 22%)`, bright: `hsl(${hue} 70% 62%)`, phase };
+			const style = { dim: hsl(hue, 30, 22), bright: hsl(hue, 70, 62), phase };
 
 			const cable = this.cables?.get(this.bayOf(worker)?.name);
 			const conduit = room.within?.kind === 'engineering' && cable;
@@ -4695,7 +4695,7 @@ export default class Ship {
 			if (!this.layout.systems[`${worker.session.engine.key}/${facility}`]?.within) continue;
 
 			const name = this.bayOf(worker)?.name;
-			const color = `hsl(${accentOf(facility)} 85% 68%)`;
+			const color = hsl(accentOf(facility), 85, 68);
 
 			if (name && !fed.get(name)?.includes(color)) fed.set(name, [...(fed.get(name) ?? []), color]);
 		}
@@ -4748,7 +4748,7 @@ export default class Ship {
 	// what fits are counted
 	smallGreyParts(ctx, worker) {
 		const { session } = worker;
-		const colors = { c: `hsl(${session.hue ?? 200} 55% 55%)` };
+		const colors = { c: hsl(session.hue ?? 200, 55, 55) };
 		const shown = (worker.smalls ?? []).slice(0, MOST.smallGreys);
 		const parts = shown.map((small, index) => {
 			const spot = this.smallGreyAt(worker, index);
@@ -4896,7 +4896,7 @@ export default class Ship {
 		const console = this.art({ x: seat.x, y: seat.y + 0.2 });
 		const asking = session.status === 'waiting';
 		const prompting = !asking && this.watcherPrompting(worker);
-		const colors = { c: `hsl(${session.hue ?? 200} 55% 55%)`, s: rankOf('fable') };
+		const colors = { c: hsl(session.hue ?? 200, 55, 55), s: rankOf('fable') };
 		// Since the session stopped to ask: thinking it over first, then the arm rising, then pointing
 		const since = asking ? this.time - (watcher?.askedAt ?? -Infinity) : 0;
 		const thinking = asking && since < WATCHER_THINK;
@@ -5070,7 +5070,7 @@ export default class Ship {
 	// The monitor on its feet: stepping along as a grey does
 	drawWatcherWalking(ctx, { watcher, session }) {
 		const at = this.art(watcher);
-		const colors = { c: `hsl(${session.hue ?? 200} 55% 55%)`, s: rankOf('fable') };
+		const colors = { c: hsl(session.hue ?? 200, 55, 55), s: rankOf('fable') };
 		const stride = watcher.path.length ? STEPS[Math.floor(watcher.step) % STEPS.length] : '';
 
 		drawSprite(ctx, `watcher${stride}`, at.x, at.y, { colors, flip: watcher.facing < 0 });
@@ -5261,7 +5261,7 @@ export default class Ship {
 									...screenOf(session),
 									kind: session.status === 'stopped' ? 'off' : 'idle',
 								},
-							engineColor: `hsl(${session.engine.hue ?? 215} 45% 50%)`,
+							engineColor: hsl(session.engine.hue ?? 215, 45, 50),
 							time: this.time,
 							seed: worker.seed,
 							frost: cacheCold(session),
@@ -5346,7 +5346,7 @@ export default class Ship {
 		this.litter ??= [];
 		this.litter.push({
 			cans: this.canShapes(worker, count),
-			color: `hsl(${worker.session.hue ?? 0} 65% 55%)`,
+			color: hsl(worker.session.hue ?? 0, 65, 55),
 			seat: worker.seat.y,
 			// Its couch, which stays while they lie by it
 			couch: this.couchIds?.[Math.floor(index / 2)],
@@ -5489,7 +5489,7 @@ export default class Ship {
 
 	// A lounger's empties from the `from`th up to `count`
 	drawCans(ctx, worker, count, from) {
-		const color = `hsl(${worker.session.hue ?? 0} 65% 55%)`;
+		const color = hsl(worker.session.hue ?? 0, 65, 55);
 
 		for (const shape of this.canShapes(worker, count).slice(from)) drawCan(ctx, shape, color);
 	}
@@ -5525,7 +5525,7 @@ export default class Ship {
 	// web sends out waves, a plan ticks itself off
 	drawActivity(ctx, worker, facility, seat) {
 		const time = this.time + worker.seed;
-		const color = `hsl(${accentOf(facility)} 70% 66%)`;
+		const color = hsl(accentOf(facility), 70, 66);
 		const monitor = { x: seat.x - 8, y: seat.y - 27 };
 
 		if (facility === 'library') {
@@ -6077,7 +6077,7 @@ export default class Ship {
 		const size = this.headOf(session, worker);
 		const squeezing = size !== this.headOf(session);
 		const head = `head-${size}${shut ? '-shut' : ''}`;
-		const colors = { c: `hsl(${session.hue ?? 200} 55% 55%)`, s: rankOf(session.context?.model) };
+		const colors = { c: hsl(session.hue ?? 200, 55, 55), s: rankOf(session.context?.model) };
 		const drowsing =
 			(drowse >= 0.85 && 2) || (drowse >= 0.6 && Math.floor((this.time + worker.seed) * 0.8) % 3 === 0 ? 1 : 0);
 		const sag = pose ? pose.sag + pose.lean.y : drowsing;
@@ -6125,14 +6125,14 @@ export default class Ship {
 
 		if (pose?.out) {
 			// Passed out: its can dropped, on its side by its feet
-			const beer = `hsl(${worker.session.hue ?? 0} 65% 55%)`;
+			const beer = hsl(worker.session.hue ?? 0, 65, 55);
 
 			rect(ctx, at.x + 7, at.y - 2, 5, 3, PALETTE.k);
 			rect(ctx, at.x + 8, at.y - 1, 3, 1, beer);
 		} else if (watching) {
 			// A sip now and then, oftener the more it's had, the can up at its mouth; otherwise resting on the couch's arm;
 			// and each half hour, the can done, a toss onto its pile before it opens another
-			const beer = `hsl(${worker.session.hue ?? 0} 65% 55%)`;
+			const beer = hsl(worker.session.hue ?? 0, 65, 55);
 			const sipping = (this.time + worker.seed * 3) % (6 - pose.drunk * 2.5) < 1.6;
 			const toss = this.time - (worker.tossedAt ?? -Infinity);
 			const can = sipping ? { x: at.x + pose.sway, y: neck - 2 } : { x: at.x + 6, y: at.y - 6 };
@@ -7089,10 +7089,10 @@ export default class Ship {
 						// Off the trunk, its branch's plate on the cradle in the branch's color and, close enough, its name
 						if (!checkout.trunk && (checkout.changed || checkout.unpushed)) {
 							const hue = checkout.branch ? branchHue(checkout.branch) : null;
-							const color = hue === null ? PALETTE.l : `hsl(${hue} 60% 74%)`;
+							const color = hue === null ? PALETTE.l : hsl(hue, 60, 74);
 
 							rect(ctx, at.x + 1, at.y + 1, 13, 4, PALETTE.k);
-							rect(ctx, at.x + 2, at.y + 2, 11, 2, hue === null ? PALETTE.m : `hsl(${hue} 50% 45%)`);
+							rect(ctx, at.x + 2, at.y + 2, 11, 2, hue === null ? PALETTE.m : hsl(hue, 50, 45));
 							if (this.camera.zoom >= 4)
 								this.labels.push({
 									text: checkout.branch ?? 'detached',
@@ -7641,7 +7641,7 @@ export default class Ship {
 	// blinking amber while changes are loading, steady green with commits to push, dark when empty. Docked, it stands on
 	// a cradle.
 	drawPod(ctx, at, { hue, crates, sheets, docked = true }) {
-		const tint = (s, l) => (hue === null || hue === undefined ? `hsl(220 10% ${l}%)` : `hsl(${hue} ${s}% ${l}%)`);
+		const tint = (s, l) => (hue === null || hue === undefined ? `hsl(220 10% ${l}%)` : hsl(hue, s, l));
 		const [color, light, dark] = [tint(45, 46), tint(55, 66), tint(40, 27)];
 		const { x, y } = at;
 		const [top, bottom] = [y - 22, y - 4];
@@ -7920,7 +7920,7 @@ export default class Ship {
 	}
 
 	drawParcel(ctx, parcel) {
-		const color = `hsl(${parcel.hue ?? 200} 75% 66%)`;
+		const color = hsl(parcel.hue ?? 200, 75, 66);
 
 		// On the crane's hook: its line down from the trolley
 		if (parcel.craned && this.layout.hold) {
@@ -7990,7 +7990,7 @@ export default class Ship {
 		if (beam !== null) ctx.globalAlpha = Math.max(0, 1 - beam);
 		const stride =
 			walker.path.length && beam === null ? SUIT_STEPS[Math.floor(walker.step * 1.5) % SUIT_STEPS.length] : '';
-		const colors = { c: `hsl(${walker.person.hue} 45% 45%)`, s: `hsl(${walker.person.hue} 45% 45%)` };
+		const colors = { c: hsl(walker.person.hue, 45, 45), s: hsl(walker.person.hue, 45, 45) };
 		const there = !walker.path.length && !walker.leaving && walker.spot;
 
 		if (there && walker.pose === 'copilot') {
