@@ -23,6 +23,17 @@ test("an icon's color is the chromatic one it paints with most, the first of tho
 	expect(
 		iconColor(svg('<g style="fill:#f28c28"/><path fill="#f28c28"/><path fill="#F28C28"/><rect fill="#3475b2"/>')),
 	).toBe('#f28c28');
+	// Outlined all round in a dark color, oftener than anything is filled: the fills are still what it's the color of
+	expect(
+		iconColor(
+			svg(
+				'<rect fill="#fdf3d6" stroke="#2b2140"/><path fill="#e0a030"/><rect fill="#fdf3d6" stroke="#2b2140"/>' +
+					'<rect fill="#e0a030" stroke="#2b2140"/>',
+			),
+		),
+	).toBe('#fdf3d6');
+	// Drawn in line alone, its line's color is its color
+	expect(iconColor(svg('<path fill="none" stroke="#7a3fd0"/><path fill="none" stroke="#7a3fd0"/>'))).toBe('#7a3fd0');
 	expect(iconColor(svg('<path fill="#FFFFFF"/>'))).toBeNull();
 	expect(iconColor(svg('<path fill="none"/>'))).toBeNull();
 	expect(iconColor(svg('<rect fill="#333333"/>'))).toBeNull();

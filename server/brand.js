@@ -57,25 +57,38 @@ const chromatic = color => {
 	return read && read.saturation >= CHROMATIC && read.lightness > 0.08 && read.lightness < 0.92;
 };
 
-// The hex colors an SVG paints with, in order and as often as each is used: fills, strokes and gradient stops, as
-// attributes or in styles
+// The hex colors an SVG paints with, in order and as often as each is used, each as what it paints: a shape's fill
+// (a gradient's stop is one) or its outline (`stroke`), as attributes or in styles
 const paints = markup =>
-	[...markup.matchAll(/(?:fill|stroke|stop-color)\s*[:=]\s*["']?\s*(#[0-9a-f]{3,8})\b/gi)].map(([, color]) =>
-		color.toLowerCase(),
-	);
+	[...markup.matchAll(/(fill|stroke|stop-color)\s*[:=]\s*["']?\s*(#[0-9a-f]{3,8})\b/gi)].map(([, what, color]) => ({
+		color: color.toLowerCase(),
+		outline: what.toLowerCase() === 'stroke',
+	}));
 
-// The color an icon is mostly painted in: of its chromatic colors, the one used most, the first of those used alike;
-// whites, blacks and greys are the field a mark stands on, not the mark. Null for an icon with none.
-export const iconColor = markup => {
+// The chromatic color used most among `colors`, the first of those used alike; null for none
+const mostUsed = colors => {
 	const counts = new Map();
 
-	for (const color of paints(markup)) if (chromatic(color)) counts.set(color, (counts.get(color) ?? 0) + 1);
+	for (const color of colors) if (chromatic(color)) counts.set(color, (counts.get(color) ?? 0) + 1);
 
 	let best = null;
 
 	for (const [color, count] of counts) if (!best || count > best.count) best = { color, count };
 
 	return best?.color ?? null;
+};
+
+// The color an icon is mostly painted in: of the chromatic colors its shapes are filled with, the one used most, the
+// first of those used alike; whites, blacks and greys are the field a mark stands on, not the mark. What it's
+// outlined in counts only for an icon that fills nothing in a color: one dark line round every shape is used oftener
+// than any fill and isn't what the icon is the color of. Null for an icon with none.
+export const iconColor = markup => {
+	const found = paints(markup);
+
+	return (
+		mostUsed(found.filter(({ outline }) => !outline).map(({ color }) => color)) ??
+		mostUsed(found.filter(({ outline }) => outline).map(({ color }) => color))
+	);
 };
 
 const themeColor = async folder => {
