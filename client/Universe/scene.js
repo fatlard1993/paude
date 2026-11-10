@@ -7788,9 +7788,10 @@ export default class Ship {
 				rect(ctx, at.x - 10, at.y - SUIT_TALL + 4, 5, 1, PALETTE.W);
 			}
 		} else {
-			// Walking: up a pixel on each stride, their shadow staying on the floor
+			// Walking: level, the stride in the boots and the arms alone (lifted on each stride too, the whole of them
+			// bounced)
 			rect(ctx, at.x - 5, at.y, 11, 1, PALETTE.k);
-			drawSprite(ctx, `suit${stride}`, at.x, at.y - (stride ? 1 : 0), { colors, flip: walker.facing < 0 });
+			drawSprite(ctx, `suit${stride}`, at.x, at.y, { colors, flip: walker.facing < 0 });
 		}
 		ctx.globalAlpha = 1;
 		if (beam !== null) this.drawBeam(ctx, at, Math.min(1, 0.4 + beam));
