@@ -4,7 +4,7 @@ import { tintsOf } from '../shared/hues';
 import { LIFETIMES } from '../shared/lifetimes';
 import { MODELS } from '../shared/models';
 import tokens from '../shared/tokenCount';
-import { READING } from '../shared/arcade';
+import { READING, makesGame } from '../shared/arcade';
 import {
 	createSession,
 	findPromptHome,
@@ -382,14 +382,14 @@ export const arcadePicker = () => {
 		node.classList.toggle('active', reading in READING);
 		node.title =
 			reading in READING
-				? 'Goes to the arcade: big talk, read aloud, choices to tap. Click to change'
-				: 'An ordinary session. Click to send it to the arcade instead: big talk, read aloud, choices to tap';
+				? `Makes a new game in the arcade, ${READING[reading].detail}. Click to change`
+				: 'An ordinary session. Click to make a game in the arcade instead: big talk, choices to tap';
 	};
 
 	node.type = 'button';
 	node.addEventListener('click', () =>
 		openMenu(node, [
-			{ heading: 'Send it to the arcade?' },
+			{ heading: 'Make a game of it in the arcade?' },
 			{ label: 'No arcade', ...(!(reading in READING) && { icon: 'check' }), onPress: () => pick(null) },
 			...Object.entries(READING).map(([key, { label, detail }]) => ({
 				label: `Arcade: ${label}`,
@@ -534,13 +534,33 @@ export const placePrompt = async ({ prompt, project, remote, startFresh, onArriv
 	let closed = false;
 	const dialog = new Dialog({
 		size: 'standard',
-		header: 'Where it goes',
+		header: makesGame({ arcade, project, remote }) ? 'A new game' : 'Where it goes',
 		body,
 		buttons: ['Cancel'],
 		onButtonPress: ({ closeDialog }) => closeDialog(),
 		onClose: () => (closed = true),
 	});
 	const close = () => !closed && dialog.close();
+
+	// Sent to the arcade with no project said: it's a new game, which was chosen when the arcade was. Made straight
+	// away, what the making prints shown while it does; nothing is looked for, and nothing asked a second time
+	if (makesGame({ arcade, project, remote })) {
+		const progress = element('pre', 'making');
+
+		body.elem.replaceChildren(looking('Making the game…'), progress);
+
+		const made = await makeArcade({ name: '', idea: prompt, reading: arcade }, null, progress);
+
+		if (!made?.id) {
+			close();
+
+			return failed(made?.error || 'The game could not be made');
+		}
+		onSent?.();
+		close();
+
+		return goToArcade(made.id, null);
+	}
 
 	body.elem.replaceChildren(looking('Finding the sessions it carries on…'));
 

@@ -11,3 +11,7 @@ export const READING = {
 // was chosen to be read
 export const readAloudFor = (reading, kept) =>
 	kept === 'yes' || kept === 'no' ? kept === 'yes' : reading !== 'reading';
+
+// Whether a prompt as it's sent is a new game, made at once with nothing looked for: sent to the arcade (`arcade`, a
+// way of writing) with no project named, here or on another paude. Named for a project, it's that project's to place.
+export const makesGame = ({ arcade, project, remote }) => arcade in READING && !project && !remote;
