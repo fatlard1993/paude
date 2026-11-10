@@ -141,7 +141,8 @@ const islandsOf = (
 	// The materializer and transporter at the aft end of the bottom row, where the islands start past them
 	const stationRows = stations ? Math.min(rows, Math.ceil((STATION_D + STATION_CLEAR - 0.6) / pitch - 1e-9)) : 0;
 
-	for (let row = rows - stationRows; row < rows; row++) reach[row] += Math.max(0, STATION_HUG + stations - stern) + ISLAND_GAP;
+	for (let row = rows - stationRows; row < rows; row++)
+		reach[row] += Math.max(0, STATION_HUG + stations - stern) + ISLAND_GAP;
 	// With fewer islands than rows left open, they spread evenly down the bridge
 	const open = Array.from({ length: rows }, (_, row) => row).filter(row => row < rows - covers);
 	const seatWidths = run => run.keys.map(seatWidth);
@@ -545,11 +546,7 @@ export const layOut = ({
 
 		const rows = rowsAt(pitch);
 		const { reach: islandsReach } = laid;
-		const bridgeW =
-			sternRoom(inLine(placed)) +
-			BRIDGE_MARGIN +
-			Math.max(2 * SEAT_W, islandsReach) +
-			BRIDGE_NAV_W;
+		const bridgeW = sternRoom(inLine(placed)) + BRIDGE_MARGIN + Math.max(2 * SEAT_W, islandsReach) + BRIDGE_NAV_W;
 
 		return { levels, placed, width, total, rows, pitch, bridgeW, hall };
 	};
