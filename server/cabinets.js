@@ -22,6 +22,8 @@ export const initCabinets = async dataDir => {
 // A hub game as a cabinet: what it's called, its colors and icon, where it's played, and whether it's on
 export const cabinetOf = (game, hubUrl) => ({
 	id: game.id,
+	// The paude project it is, by its folder's name, so its cabinet takes that project's color
+	project: game.dir ? path.basename(game.dir) : game.id,
 	port: game.port ?? null,
 	title: game.look?.title || game.name || game.id,
 	color: game.look?.color ?? null,

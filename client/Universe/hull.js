@@ -1,4 +1,5 @@
 import { PALETTE, plating } from './art';
+import { tintsOf } from '../../shared/hues';
 import {
 	NACELLE,
 	NOSE,
@@ -1817,10 +1818,12 @@ const cabinetPart = (ctx, art, lounge, cabinet, index, time) => {
 		y: foot.y,
 		draw: () => {
 			const at = art(foot);
-			const body = cabinet.background ?? '#22262e';
-			const trim = cabinet.color ?? 'hsl(280 60% 62%)';
-			// x across the profile, from its back (0) to its front (14), turned to face its player
-			const x = from => at.x + facing * (from - 7);
+			// Its project's colors, as the ship has them, where it's one of this paude's projects; else the game's own
+			const tints = tintsOf(cabinet.hue);
+			const body = tints?.background ?? cabinet.background ?? '#22262e';
+			const trim = tints?.accent ?? cabinet.color ?? 'hsl(280 60% 62%)';
+			// x across the profile, from its back (0) to its front (11), turned to face its player
+			const x = from => at.x + facing * (from - 6);
 			const span = (from, to, y, h, color) =>
 				rect(ctx, Math.min(x(from), x(to)), y, Math.abs(x(to) - x(from)) + 1, h, color);
 			const top = at.y - 36;

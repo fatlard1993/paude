@@ -51,6 +51,7 @@ test("each hub game is a cabinet with its look, where it's played, and whether i
 
 	expect(cabinets[0]).toEqual({
 		id: 'humanity',
+		project: 'humanity',
 		port: 8032,
 		title: 'Humanity',
 		color: '#e6e0d0',

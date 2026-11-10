@@ -1296,10 +1296,11 @@ export default class Ship {
 		// The mother hub's games, as cabinets: one each, however many paudes told of the same hub
 		this.cabinets = [
 			...new Map(answers.flatMap(({ cabinets }) => cabinets ?? []).map(cabinet => [cabinet.id, cabinet])).values(),
-		];
+		].map(cabinet => ({ ...cabinet, hue: this.projectHues?.get(cabinet.project) ?? null }));
 
 		const onCouches = [...this.workers]
 			.filter(([, worker]) => worker.lounging && (!worker.leaving || worker.opacity > 0))
+		// Each in its project's color, as the project's machine and its greys are
 			.map(([key]) => key);
 		// Each keeps its couch while it stays, and one deleted there keeps its place until its dust has gone, so the couches
 		// aren't moved from under its heap; newcomers after them

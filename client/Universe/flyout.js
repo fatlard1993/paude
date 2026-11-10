@@ -459,6 +459,7 @@ const FLYOUTS = {
 	},
 	cabinet: ({ cabinet }) => ({
 		title: cabinet.title,
+		hue: cabinet.hue ?? undefined,
 		rows: [
 			['game', 'on the mother hub'],
 			[
