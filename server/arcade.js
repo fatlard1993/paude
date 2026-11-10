@@ -182,6 +182,27 @@ const soundsSection = () => [
 // conventions are the scaffold's own CLAUDE.md.
 // The rules' section on the idea: the one they started with, carried on from; a game under way before any idea was
 // recorded, to be read from its files; or none yet, found together first
+// Its icon: drawn by Claude once the game is something, for the browser's tab and its arcade cabinet in paude's
+// universe, which prints it 8 pixels square in three tones of the cabinet's color, so it's made to survive that.
+// `has`: whether the page links one yet (null: not a web page, so nothing to say)
+export const iconSection = ({ has, page = 'client/index.html' }) =>
+	has === null || has === undefined
+		? []
+		: [
+				'## Its icon',
+				'',
+				`${has ? 'It has an icon' : 'It has no icon yet'}: an SVG beside \`${page}\`, linked from it as \`<link rel="icon" type="image/svg+xml" href="./favicon.svg" />\` (not in \`manifest.json\`'s icons, whose paths the build leaves pointing at a file it renamed). The browser's tab shows it, and so does its arcade cabinet in paude's universe, printed on the cabinet's side. ${has ? 'When the game becomes something else, draw it again to match' : "Draw one in this turn, alongside whatever is asked, once there's a name and a look to go on (its hero, the thing it's about); until then, as soon as there is"}, without bringing it up.`,
+				'',
+				'Drawn to read in a tab and printed tiny:',
+				'',
+				'- Square, on a 16 by 16 viewBox, its background clear.',
+				'- One bold subject that says the game at a glance; never letters or a word.',
+				"- Three values and no more: a dark outline, one main fill in the game's own color (its theme-color), and one light part. The cabinet shrinks it to 8 by 8 pixels and prints each in one of three tones by how light it is, so the shape must hold in those three: a big light part on a mid one, outlined in dark. Thin lines, small details and text vanish.",
+				'',
+				"This house's: Humanity, a card game, is a black card behind a white one; Sorcery & Savagery, built out from a campfire, is a yellow flame on a green shield.",
+				'',
+			];
+
 const ideaSection = ({ idea, underWay }) => {
 	if (idea)
 		return [
@@ -231,6 +252,7 @@ export const arcadeInstructions = ({
 	reading,
 	performs = false,
 	sounds = false,
+	icon = null,
 }) =>
 	[
 		named ? `# Building ${title} together` : '# Building a game together',
@@ -255,6 +277,7 @@ export const arcadeInstructions = ({
 		'',
 		'The first paragraph of `README.md`, under its heading, tells someone who has never seen the game what it is, in one or two plain sentences: the house\'s list of games shows it on the game\'s card. When the game becomes something new (a new goal, a new way to play), rewrite that paragraph to match, and set "description" in `client/manifest.json` to the same words when there is one. Do it in the same turn, without bringing it up.',
 		'',
+		...iconSection({ has: icon }),
 		'## Every turn',
 		'',
 		'1. Make the change they asked for, the whole of it, and check it works before handing it back: `bun test` passes, the page builds, the server answers. If something breaks, fix it.',
@@ -280,7 +303,16 @@ export const arcadeInstructions = ({
 // The rules for a project that was there before the arcade: any repo, game or not, worked on the arcade's way (big
 // type, read aloud, a choice at the end of each turn) without paude's game scaffold assumed: no Game.js, no dev server
 // unless it has one, and its README left as its owners wrote it
-export const adoptedInstructions = ({ title, player, reading, devServer = false, performs = false, sounds = false }) =>
+export const adoptedInstructions = ({
+	title,
+	player,
+	reading,
+	devServer = false,
+	performs = false,
+	sounds = false,
+	icon = null,
+	page,
+}) =>
 	[
 		`# Working on ${title} together`,
 		'',
@@ -306,6 +338,7 @@ export const adoptedInstructions = ({ title, player, reading, devServer = false,
 					'',
 				]
 			: []),
+		...iconSection({ has: icon, page }),
 		'## Every turn',
 		'',
 		'1. Make the change they asked for, the whole of it, and check it works before handing it back: its tests pass and it builds. If something breaks, fix it.',
@@ -551,6 +584,7 @@ export const arcadeLaunch = async (id, cwd) => {
 			devServer,
 			performs: await voicePerforms(),
 			sounds: Boolean(await voiceSettings()) && devServer,
+			...(await iconState(cwd)),
 		}),
 	};
 };
@@ -609,6 +643,19 @@ const untrackOurs = async cwd => {
 		(await git(cwd, ['-c', 'user.name=paude', '-c', 'user.email=paude@localhost', 'commit', '-q', '-m', message]));
 };
 
+// Whether a project's page links an icon of its own: { icon, page }, icon null when it has no page to give one
+const PAGES = ['client/index.html', 'index.html', 'public/index.html', 'src/index.html'];
+
+export const iconState = async cwd => {
+	for (const page of PAGES) {
+		const html = await readFile(join(cwd, page), 'utf8').catch(() => null);
+
+		if (html !== null) return { icon: /<link[^>]+rel=["'](?:shortcut )?icon["']/i.test(html), page };
+	}
+
+	return { icon: null };
+};
+
 // Paude's files in a game, written again from its marker: Claude's rules and its permissions, so a game made before
 // either changed (or copied from another machine) runs under the current ones each time Claude starts there.
 // CLAUDE.local.md imports the rules; one paude wrote whole in an earlier version (its own heading first) is replaced
@@ -633,6 +680,7 @@ export const refreshArcade = async cwd => {
 			reading: marker.reading,
 			performs: await voicePerforms(),
 			sounds: Boolean(await voiceSettings()),
+			icon: (await iconState(cwd)).icon,
 		}),
 	);
 	await mkdir(join(cwd, '.claude'), { recursive: true });
@@ -691,6 +739,7 @@ const refreshAdopted = async (cwd, marker) => {
 			devServer,
 			performs: await voicePerforms(),
 			sounds: Boolean(voice) && devServer,
+			...(await iconState(cwd)),
 		}),
 	);
 

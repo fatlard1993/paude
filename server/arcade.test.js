@@ -17,6 +17,7 @@ import {
 	arcadeOf,
 	claudeSettings,
 	folderName,
+	iconState,
 	openingPrompt,
 	refreshArcade,
 	snapshotTurn,
@@ -488,5 +489,34 @@ describe('arcade as a way of using any session', () => {
 		expect(await arcadeFor('s2', project)).toBeNull();
 		expect((await arcadeLaunch('s2', project)).systemPrompt).toContain('not in the arcade');
 		expect(await snapshotTurn('s2', project)).toBeNull();
+	});
+});
+
+describe('icons', () => {
+	let folder;
+
+	beforeEach(async () => (folder = await mkdtemp(join(tmpdir(), 'paude-icon-'))));
+	afterEach(() => rm(folder, { recursive: true, force: true }));
+
+	test("a page linking an icon has one, a page without has none yet, and a project with no page isn't asked for one", async () => {
+		expect(await iconState(folder)).toEqual({ icon: null });
+
+		await Bun.write(join(folder, 'client/index.html'), '<head><title>Moon</title></head>');
+		expect(await iconState(folder)).toEqual({ icon: false, page: 'client/index.html' });
+
+		await Bun.write(
+			join(folder, 'client/index.html'),
+			'<head><link rel="icon" type="image/svg+xml" href="./favicon.svg" /></head>',
+		);
+		expect(await iconState(folder)).toEqual({ icon: true, page: 'client/index.html' });
+	});
+
+	test('a game with no icon is told to draw one, and how; one with an icon to keep it matching; no page, nothing', () => {
+		const rules = icon => arcadeInstructions({ title: 'Moon', reading: 'reading', icon });
+
+		expect(rules(false)).toContain('It has no icon yet');
+		expect(rules(false)).toContain('16 by 16');
+		expect(rules(true)).toContain('draw it again to match');
+		expect(rules(null)).not.toContain('## Its icon');
 	});
 });
