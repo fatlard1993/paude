@@ -2762,6 +2762,11 @@ test("opening a cabinet's game walks the one looking over to it to play, and shu
 	expect(made.lounge.y + made.lounge.d - walker.y).toBeLessThan(0.4);
 	expect(Math.abs(walker.stand)).toBe(1);
 
+	// The cabinet is theirs while they play: no grey has a place at it
+	expect(made.cabinetPlayers(['here/a'])).toEqual(new Map());
+	// On a stool, as a grey would be
+	expect(walker.stoolAt).toBeDefined();
+
 	// A game the lounge has no cabinet for moves nobody; shut, they go back where they were
 	made.playAt('no-such-game');
 	expect(walker.pose).toBe('overseer');

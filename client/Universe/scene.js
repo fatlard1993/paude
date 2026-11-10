@@ -1663,7 +1663,8 @@ export default class Ship {
 	// Who stands at which cabinet ({ index, side } by session) of those on their feet, `standing`, in their order: two
 	// to a cabinet, the first before it (side 0) and the second a little further out (side 1). Whoever is at one keeps
 	// their place there while they stay, so nobody shuffles over when another leaves; newcomers take the places free,
-	// before each cabinet first, those whose game is on first. Anyone past what the cabinets hold has none
+	// before each cabinet first, those whose game is on first. Anyone past what the cabinets hold has none, and nobody
+	// has a place at a cabinet the one looking is playing
 	cabinetPlayers(standing) {
 		const players = new Map();
 		const cabinets = (this.lounge?.cabinets ?? [])
@@ -1671,6 +1672,10 @@ export default class Ship {
 			.sort((one, other) => Boolean(other.running) - Boolean(one.running));
 		const taken = new Set();
 		const place = ({ index, side }) => `${index}:${side > 0 ? 1 : 0}`;
+		// The one looking has a cabinet's game open: it's theirs alone, and the greys at it make way
+		const theirs = cabinets.find(({ id }) => id === this.arcading && this.viewer);
+
+		for (let side = 0; theirs && side < PLAYERS_PER_CABINET; side++) taken.add(place({ index: theirs.index, side }));
 
 		for (const key of standing) {
 			const { playing } = this.workers.get(key) ?? {};
@@ -2311,11 +2316,15 @@ export default class Ship {
 		}
 		this.tendCrew(seconds);
 		this.tendCrane(seconds);
-		for (const [name, walker] of this.walkers)
+		for (const [name, walker] of this.walkers) {
 			// People walk at their pace even asked for less motion: one small figure crossing the floor is no sweep of
 			// the view, and their coming aboard through the airlock is what's to be seen
 			if (!this.boarding(walker) && !this.inDoorway(walker) && !this.beamingNow(name))
 				walk(walker, WALK_SPEED * seconds * this.paceOf(name), seconds);
+			// At their cabinet and still: their stool comes out from then, as a grey's does
+			if (walker.pose === 'player' && !walker.path.length && !walker.leaving) walker.stoolAt ??= this.time;
+			else walker.stoolAt = undefined;
+		}
 		this.tendTravel();
 		for (const worker of this.workers.values()) {
 			if (worker.path?.length && !worker.kick && (calm || this.time - (worker.madeAt ?? -Infinity) >= MAKE_SECONDS))
@@ -5062,7 +5071,11 @@ export default class Ship {
 	// far out from under the cabinet it has pulled it (`out`, 0 to 1), and how far up onto it it has stepped (`up`, 0
 	// to 1). It bends, pulls the stool out, straightens, and steps up; all 0 while it's still walking over
 	stoolOf(worker) {
-		const since = worker.playing && worker.stoolAt !== undefined ? this.time - worker.stoolAt : -1;
+		return this.stoolAfter(worker.playing && worker.stoolAt !== undefined ? this.time - worker.stoolAt : -1);
+	}
+
+	// The same of anyone, `since` seconds after they got to their cabinet (before then, anything below 0)
+	stoolAfter(since) {
 		const { reach, slide, rise, step } = STOOL;
 
 		return {
@@ -7563,22 +7576,33 @@ export default class Ship {
 		} else drawSprite(ctx, 'paper', at.x, at.y + 2);
 	}
 
-	// A person at an arcade cabinet, playing: tall enough for it with no stool, leaning into it with the game, an arm
-	// out working its stick and coming down on its buttons in bursts, a little hop when it goes their way
+	// A person at an arcade cabinet, playing: on a stool pulled out from its foot, as the greys at it are, which puts
+	// them at the height of those beside them and their arm level with its stick; the arm on the cabinet's side out to
+	// it, working the stick and coming off it onto the buttons in bursts. They stand still at it: the arm is the play.
 	drawPersonPlaying(ctx, walker, at, colors) {
 		const toward = walker.stand < 0 ? -1 : 1;
 		const seed = seeded(walker.name) * 7;
-		const beat = Math.floor(this.time * 3 + seed);
-		const mashing = Math.floor((this.time + seed * 5) / 3) % 3 === 0;
-		const hop = Math.floor((this.time + seed) / 5) % 4 === 0 && (this.time + seed) % 5 < 0.25 ? 2 : 0;
-		const lean = Math.floor((this.time + seed) * 1.5) % 4 === 0 ? toward : 0;
-		const body = { x: at.x + lean, y: at.y - hop };
-		rect(ctx, at.x - 3, at.y, 7, 1, PALETTE.k);
+		const { bend, out, up } = this.stoolAfter(walker.stoolAt === undefined ? -1 : this.time - walker.stoolAt);
+		const cabinet = (this.lounge?.cabinets ?? []).findIndex(({ id }) => id === this.arcading);
+		const home = cabinet >= 0 ? this.art(cabinetAt(this.lounge, cabinet)).x : at.x;
+		const stool = { x: Math.round(mix(home, at.x, out)), y: at.y };
+		const body = { x: at.x, y: at.y - Math.round(STOOL.tall * up) };
+
+		if (out > 0) this.paintStool(ctx, stool);
+		else rect(ctx, at.x - 3, at.y, 7, 1, PALETTE.k);
 		drawSprite(ctx, 'suitPlay', body.x, body.y, { colors, flip: toward < 0 });
-		// The arm on the cabinet's side, out to it: on its stick, worked side to side, and off it onto the buttons in bursts
-		const hand = mashing
-			? { x: body.x + toward * 7, y: body.y - 13 + (Math.floor(this.time * 9) % 2) * 2 }
-			: { x: body.x + toward * (8 + (beat % 2)), y: body.y - 15 };
+
+		// The stick stays where it is on the cabinet as they step up to it
+		const stick = at.y - 16;
+		const mashing = Math.floor((this.time + seed * 5) / 4) % 3 === 0;
+		const playing = mashing
+			? { x: body.x + toward * 7, y: stick + 1 + (Math.floor(this.time * 6) % 2) }
+			: { x: body.x + toward * (8 + (Math.floor(this.time * 3 + seed) % 2)), y: stick };
+		// Bent to the stool, their hand is on that instead, going out with it
+		const hand = {
+			x: Math.round(mix(playing.x, stool.x + toward * -5, bend)),
+			y: Math.round(mix(playing.y, stool.y - STOOL.tall, bend)),
+		};
 
 		drawLimb(ctx, { x: body.x + toward * 4, y: body.y - 10 }, hand, PALETTE.w);
 	}
