@@ -19,9 +19,7 @@ import { FORMS, drawCore, drawHousing } from './machine';
 import { pixelText, textWidth } from './retro';
 import {
 	TANK_COLORS,
-	AIRLOCK,
 	clipToShip,
-	drawAirlock,
 	drawBridge,
 	REACTOR_SIDE,
 	drawEngineering,
@@ -2194,37 +2192,6 @@ export default class Ship {
 		return cabinet >= 0 ? cabinetAt(this.lounge, cabinet).y + 0.012 : walker.y;
 	}
 
-	// The airlock's hatch stands up past the top of the bridge's wall, into the hull's rim over it, where the rooms
-	// aren't drawn: its head there, and whoever is stood in it seen through its opening, their head behind its lintel
-	// (they're taller than the hatch, and are never drawn out past the hull)
-	drawAirlockOver(ctx) {
-		const { airlock, bridge } = this;
-
-		if (!airlock || !bridge) return;
-		drawAirlock(ctx, point => this.art(point), bridge, {
-			x: airlock.x,
-			open: this.airlockOpen,
-			time: this.time,
-			head: true,
-		});
-
-		const sill = this.art({ x: airlock.x - AIRLOCK.wide / 2, y: bridge.y });
-		const stood = [...this.walkers.values()].filter(
-			walker =>
-				walker.x !== undefined &&
-				!this.boarding(walker) &&
-				Math.hypot(walker.x - airlock.x, walker.y - airlock.y) < 0.9,
-		);
-
-		if (!stood.length) return;
-		ctx.save();
-		ctx.beginPath();
-		ctx.rect(sill.x, sill.y - AIRLOCK.rise + 3, Math.round(AIRLOCK.wide * UNIT.x), AIRLOCK.rise - 3);
-		ctx.clip();
-		for (const walker of stood) this.drawWalker(ctx, walker);
-		ctx.restore();
-	}
-
 	// The floor as one map of what's open and what stands where (floor.js), made again when the ship is laid again or
 	// the lounge's couches change
 	get floor() {
@@ -3033,15 +3000,12 @@ export default class Ship {
 		if (stepping?.x !== undefined && !this.boarding(stepping)) this.drawWalker(ctx, stepping);
 		if (cover >= 1) {
 			ctx.restore();
-			// The top of its hatch, up in the hull's rim, is there sealed or not, so it doesn't appear as the plating goes
-			this.drawAirlockOver(ctx);
 			for (const shuttle of this.shuttles) this.drawShuttleOf(ctx, shuttle);
 
 			return;
 		}
 		this.drawSelection(ctx);
 		ctx.restore();
-		this.drawAirlockOver(ctx);
 		for (const hauler of this.haulers) this.drawHauler(ctx, hauler);
 		for (const refuel of this.refuels) this.drawRefuel(ctx, refuel);
 		for (const shuttle of this.shuttles) this.drawShuttleOf(ctx, shuttle);
