@@ -1009,6 +1009,13 @@ export default class Ship {
 
 	// The other ships of its fleet, as its transporter hears from them: [{ key, name, needs, news, working }]
 	fleet = [];
+	// Which of them are shown on the screen, by key, so need no terminal of their own to be heard from
+	seen = new Set();
+
+	unseenFleet() {
+		return this.fleet.filter(({ key }) => !this.seen.has(key));
+	}
+
 	// Whether the view is on its way to its goal, or the hand's where it is
 	flying = true;
 	beamAt = -Infinity;
@@ -1321,6 +1328,7 @@ export default class Ship {
 			brief: Object.fromEntries([...this.workers].map(([key, worker]) => [key, worker.session.lifetime === 'brief'])),
 			checkouts: this.cargo.length,
 			fleet: this.fleet.length,
+			terminals: this.unseenFleet().length,
 		});
 		// What can't be seen into takes no room aboard; it's named off to the side
 		this.unseen = engines.filter(({ quiet }) => quiet);
@@ -6876,7 +6884,9 @@ export default class Ship {
 	fleetSpots() {
 		const { bridge } = this;
 
-		if (!bridge || !this.fleet?.length) return [];
+		const unseen = this.unseenFleet();
+
+		if (!bridge || !unseen.length) return [];
 
 		const y = bridge.y + bridge.d - FLEET_FROM_WALL;
 		const half = FLEET_PITCH / 2;
@@ -6887,12 +6897,12 @@ export default class Ship {
 		// Butted up to the transporter's forward side, one after another toward the bow, where it stands on the bridge
 		for (
 			let x = pad ? pad.x + pad.w + half : Infinity;
-			spots.length < this.fleet.length && x + half <= bridge.x + bridge.w;
+			spots.length < unseen.length && x + half <= bridge.x + bridge.w;
 			x += FLEET_PITCH
 		)
 			spots.push({ x, y });
 
-		return spots.map((spot, index) => ({ ...spot, ship: this.fleet[index] }));
+		return spots.map((spot, index) => ({ ...spot, ship: unseen[index] }));
 	}
 
 	// Each other ship kept an eye on from the bridge: an unmanned terminal of its own, its screen saying what's on it as

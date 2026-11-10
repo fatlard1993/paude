@@ -1525,6 +1525,16 @@ test('a ship drawn as an overlay leaves the space and stars under it alone, and 
 	}
 });
 
+test('a ship of a fleet keeps its transporter but takes no room on the bridge for the terminals of ships shown on the screen', () => {
+	const bridgeOf = options => layOut({ bays: [{ name: 'paude', sessions: [] }], ...options }).bridge;
+	const heard = bridgeOf({ fleet: 2 });
+	const shown = bridgeOf({ fleet: 2, terminals: 0 });
+	const alone = bridgeOf({ fleet: 0 });
+
+	expect(shown.w).toBeLessThan(heard.w);
+	expect(shown.w).toBeGreaterThan(alone.w);
+});
+
 test("a stream that is not through a conduit comes in along the aisle and under the desk, never through any seat's screen", () => {
 	const surface = new Proxy(function () {}, { get: () => surface, set: () => true, apply: () => surface });
 	const hadDocument = 'document' in globalThis;

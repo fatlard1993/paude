@@ -432,11 +432,12 @@ export const layOut = ({
 	watched = {},
 	brief = {},
 	fleet = 0,
+	terminals = fleet,
 	kept,
 } = {}) => {
 	// A ship of a fleet has a transporter besides, on the bridge beside the materializer
 	const transporter = fleet ? TRANSPORTER_W : 0;
-	const stationsW = MATERIALIZER_W + transporter + fleetRoom(fleet);
+	const stationsW = MATERIALIZER_W + transporter + fleetRoom(terminals);
 	const system = ({ key, name }) => ({ kind: 'system', key, name, w: SYSTEM.w, d: SYSTEM.d });
 	// Each project's machine stands on one deck, as wide as the project is big, into whichever deck reaches least far
 	// yet, in the order given (which keeps each where it was); none spans two decks. A project with nothing going on is

@@ -425,6 +425,13 @@ export default class Universe extends View {
 			for (const [key, ship] of this.ships) ship.fleet = all.filter(other => other.key !== key);
 		};
 
+		// Those on the screen are heard from there, with no terminal of their own
+		const seen = new Set([
+			...this.fleetShown,
+			...[...this.ships].filter(([, ship]) => ship === this.aboard).map(([key]) => key),
+		]);
+
+		for (const ship of this.ships.values()) ship.seen = seen;
 		hear();
 		for (const [key, ship] of this.ships) ship.update(groups.get(key));
 		hear();
@@ -509,6 +516,8 @@ export default class Universe extends View {
 		if (!this.ships.has(key) || this.ships.get(key) === this.aboard) return;
 		this.fleetShown[shown ? 'add' : 'delete'](key);
 		remember(FLEET_KEPT, JSON.stringify([...this.fleetShown]));
+		// Its terminal on the bridge goes or comes back, the room it took with it
+		this.updateShips();
 		this.focusPainted = null;
 		this.paintFocus();
 	}
@@ -563,6 +572,7 @@ export default class Universe extends View {
 				}
 				this.fleetIn.set(key, 1);
 				remember(FLEET_KEPT, JSON.stringify([...this.fleetShown]));
+				this.updateShips();
 			}
 			this.chosenShip = null;
 			ship.viewer = me?.key;
