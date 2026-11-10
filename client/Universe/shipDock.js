@@ -2,8 +2,10 @@ import { Notify } from '@vanilla-bean/components';
 import { relativeTime } from '@vanilla-bean/components/utils/date';
 
 import { addFolderOrMake } from '../confirmDialog';
+import { folderPicker } from '../folderPicker';
 import {
 	addFolder,
+	listFolders,
 	connectRemote,
 	getProjectArtifacts,
 	getCabinetPlay,
@@ -343,15 +345,34 @@ export const foldersPane = ({ onAdded, machines = [] }) => ({
 		watching.type = 'checkbox';
 		watching.checked = true;
 		watch.append(watching, ' Watch it, so it comes aboard now');
-		input.placeholder = '~/path/to/it (made if new), or ~/path/* for each folder in it';
+		input.placeholder = 'Pick a folder below, or type: ~/path/to/it, or ~/path/* for each folder in it';
+
+		const where = () => (machines[Number(machine.value)] ?? { url: null }).url;
+		// What's picked in the tree is what's in the field, until the field is typed in
+		let chosen = null;
+		const tree = folderPicker({
+			list: path => listFolders(path, where()),
+			onPick: pick => {
+				chosen = pick;
+				input.value = pick.path;
+			},
+		});
+
+		input.addEventListener('input', () => (chosen = null));
+		machine.addEventListener('change', () => {
+			chosen = null;
+			input.value = '';
+			tree.load();
+		});
 		form.append(
 			element(
 				'p',
 				'about',
-				"A folder on one of your machines becomes a project to start sessions in; one that isn't there yet is made, for a project begun from nothing. It comes aboard, a module on the hull and a deck inside, once you watch it or a session starts there.",
+				'A folder on one of your machines becomes a project to start sessions in: pick one, or make a new one where you want it, for a project begun from nothing. It comes aboard, a module on the hull and a deck inside, once you watch it or a session starts there.',
 			),
 			machine,
 			input,
+			tree.elem,
 			watch,
 			add,
 		);
@@ -360,7 +381,9 @@ export const foldersPane = ({ onAdded, machines = [] }) => ({
 			if (!input.value.trim()) return;
 
 			const on = machines[Number(machine.value)] ?? { name: 'this machine', url: null };
-			const added = await addFolderOrMake(input.value.trim(), (path, options) => addFolder(path, on.url, options));
+			const added = await addFolderOrMake(input.value.trim(), (path, options) => addFolder(path, on.url, options), {
+				create: chosen?.create && chosen.path === input.value.trim(),
+			});
 
 			if (!added) return;
 
@@ -372,6 +395,7 @@ export const foldersPane = ({ onAdded, machines = [] }) => ({
 
 			if (watching.checked) await Promise.all(names.map(name => setProjectWatching(name, true, on.url)));
 			input.value = '';
+			chosen = null;
 			new Notify({
 				intent: 'success',
 				content: `${names.length === 1 ? `Added "${names[0]}"` : `Added ${names.length} projects: ${names.join(', ')}`} on ${on.name}${watching.checked ? ', watched' : ''}`,
@@ -382,7 +406,17 @@ export const foldersPane = ({ onAdded, machines = [] }) => ({
 		elem.append(form);
 		appendTo.append(elem);
 
-		return { elem, refresh: () => input.focus({ preventScroll: true }) };
+		let read = false;
+
+		return {
+			elem,
+			refresh: () => {
+				// Read when the pane is first shown, not while it's only one tab of several
+				if (!read) tree.load();
+				read = true;
+				input.focus({ preventScroll: true });
+			},
+		};
 	},
 });
 

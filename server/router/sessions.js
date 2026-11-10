@@ -74,6 +74,7 @@ import { sessionTurns } from '../sessions/history';
 import {
 	FolderError,
 	NoFolderError,
+	listFolders,
 	listProjects,
 	projectOf,
 	projectPath,
@@ -289,6 +290,17 @@ const sessionsRoutes = async (request, server) => {
 		}
 	}
 
+	// A folder's folders, for picking one to add or a place to make one: ?path=, the home folder without it
+	if (requestMatch('GET', '/api/folders', request)) {
+		try {
+			return Response.json(await listFolders(new URL(request.url).searchParams.get('path')));
+		} catch (error) {
+			if (error instanceof NoFolderError) return new Response(error.message, { status: 404 });
+			if (error instanceof FolderError) return new Response(error.message, { status: 400 });
+			throw error;
+		}
+	}
+
 	match = requestMatch('DELETE', '/api/projects/:project', request);
 	if (match) {
 		const removed = await removeProject(match.project);
@@ -415,7 +427,7 @@ const sessionsRoutes = async (request, server) => {
 	// be added and watched. Never a way out of those routes: a dot segment, spelled out or escaped, is refused before the
 	// far end could resolve it.
 	const relayed =
-		/^\/api\/remotes\/at\/([^/]+)(\/api\/(?:(?:sessions\/[\w-]+|projects)(?:\/.*)?|cabinets\/[\w-]+\/icon))$/.exec(
+		/^\/api\/remotes\/at\/([^/]+)(\/api\/(?:(?:sessions\/[\w-]+|projects)(?:\/.*)?|folders|cabinets\/[\w-]+\/icon))$/.exec(
 			pathname,
 		);
 

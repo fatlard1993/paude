@@ -238,6 +238,14 @@ test("adding a folder that isn't there is a 404, so its making can be offered, a
 	expect((await call('/api/projects', { method: 'POST', body: { path: fresh, create: true } })).status).toBe(401);
 	expect(await stat(fresh).catch(() => null)).toBeNull();
 	expect((await add({ path: fresh })).status).toBe(404);
+	// The folders to pick one from, or a place to make one, are the owner's to read too
+	const listed = await call(`/api/folders?path=${encodeURIComponent(path.dirname(fresh))}`, { token: tokens.owner });
+
+	expect(listed.status).toBe(200);
+	expect(await listed.json()).toMatchObject({ path: path.dirname(fresh), folders: [] });
+	expect((await call('/api/folders', { token: tokens.comment })).status).toBe(403);
+	expect((await call('/api/folders')).status).toBe(401);
+	expect((await call(`/api/folders?path=${encodeURIComponent(fresh)}`, { token: tokens.owner })).status).toBe(404);
 	expect((await add({ path: 'not/a/full/path' })).status).toBe(400);
 
 	const made = await add({ path: fresh, create: true });

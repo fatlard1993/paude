@@ -7,6 +7,7 @@ import { matchesFilter } from '../shared/sessionSearch';
 import byUrgency from '../shared/urgency';
 import {
 	addFolder,
+	listFolders,
 	getProjects,
 	remoteBase,
 	getRecentSessions,
@@ -19,6 +20,7 @@ import {
 	setProjectWatching,
 } from './api';
 import confirmDialog, { addFolderOrMake } from './confirmDialog';
+import { folderPicker } from './folderPicker';
 import { identity, serverName } from './identity';
 import { hueOf, setServers } from './servers';
 import SessionBrowser from './SessionBrowser';
@@ -70,6 +72,11 @@ const AddFolder = styled(
 
 		&.open form {
 			display: flex;
+			flex-wrap: wrap;
+		}
+
+		form .folder-tree {
+			flex-basis: 100%;
 		}
 	`,
 );
@@ -175,11 +182,30 @@ export default class Home extends View {
 			input.value = '';
 		};
 
-		input.placeholder = 'A folder to add as a project: ~/path/to/it (made if new), or ~/path/* for each folder in it';
-		form.append(input, add, button('', close, { icon: 'xmark', title: 'Cancel (Esc)', className: 'icon-only' }));
+		input.placeholder = 'Pick a folder below, or type: ~/path/to/it, or ~/path/* for each folder in it';
+
+		// What's picked in the tree is what's in the field, until the field is typed in
+		let chosen = null;
+		const tree = folderPicker({
+			list: path => listFolders(path),
+			onPick: pick => {
+				chosen = pick;
+				input.value = pick.path;
+			},
+		});
+
+		input.addEventListener('input', () => (chosen = null));
+		form.append(
+			input,
+			add,
+			button('', close, { icon: 'xmark', title: 'Cancel (Esc)', className: 'icon-only' }),
+			tree.elem,
+		);
 		card.elem.append(opener, form);
 		opener.addEventListener('click', () => {
 			card.elem.classList.add('open');
+			chosen = null;
+			tree.load();
 			input.focus();
 		});
 		input.addEventListener('keydown', event => event.key === 'Escape' && close());
@@ -187,7 +213,9 @@ export default class Home extends View {
 			event.preventDefault();
 			if (!input.value.trim()) return;
 
-			const added = await addFolderOrMake(input.value.trim(), (path, options) => addFolder(path, undefined, options));
+			const added = await addFolderOrMake(input.value.trim(), (path, options) => addFolder(path, undefined, options), {
+				create: chosen?.create && chosen.path === input.value.trim(),
+			});
 
 			if (!added) return;
 

@@ -393,6 +393,10 @@ export const setLifetime = async (sessionId, lifetime) =>
 // `remote`, another paude's address, adds it there, through this one
 export const remoteBase = remote => (remote ? `/api/remotes/at/${encodeURIComponent(remote)}` : '');
 
+// The folders in a folder there (the home folder without one): { path, parent, home, folders: [{ name, project }] }
+export const listFolders = async (path, remote) =>
+	await GET(`${remoteBase(remote)}/api/folders`, { searchParameters: path ? { path } : {}, invalidateAfter: 0 });
+
 // `create` makes the folder first when it isn't there; without it a folder that isn't there is a 404
 export const addFolder = async (path, remote, { create = false } = {}) =>
 	await POST(`${remoteBase(remote)}/api/projects`, { body: { path, ...(create && { create }) }, responseType: 'text' });

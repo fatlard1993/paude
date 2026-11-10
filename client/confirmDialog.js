@@ -80,9 +80,12 @@ export const nameDialog = ({
 	});
 
 // A folder added as a project through `addFolder` (api's, already given where): one that isn't there yet is offered
-// to be made, a new project begun from an empty folder, and added once it is. Resolves to what the last asking
-// answered, or null when the making was turned down.
-export const addFolderOrMake = async (path, addFolder) => {
+// to be made, a new project begun from an empty folder, and added once it is; one picked as new (`create`) is made
+// without the asking. Resolves to what the last asking answered, or null when the making was turned down.
+export const addFolderOrMake = async (path, addFolder, { create = false } = {}) => {
+	// Named as new in the folders' tree: already said to be made, so it's made without asking again
+	if (create) return await addFolder(path, { create: true });
+
 	const first = await addFolder(path);
 
 	if (first.response?.status !== 404) return first;

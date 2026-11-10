@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, stat, writeFile } from 'fs/promises';
+import { chmod, mkdir, mkdtemp, stat, symlink, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { beforeAll, expect, test } from 'bun:test';
@@ -6,6 +6,7 @@ import { beforeAll, expect, test } from 'bun:test';
 import {
 	FolderError,
 	NoFolderError,
+	listFolders,
 	addFolders,
 	initProjects,
 	listProjects,
@@ -139,4 +140,53 @@ test("a folder that isn't there yet is its own fault, and made first when that's
 	// Where a folder can't be made (a file in the way), that's said
 	await writeFile(path.join(base, 'begun/a-file'), '');
 	await expect(addFolders(path.join(base, 'begun/a-file/under'), { create: true })).rejects.toThrow('Could not make');
+});
+
+test("a folder's folders are listed to pick from: by name, the hidden left out, files left out, and which are projects already", async () => {
+	const at = path.join(base, 'listed');
+
+	await mkdir(path.join(at, 'beta/deeper'), { recursive: true });
+	await mkdir(path.join(at, 'alpha'));
+	await mkdir(path.join(at, '.hidden'));
+	await writeFile(path.join(at, 'a-file'), '');
+	expect(await addFolders(path.join(at, 'alpha'))).toEqual(['alpha']);
+
+	expect(await listFolders(at)).toEqual({
+		path: at,
+		parent: base,
+		home: os.homedir(),
+		folders: [
+			{ name: 'alpha', project: 'alpha' },
+			{ name: 'beta', project: null },
+		],
+	});
+	// A folder inside a project isn't itself the project
+	expect((await listFolders(path.join(at, 'beta'))).folders).toEqual([{ name: 'deeper', project: null }]);
+	// The home folder when none is asked for; the top has nothing above it
+	expect((await listFolders()).path).toBe(os.homedir());
+	expect((await listFolders('/')).parent).toBeNull();
+	// A link to a folder is listed as one, a link to a file or to nothing isn't
+	await symlink(path.join(at, 'beta'), path.join(at, 'linked'));
+	await symlink(path.join(at, 'a-file'), path.join(at, 'linked-file'));
+	await symlink(path.join(at, 'gone'), path.join(at, 'dangling'));
+	expect((await listFolders(at)).folders.map(({ name }) => name)).toEqual(['alpha', 'beta', 'linked']);
+	// One that can't be read says so, and isn't taken for one that isn't there
+	await mkdir(path.join(at, 'locked'));
+	await chmod(path.join(at, 'locked'), 0o000);
+	try {
+		const refused = await listFolders(path.join(at, 'locked')).catch(error => error);
+
+		// (Whoever runs as root reads anything)
+		if (process.getuid() !== 0) {
+			expect(refused).toBeInstanceOf(FolderError);
+			expect(refused).not.toBeInstanceOf(NoFolderError);
+			expect(refused.message).toContain("can't be read");
+		}
+	} finally {
+		await chmod(path.join(at, 'locked'), 0o755);
+	}
+	// Not there, a file, or not a full path: each said
+	await expect(listFolders(path.join(at, 'missing'))).rejects.toBeInstanceOf(NoFolderError);
+	await expect(listFolders(path.join(at, 'a-file'))).rejects.toBeInstanceOf(NoFolderError);
+	await expect(listFolders('listed')).rejects.toThrow('full path');
 });

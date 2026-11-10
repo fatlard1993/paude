@@ -274,6 +274,55 @@ export const addFolders = async (requested, { create = false } = {}) => {
 	return names;
 };
 
+// The project a folder is, by name: itself one, not merely inside one; null for any other
+const projectAt = path => {
+	const name = projectOf(path);
+
+	return name && projectPath(name) === path ? name : null;
+};
+
+// A folder's own folders, to pick one from or make one in: { path (as it is on disk), parent (null at the top), home,
+// folders: [{ name, project }] } by name, `project` the name of one that's a project already. The home folder when
+// none is asked for. Hidden ones (a dot first) are left out: nobody keeps a project in one.
+export const listFolders = async requested => {
+	const home = os.homedir();
+	const asked = typeof requested === 'string' && requested.trim() ? requested.trim() : home;
+	const full = asked.replace(/^~(?=\/|$)/, home);
+
+	if (!full.startsWith('/')) throw new FolderError('Give the folder as a full path.');
+
+	let path;
+	let entries;
+
+	try {
+		path = await realpath(full);
+		entries = await readdir(path, { withFileTypes: true });
+	} catch (error) {
+		if (error.code === 'ENOENT' || error.code === 'ENOTDIR') throw new NoFolderError(`There is no folder at ${asked}.`);
+
+		throw new FolderError(`The folder at ${asked} can't be read: ${error.code ?? error.message}.`);
+	}
+
+	const names = [];
+
+	for (const entry of entries) {
+		if (entry.name.startsWith('.')) continue;
+		// A link to a folder is a folder to whoever's looking for one
+		if (
+			entry.isDirectory() ||
+			(entry.isSymbolicLink() && (await stat(join(path, entry.name)).catch(() => null))?.isDirectory())
+		)
+			names.push(entry.name);
+	}
+
+	return {
+		path,
+		parent: path === '/' ? null : dirname(path),
+		home,
+		folders: names.sort((a, b) => a.localeCompare(b)).map(name => ({ name, project: projectAt(join(path, name)) })),
+	};
+};
+
 // Off the list: a registered folder is forgotten, one under the projects root is hidden. Nothing on disk changes.
 // Resolves to 'removed', 'hidden', or null when there's no such project.
 export const removeProject = async name => {
