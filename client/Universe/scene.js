@@ -8128,11 +8128,13 @@ export default class Ship {
 		return { left: from.x, top: from.y, right: to.x, bottom: to.y };
 	}
 
-	// The smallest thing under the point, a room only when nothing in it is; figures drawn later sit on top of those
-	// before them
-	// The nearest thing under the point; among areas, the smallest, so a room within another (the lounge on the bridge)
-	// is its own; else the last drawn
+	// What's under the point, once the ship's plating has opened: a figure or fitting (round, by how near its middle
+	// is) before any room it stands in, the smaller of two before the larger; among rooms, the smallest, so one within
+	// another (the lounge on the bridge) is its own; and of two alike, the one that took its place later
 	hit(x, y) {
+		// Nothing, while it's still sealed in its plating: what's aboard isn't seen yet, and isn't there to be pointed at
+		if (this.sealed) return undefined;
+
 		const inside = ({ left, top, right, bottom }) => x >= left && x <= right && y >= top && y <= bottom;
 		const size = ({ area }) => (area ? (area.right - area.left) * (area.bottom - area.top) : 0);
 

@@ -18,7 +18,18 @@ import Ship, {
 	tanksOf,
 	triage,
 } from './scene';
-import { WATCHER_W, airlockAt, clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats, standingOf } from './plan';
+import {
+	NOSE,
+	WATCHER_W,
+	airlockAt,
+	clonerAt,
+	holdSpotAt,
+	layOut,
+	rowPitch,
+	shortest,
+	splitSeats,
+	standingOf,
+} from './plan';
 import { huesApart } from '../../shared/hues';
 import {
 	CABINET_LAYER,
@@ -2746,6 +2757,19 @@ test('one gone cold with a question open or a reply unread stands about the loun
 	expect(made.drawMarker).toBeUndefined();
 });
 
+test("the nose's tip on the screen is past the bridge's right wall by the nose and its spar", () => {
+	const made = shipWith([answer('here', [session()], { projects: ['paude'] })]);
+
+	run(made, 10);
+	Object.defineProperty(made, 'offset', { value: { x: 0, y: 0 }, configurable: true });
+
+	const wall = made.area(made.bridge).right;
+	const zoom = made.camera.zoom;
+
+	expect(made.bridge.x + made.bridge.w).toBe(made.layout.building.right);
+	expect(made.noseTip()).toBeCloseTo(wall + (NOSE * UNIT.x + 8) * zoom, 0);
+});
+
 test('where one cabinet of a column stands in front of another, the one seen there is the one pressed', () => {
 	const games = ['a', 'b', 'c', 'd', 'e', 'f'].map(id => ({ id, name: id, watched: true, running: true }));
 	const made = shipWith([{ ...answer('here', [session()], { projects: ['paude'] }), cabinets: games }]);
@@ -2753,6 +2777,15 @@ test('where one cabinet of a column stands in front of another, the one seen the
 	run(made, 10);
 	Object.defineProperty(made, 'offset', { value: { x: 0, y: 0 }, configurable: true });
 	made.hits = made.cabinetHits();
+
+	// Still sealed in its plating, nothing aboard is there to point at
+	const [inFront] = made.hits.filter(({ cabinet }) => cabinet.id === 'a');
+	const over = [(inFront.area.left + inFront.area.right) / 2, inFront.area.bottom - 1];
+
+	made.sealed = true;
+	expect(made.hit(...over)).toBeUndefined();
+	made.sealed = false;
+	expect(made.hit(...over).cabinet.id).toBe('a');
 
 	// A column: the first island at the floor, the next behind it and higher up the screen, the third behind that
 	const column = [0, 2, 4].map(index => made.hits.find(({ cabinet }) => cabinet.id === games[index].id));
