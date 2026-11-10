@@ -312,6 +312,8 @@ const SMALL_GREY_SECONDS = 0.7;
 // small terminals, in the room the island keeps for it (plan's WATCHER_W), in room units; and how long its pointing
 // arm is, in art pixels
 const WATCHER_ASIDE = 1.0;
+// How far right of its grey's seat the first of its small greys sits, in room units
+const SMALL_GREY_ASIDE = 1.8;
 const WATCHER_BEHIND = 0.4;
 const WATCHER_REACH = 9;
 // How tall the monitor and a suited person stand, in art pixels; the monitor's footprint for what it walks behind
@@ -4735,9 +4737,11 @@ export default class Ship {
 		worker.smalls = smalls.filter(({ goneAt }) => goneAt === undefined || this.time - goneAt < SMALL_GREY_SECONDS);
 	}
 
-	// Where a grey's i-th small grey sits: at its own small terminal along the island to the left of its grey's seat
+	// Where a grey's i-th small grey sits: at its own small terminal along the island to the right of its grey's seat,
+	// in the room the island keeps there (plan's `smalls`), the first far enough out that its screen, which stands to
+	// its left as its grey's does, is clear of its grey
 	smallGreyAt(worker, index) {
-		return { x: worker.seat.x - 1.1 - index * 0.8, y: worker.seat.y };
+		return { x: worker.seat.x + SMALL_GREY_ASIDE + index * 0.8, y: worker.seat.y };
 	}
 
 	// The small greys at their terminals beside their grey's seat, budding in a spark and going in a puff; those past
@@ -5076,7 +5080,7 @@ export default class Ship {
 	watcherAt(worker) {
 		const { seat } = worker;
 
-		return { x: seat.x + WATCHER_ASIDE, y: seat.y + 0.2 - WATCHER_BEHIND };
+		return { x: seat.x + WATCHER_ASIDE + (seat.smalls ?? 0), y: seat.y + 0.2 - WATCHER_BEHIND };
 	}
 
 	// An arm out from `from` toward `to`, `reach` of the way (0 to 1): outlined, with a fingertip

@@ -276,7 +276,9 @@ const islandsOf = (
 					return { key: seatKey, x: start + BRIEF_SIT - 0.3, y, floor: true };
 				}
 
-				const at = { key: seatKey, x: along + smallRoom(seatKey) + SEAT_W / 2 - 0.3, y };
+				// Its own room first, then its small greys' to its right (`smalls`, how much), then its monitor's
+				const smalls = smallRoom(seatKey);
+				const at = { key: seatKey, x: along + SEAT_W / 2 - 0.3, y, ...(smalls && { smalls }) };
 
 				along += widths[seat];
 

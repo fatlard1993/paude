@@ -3579,7 +3579,7 @@ test('a seat is kept through a stop and a waking: seats go by when a session was
 	expect(seats(told)).toEqual(['here/b', 'here/c', 'here/a']);
 });
 
-test("seats run oldest to newest from the aft end, small terminals to a seat's left; short-lived sessions sit on the floor past the desk, each after the last", () => {
+test("seats run oldest to newest from the aft end, small terminals to a seat's right; short-lived sessions sit on the floor past the desk, each after the last", () => {
 	const sessions = [
 		session({ id: 'old', age: 90000, checkout: 'z' }),
 		session({ id: 'brief', lifetime: 'brief', age: 1000, checkout: 'a' }),
@@ -3602,14 +3602,18 @@ test("seats run oldest to newest from the aft end, small terminals to a seat's l
 	// The desk is only the seats'; nothing on it marks the floor places
 	expect(island.w).toBeLessThan(brief.seat.x - island.x);
 	expect(fresh.seat.x).toBeLessThan(island.x + island.w);
-	// Small terminals to the left of their grey's seat, within its own room: past the seat before's keyboard
+	// Small terminals to the right of their grey's seat, within its own room: each one's screen (to its left) clear of
+	// its grey, and the last short of the next seat's screen; the seat itself right after the one before it
+	expect(fresh.seat.x - old.seat.x).toBeCloseTo(1.5, 5);
 	for (const index of [0, 1]) {
 		const small = made.art(made.smallGreyAt(fresh, index));
 
-		expect(small.x).toBeLessThan(made.art(fresh.seat).x - 17);
-		expect(small.x - 14).toBeGreaterThanOrEqual(made.art(old.seat).x + 10);
+		expect(small.x - 14).toBeGreaterThanOrEqual(made.art(fresh.seat).x + 10);
+		expect(small.x + 6).toBeLessThanOrEqual(made.art(brief.seat).x - 17);
 	}
-	expect(made.watcherAt(fresh).x).toBeCloseTo(fresh.seat.x + 1, 5);
+	// Its monitor, had it one, past them
+	expect(made.watcherAt(fresh).x).toBeCloseTo(fresh.seat.x + 1 + 0.55 + 2 * 0.8, 5);
+	expect(made.watcherAt(fresh).x).toBeGreaterThan(made.smallGreyAt(fresh, 1).x + 0.3);
 	// Sat cross-legged: a body of its own, and one waving
 	expect(spriteSize('bodySit').h).toBe(7);
 	expect(spriteSize('bodySitWave').h).toBe(10);
