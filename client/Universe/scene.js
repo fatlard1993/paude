@@ -2094,6 +2094,16 @@ export default class Ship {
 		this.board();
 	}
 
+	// Whether the person `key` is in the beam, going or just come, so standing still for it
+	beamingNow(key) {
+		const { departing, arriving } = this;
+
+		return (
+			(departing?.key === key && departing.beamAt !== undefined) ||
+			(arriving?.key === key && this.time - arriving.at < BEAM_SECONDS)
+		);
+	}
+
 	// One walking to the pad beams out once there (or once they've taken too long), and is gone a beam later
 	tendTravel() {
 		const going = this.departing;
@@ -2174,7 +2184,7 @@ export default class Ship {
 		for (const [name, walker] of this.walkers)
 			// People walk at their pace even asked for less motion: one small figure crossing the floor is no sweep of
 			// the view, and their coming aboard through the airlock is what's to be seen
-			if (!this.boarding(walker) && !this.inDoorway(walker))
+			if (!this.boarding(walker) && !this.inDoorway(walker) && !this.beamingNow(name))
 				walk(
 					walker,
 					WALK_SPEED * seconds * (this.departing?.key === name || (this.readying && this.viewer === name) ? HURRY : 1),
@@ -7128,7 +7138,7 @@ export default class Ship {
 		const beam = out ?? (into !== null && into < 1 ? 1 - into : null);
 
 		if (beam !== null) ctx.globalAlpha = Math.max(0, 1 - beam);
-		const stride = walker.path.length ? STEPS[Math.floor(walker.step) % STEPS.length] : '';
+		const stride = walker.path.length && beam === null ? STEPS[Math.floor(walker.step) % STEPS.length] : '';
 		const colors = { c: `hsl(${walker.person.hue} 45% 45%)`, s: `hsl(${walker.person.hue} 45% 45%)` };
 		const there = !walker.path.length && !walker.leaving && walker.spot;
 
