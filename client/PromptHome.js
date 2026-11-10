@@ -4,11 +4,22 @@ import { tintsOf } from '../shared/hues';
 import { LIFETIMES } from '../shared/lifetimes';
 import { MODELS } from '../shared/models';
 import tokens from '../shared/tokenCount';
-import { createSession, findPromptHome, openRemote, sendPrompt, sendRemotePrompt, startRemoteSession } from './api';
+import { READING } from '../shared/arcade';
+import {
+	createSession,
+	findPromptHome,
+	openRemote,
+	sendPrompt,
+	sendRemotePrompt,
+	setSessionArcade,
+	startRemoteSession,
+} from './api';
+import { goToArcade, makeArcade } from './Arcade/makeArcade';
 import { serverName } from './identity';
 import { forget, recall, remember } from './storage';
 import { button, element } from './dom';
 import { intoBox, micButton } from './micButton';
+import { openMenu } from './menu';
 
 const Compose = styled(
 	Elem,
@@ -355,10 +366,56 @@ const lifetimePicker = suggested => {
 	return { node, value: () => select.value };
 };
 
+// Whether what's sent goes to the arcade, and how Claude writes there: a chip for a compose box's options, kept per
+// browser. value() is a READING key, or null for an ordinary session.
+const ARCADE_KEPT = 'paude.prompt.arcade';
+
+export const arcadePicker = () => {
+	const node = element('button', 'chip variant-chip');
+	let reading = recall(ARCADE_KEPT);
+
+	const show = () => {
+		node.replaceChildren(
+			element('i', 'fa-solid fa-gamepad'),
+			` ${reading in READING ? `Arcade: ${READING[reading].label}` : 'No arcade'}`,
+		);
+		node.classList.toggle('active', reading in READING);
+		node.title =
+			reading in READING
+				? 'Goes to the arcade: big talk, read aloud, choices to tap. Click to change'
+				: 'An ordinary session. Click to send it to the arcade instead: big talk, read aloud, choices to tap';
+	};
+
+	node.type = 'button';
+	node.addEventListener('click', () =>
+		openMenu(node, [
+			{ heading: 'Send it to the arcade?' },
+			{ label: 'No arcade', ...(!(reading in READING) && { icon: 'check' }), onPress: () => pick(null) },
+			...Object.entries(READING).map(([key, { label, detail }]) => ({
+				label: `Arcade: ${label}`,
+				detail,
+				...(key === reading && { icon: 'check' }),
+				onPress: () => pick(key),
+			})),
+		]),
+	);
+
+	const pick = key => {
+		reading = key;
+		if (key) remember(ARCADE_KEPT, key);
+		else forget(ARCADE_KEPT);
+		show();
+	};
+
+	show();
+
+	return { node, value: () => (reading in READING ? reading : null) };
+};
+
 // Each place a prompt can go, as { heading, lines, accent, go, after }: the sessions it carries on, then a new session
 // in the project that fits, here or on another server, with the model it runs on and how long it lasts to pick under
 // it (`after`). go() takes it there and resolves true once it's on its way.
-const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive }) => {
+const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive, arcade }) => {
 	const sessions = matches.map(({ session, remote, why, meter }) => ({
 		heading: 'Carries on',
 		lines: [
@@ -374,6 +431,13 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive }
 				: await sendPrompt(session.id, prompt);
 
 			if (!response?.ok) return failed('Could not send it there');
+			// Sent for the arcade: the session switches into it (Claude starting again with its rules) and opens there
+			if (arcade && !remote) {
+				await setSessionArcade(session.id, { on: true, reading: arcade });
+				window.location.hash = `#/arcade/${session.id}`;
+
+				return true;
+			}
 			if (onArrive) return onArrive({ id: session.id, remote }) ?? true;
 			if (remote) return await openThere(remote.url, { sessionId: session.id });
 			window.location.hash = `#/sessions/${session.id}`;
@@ -387,10 +451,29 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive }
 	const after = element('div', 'pickers');
 
 	after.append(model.node, lifetime.node);
-	if (!where) return sessions;
+
+	// Sent for the arcade, it can also become a game of its own: a project made from the game scaffold, the prompt its
+	// idea, Claude building it in the arcade
+	const newGame = arcade && {
+		heading: 'A new game',
+		lines: [
+			element('div', 'name', 'Make a game of it'),
+			element('div', 'where', `from the game scaffold, on ${serverName() ?? 'this machine'}`),
+		],
+		go: async () => {
+			const made = await makeArcade({ name: '', idea: prompt, reading: arcade }, null, element('pre'));
+
+			if (!made?.id) return failed(made?.error || 'The game could not be made');
+
+			return goToArcade(made.id, null);
+		},
+	};
+
+	if (!where) return [...sessions, ...(newGame ? [newGame] : [])];
 
 	return [
 		...sessions,
+		...(newGame ? [newGame] : []),
 		{
 			heading: 'A new session',
 			lines: [
@@ -413,9 +496,21 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive }
 				}
 				if (startFresh) return startFresh(where, lifetime.value(), model.value());
 
-				const { body, response } = await createSession(where, prompt, undefined, mode, model.value());
+				const { body, response } = await createSession(
+					where,
+					prompt,
+					undefined,
+					mode,
+					model.value(),
+					arcade ? { reading: arcade } : undefined,
+				);
 
 				if (!response?.ok) return failed(`Could not start it in ${where}`);
+				if (arcade) {
+					window.location.hash = `#/arcade/${body.id}`;
+
+					return true;
+				}
 				if (onArrive) return onArrive({ id: body.id }) ?? true;
 				window.location.hash = `#/sessions/${body.id}`;
 
@@ -432,7 +527,7 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive }
 // once it's gone.
 // `remote` ({ url, name }): the project is on that paude, so the prompt starts a session there without asking Haiku
 // where it goes; this paude can't place it among sessions it doesn't have
-export const placePrompt = async ({ prompt, project, remote, startFresh, onArrive, onSent }) => {
+export const placePrompt = async ({ prompt, project, remote, startFresh, onArrive, onSent, arcade = null }) => {
 	if (!prompt) return new Notify({ intent: 'warning', content: 'Say what Claude should do first' });
 
 	const body = new Placing({});
@@ -472,7 +567,7 @@ export const placePrompt = async ({ prompt, project, remote, startFresh, onArriv
 		return new Notify({ intent: 'warning', content: "Couldn't place it just now" });
 	}
 
-	const places = placesFor(found, { prompt, project, startFresh, onArrive });
+	const places = placesFor(found, { prompt, project, startFresh, onArrive, arcade });
 	const go = async (place, pressed) => {
 		const buttons = [...body.elem.querySelectorAll('button.place, .model select')];
 

@@ -17,7 +17,6 @@ import {
 	remoteBase,
 } from '../api';
 import { button, element } from '../dom';
-import { newArcadeForm } from '../Arcade/makeArcade';
 import { sessionCard } from '../Layout';
 import SessionBrowser from '../SessionBrowser';
 import { bulkActions, sessionMenu } from '../sessionActions';
@@ -381,28 +380,6 @@ export const foldersPane = ({ onAdded, machines = [] }) => ({
 
 // A new arcade game on one of `machines` ({ name, url }, url null for this one): what it's called if that's known, the
 // idea so far if there is one, for whom, how they read, and made there from the game scaffold with Claude started in
-// it; then the browser goes to its arcade there
-export const arcadePane = ({ machines = [] }) => ({
-	key: 'arcade',
-	label: 'New arcade game',
-	make: appendTo => {
-		const elem = element('div', 'pane');
-		const { form, focus } = newArcadeForm({ remotes: machines.filter(({ url }) => url) });
-
-		form.prepend(
-			element(
-				'p',
-				'about',
-				'A game made by talking with Claude: describe it, pick from its suggestions or say your own, and watch it come together beside the conversation, with no terminal. Made from the game scaffold, on the paude you pick.',
-			),
-		);
-		elem.append(form);
-		appendTo.append(elem);
-
-		return { elem, refresh: focus };
-	},
-});
-
 // A mother-hub game from its cabinet in the lounge, to play right here: the game itself in a frame, served through
 // paude's preview listener (so over the page's own https), or a button that opens it in a tab of its own. `onUnwatch`
 // takes the cabinet out of the lounge.

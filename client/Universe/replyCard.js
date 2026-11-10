@@ -7,7 +7,7 @@ import { sendPrompt, sendRemotePrompt } from '../api';
 import { AskingCard, showAsking } from '../Asking';
 import { button, element } from '../dom';
 import { intoBox, micButton } from '../micButton';
-import { HOME_PROMPT_KEY, placePrompt } from '../PromptHome';
+import { arcadePicker, HOME_PROMPT_KEY, placePrompt } from '../PromptHome';
 import { forget, recall, remember } from '../storage';
 import refusal from './reason';
 import { sessionKey } from './scene';
@@ -183,14 +183,18 @@ export const promptCard = ({ project, projects = [], onSent, onArrive, onClose }
 	where.title = 'Where it goes';
 	where.addEventListener('change', () => (head.querySelector('.about').textContent = about()));
 
+	// Sent for the arcade or not, as on the home page
+	const arcade = arcadePicker();
 	const box = composer({
 		keep: HOME_PROMPT_KEY,
 		placeholder: 'What should Claude do?',
+		actions: [arcade.node],
 		send: text =>
 			placePrompt({
 				prompt: text,
 				project: where.value || undefined,
 				remote: chosen()?.remote,
+				arcade: arcade.value(),
 				onArrive,
 				onSent: () => {
 					box.sent();
@@ -198,7 +202,6 @@ export const promptCard = ({ project, projects = [], onSent, onArrive, onClose }
 					onClose();
 				},
 			}),
-		actions: [],
 	});
 
 	card.append(head, where, box.form);

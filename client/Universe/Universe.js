@@ -44,16 +44,7 @@ import {
 	titled,
 	whereWorking,
 } from './flyout';
-import {
-	arcadePane,
-	cabinetPane,
-	enginesPane,
-	foldersPane,
-	listDock,
-	projectPanes,
-	projectsPane,
-	sessionsPane,
-} from './shipDock';
+import { cabinetPane, enginesPane, foldersPane, listDock, projectPanes, projectsPane, sessionsPane } from './shipDock';
 import refusal from './reason';
 import { airlockCard } from './airlockCard';
 import { logCard, manifestCard, promptCard, replyCard } from './replyCard';
@@ -1364,9 +1355,7 @@ export default class Universe extends View {
 		const prompt = { label: 'New prompt', hotkey: 'n', run: () => this.newPrompt() };
 		const folder = { label: 'Add a folder', hotkey: 'a', run: () => this.openShipDock('folders') };
 
-		const arcade = { label: 'New arcade game', hotkey: 'g', run: () => this.openShipDock('arcade') };
-
-		if (place === 'new') return owned(prompt, arcade, folder);
+		if (place === 'new') return owned(prompt, folder);
 
 		return [
 			...owned({ label: 'All sessions', hotkey: 'h', run: () => this.openShipDock('sessions') }, folder, prompt),
@@ -1480,9 +1469,6 @@ export default class Universe extends View {
 									{ name: localName(), url: null },
 									...(only ? [] : (this.remotes ?? []).filter(({ error }) => !error)),
 								],
-							}),
-							arcadePane({
-								machines: [{ name: localName(), url: null }, ...(this.remotes ?? []).filter(({ error }) => !error)],
 							}),
 							enginesPane({
 								remotes: this.remotes,
@@ -2157,7 +2143,6 @@ export default class Universe extends View {
 				commands: [
 					...this.placeCommands('bridge'),
 					...owned({ label: 'New project', hotkey: 'p', run: () => this.openShipDock('projects') }),
-					...owned({ label: 'New arcade game', hotkey: 'g', run: () => this.openShipDock('arcade') }),
 					...(this.aboard.layout?.transporter
 						? [{ label: 'Transporter', hotkey: 'x', run: () => this.aboard.look('transporter') }]
 						: []),

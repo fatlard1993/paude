@@ -27,8 +27,8 @@ import { breadcrumbs } from './Breadcrumbs';
 import { button, element } from './dom';
 import { Bar, ghostButton } from './Bar';
 import { Empty, Scroll, sessionCard } from './Layout';
-import { composeBox, HOME_PROMPT_KEY, placePrompt } from './PromptHome';
-import newArcadeCard from './Arcade/newArcadeCard';
+import { arcadePicker, composeBox, HOME_PROMPT_KEY, placePrompt } from './PromptHome';
+import makersCard from './Arcade/makersCard';
 
 // The project list's last row: pressed, it opens into the folder's path
 const AddFolder = styled(
@@ -140,7 +140,7 @@ export default class Home extends View {
 			projects: () => this.projectList(),
 			fetchProject: (project, page) => this.projectSessions(project, page),
 			extra: [this.adder],
-			always: [newArcadeCard()],
+			always: identity()?.owner ? [makersCard()] : [],
 		});
 
 		this.load();
@@ -148,14 +148,20 @@ export default class Home extends View {
 
 	// A prompt placed before it's sent: in a conversation it carries on, or a new session in the project that fits
 	promptBox(appendTo) {
-		const { prompt, sent } = composeBox({
+		const arcade = arcadePicker();
+		const { prompt, sent, options } = composeBox({
 			appendTo,
 			placeholder: 'What should Claude do? paude finds the session it carries on, or the project to start one in',
 			actions: [
-				{ label: 'Find where it goes', onPress: () => placePrompt({ prompt: prompt.value.trim(), onSent: sent }) },
+				{
+					label: 'Find where it goes',
+					onPress: () => placePrompt({ prompt: prompt.value.trim(), onSent: sent, arcade: arcade.value() }),
+				},
 			],
 			keep: HOME_PROMPT_KEY,
 		});
+
+		options.append(arcade.node);
 	}
 
 	addFolderCard() {
