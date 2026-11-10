@@ -2141,6 +2141,27 @@ export default class Ship {
 					return [name, { pose: 'player', spot, room: this.lounge, facing }];
 				}
 
+				// The grey the one looking has picked comes before anything they're looking at: they go and stand at its
+				// terminal, which for one resting in the lounge is the one it left at its island. (Beamed over to another
+				// ship to it, they'd otherwise stay by the pad they arrived on, which is what's looked at there.)
+				const picked =
+					name === this.viewer && this.selected?.startsWith('worker:')
+						? this.workers.get(this.selected.slice('worker:'.length))
+						: null;
+				const terminal =
+					picked && !picked.leaving && (picked.lounging ? !picked.homeSeat?.floor && picked.homeSeat : picked.seat);
+
+				if (terminal && this.bridge)
+					return [
+						name,
+						{
+							pose: 'overseer',
+							room: picked.lounging ? this.bridge : picked.room,
+							spot: { x: terminal.x - 0.6, y: standingOf(this.bridge, terminal.y) },
+							facing: 1,
+						},
+					];
+
 				// The viewer goes to whatever they've looked at closely: the transporter's side, by its pad but not on it,
 				// or the room's floor, just in from its front; the bridge, or the whole ship, as a pilot does
 				const focus =
@@ -2167,28 +2188,8 @@ export default class Ship {
 				if (!worker) {
 					const index = pilots.indexOf(name);
 					const seated = other => other?.seat && !other.lounging && !other.leaving;
-					// The grey the one looking has picked, before anything else: they go and stand at its terminal, which for
-					// one resting in the lounge is the one it left at its island
-					const picked =
-						name === this.viewer && this.selected?.startsWith('worker:')
-							? this.workers.get(this.selected.slice('worker:'.length))
-							: null;
-					const left = picked?.lounging && !picked.leaving && !picked.homeSeat?.floor && picked.homeSeat;
-
-					if (left)
-						return [
-							name,
-							{
-								pose: 'overseer',
-								room: this.bridge,
-								spot: { x: left.x - 0.6 - index * 0.4, y: standingOf(this.bridge, left.y) },
-								facing: 1,
-							},
-						];
-
-					// Otherwise those whose terminals they have open, or with none open, every grey aboard: all of them
-					// are watched
-					const open = seated(picked) ? [picked] : person.sessions.map(key => this.workers.get(key)).filter(seated);
+					// Those whose terminals they have open, or with none open, every grey aboard: all of them are watched
+					const open = person.sessions.map(key => this.workers.get(key)).filter(seated);
 					const watched = open.length ? open : [...this.workers.values()].filter(seated);
 
 					if (!watched.length) {

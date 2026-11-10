@@ -3085,6 +3085,11 @@ test('picking a grey sends the one looking over to stand before its terminal, at
 	const there = other.workers.get('there/c');
 
 	expect(visiting.spot).toEqual({ x: there.seat.x - 0.6, y: standingOf(other.bridge, there.seat.y) });
+	// Arrived on its transporter's pad, which is what's looked at there: the grey picked still comes first
+	other.selected = null;
+	other.look('transporter');
+	other.selected = 'worker:there/c';
+	expect(visiting.spot).toEqual({ x: there.seat.x - 0.6, y: standingOf(other.bridge, there.seat.y) });
 	run(other, 60);
 	expect(visiting.path).toEqual([]);
 	expect(visiting.x).toBe(there.seat.x - 0.6);
