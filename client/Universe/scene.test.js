@@ -2497,27 +2497,31 @@ test('the bay doors in the belly slide open while a push goes out through them a
 	expect(made.bayDoors).toEqual({ hold: 0, hangar: 0 });
 });
 
-test('the empties of one deleted on a couch lie where it left them while its dust lies, then go up the tube with it, and are gone', () => {
-	const stopped = id =>
-		session({ id, status: 'stopped', tool: null, coldAgo: 6 * 60 * 60_000, stoppedAgo: 6 * 60 * 60_000 });
-	const made = shipWith([answer('here', [stopped('a'), stopped('b')], { projects: ['paude'] })]);
+test('the empties a lounger leaves behind, deleted on its couch or woken from it, lie where it left them and then go up the tube, its couch staying till they have', () => {
+	const lounger = (id, status = 'stopped') =>
+		session({ id, status, tool: null, coldAgo: 6 * 60 * 60_000, stoppedAgo: 6 * 60 * 60_000 });
+	const made = shipWith([answer('here', [lounger('a'), lounger('b'), lounger('c')], { projects: ['paude'] })]);
 
 	run(made, 4);
+	for (const key of ['here/a', 'here/c']) made.cansOf(made.workers.get(key));
 
 	const worker = made.workers.get('here/a');
 
-	made.cansOf(worker);
-	expect(worker.cans).toBeGreaterThan(3);
+	expect(worker.cans).toBeGreaterThan(6);
 	made.vaporize('here/a');
 	for (let step = 0; step < 600 && worker.ashedAt === undefined; step++) made.step(1 / 60, false);
 	expect(worker.ashedAt).toBeDefined();
+	// Left with its dust, for the nozzle that comes for that
+	expect(made.litter).toMatchObject([{ alone: false, heap: made.dust.at(-1) }]);
+	expect(made.litter[0].cans).toHaveLength(worker.cans);
 
-	// How much of each part is drawn: the empties lying on the floor, those lying on the backrest, those on their way up
+	// How much of each part is drawn: the empties lying on the floor, those lying on the backrest, those on their way
+	// up (and a nozzle of their own, where they have one)
 	const drawn = () => {
 		let fills = 0;
-		const ctx = { fillStyle: '', fillRect: () => fills++ };
+		const ctx = { fillStyle: '', fillRect: () => fills++, save() {}, restore() {} };
 
-		return made.messParts(ctx, worker).map(part => {
+		return made.litterParts(ctx).map(part => {
 			fills = 0;
 			part.draw();
 
@@ -2530,7 +2534,7 @@ test('the empties of one deleted on a couch lie where it left them while its dus
 	expect(back).toBeGreaterThan(0);
 	expect(flying).toBe(0);
 
-	// The nozzle down and sucking: fewer and fewer left lying, some in the air on their way to its mouth
+	// The nozzle down and sucking: some in the air on their way to its mouth, then none left anywhere
 	let most = 0;
 
 	run(made, 3.1);
@@ -2540,10 +2544,23 @@ test('the empties of one deleted on a couch lie where it left them while its dus
 	}
 	expect(most).toBeGreaterThan(0);
 	run(made, 0.3);
-	expect(drawn()).toEqual([0, 0, 0]);
-	// Its dust gone, nothing of it is left to draw
+	expect(drawn().slice(0, 2)).toEqual([0, 0]);
 	run(made, 1);
-	expect(made.messParts({}, worker)).toEqual([]);
+	expect(made.litter).toEqual([]);
+
+	// One woken from the last couch, alone on it: its empties are left by the couch, a nozzle coming for them alone,
+	// and the couch isn't zapped while they lie there
+	run(made, 8);
+	made.update([answer('here', [lounger('b'), lounger('c', 'working')], { projects: ['paude'] })]);
+	expect(made.workers.get('here/c').cans).toBeUndefined();
+	expect(made.litter).toMatchObject([{ alone: true }]);
+	expect(made.couchZaps).toEqual([]);
+	expect(drawn()[0] + drawn()[1]).toBeGreaterThan(0);
+	// Gone up the tube: the couch, empty, goes now
+	run(made, 6);
+	expect(made.litter).toEqual([]);
+	made.update([answer('here', [lounger('b'), lounger('c', 'working')], { projects: ['paude'] })]);
+	expect(made.couchZaps).toMatchObject([{ index: 1 }]);
 });
 
 test('a couch more needed is dropped out of the tube; one no longer needed is zapped from the ceiling, the lounge its size till its ash is sucked up', () => {

@@ -448,6 +448,28 @@ export const appliancesOf = (tools, sessions, usage = {}, log = {}) => {
 	].map(appliance => ({ ...appliance, active: appliance.users.length > 0, load: loadOf(appliance.uses) }));
 };
 
+// One of a lounger's empties as it lies: crushed flat on the floor, or on the backrest stood up, on its side or dented
+const drawCan = (ctx, { x, y, dropped, flip, lie }, color) => {
+	if (dropped) {
+		rect(ctx, x - 2, y - 1, 4, 2, PALETTE.k);
+		rect(ctx, x - (flip > 0 ? 1 : 2), y - 2, 2, 1, PALETTE.k);
+		rect(ctx, x - 1, y - 1, 2, 1, color);
+		rect(ctx, x + (flip > 0 ? 1 : -2), y - 1, 1, 1, PALETTE.g);
+	} else if (lie < 0.45) {
+		rect(ctx, x - 1, y - 4, 3, 5, PALETTE.k);
+		rect(ctx, x, y - 3, 1, 3, color);
+		rect(ctx, x, y - 3, 1, 1, PALETTE.g);
+	} else if (lie < 0.8) {
+		rect(ctx, x - 2, y - 2, 5, 3, PALETTE.k);
+		rect(ctx, x - 1, y - 1, 3, 1, color);
+		rect(ctx, lie < 0.62 ? x + 1 : x - 1, y - 1, 1, 1, PALETTE.g);
+	} else {
+		rect(ctx, x - 2, y - 1, 4, 2, PALETTE.k);
+		rect(ctx, x - 1, y - 2, 2, 1, PALETTE.k);
+		rect(ctx, x - 1, y - 1, 2, 1, color);
+	}
+};
+
 const mix = (a, b, amount) => a + (b - a) * amount;
 // 0 to 1, starting and ending at rest
 const eased = amount => Math.max(0, Math.min(1, amount)) ** 2 * (3 - 2 * Math.max(0, Math.min(1, amount)));
@@ -1243,8 +1265,12 @@ export default class Ship {
 			}
 			const lounging = resting(session);
 
-			// Its empties go with it from the lounge, so a pile is only ever since its cache last went cold
-			if (worker && !lounging) worker.cans = undefined;
+			// Its empties don't go with it from the lounge, so a pile is only ever since its cache last went cold: woken,
+			// it leaves them by its couch for the tube to take
+			if (worker && !lounging) {
+				if (worker.lounging && !worker.leaving) this.leaveLitter(worker);
+				worker.cans = undefined;
+			}
 			if (worker?.seat && worker.lounging !== lounging)
 				worker.trip = {
 					from: { x: worker.x ?? this.placeOf(worker).x, y: worker.y ?? this.placeOf(worker).y },
@@ -2142,12 +2168,18 @@ export default class Ship {
 			// isn't laid again under the heap and the emitter
 			if (worker.ashedAt === undefined) {
 				worker.ashedAt = this.time;
-				if (worker.dustAt)
-					this.dust.push({ ...worker.dustAt, hue: worker.session.hue, at: this.time, ...(worker.lounging && { key }) });
+				if (worker.dustAt) {
+					const heap = { ...worker.dustAt, hue: worker.session.hue, at: this.time, ...(worker.lounging && { key }) };
+
+					this.dust.push(heap);
+					// On a couch, its empties go up the tube with its dust
+					if (worker.lounging) this.leaveLitter(worker, heap);
+				}
 			}
 			if (this.time - worker.ashedAt >= DUST_SECONDS + SEAT_SINK_SECONDS) this.workers.delete(key);
 		}
 		this.dust = this.dust.filter(({ at }) => this.time - at < DUST_SECONDS);
+		this.litter = (this.litter ?? []).filter(({ heap }) => this.time - heap.at < DUST_SECONDS);
 		this.zaps = this.zaps.filter(({ at }) => this.time - at < GREY_ZAP.down + GREY_ZAP.fire + GREY_ZAP.up);
 
 		for (const worker of this.workers.values()) {
@@ -2607,6 +2639,7 @@ export default class Ship {
 				});
 		}
 		for (const heap of this.dust) standing.push({ y: heap.depth, draw: () => this.drawAshSucked(ctx, heap) });
+		standing.push(...this.litterParts(ctx));
 		for (const zap of this.zaps) standing.push({ y: zap.depth + 0.01, draw: () => this.drawGreyZap(ctx, zap) });
 		for (const parcel of this.parcels)
 			standing.push({
@@ -3658,8 +3691,7 @@ export default class Ship {
 
 		// Crumbled to dust, it holds its seat until its heap is sucked up: its terminal switched off, nothing else of it
 		if (worker.ashedAt !== undefined) {
-			// On a couch, its empties lie where it left them until the tube takes them with its dust
-			if (worker.lounging) return [...this.messParts(ctx, worker), ...this.homeSeatParts(ctx, worker)];
+			if (worker.lounging) return this.homeSeatParts(ctx, worker);
 			if (seat.floor) return [];
 
 			const desk = this.art({ x: seat.x, y: seat.y + 0.2 });
@@ -4810,86 +4842,95 @@ export default class Ship {
 		];
 	}
 
-	// The empties of one crumbled to dust on its couch: lying where it left them while its heap lies, then drawn up
-	// into the tube's nozzle with the dust, one after another from the top of the pile, each flying to its mouth
-	messParts(ctx, worker) {
-		const key = worker.session.key;
-		const heap = this.dust.find(lying => lying.key === key);
+	// The empties a lounger leaves behind when it's woken, or deleted where it sits: kept as they lay, for the tube to
+	// take. With its dust (`heap`) when it left one, by the nozzle that comes for that; otherwise a nozzle comes down
+	// over its seat for them alone
+	leaveLitter(worker, heap) {
+		const { lounge } = this;
 		const count = worker.cans ?? 0;
+		const index = lounge?.sessions.indexOf(worker.session.key) ?? -1;
 
-		if (!heap || !count || !worker.seat || !this.lounge) return [];
+		if (!count || !worker.seat || index < 0) return;
 
-		const { lies, down, sucks } = ASH;
-		const since = this.time - heap.at;
-		// How far each is on its way up, 0 where it lies to 1 gone: the last tossed first, the whole pile gone as the
-		// dust is
-		const lift = can =>
-			Math.max(0, Math.min(1, (since - lies - down - ((count - 1 - can) / count) * sucks * 0.6) / (sucks * 0.4)));
-		const lying = can => lift(can) === 0;
-		const { seat } = worker;
-		const color = `hsl(${worker.session.hue ?? 0} 65% 55%)`;
+		const at = this.art(worker.seat);
 
-		return [
-			{ y: seat.y + 0.3, draw: () => this.drawCans(ctx, worker, Math.min(count, CANS_DROPPED), 0, lying) },
-			{ y: seat.y - 0.3, draw: () => this.drawCans(ctx, worker, count, CANS_DROPPED, lying) },
-			{
-				y: heap.depth + 0.01,
-				draw: () => {
-					const { mouth } = this.ashNozzle(heap);
-
-					for (let can = 0; can < count; can++) {
-						const up = lift(can);
-
-						if (up <= 0 || up >= 1) continue;
-
-						const from = this.canAt(worker, can);
-						// Slow off the floor, then snatched up
-						const x = Math.round(from.x + (heap.x - from.x) * up ** 0.7);
-						const y = Math.round(from.y + (mouth + 2 - from.y) * up ** 2);
-
-						rect(ctx, x - 1, y - 2, 3, 4, PALETTE.k);
-						rect(ctx, x, y - 1, 1, 2, color);
-					}
-				},
-			},
-		];
+		this.litter ??= [];
+		this.litter.push({
+			cans: this.canShapes(worker, count),
+			color: `hsl(${worker.session.hue ?? 0} 65% 55%)`,
+			seat: worker.seat.y,
+			// Its couch, which stays while they lie by it
+			couch: this.couchIds?.[Math.floor(index / 2)],
+			heap: heap ?? { x: at.x, y: at.y - 2, depth: worker.seat.y + 0.3, at: this.time },
+			alone: !heap,
+		});
 	}
 
-	// A lounger's empties: crushed on the floor where they were dropped, and the rest heaped on the backrest; only
-	// those `shown`, where some of them are gone
-	drawCans(ctx, worker, count, from, shown = () => true) {
+	// Empties left behind: lying where they were left for a while, then drawn up into the tube's nozzle, one after
+	// another from the top of the pile, each flying to its mouth, the last gone as the nozzle goes back up
+	litterParts(ctx) {
+		const { lies, down, sucks } = ASH;
+
+		return (this.litter ?? []).flatMap(({ cans, color, seat, heap, alone }) => {
+			const since = this.time - heap.at;
+			// How far each is on its way up, 0 where it lies to 1 gone: the last tossed first
+			const lift = can =>
+				Math.max(
+					0,
+					Math.min(1, (since - lies - down - ((cans.length - 1 - can) / cans.length) * sucks * 0.6) / (sucks * 0.4)),
+				);
+			const lying = dropped => () => {
+				for (const shape of cans) if (shape.dropped === dropped && lift(shape.can) === 0) drawCan(ctx, shape, color);
+			};
+
+			return [
+				{ y: seat + 0.3, draw: lying(true) },
+				// Behind the couch's back, as they lay
+				{ y: seat - 0.3, draw: lying(false) },
+				{
+					y: heap.depth + 0.01,
+					draw: () => {
+						const { ceiling, mouth, reach } = this.ashNozzle(heap);
+
+						for (const shape of cans) {
+							const up = lift(shape.can);
+
+							if (up <= 0 || up >= 1) continue;
+
+							// Slow off the floor, then snatched up
+							const x = Math.round(shape.x + (heap.x - shape.x) * up ** 0.7);
+							const y = Math.round(shape.y + (mouth + 2 - shape.y) * up ** 2);
+
+							rect(ctx, x - 1, y - 2, 3, 4, PALETTE.k);
+							rect(ctx, x, y - 1, 1, 2, color);
+						}
+						// No dust to bring its nozzle: one of their own
+						if (alone && reach > 0) this.drawNozzle(ctx, heap.x, ceiling, mouth);
+					},
+				},
+			];
+		});
+	}
+
+	// A lounger's empties as they lie, the first `count` of them: where each is, in art pixels, whether it's one of
+	// those crushed on the floor where they were dropped (the rest heaped on the backrest), and how it fell
+	canShapes(worker, count) {
+		const key = worker.session.key;
+
+		return Array.from({ length: count }, (_, can) => ({
+			...this.canAt(worker, can),
+			can,
+			dropped: can < CANS_DROPPED,
+			flip: seeded(`${key}|crush${can}`) < 0.5 ? 1 : -1,
+			lie: seeded(`${key}|lie${can}`),
+		}));
+	}
+
+	// A lounger's empties from the `from`th up to `count`
+	drawCans(ctx, worker, count, from) {
 		const color = `hsl(${worker.session.hue ?? 0} 65% 55%)`;
 
-		for (let can = from; can < count; can++) {
-			if (!shown(can)) continue;
-
-			const { x, y } = this.canAt(worker, can);
-
-			if (can < CANS_DROPPED) {
-				const flip = seeded(`${worker.session.key}|crush${can}`) < 0.5 ? 1 : -1;
-
-				rect(ctx, x - 2, y - 1, 4, 2, PALETTE.k);
-				rect(ctx, x - (flip > 0 ? 1 : 2), y - 2, 2, 1, PALETTE.k);
-				rect(ctx, x - 1, y - 1, 2, 1, color);
-				rect(ctx, x + (flip > 0 ? 1 : -2), y - 1, 1, 1, PALETTE.g);
-			} else {
-				const lie = seeded(`${worker.session.key}|lie${can}`);
-
-				if (lie < 0.45) {
-					rect(ctx, x - 1, y - 4, 3, 5, PALETTE.k);
-					rect(ctx, x, y - 3, 1, 3, color);
-					rect(ctx, x, y - 3, 1, 1, PALETTE.g);
-				} else if (lie < 0.8) {
-					rect(ctx, x - 2, y - 2, 5, 3, PALETTE.k);
-					rect(ctx, x - 1, y - 1, 3, 1, color);
-					rect(ctx, lie < 0.62 ? x + 1 : x - 1, y - 1, 1, 1, PALETTE.g);
-				} else {
-					rect(ctx, x - 2, y - 1, 4, 2, PALETTE.k);
-					rect(ctx, x - 1, y - 2, 2, 1, PALETTE.k);
-					rect(ctx, x - 1, y - 1, 2, 1, color);
-				}
-			}
-		}
+		for (const shape of this.canShapes(worker, count).slice(from)) drawCan(ctx, shape, color);
 	}
 
 	// Where a lounger's nth empty goes, in art pixels: the first few crushed by the couch's nearer end, the rest heaped
@@ -5626,8 +5667,12 @@ export default class Ship {
 		const couches = Array.from({ length: slots.length / 2 }, (_, couch) => couch);
 		let standing = couches.filter(couch => !doomed.has(couch)).length;
 
+		// A couch with empties still lying by it stays until the tube has had them
+		const littered = new Set((this.litter ?? []).map(({ couch }) => couch));
+
 		for (const couch of couches.reverse()) {
 			if (doomed.has(couch) || !empty(couch) || standing <= 1 || !this.lounge) continue;
+			if (littered.has(this.couchIds[couch])) continue;
 			doomed.add(couch);
 			standing--;
 			this.couchDrops = this.couchDrops.filter(({ index }) => index !== couch);
