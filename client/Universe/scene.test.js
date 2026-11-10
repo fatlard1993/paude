@@ -2836,7 +2836,8 @@ test("the airlock's hatch is flush with the hull: nothing of it, its lamp includ
 
 				drawAirlock(ctx, art, bridge, { x: 5, open, time, head });
 				expect(tops.length).toBeGreaterThan(0);
-				expect(Math.min(...tops)).toBeGreaterThanOrEqual(-rim);
+				// With some of the rim left showing over it
+				expect(Math.min(...tops)).toBeGreaterThanOrEqual(-rim + 2);
 				// And it does stand up into the rim, past the wall's own top
 				expect(Math.min(...tops)).toBeLessThan(0);
 			}

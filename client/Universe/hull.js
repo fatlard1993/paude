@@ -2051,8 +2051,9 @@ export const drawLounge = (ctx, art, label, lounge, { time, lifted = [], gone = 
 // its forward end the airlock, open while someone's at it (`airlockOpen`), its lamp red
 // `ship`: its name and color, which sign the bridge, since the bridge is the one room that is the ship's own
 // The airlock: how wide its hatch is, in world units, and how far it stands up past the top of the bridge's far wall,
-// in art pixels: into the hull's rim over the wall and no further, so it's flush with the hull's back
-export const AIRLOCK = { wide: 1.3, rise: 6 };
+// in art pixels: a little into the hull's rim over the wall, with rim left showing over it, well short of the
+// hull's back
+export const AIRLOCK = { wide: 1.3, rise: 3 };
 
 // The airlock in the bridge's far wall, `x` its middle: a heavy hatch in a collar standing up into the hull, two
 // leaves with a port in each, parted to either side while `open`; a lamp over it, red, flashing while it's open, and
