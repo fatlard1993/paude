@@ -4,7 +4,7 @@ import { join } from 'path';
 
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 
-import { allCabinets, forgetCabinets, initCabinets, watchCabinet, watchedCabinets } from './cabinets';
+import { allCabinets, cabinetShare, forgetCabinets, initCabinets, watchCabinet, watchedCabinets } from './cabinets';
 
 let dir;
 let hub;
@@ -17,6 +17,7 @@ const games = [
 		look: { title: 'Humanity', color: '#e6e0d0', background: '#1b1b1b', icon: '/api/games/humanity/icon?v=1' },
 		lanUrl: 'http://humanity.home',
 		publicUrl: null,
+		port: 8032,
 		unit: { active: true },
 		report: { connections: 2 },
 	},
@@ -50,6 +51,7 @@ test("each hub game is a cabinet with its look, where it's played, and whether i
 
 	expect(cabinets[0]).toEqual({
 		id: 'humanity',
+		port: 8032,
 		title: 'Humanity',
 		color: '#e6e0d0',
 		background: '#1b1b1b',
@@ -78,4 +80,19 @@ test('the hub is asked a little apart, and a game unwatched leaves the lounge bu
 test('no cabinets without a hub', async () => {
 	forgetCabinets();
 	expect(await allCabinets({ hub: null, now: Date.now() })).toEqual(expect.any(Array));
+});
+
+test("a cabinet's game is a port share on the preview listener, at the game's own port where the hub runs", async () => {
+	forgetCabinets();
+	await allCabinets({ hub: { url: `http://127.0.0.1:${hub.port}`, token: 't' } });
+
+	expect(cabinetShare('game-humanity')).toEqual({
+		name: 'game-humanity',
+		kind: 'port',
+		host: '127.0.0.1',
+		port: 8032,
+		cabinet: 'humanity',
+	});
+	expect(cabinetShare('game-sand-sorter')).toBeNull();
+	expect(cabinetShare('humanity')).toBeNull();
 });

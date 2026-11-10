@@ -5,6 +5,7 @@ import path from 'path';
 import { credentialOf, identityOf } from './auth';
 import { isSecret } from './files';
 import { sessionRecord } from './sessions/record';
+import { cabinetShare } from './cabinets';
 import { shareNamed } from './shares';
 import { zipStream } from './zip';
 
@@ -193,12 +194,15 @@ const site = async (share, rest) => {
 const allowedTo = (request, share) => {
 	const identity = identityOf(credentialOf(request));
 
+	// A mother-hub game from the lounge's cabinets: the owner's, as the cabinets are
+	if (share.cabinet) return Boolean(identity?.owner);
+
 	return ownsSession(identity, share.sessionId);
 };
 
 export const previewFetch = async (request, server) => {
 	const { name, rest, prefixed } = routeOf(request);
-	const share = name && shareNamed(name);
+	const share = name && (shareNamed(name) ?? cabinetShare(name));
 
 	if (!share) return page(404, 'Not shared', 'Nothing is shared at this address (any more).');
 	if (!allowedTo(request, share))

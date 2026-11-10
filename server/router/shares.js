@@ -10,6 +10,7 @@ import { previewOrigin as previewOriginOf } from '../publicOrigin';
 import { serverSettings } from '../serverSettings';
 import { sessionRecord } from '../sessions/record';
 import { ShareError, addShare, removeShare, renameShare, sharesOf } from '../shares';
+import { allCabinets, cabinetShare } from '../cabinets';
 
 let previewPort;
 
@@ -49,6 +50,22 @@ const downloadKind = async (cwd, wanted) =>
 // A session's shares: anyone who can see the session sees the list (each is theirs to open); sharing something
 // puts it in front of everyone who can see the session, so it takes the role that may type into Claude
 const sharesRoutes = async request => {
+	// Where a cabinet's game is played inside paude's page: its share on the preview listener, over paude's own https
+	const playing = requestMatch('GET', '/api/cabinets/:id/play', request);
+
+	if (playing) {
+		if (!identityOf(credentialOf(request))?.owner)
+			return new Response("The lounge's cabinets are the owner's", { status: 403 });
+
+		await allCabinets();
+
+		const share = cabinetShare(`game-${playing.id}`);
+
+		if (!share) return new Response('That game has no port this paude can reach', { status: 404 });
+
+		return Response.json({ url: `${await previewOrigin(request)}/s/${encodeURIComponent(share.name)}/` });
+	}
+
 	const listing = requestMatch('GET', '/api/sessions/:id/shares', request);
 	const adding = requestMatch('POST', '/api/sessions/:id/shares', request);
 	const removing = requestMatch('DELETE', '/api/sessions/:id/shares/:share', request);

@@ -1,3 +1,5 @@
+import { lookup } from 'dns/promises';
+import os from 'os';
 import path from 'path';
 
 import readJsonFile from '../shared/readJsonFile';
@@ -10,7 +12,7 @@ import { askHub, connectedHub } from './motherHub';
 const ASK_EVERY_MS = 15_000;
 let file;
 let unwatched = new Set();
-let known = { at: 0, games: [] };
+let known = { at: 0, games: [], host: null };
 
 export const initCabinets = async dataDir => {
 	file = path.join(dataDir, 'cabinets.json');
@@ -20,6 +22,7 @@ export const initCabinets = async dataDir => {
 // A hub game as a cabinet: what it's called, its colors and icon, where it's played, and whether it's on
 export const cabinetOf = (game, hubUrl) => ({
 	id: game.id,
+	port: game.port ?? null,
 	title: game.look?.title || game.name || game.id,
 	color: game.look?.color ?? null,
 	background: game.look?.background ?? null,
@@ -38,7 +41,7 @@ export const allCabinets = async ({ now = Date.now(), hub } = {}) => {
 	const games = connected ? await askHub(connected, '/api/games').catch(() => null) : [];
 
 	if (!Array.isArray(games)) return known.games;
-	known = { at: now, games: games.map(game => cabinetOf(game, connected.url)) };
+	known = { at: now, games: games.map(game => cabinetOf(game, connected.url)), host: await gameHost(connected) };
 
 	return known.games;
 };
@@ -52,7 +55,37 @@ export const watchCabinet = async (id, watch) => {
 	if (file) await writeJsonFile(file, () => ({ unwatched: [...unwatched] }));
 };
 
+// Where the hub's games listen, from here: this machine when the hub is on it, else the hub's own machine (each game on
+// its own port there)
+const gameHost = async hub => {
+	if (!hub) return null;
+
+	const { hostname } = new URL(hub.url);
+
+	if (['127.0.0.1', 'localhost', '::1'].includes(hostname)) return '127.0.0.1';
+
+	const address = (await lookup(hostname).catch(() => null))?.address;
+	const own = Object.values(os.networkInterfaces())
+		.flat()
+		.map(found => found?.address);
+
+	return address && own.includes(address) ? '127.0.0.1' : (address ?? hostname);
+};
+
+// What paude's preview listener serves for a cabinet, so the game can be played inside paude's own page over https
+// (the hub's games are plain http): a port share named game-<id>, at the game's own port. null for no such cabinet.
+export const CABINET_SHARE = /^game-(.+)$/;
+
+export const cabinetShare = name => {
+	const id = CABINET_SHARE.exec(name ?? '')?.[1];
+	const cabinet = id && known.games.find(game => game.id === id);
+
+	if (!cabinet?.port || !known.host) return null;
+
+	return { name, kind: 'port', host: known.host, port: cabinet.port, cabinet: id };
+};
+
 // For tests: forget what was last asked
 export const forgetCabinets = () => {
-	known = { at: 0, games: [] };
+	known = { at: 0, games: [], host: null };
 };
