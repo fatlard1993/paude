@@ -1908,9 +1908,13 @@ const cabinetPart = (ctx, art, lounge, cabinet, index, time) => {
 			// The side art: the game's own icon on the panel when it has one (never mirrored, so it reads the same on
 			// either side of an island), a stripe of its color sweeping down past it
 			const icon = iconOf(cabinet.icon);
+			// Its game off, nothing of it is lit: the side art is there, in a dull tone of its color, not glowing
+			const sideArt =
+				(cabinet.running && trim) ||
+				(cabinet.hue !== null && cabinet.hue !== undefined ? `hsl(${cabinet.hue} 22% 34%)` : PALETTE.m);
 
-			span(2, 4, top + 3, 1, trim);
-			span(2, 3, top + 4, icon ? 4 : 14, trim);
+			span(2, 4, top + 3, 1, sideArt);
+			span(2, 3, top + 4, icon ? 4 : 14, sideArt);
 			if (icon) {
 				// Printed on the panel in its own colors, as a cabinet's side art is: dark, its trim, and a pale wash of it
 				const tones = tonesOf(icon);
@@ -1923,19 +1927,19 @@ const cabinetPart = (ctx, art, lounge, cabinet, index, time) => {
 
 						const at = { x: 1 + column, y: top + 9 + row };
 
-						span(at.x, at.x, at.y, 1, tone === 1 ? PALETTE.k : trim);
-						if (tone === 3) {
+						span(at.x, at.x, at.y, 1, tone === 1 ? PALETTE.k : sideArt);
+						if (tone === 3 && cabinet.running) {
 							ctx.globalAlpha = 0.55;
 							span(at.x, at.x, at.y, 1, '#ffffff');
 							ctx.globalAlpha = 1;
 						}
 					}
-			} else span(3, 5, top + 18, 1, trim);
-			span(4, 9, top + 26, 1, trim);
+			} else span(3, 5, top + 18, 1, sideArt);
+			span(4, 9, top + 26, 1, sideArt);
 			// The deck's edge, a stick standing up from it, and the kick plate
 			span(13, 15, top + 20, 1, PALETTE.m);
 			span(13, 13, top + 17, 3, PALETTE.m);
-			span(12, 14, top + 16, 1, 'hsl(0 70% 55%)');
+			span(12, 14, top + 16, 1, cabinet.running ? 'hsl(0 70% 55%)' : 'hsl(0 30% 34%)');
 			span(1, 11, top + 33, 2, 'rgba(0, 0, 0, 0.45)');
 			if (cabinet.players && Math.floor(time * 0.8 + index) % 2) span(6, 7, top + 3, 1, PALETTE.W);
 		},
