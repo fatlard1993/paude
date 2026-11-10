@@ -290,6 +290,14 @@ export const adoptedInstructions = ({ title, player, reading, devServer = false,
 		'',
 		"It was here before this conversation: read its README, its `CLAUDE.md` if it has one, and the files that matter before changing anything, and keep to how it's already written. Don't start over or ask what it is.",
 		'',
+		...(!devServer
+			? [
+					'## What they see',
+					'',
+					'Beside this conversation they see what you change: each file you touch, a tap from its diff. "Show me" means say in a line which file to look at.',
+					'',
+				]
+			: []),
 		...(devServer
 			? [
 					'## It is already running',
@@ -723,6 +731,31 @@ export const adoptArcade = async (cwd, { player, reading }) => {
 	await refreshArcade(cwd);
 
 	return marker;
+};
+
+// A project brought into the arcade, let go: its marker and rules gone, and the import of them taken out of its
+// CLAUDE.local.md (the file itself gone when it held nothing else). A game paude made isn't let go. Resolves to whether
+// it was.
+export const releaseArcade = async cwd => {
+	const marker = await arcadeOf(cwd);
+
+	if (!marker?.adopted) return false;
+
+	const { rm } = await import('fs/promises');
+	const local = join(cwd, 'CLAUDE.local.md');
+	const current = await readFile(local, 'utf8').catch(() => null);
+
+	await rm(join(cwd, MARKER), { force: true });
+	await rm(join(cwd, RULES), { force: true });
+	if (current !== null) {
+		const rest = current.replace(LOCAL_STUB, '').replace(`${RULES_IMPORT}\n\n`, '').replace(RULES_IMPORT, '');
+
+		if (rest.trim()) await writeFile(local, rest);
+		else await rm(local, { force: true });
+	}
+	arcadeKnown.delete(cwd);
+
+	return true;
 };
 
 // What a snapshot is named for: the last thing the person gave Claude, an answer to its question (a choice's label,

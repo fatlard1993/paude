@@ -1,3 +1,5 @@
+import { basename } from 'path';
+
 import { forkSession } from '@anthropic-ai/claude-agent-sdk';
 
 import { requestMatch } from '@vanilla-bean/components/app';
@@ -35,6 +37,7 @@ import {
 	ArcadeError,
 	acceptTrust,
 	adoptArcade,
+	releaseArcade,
 	arcadeFor,
 	arcadeLaunch,
 	adoptedOpeningPrompt,
@@ -42,6 +45,7 @@ import {
 	createArcadeProject,
 	hostingNow,
 	startHosting,
+	isArcade,
 	isArcadeSession,
 	openingPrompt,
 	refreshArcade,
@@ -155,6 +159,12 @@ const worktreeNameFor = text => {
 // { id: null, worktree, files, warning }, and joining that worktree is starting Claude in it anyway.
 const HEARTBEAT_MS = 5000;
 
+const arcadeDefaultOf = async name => {
+	const marker = await arcadeOf(projectPath(name)).catch(() => null);
+
+	return marker ? { arcade: marker.adopted ? 'default' : 'game' } : {};
+};
+
 // A new session, kept warm, kept going, fabled or short-lived from the start when asked, on the model asked for: mode
 // is 'warm', 'going', 'fabled', 'brief' or anything else for none, model one of MODEL_NAMES or anything else for the default.
 // Whoever starts it watches its project from then on, unless they turned that off themselves
@@ -254,6 +264,8 @@ const sessionsRoutes = async (request, server) => {
 						liveCount: own.filter(session => session.live).length,
 						...(await brandFields(name)),
 						watching: watchesProject(identity, name),
+						// Its sessions start in the arcade: a game paude made ('game'), or a project brought in ('default')
+						...(await arcadeDefaultOf(name)),
 						...(registered.has(name) && { registered: true, path: registered.get(name) }),
 					};
 				}),
@@ -789,7 +801,8 @@ const sessionsRoutes = async (request, server) => {
 	// with the arcade's rules and settings or without them
 	match = requestMatch('POST', '/api/sessions/:id/arcade', request);
 	if (match) {
-		if (!may(identity, 'type', match.id)) return new Response('Switching the arcade takes the drive role', { status: 403 });
+		if (!may(identity, 'type', match.id))
+			return new Response('Switching the arcade takes the drive role', { status: 403 });
 		if (!(await sessionRecord(match.id))) return new Response('Session not found', { status: 404 });
 
 		const { on, reading } = await request.json().catch(() => ({}));
@@ -968,41 +981,49 @@ const sessionsRoutes = async (request, server) => {
 			folder = joined.path;
 		}
 
-		return Response.json({ id: await startWith(folder, text, { mode, model, identity, project: match.project, arcade }) });
+		// Started in the arcade with nothing said: Claude opens it, saying hello and asking what to do (the arcade has no
+		// terminal for a trust question, so that's answered for it)
+		const inArcade = arcade === false ? false : Boolean(arcade) || (await isArcade(folder));
+		const opening =
+			inArcade && !text?.trim() ? adoptedOpeningPrompt({ title: basename(folder), player: await ownerName() }) : text;
+		const id = await startWith(folder, opening, { mode, model, identity, project: match.project, arcade });
+
+		if (inArcade) acceptTrust(runningSession(id)).catch(() => {});
+
+		return Response.json({ id });
 	}
 
-	// An arcade session in a project that's already here, any repo: brought into the arcade (its marker and rules, its own
-	// settings untouched), Claude started in it told to look around first, and its dev script run when it has one
+	// A project's sessions starting in the arcade by default ({ reading }), or not (DELETE): a project that was here before
+	// gets the arcade's marker and rules (its own settings and README untouched, paude's files kept out of its git status),
+	// or loses them again. A game paude made is always in the arcade.
 	match = requestMatch('POST', '/api/projects/:project/arcade', request);
 	if (match) {
-		if (!identity.owner) return new Response("Bringing a project into the arcade is the owner's", { status: 403 });
+		if (!identity.owner) return new Response("A project's arcade default is the owner's", { status: 403 });
 
 		const cwd = projectPath(match.project);
 
 		if (!(await isFolder(cwd))) return new Response('Unknown project', { status: 404 });
 
-		const { reading = 'reading', model } = await request.json().catch(() => ({}));
-		const player = await ownerName();
-		let marker;
+		const { reading = 'reading' } = await request.json().catch(() => ({}));
 
 		try {
-			marker = await adoptArcade(cwd, { player, reading });
+			return Response.json(await adoptArcade(cwd, { player: await ownerName(), reading }));
 		} catch (error) {
 			if (error instanceof ArcadeError) return new Response(error.message, { status: 400 });
 			throw error;
 		}
+	}
 
-		const id = await startWith(cwd, adoptedOpeningPrompt({ title: marker.title, player }), {
-			model,
-			identity,
-			project: match.project,
-		});
+	match = requestMatch('DELETE', '/api/projects/:project/arcade', request);
+	if (match) {
+		if (!identity.owner) return new Response("A project's arcade default is the owner's", { status: 403 });
 
-		// No dev script, no game to show: the arcade says so
-		await runTask(id, cwd, 'package.json:dev').catch(() => {});
-		acceptTrust(runningSession(id)).catch(() => {});
+		const cwd = projectPath(match.project);
 
-		return Response.json({ id });
+		if (!(await isFolder(cwd))) return new Response('Unknown project', { status: 404 });
+		if (!(await releaseArcade(cwd))) return new Response('A game paude made stays in the arcade', { status: 400 });
+
+		return new Response(null, { status: 204 });
 	}
 
 	match = requestMatch('GET', '/api/sessions/:id/attach', request);
