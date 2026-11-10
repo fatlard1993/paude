@@ -99,6 +99,18 @@ export const hsl = (hue, saturation, lightness, alpha) => {
 	return alpha === undefined ? `hsl(${h} ${s}% ${l}%)` : `hsla(${h} ${s}% ${l}% / ${alpha})`;
 };
 
+// How light a black-ish is written at the least, in percent: a grey that reads on a dark page, and still well under
+// a white-ish
+const INK_FLOOR = 46;
+
+// The CSS color of a hue (or a tone) for what's read rather than looked at: a name, a label, the line a card is known
+// by. As `hsl`, but a black-ish no darker than can be read on a dark page
+export const ink = (hue, saturation, lightness) => {
+	const [h, s, l] = toned(hue, saturation, lightness);
+
+	return `hsl(${h} ${s}% ${hue === 'dark' ? Math.max(l, INK_FLOOR) : l}%)`;
+};
+
 // Each named thing's color (a project, a ship), by name: its brand's hue where it has one (`branded`), kept as it is; else its folder's hue,
 // kitty-bg's for a terminal opened there, or when a project before it has that one (a brand, or one before it by
 // name), the nearest free hue of kitty-bg's wheel (a step up, a step down, two up...), so up to a wheel's worth of
@@ -178,4 +190,9 @@ const hex = (hue, saturation, lightness) => {
 export const tintsOf = hue =>
 	hue === null || hue === undefined
 		? null
-		: { background: hex(hue, 0.12, 0.07), foreground: hex(hue, 0.08, 0.88), accent: hex(hue, 0.8, 0.6) };
+		: {
+				background: hex(hue, 0.12, 0.07),
+				foreground: hex(hue, 0.08, 0.88),
+				// What a card or a bar is known by: a black-ish no darker than reads on the page (`ink`)
+				accent: hue === 'dark' ? hex(220, 0.12, INK_FLOOR / 100) : hex(hue, 0.8, 0.6),
+			};

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { cksum, folderHue, hsl, hueOfColor, huesApart, isHue, sessionHue, tintsOf, toned } from './hues';
+import { cksum, folderHue, hsl, ink, hueOfColor, huesApart, isHue, sessionHue, tintsOf, toned } from './hues';
 
 test('checksums a path as cksum does', () => {
 	expect(cksum('/home/chase/Projects/paude')).toBe(4246214386);
@@ -82,7 +82,13 @@ test('a white or a black goes wherever a hue does: painted as nearly no color, k
 	expect(toned('dark', 40, 12)[2]).toBe(14);
 	expect(hsl('light', 55, 55)).toBe('hsl(40 7% 82%)');
 	expect(tintsOf('light').accent).toMatch(/^#[d-f][0-9a-f]{5}$/);
-	expect(tintsOf('dark').accent).toMatch(/^#[2-4][0-9a-f]{5}$/);
+	// What's read is never darker than reads on a dark page: a black-ish name or accent is a mid grey, a hue's and a
+	// white-ish's as they'd be painted
+	expect(hsl('dark', 60, 74)).toBe('hsl(220 9% 30%)');
+	expect(ink('dark', 60, 74)).toBe('hsl(220 9% 46%)');
+	expect(ink('light', 60, 74)).toBe(hsl('light', 60, 74));
+	expect(ink(200, 60, 74)).toBe('hsl(200 60% 74%)');
+	expect(tintsOf('dark').accent).toBe('#677183');
 	expect([isHue(0), isHue('light'), isHue('dark'), isHue(null), isHue(undefined), isHue('red')]).toEqual([
 		true,
 		true,

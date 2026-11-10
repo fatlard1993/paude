@@ -1,5 +1,5 @@
 import { facilitiesFor, facilityOf } from '../../shared/facilities';
-import { cksum, hsl, huesApart } from '../../shared/hues';
+import { cksum, hsl, huesApart, ink } from '../../shared/hues';
 import { PALETTE, cheeksOf, drawSprite, spriteSize } from './art';
 import {
 	CELL,
@@ -3660,7 +3660,7 @@ export default class Ship {
 						this.labels.push({
 							text: own ? `${bay.name} core` : bay.name,
 							at: { x: this.art({ x: housing.middle, y: 0 }).x, y: upper ? ceiling + NAME_INSIDE : ceiling },
-							color: bay.hue === null ? PALETTE.w : hsl(bay.hue, 60, 74),
+							color: bay.hue === null ? PALETTE.w : ink(bay.hue, 60, 74),
 							align: 'center',
 							size: 1,
 							lift: upper ? 0 : 4,

@@ -1,5 +1,5 @@
 import { PALETTE, drawSprite, plating } from './art';
-import { hsl, isHue, tintsOf } from '../../shared/hues';
+import { hsl, ink, isHue, tintsOf } from '../../shared/hues';
 import {
 	AIRLOCK_DROP,
 	NACELLE,
@@ -224,7 +224,7 @@ export const drawHullCover = (ctx, layout, cover, { time, name = '', hue = 200 }
 	rect(ctx, from, stripe, to - from, 1, hsl(hue, 60, 62));
 	rect(ctx, from, stripe + 5, to - from, 1, PALETTE.k);
 	pixelText(ctx, name, from + 26, stripe - 4, { color: '#c9d3e3', size: 2, max: (to - from) * 0.6 });
-	pixelText(ctx, 'PAUDE', to - 24, stripe - 4, { color: hsl(hue, 45, 70), align: 'right' });
+	pixelText(ctx, 'PAUDE', to - 24, stripe - 4, { color: ink(hue, 45, 70), align: 'right' });
 
 	// Portholes, a few of them lit, one now and then blinking
 	const ports = Math.round(shape.top + tall * 0.6);
@@ -1136,7 +1136,7 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, systems 
 					for (let bar = 0; bar < 3; bar++)
 						rect(ctx, at.x + 14 + bar * 2, at.y - 8 - bar * 2, 1, 2 + bar * 2, bar < bars ? color : PALETTE.d);
 				}
-				if (zoom >= 3) label(engine.name, at, { color: hsl(hue, 50, 74), align: 'center', lift: -5, gap: 4, size: 1 });
+				if (zoom >= 3) label(engine.name, at, { color: ink(hue, 50, 74), align: 'center', lift: -5, gap: 4, size: 1 });
 				if (engine.outage)
 					label(engine.outage, at, {
 						color: PALETTE.r,
@@ -1501,7 +1501,7 @@ export const drawSystem = (ctx, art, label, room, { time, system }) => {
 	const foot = systemFootOf(room);
 
 	return [
-		...walls(ctx, art, label, room, { name: room.name, color: hsl(hue, 55, 74) }),
+		...walls(ctx, art, label, room, { name: room.name, color: ink(hue, 55, 74) }),
 		{
 			y: foot.y,
 			draw: () => {
@@ -2129,7 +2129,7 @@ export const drawBridge = (ctx, art, label, bridge, { time, plans, airlockOpen =
 	return [
 		...walls(ctx, art, label, bridge, {
 			name: ship?.name || bridge.name,
-			color: isHue(ship?.hue) ? hsl(ship.hue, 60, 70) : PALETTE.w,
+			color: isHue(ship?.hue) ? ink(ship.hue, 60, 70) : PALETTE.w,
 		}),
 		{
 			y: bridge.y + ROOM_LAYER.bridgeWall,
