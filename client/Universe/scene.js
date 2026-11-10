@@ -196,7 +196,8 @@ const OPEN_SECONDS = 0.8;
 export const GROUP_SEPARATOR = '|';
 // Someone off to the transporter walks this many times as fast, and beams out after this long however far they got
 const HURRY = 5;
-// How many times as fast the one looking walks to an arcade cabinet they've opened: brisk, the way being long, not a dash
+// How many times as fast the one looking walks to what they've asked for, an arcade cabinet they've opened or the
+// terminal of a grey they've picked: brisk, the way often being long, not a dash
 const TO_ARCADE = 1.8;
 const TRAVEL_MOST = 3;
 // How long a stream stays after its tool, fading, and how far apart its packets run
@@ -2249,11 +2250,13 @@ export default class Ship {
 		return this.bridge && airlockAt(this.bridge);
 	}
 
-	// How many times their walking pace someone goes at: off to the transporter in a hurry, to an arcade cabinet briskly
+	// How many times their walking pace someone goes at: off to the transporter in a hurry, to what they've asked for
+	// briskly
 	paceOf(name) {
 		if (this.departing?.key === name || (this.readying && this.viewer === name)) return HURRY;
 
-		return this.arcading && this.viewer === name ? TO_ARCADE : 1;
+		// To a cabinet they've opened, or the terminal of a grey they've picked: they're on their way to something
+		return (this.arcading || this.selected?.startsWith('worker:')) && this.viewer === name ? TO_ARCADE : 1;
 	}
 
 	// Whether a person is inside the ship's rooms and halls, where they're drawn among what stands there rather than
