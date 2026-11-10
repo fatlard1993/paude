@@ -2072,9 +2072,14 @@ export default class Ship {
 		// Each in a suit of their own color: a hue seeded by their name, stepped apart from everyone else's aboard, so two
 		// whose names fall near each other are still told apart; one aboard keeps the color it was given as others come and
 		// go (a branded hue is kept as it is)
+		// Another paude counts whoever asks it for its universe as looking at it, and it's this paude that asks, as its
+		// owner, on behalf of whoever is looking here: its owner with no terminal open there is that asking, not someone
+		// aboard, and would stand as a second copy of the one looking
+		const aboardOf = answer =>
+			(answer.people ?? []).filter(person => !(answer.remote && person.role === 'owner' && !person.sessions?.length));
 		const hues = huesApart(
 			answers.flatMap(answer =>
-				(answer.people ?? []).map(person => {
+				aboardOf(answer).map(person => {
 					const key = person.key ?? person.name;
 					const kept = this.people?.get(key)?.hue;
 
@@ -2085,7 +2090,7 @@ export default class Ship {
 		);
 
 		for (const answer of answers)
-			for (const person of answer.people ?? []) {
+			for (const person of aboardOf(answer)) {
 				// Told apart by the mark their paude gives them: the owner's is the same on every paude, so they're one person
 				// across them, and two guests going by one name are two
 				const key = person.key ?? person.name;

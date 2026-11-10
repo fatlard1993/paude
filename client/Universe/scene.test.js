@@ -3076,6 +3076,36 @@ test('picking a grey sends the one looking over to stand before its terminal, at
 	expect(visiting.x).toBe(there.seat.x - 0.6);
 });
 
+test("another paude's owner with no terminal open there is this paude asking it, not someone aboard: the one looking stands once", () => {
+	const me = { key: 'me', name: 'chase', role: 'owner', sessions: [] };
+	const asking = { key: 'them', name: 'home', role: 'owner', sessions: [] };
+	const remote = { url: 'https://htpc.local', name: 'htpc' };
+	const there = people => ({
+		...answer('htpc', [session({ id: 'h', project: 'paude' })], { projects: ['paude'], people }),
+		remote,
+	});
+	const here = answer('here', [session()], { projects: ['paude'], people: [me] });
+	const made = shipWith([here, there([asking])]);
+
+	made.viewer = 'me';
+	run(made, 10);
+	expect([...made.people.keys()]).toEqual(['me']);
+	expect([...made.walkers.keys()]).toEqual(['me']);
+
+	// That owner with a terminal open there is someone at it, and aboard; so is any guest of the other paude
+	made.update([
+		here,
+		there([
+			{ ...asking, sessions: ['h'] },
+			{ key: 'sam', name: 'Sam', role: 'comment', sessions: ['h'] },
+		]),
+	]);
+	expect([...made.people.keys()].sort()).toEqual(['me', 'sam', 'them']);
+	// And this paude's own owner is never dropped, whatever they have open
+	made.update([here]);
+	expect([...made.people.keys()]).toEqual(['me']);
+});
+
 test('a couch more needed is dropped out of the tube; one no longer needed is zapped from the ceiling, the lounge its size till its ash is sucked up', () => {
 	const resting = ids => [
 		answer(
