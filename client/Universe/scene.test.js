@@ -2581,50 +2581,70 @@ test("a terminal is frosted whenever its session's cache is cold, whatever the s
 	expect(cacheCold(session({ status: 'stopped', coldAgo: 0 }))).toBe(false);
 });
 
-test('one stopped while its cache still holds stands at an arcade cabinet, or round the TV where there is none, and sits down only once it has gone cold', () => {
-	const stopped = (id, coldAgo) => session({ id, status: 'stopped', tool: null, coldAgo, stoppedAgo: 5 * MINUTE });
+test('a stopped session joins those on their feet in the lounge while its cache holds, sits down once it is cold, and is back at its desk when woken', () => {
+	const stopped = coldAgo => session({ status: 'stopped', tool: null, coldAgo, stoppedAgo: 5 * MINUTE });
+	const looks = one => [answer('here', [one], { projects: ['paude'] })];
+	const made = shipWith(looks(session({ status: 'ready', tool: null, context: { warm: true } })));
+
+	run(made, 10);
+
+	const worker = made.workers.get('here/a');
+	const desk = { ...made.placeOf(worker) };
+
+	// Idle with its cache holding: at its terminal
+	expect(worker.lounging).toBe(false);
+	expect(worker.room).toBe(made.bridge);
+
+	// Stopped, its cache still holding: the one that leaves its terminal warm, to stand about the lounge with no seat
+	made.update(looks(stopped(0)));
+	expect(worker.lounging).toBe(true);
+	expect(worker.standing).toBe(true);
+	expect(made.lounging).toEqual([]);
+	run(made, 40);
+	expect(worker.room).toBe(made.lounge);
+
+	// Gone cold: onto a couch
+	made.update(looks(stopped(MINUTE)));
+	expect(worker.standing).toBe(false);
+	expect(made.lounging).toEqual(['here/a']);
+	expect(made.walking(worker)).toBe(true);
+	run(made, 40);
+
+	// Woken, its cache warm again: back to its terminal
+	made.update(looks(session({ status: 'working' })));
+	expect(worker.lounging).toBe(false);
+	run(made, 40);
+	expect(made.placeOf(worker)).toEqual(desk);
+});
+
+test('those in the lounge on their feet stand at an arcade cabinet, two to each, and round the TV where there is none or no room', () => {
+	const cold = { warm: false, cache: { left: 0, life: 300_000, ago: 60 * MINUTE } };
+	const asking = id => session({ id, status: 'waiting', tool: null, context: cold });
 	const looks = (sessions, cabinets = []) => [{ ...answer('here', sessions, { projects: ['paude'] }), cabinets }];
-	const made = shipWith(looks([stopped('a', 0), stopped('b', 0), stopped('c', 10 * MINUTE)]));
+	const all = [asking('a'), asking('b'), asking('c')];
+	const made = shipWith(looks(all));
 
 	run(made, 30);
 
 	const [a, b, c] = ['a', 'b', 'c'].map(id => made.workers.get(`here/${id}`));
 	const tv = { x: made.lounge.x + made.lounge.w / 2 - 0.3, y: made.lounge.y + made.lounge.d - 0.15 };
 
-	// No arcade: the two still warm stand before the TV, one to each side; only the cold one has a seat
-	expect(made.lounging).toEqual(['here/c']);
-	expect([a.standing, b.standing, c.standing]).toEqual([true, true, false]);
+	// No arcade: before the TV, to either side by turns, on the floor
+	expect([a.standing, b.standing, c.standing]).toEqual([true, true, true]);
 	expect(made.placeOf(a).x).toBeLessThan(tv.x);
 	expect(made.placeOf(b).x).toBeGreaterThan(tv.x);
-	for (const worker of [a, b]) {
-		expect(Math.abs(made.placeOf(worker).x - tv.x)).toBeLessThan(1.5);
+	for (const worker of [a, b, c]) {
+		expect(Math.abs(made.placeOf(worker).x - tv.x)).toBeLessThan(2);
 		expect(tv.y - made.placeOf(worker).y).toBeLessThan(1.2);
-		// On the floor, not up on a cushion
 		expect(made.standingAt(worker).y).toBe(made.art(made.placeOf(worker)).y);
 	}
 
-	// An arcade cabinet comes: they stand at it, playing
-	const cabinet = { id: 'game', name: 'Game', watched: true, running: true };
-
-	made.update(looks([stopped('a', 0), stopped('b', 0), stopped('c', 10 * MINUTE)], [cabinet]));
+	// An arcade cabinet comes: two stand at it, playing; the third, with no room there, stays by the TV
+	made.update(looks(all, [{ id: 'game', name: 'Game', watched: true, running: true }]));
 	expect(a.playing).toMatchObject({ index: 0 });
 	expect(b.playing).toMatchObject({ index: 0 });
-	expect([a.standing, b.standing]).toEqual([false, false]);
-	run(made, 30);
-	expect(made.walking(a)).toBe(false);
-
-	// One goes cold: it leaves the cabinet for a seat on the couch, the other still playing
-	const at = { ...made.placeOf(a) };
-
-	made.update(looks([stopped('a', MINUTE), stopped('b', 0), stopped('c', 10 * MINUTE)], [cabinet]));
-	expect(made.lounging).toEqual(['here/c', 'here/a']);
-	expect(a.playing).toBeNull();
-	expect(b.playing).toMatchObject({ index: 0 });
-	expect([a.x, a.y]).toEqual([at.x, at.y]);
-	expect(made.walking(a)).toBe(true);
-	run(made, 30);
-	expect(made.walking(a)).toBe(false);
-	expect(Math.hypot(a.x - made.placeOf(a).x, a.y - made.placeOf(a).y)).toBeLessThan(0.01);
+	expect(c.playing).toBeNull();
+	expect([a.standing, b.standing, c.standing]).toEqual([false, false, true]);
 });
 
 test('one gone cold with a question open or a reply unread stands about the lounge, its terminal left lit, and sits down once that is seen to', () => {

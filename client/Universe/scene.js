@@ -222,8 +222,7 @@ const coldOf = session => session.coldAgo ?? session.context?.cache?.ago ?? sess
 export const cacheCold = session =>
 	session.status === 'stopped' ? (session.coldAgo ?? 1) > 0 : session.context?.warm === false;
 const HAUL_SECONDS = 6;
-// A session stopped while its cache still holds stands at one of the arcade cabinets until it goes cold, two to a
-// cabinet
+// One in the lounge on its feet stands at one of the arcade cabinets, two to a cabinet
 const PLAYERS_PER_CABINET = 2;
 // How fast the bay doors in the belly slide, as a part of their way a second
 const BAY_DOOR_RATE = 2.5;
@@ -361,8 +360,10 @@ const briefOf = worker => worker.session.lifetime === 'brief' && !worker.loungin
 // How far left of where it sits its laptop stands, in art pixels: between it and the desk's end it's plugged into
 const LAPTOP_ASIDE = 14;
 
-// Resting in the lounge: stopped, or ready with its prompt cache gone cold and nobody keeping it warm; one asking you
-// something stays at its seat
+// In the lounge rather than at its terminal: its prompt cache gone cold, or stopped. While the cache holds a grey stays
+// at its terminal, and waking it warms the cache again, so it's back there until that goes cold in turn; one at work,
+// or kept warm, stays too. The one exception is a stopped session, which is in the lounge from the moment it stops
+// (on its feet with the arcade's lot while its cache still holds, see the standing in update).
 export const resting = session =>
 	session.status === 'stopped' ||
 	(['ready', 'waiting'].includes(session.status) && session.context?.warm === false && !keepingOf(session));
@@ -1352,9 +1353,9 @@ export default class Ship {
 		const onCouches = [...this.workers]
 			.filter(([, worker]) => worker.lounging && (!worker.leaving || worker.opacity > 0))
 			.map(([key]) => key);
-		// Not everyone in the lounge is sat down. One stopped with its cache still holding stands about, at the arcade's
-		// cabinets or round the TV, and takes a seat once it's gone cold; one gone cold with something for the person (a
-		// question open, a reply unread) stands about too, until that's seen to. Once sat, it stays sat.
+		// Not everyone in the lounge is sat down; some stand about, at the arcade's cabinets or round the TV. One stopped
+		// with its cache still holding, until it goes cold; one still running, gone cold with something for the person (a
+		// question open, a reply unread), until that's seen to. Once sat, it stays sat.
 		const sat = new Set(this.lounging ?? []);
 		const standing = onCouches.filter(key => {
 			const { session, leaving } = this.workers.get(key);
