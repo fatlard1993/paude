@@ -2497,6 +2497,55 @@ test('the bay doors in the belly slide open while a push goes out through them a
 	expect(made.bayDoors).toEqual({ hold: 0, hangar: 0 });
 });
 
+test('the empties of one deleted on a couch lie where it left them while its dust lies, then go up the tube with it, and are gone', () => {
+	const stopped = id =>
+		session({ id, status: 'stopped', tool: null, coldAgo: 6 * 60 * 60_000, stoppedAgo: 6 * 60 * 60_000 });
+	const made = shipWith([answer('here', [stopped('a'), stopped('b')], { projects: ['paude'] })]);
+
+	run(made, 4);
+
+	const worker = made.workers.get('here/a');
+
+	made.cansOf(worker);
+	expect(worker.cans).toBeGreaterThan(3);
+	made.vaporize('here/a');
+	for (let step = 0; step < 600 && worker.ashedAt === undefined; step++) made.step(1 / 60, false);
+	expect(worker.ashedAt).toBeDefined();
+
+	// How much of each part is drawn: the empties lying on the floor, those lying on the backrest, those on their way up
+	const drawn = () => {
+		let fills = 0;
+		const ctx = { fillStyle: '', fillRect: () => fills++ };
+
+		return made.messParts(ctx, worker).map(part => {
+			fills = 0;
+			part.draw();
+
+			return fills;
+		});
+	};
+	const [floor, back, flying] = drawn();
+
+	expect(floor).toBeGreaterThan(0);
+	expect(back).toBeGreaterThan(0);
+	expect(flying).toBe(0);
+
+	// The nozzle down and sucking: fewer and fewer left lying, some in the air on their way to its mouth
+	let most = 0;
+
+	run(made, 3.1);
+	for (let step = 0; step < 80; step++) {
+		made.step(1 / 60, false);
+		most = Math.max(most, drawn()[2] ?? 0);
+	}
+	expect(most).toBeGreaterThan(0);
+	run(made, 0.3);
+	expect(drawn()).toEqual([0, 0, 0]);
+	// Its dust gone, nothing of it is left to draw
+	run(made, 1);
+	expect(made.messParts({}, worker)).toEqual([]);
+});
+
 test('a couch more needed is dropped out of the tube; one no longer needed is zapped from the ceiling, the lounge its size till its ash is sucked up', () => {
 	const resting = ids => [
 		answer(

@@ -3658,7 +3658,8 @@ export default class Ship {
 
 		// Crumbled to dust, it holds its seat until its heap is sucked up: its terminal switched off, nothing else of it
 		if (worker.ashedAt !== undefined) {
-			if (worker.lounging) return this.homeSeatParts(ctx, worker);
+			// On a couch, its empties lie where it left them until the tube takes them with its dust
+			if (worker.lounging) return [...this.messParts(ctx, worker), ...this.homeSeatParts(ctx, worker)];
 			if (seat.floor) return [];
 
 			const desk = this.art({ x: seat.x, y: seat.y + 0.2 });
@@ -4809,11 +4810,59 @@ export default class Ship {
 		];
 	}
 
-	// A lounger's empties: crushed on the floor where they were dropped, and the rest heaped on the backrest
-	drawCans(ctx, worker, count, from) {
+	// The empties of one crumbled to dust on its couch: lying where it left them while its heap lies, then drawn up
+	// into the tube's nozzle with the dust, one after another from the top of the pile, each flying to its mouth
+	messParts(ctx, worker) {
+		const key = worker.session.key;
+		const heap = this.dust.find(lying => lying.key === key);
+		const count = worker.cans ?? 0;
+
+		if (!heap || !count || !worker.seat || !this.lounge) return [];
+
+		const { lies, down, sucks } = ASH;
+		const since = this.time - heap.at;
+		// How far each is on its way up, 0 where it lies to 1 gone: the last tossed first, the whole pile gone as the
+		// dust is
+		const lift = can =>
+			Math.max(0, Math.min(1, (since - lies - down - ((count - 1 - can) / count) * sucks * 0.6) / (sucks * 0.4)));
+		const lying = can => lift(can) === 0;
+		const { seat } = worker;
+		const color = `hsl(${worker.session.hue ?? 0} 65% 55%)`;
+
+		return [
+			{ y: seat.y + 0.3, draw: () => this.drawCans(ctx, worker, Math.min(count, CANS_DROPPED), 0, lying) },
+			{ y: seat.y - 0.3, draw: () => this.drawCans(ctx, worker, count, CANS_DROPPED, lying) },
+			{
+				y: heap.depth + 0.01,
+				draw: () => {
+					const { mouth } = this.ashNozzle(heap);
+
+					for (let can = 0; can < count; can++) {
+						const up = lift(can);
+
+						if (up <= 0 || up >= 1) continue;
+
+						const from = this.canAt(worker, can);
+						// Slow off the floor, then snatched up
+						const x = Math.round(from.x + (heap.x - from.x) * up ** 0.7);
+						const y = Math.round(from.y + (mouth + 2 - from.y) * up ** 2);
+
+						rect(ctx, x - 1, y - 2, 3, 4, PALETTE.k);
+						rect(ctx, x, y - 1, 1, 2, color);
+					}
+				},
+			},
+		];
+	}
+
+	// A lounger's empties: crushed on the floor where they were dropped, and the rest heaped on the backrest; only
+	// those `shown`, where some of them are gone
+	drawCans(ctx, worker, count, from, shown = () => true) {
 		const color = `hsl(${worker.session.hue ?? 0} 65% 55%)`;
 
 		for (let can = from; can < count; can++) {
+			if (!shown(can)) continue;
+
 			const { x, y } = this.canAt(worker, can);
 
 			if (can < CANS_DROPPED) {
@@ -5839,16 +5888,14 @@ export default class Ship {
 		}
 	}
 
-	// A heap of ash, lying a moment, then sucked up into the tube: its nozzle let down from the ceiling of the room it
-	// lies in to just over it, the heap dwindling as flecks of it rise into the nozzle, and the nozzle drawn back up
-	drawAshSucked(ctx, heap) {
+	// The tube's nozzle over a heap of ash at this point of taking it: the ceiling it comes down from and where its
+	// mouth is, in art pixels, how far down it reaches (0 to 1) and how much of the heap it has sucked up (0 to 1)
+	ashNozzle(heap) {
 		const since = this.time - heap.at;
 		const room = this.roomAt({ x: heap.x / UNIT.x, y: heap.depth });
 		const ceiling = room ? this.art({ x: 0, y: room.y }).y + 2 : heap.y - 40;
 		const over = heap.y - 6;
 		const { lies, down, sucks, up } = ASH;
-		const sucked = Math.max(0, Math.min(1, (since - lies - down) / sucks));
-		// How far down its nozzle reaches, 0 to 1
 		const reach = (() => {
 			if (since < lies) return 0;
 			if (since < lies + down) return (since - lies) / down;
@@ -5857,10 +5904,21 @@ export default class Ship {
 			return Math.max(0, 1 - (since - lies - down - sucks) / up);
 		})();
 
+		return {
+			ceiling,
+			mouth: Math.round(ceiling + (over - ceiling) * reach),
+			reach,
+			sucked: Math.max(0, Math.min(1, (since - lies - down) / sucks)),
+		};
+	}
+
+	// A heap of ash, lying a moment, then sucked up into the tube: its nozzle let down from the ceiling of the room it
+	// lies in to just over it, the heap dwindling as flecks of it rise into the nozzle, and the nozzle drawn back up
+	drawAshSucked(ctx, heap) {
+		const { ceiling, mouth, reach, sucked } = this.ashNozzle(heap);
+
 		if (sucked < 1) this.drawDustHeap(ctx, heap, 1 - sucked);
 		if (reach <= 0) return;
-
-		const mouth = Math.round(ceiling + (over - ceiling) * reach);
 
 		// Flecks of it rising into the nozzle while it sucks
 		if (sucked > 0 && sucked < 1)
