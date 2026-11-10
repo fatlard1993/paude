@@ -12,7 +12,7 @@ import {
 	pathAcross,
 	standingSpot,
 } from './floor';
-import { layOut } from './plan';
+import { airlockAt, layOut, navAt } from './plan';
 
 const laid = () =>
 	layOut({
@@ -171,4 +171,38 @@ test('somewhere to stand is open floor that nobody else has, the place wanted wh
 	expect(floor.open(beside)).toBe(true);
 	expect(beside.facing).toBe(1);
 	expect(Math.hypot(beside.x - under.x, beside.y - under.y)).toBeLessThan(1.2);
+});
+
+test("the airlock's sill, on the floor before the bridge's wall, is open floor clear of everything that stands, however full the bridge", () => {
+	for (const sessions of [0, 1, 4, 12, 30]) {
+		const layout = layOut({
+			bays: Array.from({ length: Math.max(1, Math.ceil(sessions / 3)) }, (_, bay) => ({
+				name: `p${bay}`,
+				sessions: Array.from({ length: Math.min(3, Math.max(0, sessions - bay * 3)) }, (__, seat) => `s${bay}-${seat}`),
+				seated: Math.min(3, Math.max(0, sessions - bay * 3)),
+			})),
+			engines: [{ key: 'here', name: 'here' }],
+			lounge: { count: 3, sessions: ['x', 'y', 'z'], cabinets: [] },
+			checkouts: 1,
+			fleet: sessions > 10 ? 2 : 0,
+		});
+		const floor = floorWith(layout);
+		const sill = airlockAt(layout.bridge);
+
+		expect(floor.open(sill)).toBe(true);
+		// Room to stand in it: the cells either side are open too
+		expect(floor.open({ x: sill.x - 0.3, y: sill.y })).toBe(true);
+		expect(floor.open({ x: sill.x + 0.3, y: sill.y })).toBe(true);
+		for (const thing of floor.things.filter(({ open }) => !open))
+			expect(
+				sill.x >= thing.x - 0.3 &&
+					sill.x <= thing.x + thing.w + 0.3 &&
+					sill.y >= thing.y &&
+					sill.y <= thing.y + thing.d,
+			).toBe(false);
+		// And a way from it onto the bridge: to before the nav table, which it's over
+		const nav = navAt(layout.bridge);
+
+		expect(pathAcross(floor, sill, { x: nav.x - 1.2, y: nav.y })).not.toBeNull();
+	}
 });
