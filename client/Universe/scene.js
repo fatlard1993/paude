@@ -3336,15 +3336,6 @@ export default class Ship {
 				strength: status === 'working' || asking ? 0.8 : 0.35,
 			});
 		}
-		// Each person carries a little light of their own: drawn in among what stands aboard they're lit as it is, and
-		// would be lost in the dark of an aisle
-		for (const walker of this.walkers.values()) {
-			if (walker.x === undefined || this.boarding(walker)) continue;
-
-			const at = this.art(walker);
-
-			lights.push({ x: at.x, y: at.y - 16, r: 22, color: [225, 232, 255], strength: 0.55, moving: true });
-		}
 		for (const engine of this.engines) {
 			const at = this.art(engine.reactor);
 			const flicker = engine.limit && Math.floor(this.time * 7) % 3 === 0;
