@@ -146,6 +146,15 @@ export const loungeSeatAt = (lounge, index) => {
 	};
 };
 
+// Where a person stands to play a cabinet: before its screen, nearer the viewer than the greys at it, so they're seen
+// past it rather than hidden behind it; turned to the cabinet (facing)
+export const cabinetPlayerAt = (lounge, index) => {
+	const at = cabinetAt(lounge, index);
+	const out = cabinetFacing(index);
+
+	return { x: at.x + out * (CABINET_W / 2 + 0.42), y: at.y - 0.1, facing: -out };
+};
+
 // Where the `index`th of those on their feet stands by the TV on the near wall: before it to either side by turns,
 // further out and a little further back each pair, clear of its screen
 export const tvStandAt = (lounge, index) => {

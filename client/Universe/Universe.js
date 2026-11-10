@@ -1466,6 +1466,15 @@ export default class Universe extends View {
 	}
 
 	openCabinet(cabinet, open = 'game') {
+		const opened = this.openCabinetDock(cabinet, open);
+
+		// Whoever is looking walks over to the cabinet to play it, for as long as its dock is open
+		this.aboard.playAt(cabinet.id);
+
+		return opened;
+	}
+
+	openCabinetDock(cabinet, open) {
 		return this.openListDock(`cabinet:${cabinet.id}`, {
 			title: cabinet.title,
 			about: 'a game on the mother hub',
@@ -1720,6 +1729,8 @@ export default class Universe extends View {
 	}
 
 	closeDock() {
+		// Done with a cabinet's game: back from it to where they belong
+		for (const ship of this.ships.values()) ship.playAt(null);
 		this.dock?.card.dispose();
 		this.dock?.card.remove();
 		this.dock = null;

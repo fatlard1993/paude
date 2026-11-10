@@ -2731,6 +2731,46 @@ test('one gone cold with a question open or a reply unread stands about the loun
 	expect(made.drawMarker).toBeUndefined();
 });
 
+test("opening a cabinet's game walks the one looking over to it to play, and shutting it walks them back", () => {
+	const me = { key: 'me', name: 'chase', role: 'owner', sessions: [] };
+	const looks = [
+		{
+			...answer('here', [session()], { projects: ['paude'], people: [me] }),
+			cabinets: [{ id: 'game', name: 'Game', watched: true, running: true }],
+		},
+	];
+	const made = shipWith(looks);
+
+	made.viewer = 'me';
+	run(made, 10);
+
+	const walker = made.walkers.get('me');
+	const before = { x: walker.x, y: walker.y };
+
+	expect(walker.pose).toBe('overseer');
+	expect(walker.room).toBe(made.bridge);
+
+	// Opened: off to the cabinet, before its screen and turned to it, nearer the viewer than a grey at it would be
+	made.playAt('game');
+	expect(walker.pose).toBe('player');
+	expect(walker.room).toBe(made.lounge);
+	expect(walker.path.length).toBeGreaterThan(0);
+	run(made, 60);
+	expect(walker.path).toEqual([]);
+
+	expect([walker.x, walker.y]).toEqual([walker.spot.x, walker.spot.y]);
+	expect(made.lounge.y + made.lounge.d - walker.y).toBeLessThan(0.4);
+	expect(Math.abs(walker.stand)).toBe(1);
+
+	// A game the lounge has no cabinet for moves nobody; shut, they go back where they were
+	made.playAt('no-such-game');
+	expect(walker.pose).toBe('overseer');
+	made.playAt(null);
+	run(made, 60);
+	expect(walker.room).toBe(made.bridge);
+	expect([walker.x, walker.y]).toEqual([before.x, before.y]);
+});
+
 test('a couch more needed is dropped out of the tube; one no longer needed is zapped from the ceiling, the lounge its size till its ash is sucked up', () => {
 	const resting = ids => [
 		answer(

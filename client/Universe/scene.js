@@ -58,6 +58,7 @@ import {
 	drawHall,
 	CABINET_W,
 	cabinetAt,
+	cabinetPlayerAt,
 	cabinetStandAt,
 	couchEndOf,
 	loungeSeatAt,
@@ -1960,6 +1961,18 @@ export default class Ship {
 				if (this.departing?.key === name && !this.departing.direct && this.layout.transporter)
 					return [name, { pose: 'traveler', spot: clonerAt(this.layout.transporter), room: this.layout.transporter }];
 
+				// Playing one of the arcade's games: at its cabinet, while its game is open
+				const cabinet =
+					this.viewer === name && this.lounge
+						? (this.lounge.cabinets ?? []).findIndex(({ id }) => id === this.arcading)
+						: -1;
+
+				if (cabinet >= 0) {
+					const { facing, ...spot } = cabinetPlayerAt(this.lounge, cabinet);
+
+					return [name, { pose: 'player', spot, room: this.lounge, facing }];
+				}
+
 				// The viewer goes to whatever they've looked at closely: the transporter's side, by its pad but not on it,
 				// or the room's floor, just in from its front; the bridge, or the whole ship, as a pilot does
 				const focus =
@@ -2047,6 +2060,20 @@ export default class Ship {
 	// The airlock in the bridge's far wall, where those who come aboard come in and go out
 	get airlock() {
 		return this.bridge && airlockAt(this.bridge);
+	}
+
+	// The one looking has opened a cabinet's game (by its id), or shut it (null): they walk over to play it, and back
+	playAt(id) {
+		if ((this.arcading ?? null) === (id ?? null)) return;
+		this.arcading = id ?? null;
+		if (!this.layout?.building) return;
+
+		// Walked there, whatever the last answer did to the rooms: `moved` is that answer's, not this
+		const { moved } = this;
+
+		this.moved = false;
+		this.board();
+		this.moved = moved;
 	}
 
 	// Each person comes aboard by the airlock and walks to where they belong, and walks back out when they go; one
@@ -2256,7 +2283,9 @@ export default class Ship {
 			if (!this.boarding(walker) && !this.inDoorway(walker) && !this.beamingNow(name))
 				walk(
 					walker,
-					WALK_SPEED * seconds * (this.departing?.key === name || (this.readying && this.viewer === name) ? HURRY : 1),
+					WALK_SPEED *
+						seconds *
+						(this.departing?.key === name || ((this.readying || this.arcading) && this.viewer === name) ? HURRY : 1),
 					seconds,
 				);
 		this.tendTravel();
@@ -7517,6 +7546,41 @@ export default class Ship {
 		} else drawSprite(ctx, 'paper', at.x, at.y + 2);
 	}
 
+	// A person at an arcade cabinet, playing: tall enough for it with no stool, leaning into it with the game, one arm
+	// out working its stick, the other coming down on its buttons in bursts, a little hop when it goes their way
+	drawPersonPlaying(ctx, walker, at, colors) {
+		const toward = walker.stand < 0 ? -1 : 1;
+		const seed = seeded(walker.name) * 7;
+		const beat = Math.floor(this.time * 3 + seed);
+		const mashing = Math.floor((this.time + seed * 5) / 3) % 3 === 0;
+		const hop = Math.floor((this.time + seed) / 5) % 4 === 0 && (this.time + seed) % 5 < 0.25 ? 2 : 0;
+		const lean = Math.floor((this.time + seed) * 1.5) % 4 === 0 ? toward : 0;
+		const body = { x: at.x + lean, y: at.y - hop };
+		const arm = (shoulder, hand) => {
+			for (const [grow, color] of [
+				[1, PALETTE.k],
+				[0, PALETTE.w],
+			])
+				for (let step = 0; step <= 3; step++) {
+					const x = Math.round(shoulder.x + ((hand.x - shoulder.x) * step) / 3);
+					const y = Math.round(shoulder.y + ((hand.y - shoulder.y) * step) / 3);
+
+					rect(ctx, x - grow, y - grow, 1 + grow * 2, 1 + grow * 2, color);
+				}
+		};
+
+		rect(ctx, at.x - 3, at.y, 7, 1, PALETTE.k);
+		drawSprite(ctx, 'suit', body.x, body.y, { colors, flip: toward < 0 });
+		// The stick, worked side to side
+		arm({ x: body.x + toward * 3, y: body.y - 11 }, { x: body.x + toward * (8 + (beat % 2)), y: body.y - 15 });
+		// The buttons, hammered now and then
+		if (mashing)
+			arm(
+				{ x: body.x + toward * 2, y: body.y - 10 },
+				{ x: body.x + toward * 6, y: body.y - 12 + (Math.floor(this.time * 9) % 2) * 2 },
+			);
+	}
+
 	// Walking, seen from the front; at their place by their pose
 	drawWalker(ctx, walker) {
 		const at = this.art(walker);
@@ -7539,6 +7603,8 @@ export default class Ship {
 			rect(ctx, at.x - 3, at.y - 4, 7, 2, PALETTE.m);
 			rect(ctx, at.x - 1, at.y - 2, 3, 3, PALETTE.k);
 			drawSprite(ctx, 'suit', at.x, at.y - 4, { colors });
+		} else if (there && walker.pose === 'player') {
+			this.drawPersonPlaying(ctx, walker, at, colors);
 		} else if (there && walker.pose === 'overseer') {
 			drawSprite(ctx, 'suit', at.x, at.y, { colors, flip: walker.stand < 0 });
 		} else if (there && walker.pose === 'tourist') {
