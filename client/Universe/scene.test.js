@@ -2698,8 +2698,11 @@ test('one gone cold with a question open or a reply unread stands about the loun
 	expect(news.standing).toBe(false);
 	expect(made.screenLit(news)).toBe(false);
 	expect(asks.standing).toBe(true);
-	// A stopped one's terminal is off whatever it left unread
-	expect(made.screenLit({ session: session({ status: 'stopped', unseen: 3 }) })).toBe(false);
+	// A stopped one's terminal is lit too while it has left something unread, and off once that's read
+	expect(made.screenLit({ session: session({ id: 'gone', status: 'stopped', unseen: 3 }) })).toBe(true);
+	expect(made.screenLit({ session: session({ id: 'gone', status: 'stopped', unseen: 0 }) })).toBe(false);
+	// Nothing floats over a grey in the lounge to say any of it
+	expect(made.drawMarker).toBeUndefined();
 });
 
 test('a couch more needed is dropped out of the tube; one no longer needed is zapped from the ceiling, the lounge its size till its ash is sucked up', () => {

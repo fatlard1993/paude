@@ -2732,7 +2732,6 @@ export default class Ship {
 		for (const refuel of this.refuels) this.drawRefuel(ctx, refuel);
 		for (const shuttle of this.shuttles) this.drawShuttleOf(ctx, shuttle);
 		this.drawTugFlight(ctx);
-		for (const worker of this.workers.values()) if (worker.seat) this.drawMarker(ctx, worker);
 		this.drawLabels(ctx, ratio);
 	}
 
@@ -3033,7 +3032,8 @@ export default class Ship {
 			const asking = this.needs(worker.session) === 'asking';
 			const glow = { x: at.x - 8, y: at.y - 16 };
 
-			if (status === 'stopped' || !glow) continue;
+			// A stopped one's is dark, but for the one it left lit
+			if ((status === 'stopped' && !lit) || !glow) continue;
 			lights.push({
 				x: glow.x,
 				y: glow.y,
@@ -4810,10 +4810,10 @@ export default class Ship {
 
 	// The seat it left at its island while it rests: its chair empty, its terminal frosted over gone cold or switched off
 	// stopped, pressed as ever to open it
-	// Whether the terminal a grey left for the lounge stays lit: its session still running, with a question open or a
-	// reply unread on it
+	// Whether the terminal a grey left for the lounge stays lit: with a question open or a reply unread on it, its
+	// session stopped or not. It's the one place either shows: nothing floats over a grey in the lounge to say so
 	screenLit(worker) {
-		return worker.session.status !== 'stopped' && Boolean(this.needs(worker.session));
+		return Boolean(this.needs(worker.session));
 	}
 
 	homeSeatParts(ctx, worker) {
@@ -4840,9 +4840,11 @@ export default class Ship {
 						at,
 						{
 							// Lit as it would be with its grey at it while there's something on it for the person
-							screen: this.screenLit(worker)
-								? screenOf(session)
-								: { ...screenOf(session), kind: session.status === 'stopped' ? 'off' : 'idle' },
+							screen: (this.needs(session) === 'unread' && { ...screenOf(session), kind: 'news' }) ||
+								(this.screenLit(worker) && screenOf(session)) || {
+									...screenOf(session),
+									kind: session.status === 'stopped' ? 'off' : 'idle',
+								},
 							engineColor: `hsl(${session.engine.hue ?? 215} 45% 50%)`,
 							time: this.time,
 							seed: worker.seed,
@@ -7494,38 +7496,6 @@ export default class Ship {
 			.find(session => session && this.spoke(session, walker.name));
 
 		if (talking && there) this.drawSpeech(ctx, { x: at.x, y: at.y - 16 }, talking);
-	}
-
-	// What needs you shows on a grey's terminal; only one in the lounge, with no terminal, has it over its head: amber
-	// with a bang when it's asking, blue when there's news. At the farthest zooms it's drawn bigger, so what needs you
-	// reads however far out the view is.
-	drawMarker(ctx, worker) {
-		const need = this.needs(worker.session);
-
-		if (!need || !worker.lounging) return;
-
-		// One watching the lounge's TV has it beside its head, clear of the picture
-		const beside = worker.lounging && !worker.path?.length ? 10 : 0;
-		const head = { x: (worker.headX ?? 0) + beside, y: (worker.top ?? 0) + 14 + beside };
-		const grow = this.camera.zoom <= 2 ? 2 : 1;
-		const bob = need === 'asking' && Math.floor(this.time * 3) % 2 ? 1 : 0;
-		const { h } = spriteSize('news');
-
-		ctx.save();
-		ctx.translate(head.x, head.y - 16 - bob);
-		ctx.scale(grow, grow);
-		if (need === 'asking') drawSprite(ctx, 'asking', 0, 0);
-		else {
-			rect(ctx, -4, -h + 2, 9, 6, PALETTE.k);
-			rect(ctx, -3, -h + 3, 7, 4, PALETTE.b);
-			for (let step = 0; step < 3; step++) {
-				rect(ctx, -3 + step, -h + 3 + step, 1, 1, PALETTE.W);
-				rect(ctx, 3 - step, -h + 3 + step, 1, 1, PALETTE.W);
-			}
-		}
-		ctx.restore();
-		worker.marker = this.toScreen({ x: head.x, y: head.y - 16 - (h * grow) / 2 });
-		this.hits.push({ ...worker.marker, r: 6 * grow * this.camera.zoom, kind: 'worker', worker });
 	}
 
 	// Every word in the scene, last and on top, at the same size on the screen whatever the zoom: `at` in art pixels,
