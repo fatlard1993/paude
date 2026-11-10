@@ -292,6 +292,9 @@ const canopyOf = image => {
 	return image.canopyShape;
 };
 
+// How light the cockpit's glass is tinted, in percent: the ship's color seen through, not a dark pane
+const GLASS_LIGHT = 22;
+
 const drawCanopy = (ctx, image, { time, pace, drift, hue }) => {
 	const { shape } = image;
 	const { from, window, rows, glass, stars } = canopyOf(image);
@@ -316,7 +319,7 @@ const drawCanopy = (ctx, image, { time, pace, drift, hue }) => {
 				rect(paint, to, y, 2, 1, PALETTE.k);
 			}
 			for (const { y, to } of glass) {
-				rect(paint, from, y, to - from, 1, hsl(hue, 45, 9));
+				rect(paint, from, y, to - from, 1, hsl(hue, 45, GLASS_LIGHT));
 				rect(paint, to, y, 2, 1, PALETTE.k);
 			}
 			rect(paint, from - 1, rows[0].y, 1, rows.length, PALETTE.k);
@@ -331,7 +334,7 @@ const drawCanopy = (ctx, image, { time, pace, drift, hue }) => {
 
 			rect(paint, from, first.y - 1, first.to - from + 1, 1, PALETTE.k);
 			rect(paint, from, last.y + 1, last.to - from + 1, 1, PALETTE.k);
-			rect(paint, from, first.y, first.to - from, 1, hsl(hue, 45, 42));
+			rect(paint, from, first.y, first.to - from, 1, hsl(hue, 45, GLASS_LIGHT + 30));
 		}),
 	];
 	ctx.drawImage(image.canopy[0], area.left, area.top);
