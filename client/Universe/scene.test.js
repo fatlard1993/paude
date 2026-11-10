@@ -17,7 +17,7 @@ import Ship, {
 } from './scene';
 import { WATCHER_W, airlockAt, clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats, standingOf } from './plan';
 import { huesApart } from '../../shared/hues';
-import { SCREEN_RISE, UNIT, cableWeight, floor, setTrim, walls } from './station';
+import { CABINET_LAYER, LOUNGE_LAYER, SCREEN_RISE, UNIT, cableWeight, floor, setTrim, walls } from './station';
 import { drawAirlock, drawTransporter, shuttleAt } from './hull';
 import { spriteSize } from './art';
 
@@ -2916,6 +2916,40 @@ test("an island's rack stands at its left end, behind its desk's line, where nob
 			}
 		}
 	}
+});
+
+test('the parts of a couch and of a cabinet are drawn in their named order, each where it was drawn by number', () => {
+	expect(LOUNGE_LAYER).toEqual({
+		cansBehind: -0.3,
+		couchBack: -0.2,
+		lounger: -0.1,
+		couchFront: 0.15,
+		legs: 0.2,
+		cansBefore: 0.3,
+	});
+	expect(CABINET_LAYER).toEqual({ stool: 0.005, player: 0.01, person: 0.012 });
+	for (const layers of [LOUNGE_LAYER, CABINET_LAYER]) {
+		const depths = Object.values(layers);
+
+		expect(depths).toEqual([...depths].sort((a, b) => a - b));
+		expect(new Set(depths).size).toBe(depths.length);
+	}
+
+	// One sat on a couch: its empties behind, itself, its legs, its empties before, in that order from its seat
+	const made = shipWith([lounger(4 * 60 * MINUTE)]);
+
+	run(made, 4);
+
+	const worker = made.workers.get('here/a');
+	const ctx = new Proxy({}, { get: () => () => {} });
+	const offsets = made.loungerParts(ctx, worker).map(part => Math.round((part.y - worker.seat.y) * 1000) / 1000);
+
+	expect([...offsets].sort((a, b) => a - b)).toEqual([
+		LOUNGE_LAYER.cansBehind,
+		LOUNGE_LAYER.lounger,
+		LOUNGE_LAYER.legs,
+		LOUNGE_LAYER.cansBefore,
+	]);
 });
 
 test('a couch more needed is dropped out of the tube; one no longer needed is zapped from the ceiling, the lounge its size till its ash is sucked up', () => {

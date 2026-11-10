@@ -155,6 +155,31 @@ export const cabinetPlayerAt = (lounge, index) => {
 	return { x: at.x + out * (CABINET_W / 2 + 0.42), y: at.y - 0.1, facing: -out };
 };
 
+// Where each part of a couch and whoever is on it is drawn among the rest: how far before the seat itself (or behind
+// it), in world units, by name, in the order they're drawn; and the same of a cabinet and whoever plays it, from the
+// cabinet's foot. Each at the depth it had as a number.
+export const LOUNGE_LAYER = {
+	// A lounger's empties heaped behind the couch's back
+	cansBehind: -0.3,
+	couchBack: -0.2,
+	// Whoever sits on it
+	lounger: -0.1,
+	// Its cushions and arms
+	couchFront: 0.15,
+	// A lounger's legs, dangling over the cushion; a couch being zapped is drawn here too
+	legs: 0.2,
+	// Empties crushed on the floor before it
+	cansBefore: 0.3,
+};
+export const CABINET_LAYER = {
+	// A player's stool, out from under the cabinet
+	stool: 0.005,
+	// A grey playing it, just over it, so its hand on the stick shows
+	player: 0.01,
+	// A person playing it, before the greys at it
+	person: 0.012,
+};
+
 // Where the `index`th of those on their feet stands by the TV on the near wall: before it to either side by turns,
 // further out and a little further back each pair, clear of its screen
 export const tvStandAt = (lounge, index) => {

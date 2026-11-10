@@ -71,6 +71,8 @@ import {
 	housingOf,
 	drawHall,
 	CABINET_W,
+	CABINET_LAYER,
+	LOUNGE_LAYER,
 	cabinetAt,
 	cabinetPlayerAt,
 	cabinetStandAt,
@@ -2209,7 +2211,7 @@ export default class Ship {
 				? (this.lounge?.cabinets ?? []).findIndex(({ id }) => id === this.arcading)
 				: -1;
 
-		return cabinet >= 0 ? cabinetAt(this.lounge, cabinet).y + 0.012 : walker.y;
+		return cabinet >= 0 ? cabinetAt(this.lounge, cabinet).y + CABINET_LAYER.person : walker.y;
 	}
 
 	// The floor as one map of what's open and what stands where (floor.js), made again when the ship is laid again or
@@ -5186,19 +5188,22 @@ export default class Ship {
 			const depth = cabinetAt(this.lounge, worker.playing.index).y;
 
 			return [
-				{ y: depth + 0.005, draw: () => this.drawStool(ctx, worker) },
-				{ y: depth + 0.01, draw: () => this.drawWorker(ctx, worker) },
+				{ y: depth + CABINET_LAYER.stool, draw: () => this.drawStool(ctx, worker) },
+				{ y: depth + CABINET_LAYER.player, draw: () => this.drawWorker(ctx, worker) },
 			];
 		}
 		// On its feet by the TV: no couch under it either
 		if (worker.standing) return [{ y: seat.y, draw: () => this.drawWorker(ctx, worker) }];
 
 		return [
-			{ y: seat.y + 0.3, draw: () => this.drawCans(ctx, worker, Math.min(cans, CANS_DROPPED), 0) },
-			// Behind the couch's back, so the heap shows over it rather than lying on its front
-			{ y: seat.y - 0.3, draw: () => this.drawCans(ctx, worker, cans, CANS_DROPPED) },
 			{
-				y: seat.y + 0.2,
+				y: seat.y + LOUNGE_LAYER.cansBefore,
+				draw: () => this.drawCans(ctx, worker, Math.min(cans, CANS_DROPPED), 0),
+			},
+			// Behind the couch's back, so the heap shows over it rather than lying on its front
+			{ y: seat.y + LOUNGE_LAYER.cansBehind, draw: () => this.drawCans(ctx, worker, cans, CANS_DROPPED) },
+			{
+				y: seat.y + LOUNGE_LAYER.legs,
 				draw: () => {
 					const at = this.art(this.placeOf(worker));
 					const swing = Math.floor(this.time * 1.5 + worker.seed) % 2;
@@ -5222,7 +5227,7 @@ export default class Ship {
 				},
 			},
 			{
-				y: seat.y - 0.1,
+				y: seat.y + LOUNGE_LAYER.lounger,
 				draw: () => this.drawWorker(ctx, worker),
 			},
 		];
@@ -5270,9 +5275,9 @@ export default class Ship {
 			};
 
 			return [
-				{ y: seat + 0.3, draw: lying(true) },
+				{ y: seat + LOUNGE_LAYER.cansBefore, draw: lying(true) },
 				// Behind the couch's back, as they lay
-				{ y: seat - 0.3, draw: lying(false) },
+				{ y: seat + LOUNGE_LAYER.cansBehind, draw: lying(false) },
 				{
 					y: heap.depth + 0.01,
 					draw: () => {
@@ -6323,7 +6328,7 @@ export default class Ship {
 			...this.couchZaps.map(zap => {
 				const seat = loungeSeatAt(lounge, zap.index * 2);
 
-				return { y: seat.y + 0.2, draw: () => this.drawCouchZap(ctx, zap, seat, ceiling) };
+				return { y: seat.y + LOUNGE_LAYER.legs, draw: () => this.drawCouchZap(ctx, zap, seat, ceiling) };
 			}),
 		];
 	}

@@ -19,6 +19,7 @@ import { drawExterior } from './machine';
 import { pixelText } from './retro';
 import {
 	COUCH_SEAT,
+	LOUNGE_LAYER,
 	cabinetAt,
 	cabinetFacing,
 	FACE,
@@ -2022,7 +2023,7 @@ export const drawLounge = (ctx, art, label, lounge, { time, lifted = [], gone = 
 		...couches.flatMap(({ x, y, seat }) => [
 			// In two parts: its back behind those sitting on it, its cushions and arms over their legs
 			{
-				y: seat.y - 0.2,
+				y: seat.y + LOUNGE_LAYER.couchBack,
 				draw: () => {
 					rect(ctx, x - 3, y - 19, width + 6, 14, PALETTE.k);
 					rect(ctx, x - 2, y - 18, width + 4, 12, fabric[1]);
@@ -2031,7 +2032,7 @@ export const drawLounge = (ctx, art, label, lounge, { time, lifted = [], gone = 
 				},
 			},
 			{
-				y: seat.y + 0.15,
+				y: seat.y + LOUNGE_LAYER.couchFront,
 				draw: () => {
 					rect(ctx, x - 3, y - 6, width + 6, 9, PALETTE.k);
 					rect(ctx, x - 2, y - 5, width + 4, 7, fabric[0]);
