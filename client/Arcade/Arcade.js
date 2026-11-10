@@ -1,6 +1,6 @@
 import { View, appendStyles } from '@vanilla-bean/components';
 
-import { getArcade, hostArcadeGame, logout } from '../api';
+import { getArcade, hostArcadeGame, logout, setSessionArcade } from '../api';
 import { Bar, ghostButton } from '../Bar';
 import { button, element } from '../dom';
 import { identity } from '../identity';
@@ -40,6 +40,8 @@ export default class Arcade extends View {
 			},
 			onArcade: (arcade, host) => {
 				this.arcade = arcade;
+				// A game paude made is changed; anything else is just talked to
+				if (arcade && (arcade.session || arcade.adopted)) this.changeButton.lastChild.textContent = 'Change it';
 				if (arcade?.title) this.title.textContent = arcade.title;
 				if (arcade && host && this.hostButton) this.hostButton.style.display = '';
 				// Rested before this session was known to be an arcade (a fresh load finding a question up)
@@ -77,8 +79,18 @@ export default class Arcade extends View {
 			ghostButton(bar, { icon: 'house', title: 'Home', onPress: () => (window.location.hash = '#/') });
 			ghostButton(bar, {
 				icon: 'terminal',
-				title: "The session's own page",
+				title: "The session's own page (it stays in the arcade)",
 				onPress: () => (window.location.hash = `#/sessions/${this.id}`),
+			});
+			// Out of the arcade altogether: Claude starts again without its rules, and the session's own page opens
+			ghostButton(bar, {
+				icon: 'door-open',
+				title: 'Leave the arcade: back to an ordinary session',
+				onPress: async () => {
+					const { response } = await setSessionArcade(this.id, { on: false });
+
+					if (response?.ok) window.location.hash = `#/sessions/${this.id}`;
+				},
 			});
 		}
 		// A game maker goes back to their games; the ship is one session's, and theirs are many

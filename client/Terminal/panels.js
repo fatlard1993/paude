@@ -26,7 +26,11 @@ export const PANELS = {
 		about: 'the talk with Claude as the arcade has it: big, read aloud, answered by tapping or talking',
 		icon: 'gamepad',
 	},
-	game: { label: 'Game', about: 'the game this session builds, live', icon: 'play' },
+	game: {
+		label: 'Output',
+		about: 'what this session makes, live: the page it serves, or else what it changed',
+		icon: 'play',
+	},
 };
 
 // A tooltip: the label, then what it holds. The phone menu takes the label back from before the colon.

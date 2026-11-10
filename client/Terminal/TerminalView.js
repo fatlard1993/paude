@@ -3,6 +3,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 
+import { READING } from '../../shared/arcade';
 import {
 	deleteSession,
 	getGit,
@@ -21,6 +22,7 @@ import {
 	setLifetime,
 	setWatching,
 	findToOpen,
+	setSessionArcade,
 } from '../api';
 import { confirmDeleteSession, nameDialog } from '../confirmDialog';
 import { canBrowse, canNote, canType, identity } from '../identity';
@@ -274,14 +276,13 @@ export default class TerminalView extends View {
 			this.lifetimeButton.append(this.lifetimeText, this.lifetimeWas);
 			this.showLifetime('ordinary');
 		}
-		// For a session that is an arcade (a game built by tapping and talking), once the session says so
-		if (identity()?.owner) {
+		// The arcade: for a session in it, its arcade view; for any other, switching it in (asked how Claude should write)
+		if (canType()) {
 			this.arcadeButton = ghostButton(header, {
 				icon: 'gamepad',
-				title: 'Arcade: this session as the arcade has it, the game beside the talk, read aloud',
-				onPress: () => (window.location.hash = `#/arcade/${this.options.id}`),
+				title: 'Arcade: the talk big and read aloud, each turn ending with choices to tap, its output beside it',
+				onPress: () => this.openArcade(),
 			});
-			this.arcadeButton.style.display = 'none';
 		}
 		// Said instead of typed: the words land in Claude's prompt as a paste, for Enter to send
 		if (canType()) {
@@ -526,13 +527,41 @@ export default class TerminalView extends View {
 		this.loadInfo();
 	}
 
+	openArcade() {
+		const { id } = this.options;
+
+		if (this.inArcade) {
+			window.location.hash = `#/arcade/${id}`;
+
+			return;
+		}
+		openMenu(this.arcadeButton, [
+			{ heading: 'Switch to the arcade: how Claude writes' },
+			...Object.entries(READING).map(([reading, { label, detail }]) => ({
+				label,
+				detail,
+				onPress: async () => {
+					const { response, body } = await setSessionArcade(id, { on: true, reading });
+
+					if (!response?.ok)
+						return new Notify({
+							intent: 'danger',
+							content: (typeof body === 'string' && body) || 'The arcade could not be started.',
+						});
+					window.location.hash = `#/arcade/${id}`;
+				},
+			})),
+		]);
+	}
+
 	async loadInfo() {
 		const { body, response } = await getSession(this.options.id);
 
 		if (!response?.ok) return;
 
 		this.project = body.project;
-		if (this.arcadeButton) this.arcadeButton.style.display = body.arcade ? '' : 'none';
+		this.inArcade = Boolean(body.arcade);
+		this.arcadeButton?.classList.toggle('active', this.inArcade);
 		this.paint(body.hue);
 		this.showWatching(body.watching);
 		this.showLifetime(body.lifetime, body.warmUntil, body.switched);

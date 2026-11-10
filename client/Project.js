@@ -15,7 +15,7 @@ import {
 	getProjects,
 	markProjectLink,
 	setProjectWatching,
-	startProjectArcade,
+	setProjectArcade,
 } from './api';
 import confirmDialog from './confirmDialog';
 import { element } from './dom';
@@ -76,20 +76,12 @@ export default class Project extends View {
 			label: 'Watch',
 			onPress: () => this.toggleWatching(),
 		});
-		// An arcade session here, whatever the project: the owner's, asked how Claude should write first
+		// Whether sessions here start in the arcade by default: the owner's to switch (a game paude made always does)
 		if (identity()?.owner) {
-			const arcade = ghostButton(this.bar, {
+			this.arcadeDefault = ghostButton(this.bar, {
 				icon: 'gamepad',
-				title: 'An arcade session here: big type, read aloud, a choice at the end of each turn, no terminal',
-				onPress: () =>
-					openMenu(arcade, [
-						{ heading: 'How Claude writes' },
-						...Object.entries(READING).map(([reading, { label, detail }]) => ({
-							label,
-							detail,
-							onPress: () => this.startArcade(reading),
-						})),
-					]),
+				title: 'Whether sessions here start in the arcade',
+				onPress: () => this.openArcadeDefault(),
 			});
 		}
 		// The universe, looking at this project's machine
@@ -138,13 +130,23 @@ export default class Project extends View {
 		});
 		this.lifetimeChip = element('button', 'chip variant-chip');
 		this.modelChip = element('button', 'chip variant-chip');
+		this.arcadeChip = element('button', 'chip variant-chip');
 		this.checkoutChip.style.display = 'none';
 		this.newName.style.display = 'none';
 		this.fromInput.style.display = 'none';
 		this.checkoutChip.addEventListener('click', () => this.openCheckouts());
 		this.lifetimeChip.addEventListener('click', () => this.openLifetimes());
 		this.modelChip.addEventListener('click', () => this.openModels());
-		compose.options.append(this.checkoutChip, this.newName, this.fromInput, this.lifetimeChip, this.modelChip);
+		this.arcadeChip.addEventListener('click', () => this.openArcadeChoices());
+		this.pickArcade(null);
+		compose.options.append(
+			this.checkoutChip,
+			this.newName,
+			this.fromInput,
+			this.lifetimeChip,
+			this.modelChip,
+			this.arcadeChip,
+		);
 		this.progress = new Progress({ appendTo: scroll, tag: 'pre', style: { display: 'none' } }).elem;
 
 		// Brought here from home to start in this project, in place of what was left typed here
@@ -363,10 +365,14 @@ export default class Project extends View {
 
 	// The bar underlined in the project's folder color, as its card on home is, and the open tab with it
 	async paint() {
-		const { hue, watching } = (await getProjects()).body?.find(({ name }) => name === this.options.project) ?? {};
+		const { hue, watching, arcade } =
+			(await getProjects()).body?.find(({ name }) => name === this.options.project) ?? {};
 		const accent = tintsOf(hue)?.accent;
 
 		this.showWatching(watching);
+		this.projectArcade = arcade;
+		this.arcadeDefault?.classList.toggle('active', Boolean(arcade));
+		this.pickArcade(this.arcade);
 
 		if (!accent) return;
 		this.bar.elem.classList.add('accented');
@@ -383,16 +389,41 @@ export default class Project extends View {
 			: 'Not watching. Click to watch every session here, new ones too.';
 	}
 
-	async startArcade(reading) {
+	// The project's arcade default, as the projects list says it: 'game', 'default' or nothing
+	async openArcadeDefault() {
 		const { project } = this.options;
-		const { body, response } = await startProjectArcade(project, reading);
+		const { body } = await getProjects();
+		const now = body?.find?.(found => found.name === project)?.arcade;
 
-		if (!response?.ok || !body?.id)
-			return new Notify({
-				intent: 'danger',
-				content: (typeof body === 'string' && body) || 'The arcade could not be started.',
+		if (now === 'game')
+			return new Notify({ intent: 'info', content: 'A game made in the arcade always starts its sessions there.' });
+
+		const set = async reading => {
+			const { response, body: answer } = await setProjectArcade(project, reading);
+
+			if (!response?.ok)
+				return new Notify({
+					intent: 'danger',
+					content: (typeof answer === 'string' && answer) || 'Could not change it.',
+				});
+			this.arcadeDefault.classList.toggle('active', Boolean(reading));
+			this.projectArcade = reading ? 'default' : undefined;
+			this.pickArcade(this.arcade);
+			new Notify({
+				intent: 'success',
+				content: reading ? 'New sessions here start in the arcade.' : 'New sessions here start as ordinary sessions.',
 			});
-		window.location.hash = `#/arcade/${body.id}`;
+		};
+
+		openMenu(this.arcadeDefault, [
+			{ heading: 'New sessions here start' },
+			{ label: 'As ordinary sessions', ...(!now && { icon: 'check' }), onPress: () => set(null) },
+			...Object.entries(READING).map(([reading, { label, detail }]) => ({
+				label: `In the arcade: ${label}`,
+				detail,
+				onPress: () => set(reading),
+			})),
+		]);
 	}
 
 	async toggleWatching() {
@@ -425,6 +456,42 @@ export default class Project extends View {
 				...(lifetime === this.lifetime && { icon: 'check' }),
 				detail,
 				onPress: () => this.pickLifetime(lifetime),
+			})),
+		]);
+	}
+
+	// Whether the new session starts in the arcade, and how Claude writes there: a reading, false for an ordinary
+	// session, or undefined for the project's default (in the arcade when the project starts its sessions there)
+	pickArcade(reading) {
+		this.arcade = reading in READING || reading === false ? reading : undefined;
+
+		const inArcade = Boolean(this.arcade) || (this.arcade === undefined && Boolean(this.projectArcade));
+		const words =
+			(this.arcade && `Arcade: ${READING[this.arcade].label}`) ||
+			(this.arcade === undefined && this.projectArcade && 'Arcade (this project)') ||
+			'No arcade';
+
+		this.arcadeChip.replaceChildren(element('i', 'fa-solid fa-gamepad'), ` ${words}`);
+		this.arcadeChip.classList.toggle('active', inArcade);
+		this.arcadeChip.title = inArcade
+			? 'Starts in the arcade: big talk, read aloud, choices to tap. Click to change'
+			: 'An ordinary session. Click to start it in the arcade instead: big talk, read aloud, choices to tap';
+	}
+
+	openArcadeChoices() {
+		openMenu(this.arcadeChip, [
+			{ heading: 'Start it in the arcade?' },
+			{
+				label: 'No arcade',
+				...((this.arcade === false || (this.arcade === undefined && !this.projectArcade)) && { icon: 'check' }),
+				detail: 'an ordinary session',
+				onPress: () => this.pickArcade(this.projectArcade ? false : undefined),
+			},
+			...Object.entries(READING).map(([reading, { label, detail }]) => ({
+				label: `Arcade: ${label}`,
+				...(reading === this.arcade && { icon: 'check' }),
+				detail,
+				onPress: () => this.pickArcade(reading),
 			})),
 		]);
 	}
@@ -540,6 +607,7 @@ export default class Project extends View {
 		const how = {
 			mode: this.lifetime === 'ordinary' ? undefined : this.lifetime,
 			model: this.model === 'default' ? undefined : this.model,
+			...(this.arcade !== undefined && { arcade: this.arcade && { reading: this.arcade } }),
 		};
 		const creating = Boolean(checkout && 'create' in checkout);
 
@@ -571,7 +639,9 @@ export default class Project extends View {
 		if (result.files) return this.startAnyway(result, text, how);
 
 		this.sent();
-		window.location.hash = `#/sessions/${result.id}`;
+		const inArcade = how.arcade || (how.arcade === undefined && this.projectArcade);
+
+		window.location.hash = inArcade ? `#/arcade/${result.id}` : `#/sessions/${result.id}`;
 
 		return true;
 	}
@@ -604,9 +674,9 @@ export default class Project extends View {
 		window.location.hash = `#/sessions/${started.id}`;
 	}
 
-	// how: { mode, model }, as createSession takes them
-	async startSession(text, checkout, { mode, model } = {}) {
-		const { body, response } = await createSession(this.options.project, text, checkout, mode, model);
+	// how: { mode, model, arcade }, as createSession takes them
+	async startSession(text, checkout, { mode, model, arcade } = {}) {
+		const { body, response } = await createSession(this.options.project, text, checkout, mode, model, arcade);
 
 		if (response?.ok) return { id: body.id };
 		if (response?.status === 404 && checkout?.join) return { error: 'That worktree is gone; pick again.' };
@@ -617,11 +687,11 @@ export default class Project extends View {
 	}
 
 	// Streamed, so a repo's own setup shows here while it runs
-	async startInNewWorktree(text, checkout, { mode, model } = {}) {
+	async startInNewWorktree(text, checkout, { mode, model, arcade } = {}) {
 		const response = await fetch(`/api/projects/${encodeURIComponent(this.options.project)}/sessions`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ text, checkout, mode, model }),
+			body: JSON.stringify({ text, checkout, mode, model, arcade }),
 		}).catch(() => null);
 
 		if (!response) return { error: 'Could not reach the server.' };

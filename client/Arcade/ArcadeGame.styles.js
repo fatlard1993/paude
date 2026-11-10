@@ -35,6 +35,25 @@ const GameFrame = styled(
 			color: ${colors.light(colors.blue)};
 		}
 
+		/* What Claude changed, as the session's output: the Files panel, filling the space, without the buttons that
+		   would close or enlarge a docked panel */
+		.arcade-changes {
+			position: absolute;
+			inset: 0;
+		}
+
+		.arcade-changes button.close,
+		.arcade-changes button[title='Full screen'] {
+			display: none;
+		}
+
+		.arcade-changes .list:empty::before {
+			content: 'Nothing changed yet. What Claude changes shows here, each a tap from its diff.';
+			display: block;
+			padding: ${space.lg};
+			opacity: 0.6;
+		}
+
 		/* Over the game while it's built: three blocks stacking and falling again, then breathing while it settles */
 		.curtain {
 			position: absolute;

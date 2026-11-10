@@ -91,18 +91,20 @@ export const getCheckouts = async project =>
 // mode: 'warm' (kept warm), 'going' (kept warm and nudged on), 'fabled' (kept going by a Fable monitor), 'brief'
 // (short-lived), or nothing for an ordinary session;
 // model: one of shared/models' MODEL_NAMES, or nothing for the default
-// An arcade session in a project already here: { id }. `reading`: one of shared/arcade's READING keys
-export const startProjectArcade = async (project, reading) =>
-	await POST('/api/projects/:project/arcade', {
-		urlParameters: { project },
-		body: { reading },
-		invalidates: [['sessions', project]],
-	});
+// A project's sessions starting in the arcade by default (reading: one of shared/arcade's READING keys), or not (null)
+export const setProjectArcade = async (project, reading) =>
+	reading
+		? await POST('/api/projects/:project/arcade', {
+				urlParameters: { project },
+				body: { reading },
+				invalidates: ['projects'],
+			})
+		: await DELETE('/api/projects/:project/arcade', { urlParameters: { project }, invalidates: ['projects'] });
 
-export const createSession = async (project, text, checkout, mode, model) =>
+export const createSession = async (project, text, checkout, mode, model, arcade) =>
 	await POST('/api/projects/:project/sessions', {
 		urlParameters: { project },
-		body: { text, checkout, mode, model },
+		body: { text, checkout, mode, model, ...(arcade !== undefined && { arcade }) },
 		invalidates: [['sessions', project]],
 	});
 
@@ -334,6 +336,15 @@ export const answerAsking = async (sessionId, question, key, text) =>
 
 // After a usage limit: 'now', 'reset' (carry on when it resets) or 'cancel' (stop waiting for that)
 // Claude ended and resumed in the same conversation, as the owner: its settings read again, a hung one back
+// A session switched into the arcade ({ on: true, reading }) or out of it ({ on: false }); Claude starts again in the
+// same conversation, with the arcade's rules or without
+export const setSessionArcade = async (sessionId, { on, reading }) =>
+	await POST('/api/sessions/:id/arcade', {
+		urlParameters: { id: sessionId },
+		body: { on, ...(reading && { reading }) },
+		invalidates: [['sessions']],
+	});
+
 export const restartSession = async sessionId =>
 	await POST('/api/sessions/:id/restart', { urlParameters: { id: sessionId } });
 

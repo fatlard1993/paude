@@ -1,10 +1,11 @@
 import { getShares, getTasks, openRemote, runTask, sessionRemote } from '../api';
 import { button, element, icon } from '../dom';
 import { identity } from '../identity';
+import FilesPanel from '../Terminal/FilesPanel';
 import GameFrame from './ArcadeGame.styles';
 import { settledYet } from './settled';
 
-// The game a session builds, live: the server it runs (the project's dev task, found and shared by paude) in a frame,
+// A session's output, live: the page its server runs (the project's dev task, found and shared by paude) in a frame,
 // reloading itself as Claude saves. Until it's up, a room that says so; the owner's page starts a dead server again
 // by itself. The same frame on the arcade page and in the universe's dock.
 const FIND_MS = 3000;
@@ -33,7 +34,7 @@ export default class ArcadeGame extends GameFrame {
 		});
 		this.loadedAt = 0;
 		this.curtain = this.buildCurtain();
-		this.waitingRoom('Getting the game ready…');
+		this.waitingRoom('Getting it ready…');
 		this.find();
 	}
 
@@ -44,7 +45,7 @@ export default class ArcadeGame extends GameFrame {
 		const blocks = element('div', 'blocks');
 
 		for (let block = 0; block < 3; block++) blocks.append(element('span', 'block'));
-		curtain.append(blocks, element('div', 'words', 'Building the game…'));
+		curtain.append(blocks, element('div', 'words', 'Building…'));
 
 		return curtain;
 	}
@@ -54,7 +55,7 @@ export default class ArcadeGame extends GameFrame {
 		clearTimeout(this.settleTimer);
 		this.settling = null;
 		this.curtain.classList.remove('settling', 'lifting');
-		this.curtain.querySelector('.words').textContent = 'Building the game…';
+		this.curtain.querySelector('.words').textContent = 'Building…';
 		this.elem.classList.add('built');
 		if (this.frame) this.elem.append(this.curtain);
 	}
@@ -127,25 +128,42 @@ export default class ArcadeGame extends GameFrame {
 
 		this.url = null;
 		this.frame = null;
-		if (!identity()?.owner) return this.waitingRoom('The game is getting ready…');
+		if (!identity()?.owner) return this.waitingRoom('Getting it ready…');
 
 		const tasks = await getTasks(this.sessionId);
 
-		// A project with no dev script (one brought into the arcade, not a game) has nothing to show here
-		if (tasks.body?.tasks && !tasks.body.tasks.some(task => task.id === DEV_TASK))
-			return this.waitingRoom('Nothing to show here: this project has no dev server');
+		// A project with nothing running to show (no page shared, no dev script): its output is what Claude changes
+		if (tasks.body?.tasks && !tasks.body.tasks.some(task => task.id === DEV_TASK)) return this.showChanges();
 
 		const running = tasks.body?.runs?.some(run => run.taskId === DEV_TASK && run.code === undefined);
 
 		// Down (it crashed, or the session slept and woke): started again by itself, with the button for a stubborn one
 		if (!running && Date.now() - (this.restartedAt ?? 0) > RESTART_EVERY_MS) {
 			this.restartedAt = Date.now();
-			this.waitingRoom('The game is starting…');
+			this.waitingRoom('Starting…');
 			await runTask(this.sessionId, DEV_TASK).catch(() => {});
 
 			return;
 		}
-		this.waitingRoom(running ? 'The game is starting…' : 'The game is not running', !running);
+		this.waitingRoom(running ? 'Starting…' : 'Not running', !running);
+	}
+
+	// What Claude has changed, as the Files panel lists it (each file's diff a tap away): the output of a session with
+	// nothing running to look at. Made once, and kept while there's still nothing running.
+	showChanges() {
+		this.changes ??= new FilesPanel({
+			sessionId: this.sessionId,
+			place: this.sessionId,
+			close: () => {},
+			addClass: ['docked', 'files', 'open', 'arcade-changes'],
+			setFullscreen: () => {},
+			attach: () => {},
+			comment: () => {},
+			commentsOn: () => [],
+			showComment: () => {},
+		});
+		if (this.changes.elem.parentNode !== this.elem) this.show(this.changes.elem);
+		this.changes.setMode('changes');
 	}
 
 	showFrame() {
@@ -194,10 +212,10 @@ export default class ArcadeGame extends GameFrame {
 		room.append(icon('gamepad'), element('div', '', words));
 		if (canStart)
 			room.append(
-				button('Start the game', async () => {
+				button('Start it', async () => {
 					const { response } = await runTask(this.sessionId, DEV_TASK);
 
-					this.waitingRoom(response?.ok ? 'The game is starting…' : 'It could not be started', !response?.ok);
+					this.waitingRoom(response?.ok ? 'Starting…' : 'It could not be started', !response?.ok);
 				}),
 			);
 		this.show(room);
