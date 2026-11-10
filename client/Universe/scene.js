@@ -73,6 +73,7 @@ import {
 	CABINET_W,
 	CABINET_LAYER,
 	LOUNGE_LAYER,
+	ROOM_LAYER,
 	cabinetAt,
 	cabinetPlayerAt,
 	cabinetStandAt,
@@ -278,6 +279,30 @@ const FADE_IN = 8;
 const CEILING = 36;
 const TUBE_Z = 0.25;
 const TUBE_FRONT = 1e6;
+// What's drawn over everything that stands on the floor, by name, in the order it's drawn: whoever is walking where
+// nothing stands before them (a monitor, a grey, a droid of the crew), a part on the crane's hook, and the tube's
+// front. Each at the depth it had as a number.
+export const OVER_LAYER = {
+	watcherWalking: TUBE_FRONT - 0.0016,
+	greyWalking: TUBE_FRONT - 0.0015,
+	// A droid, and the net of the hold
+	droid: TUBE_FRONT - 0.001,
+	craned: TUBE_FRONT - 0.0005,
+	tube: TUBE_FRONT,
+};
+// What's drawn at a place of its own on the floor, a little before or behind it, by name
+export const SPOT_LAYER = {
+	// A machine's housing, behind what stands on its deck's floor
+	housing: -0.3,
+	// The emitter over a grey being deleted, and empties on their way up the tube, just before what they're over
+	over: 0.01,
+	// A heap of dust or ash, before whatever it lies on (a couch's cushion, a desk)
+	heap: 0.3,
+	// A parcel being carried, before whoever carries it
+	parcel: 0.5,
+};
+// Under everything: what's laid on the floor
+export const FLOOR_LAYER = -Infinity;
 const SPARKLE_SECONDS = 1.2;
 // A small grey takes this long to bud from its grey's bench, or to go
 const SMALL_GREY_SECONDS = 0.7;
@@ -2612,7 +2637,7 @@ export default class Ship {
 		// Where its dust lands: on the desk before it at its console, on the cushion on a couch, else on the floor
 		const desk = !walking && !worker.lounging && !briefOf(worker) && !worker.seat?.housing;
 		const lift = (desk && -13) || (worker.lounging && !walking && -2) || 1;
-		const dustAt = { x: ground.x, y: ground.y + lift, depth: place.y + 0.3 };
+		const dustAt = { x: ground.x, y: ground.y + lift, depth: place.y + SPOT_LAYER.heap };
 
 		Object.assign(worker, { vaporizedAt: this.time, leaving: true, dustAt });
 		// The emitter over it, outlasting the grey by its way back up
@@ -2802,7 +2827,7 @@ export default class Ship {
 		}
 		standing.push(
 			// The streams' trunk in the bay's inner wall, behind its units
-			{ y: this.layout.engineering.y + 0.001, draw: () => this.drawTrunk(ctx) },
+			{ y: this.layout.engineering.y + ROOM_LAYER.trunk, draw: () => this.drawTrunk(ctx) },
 			// Its account's tanks on their rack against the bay's back wall, over the reactors
 			...this.tanks.map((tank, index) => ({
 				y: this.tankSpot().y,
@@ -2969,7 +2994,7 @@ export default class Ship {
 		this.fed = this.feedsOf();
 		// Each whole, machine to island, in one layer so none is broken where two would meet; on the floor, under all that
 		// stands or walks on it
-		standing.push({ y: -Infinity, draw: () => this.drawTerminalCables(ctx) });
+		standing.push({ y: FLOOR_LAYER, draw: () => this.drawTerminalCables(ctx) });
 		standing.push(...this.inspectionParts(ctx));
 		this.drawMats(ctx);
 		standing.push(...this.cargoParts(ctx));
@@ -2989,14 +3014,15 @@ export default class Ship {
 		for (const heap of this.dust) standing.push({ y: heap.depth, draw: () => this.drawAshSucked(ctx, heap) });
 		standing.push(...this.litterParts(ctx));
 		standing.push(...this.kickedStools(ctx));
-		for (const zap of this.zaps) standing.push({ y: zap.depth + 0.01, draw: () => this.drawGreyZap(ctx, zap) });
+		for (const zap of this.zaps)
+			standing.push({ y: zap.depth + SPOT_LAYER.over, draw: () => this.drawGreyZap(ctx, zap) });
 		for (const parcel of this.parcels)
 			standing.push({
 				// On the crane's hook, over the pods it's carried above
 				y:
-					(parcel.tube && (parcel.tube.age ?? 0) >= POP_SECONDS && TUBE_FRONT) ||
-					(parcel.craned && TUBE_FRONT - 0.0005) ||
-					parcel.y + 0.5,
+					(parcel.tube && (parcel.tube.age ?? 0) >= POP_SECONDS && OVER_LAYER.tube) ||
+					(parcel.craned && OVER_LAYER.craned) ||
+					parcel.y + SPOT_LAYER.parcel,
 				draw: () => this.drawParcel(ctx, parcel),
 			});
 
@@ -3566,7 +3592,7 @@ export default class Ship {
 
 		return [
 			...decks.map(({ part, housing, sockets, upper }, deck) => ({
-				y: housing.floor - 0.3,
+				y: housing.floor + SPOT_LAYER.housing,
 				draw: () => {
 					// Its name over it: on a top deck, inside the hull under its ceiling, the machine lowered to clear it
 					const ceiling = this.art({ x: 0, y: part.y + 0.3 }).y;
@@ -4059,7 +4085,7 @@ export default class Ship {
 
 			if (island) return island.y - BEHIND_CONSOLE;
 
-			return this.behindFurniture(worker, this.furniture(), GREY_SIZE) ? worker.y : TUBE_FRONT - 0.0015;
+			return this.behindFurniture(worker, this.furniture(), GREY_SIZE) ? worker.y : OVER_LAYER.greyWalking;
 		};
 		const walker = this.walking(worker) ? [{ y: walkingDepth(), draw: () => this.drawWorker(ctx, worker) }] : [];
 
@@ -4977,7 +5003,7 @@ export default class Ship {
 		const { watcher } = holder;
 
 		return {
-			y: this.behindFurniture(watcher, this.furniture(), WATCHER_SIZE) ? watcher.y : TUBE_FRONT - 0.0016,
+			y: this.behindFurniture(watcher, this.furniture(), WATCHER_SIZE) ? watcher.y : OVER_LAYER.watcherWalking,
 			draw: () => this.drawWatcherWalking(ctx, holder),
 		};
 	}
@@ -5265,7 +5291,7 @@ export default class Ship {
 			seat: worker.seat.y,
 			// Its couch, which stays while they lie by it
 			couch: this.couchIds?.[Math.floor(index / 2)],
-			heap: heap ?? { x: at.x, y: at.y - 2, depth: worker.seat.y + 0.3, at: this.time },
+			heap: heap ?? { x: at.x, y: at.y - 2, depth: worker.seat.y + SPOT_LAYER.heap, at: this.time },
 			alone: !heap,
 		});
 	}
@@ -5292,7 +5318,7 @@ export default class Ship {
 				// Behind the couch's back, as they lay
 				{ y: seat + LOUNGE_LAYER.cansBehind, draw: lying(false) },
 				{
-					y: heap.depth + 0.01,
+					y: heap.depth + SPOT_LAYER.over,
 					draw: () => {
 						const { ceiling, mouth, reach } = this.ashNozzle(heap);
 
@@ -5358,7 +5384,7 @@ export default class Ship {
 		return [...this.workers.values()]
 			.filter(({ kick }) => kick)
 			.map(({ kick, x: standsAt }) => ({
-				y: kick.depth + 0.005,
+				y: kick.depth + CABINET_LAYER.stool,
 				draw: () => {
 					const since = this.time - kick.at;
 					const gone = Math.max(0, Math.min(1, (since - STOOL.windup) / STOOL.kicked));
@@ -6334,7 +6360,7 @@ export default class Ship {
 				})();
 
 				return {
-					y: seat.y + 0.2,
+					y: seat.y + LOUNGE_LAYER.legs,
 					draw: () => this.drawNozzle(ctx, middle.x, ceiling, Math.round(ceiling + (over - ceiling) * reach)),
 				};
 			}),
@@ -6457,7 +6483,7 @@ export default class Ship {
 			this.dust.push({
 				x: at.x + Math.round(COUCH_SEAT * UNIT.x) / 2,
 				y: at.y + 2,
-				depth: seat.y + 0.3,
+				depth: seat.y + SPOT_LAYER.heap,
 				at: this.time,
 				couch: zap.index,
 			});
@@ -6832,7 +6858,7 @@ export default class Ship {
 		// Over everything; but behind what stands in front of them (an
 		// island, a ship's terminal, the lounge's couches and screen), sorted in among it by depth, so it hides them
 		return bots.map(bot => ({
-			y: this.behindFurniture(bot, furniture) ? bot.y : TUBE_FRONT - 0.001,
+			y: this.behindFurniture(bot, furniture) ? bot.y : OVER_LAYER.droid,
 			draw: () => {
 				const at = this.art(bot);
 				const working = !bot.docked && !bot.back && !bot.path.length;
@@ -6949,7 +6975,7 @@ export default class Ship {
 		const launching = new Set(this.haulers.map(({ pod }) => pod));
 		// The gantry along the hold's ceiling, its crane's trolley over the pod it's working or wandering the rail
 		const gantry = {
-			y: hold.y + 0.05,
+			y: hold.y + ROOM_LAYER.gantry,
 			draw: () => {
 				const { left, right, rail } = this.gantryOf(hold);
 				const trolley = Math.round(this.craneX ?? (left + right) / 2);
@@ -7758,7 +7784,7 @@ export default class Ship {
 
 		return [
 			{
-				y: TUBE_FRONT - 0.001,
+				y: OVER_LAYER.droid,
 				draw: () => {
 					this.drawPipe(ctx, [
 						{ x: net.drop, y: net.holdTop },

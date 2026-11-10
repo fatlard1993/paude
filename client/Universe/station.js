@@ -155,6 +155,21 @@ export const cabinetPlayerAt = (lounge, index) => {
 	return { x: at.x + out * (CABINET_W / 2 + 0.42), y: at.y - 0.1, facing: -out };
 };
 
+// Where a room's own fittings are drawn among what stands in it: how far before the room's far wall, in world units,
+// by name. Each just past the wall, behind everything on the floor.
+export const ROOM_LAYER = {
+	// The engine bay's trunk, up its inner wall
+	trunk: 0.001,
+	// The lounge's props against its wall
+	loungeWall: 0.005,
+	// The bridge's far wall: its panels and the airlock
+	bridgeWall: 0.01,
+	// The gantry along the hold's ceiling
+	gantry: 0.05,
+};
+// What stands against a room's near edge: this far behind the edge itself, so it's before everything else in the room
+export const NEAR_EDGE_LAYER = -0.25;
+
 // Where each part of a couch and whoever is on it is drawn among the rest: how far before the seat itself (or behind
 // it), in world units, by name, in the order they're drawn; and the same of a cabinet and whoever plays it, from the
 // cabinet's foot. Each at the depth it had as a number.

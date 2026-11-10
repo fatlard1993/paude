@@ -2,7 +2,10 @@ import { expect, test } from 'bun:test';
 
 import Ship, {
 	BEHIND_CONSOLE,
+	FLOOR_LAYER,
+	OVER_LAYER,
 	SEAT_LAYER,
+	SPOT_LAYER,
 	appliancesOf,
 	bendAround,
 	cacheCold,
@@ -17,7 +20,18 @@ import Ship, {
 } from './scene';
 import { WATCHER_W, airlockAt, clonerAt, holdSpotAt, layOut, rowPitch, shortest, splitSeats, standingOf } from './plan';
 import { huesApart } from '../../shared/hues';
-import { CABINET_LAYER, LOUNGE_LAYER, SCREEN_RISE, UNIT, cableWeight, floor, setTrim, walls } from './station';
+import {
+	CABINET_LAYER,
+	LOUNGE_LAYER,
+	NEAR_EDGE_LAYER,
+	ROOM_LAYER,
+	SCREEN_RISE,
+	UNIT,
+	cableWeight,
+	floor,
+	setTrim,
+	walls,
+} from './station';
 import { drawAirlock, drawTransporter, shuttleAt } from './hull';
 import { spriteSize } from './art';
 
@@ -2978,6 +2992,30 @@ test('looking over a stretch of the stage flies the view to its middle, drawn ba
 	// And the hand takes the view back as from any flight
 	made.pan(10, 10);
 	expect(made.flying).toBe(false);
+});
+
+test("a room's fittings, what's drawn over everything, and what's drawn at a place of its own keep their named order, each where it was drawn by number", () => {
+	expect(ROOM_LAYER).toEqual({ trunk: 0.001, loungeWall: 0.005, bridgeWall: 0.01, gantry: 0.05 });
+	expect(NEAR_EDGE_LAYER).toBe(-0.25);
+	expect(SPOT_LAYER).toEqual({ housing: -0.3, over: 0.01, heap: 0.3, parcel: 0.5 });
+	expect(FLOOR_LAYER).toBe(-Infinity);
+	// Over everything, a million units before any floor aboard, in their order
+	expect(OVER_LAYER).toEqual({
+		watcherWalking: 1e6 - 0.0016,
+		greyWalking: 1e6 - 0.0015,
+		droid: 1e6 - 0.001,
+		craned: 1e6 - 0.0005,
+		tube: 1e6,
+	});
+	for (const layers of [ROOM_LAYER, SPOT_LAYER, OVER_LAYER]) {
+		const depths = Object.values(layers);
+
+		expect(depths).toEqual([...depths].sort((a, b) => a - b));
+		expect(new Set(depths).size).toBe(depths.length);
+	}
+	// A room's fittings are behind everything that stands in it: nearer its wall than a seat's grey is behind its seat
+	expect(Math.max(...Object.values(ROOM_LAYER))).toBeLessThan(0.1);
+	expect(Math.min(...Object.values(OVER_LAYER))).toBeGreaterThan(1e5);
 });
 
 test('a couch more needed is dropped out of the tube; one no longer needed is zapped from the ceiling, the lounge its size till its ash is sucked up', () => {

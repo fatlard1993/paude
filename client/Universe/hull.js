@@ -20,6 +20,8 @@ import { pixelText } from './retro';
 import {
 	COUCH_SEAT,
 	LOUNGE_LAYER,
+	NEAR_EDGE_LAYER,
+	ROOM_LAYER,
 	cabinetAt,
 	cabinetFacing,
 	FACE,
@@ -997,7 +999,7 @@ export const drawEngineering = (ctx, art, label, room, { time, engines, systems 
 			},
 		},
 		{
-			y: room.y + room.d - 0.25,
+			y: room.y + room.d + NEAR_EDGE_LAYER,
 			draw: () => {
 				for (let tank = 0; tank < 2; tank++) {
 					const x = tanks.x - 4 + tank * 9;
@@ -1975,7 +1977,7 @@ export const drawLounge = (ctx, art, label, lounge, { time, lifted = [], gone = 
 		...walls(ctx, art, label, lounge, { name: lounge.name, color: 'hsl(14 55% 72%)' }),
 		...propParts(ctx, art, lounge, { color: 'hsl(14 55% 60%)', time }),
 		{
-			y: lounge.y + 0.005,
+			y: lounge.y + ROOM_LAYER.loungeWall,
 			draw: () => {
 				for (const couch of couches.filter(({ landed }) => landed)) {
 					rect(ctx, couch.x - 4, couch.y - 6, width + 8, 13, PALETTE.k);
@@ -2118,7 +2120,7 @@ export const drawBridge = (ctx, art, label, bridge, { time, plans, airlockOpen =
 			color: Number.isFinite(ship?.hue) ? `hsl(${ship.hue} 60% 70%)` : PALETTE.w,
 		}),
 		{
-			y: bridge.y + 0.01,
+			y: bridge.y + ROOM_LAYER.bridgeWall,
 			draw: () => {
 				const [from, to] = [
 					art({ x: bridge.x + 0.5, y: bridge.y + 0.25 }),
