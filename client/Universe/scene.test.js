@@ -1492,6 +1492,39 @@ test('a stream leaves its engine-bay unit straight across into its lane of the t
 	expect(routed.at(-1).track.legs[2].to.y).not.toBe(outlet.y);
 });
 
+test('a ship drawn as an overlay leaves the space and stars under it alone, and says how big it is to stack with others', () => {
+	const fills = [];
+	const surface = new Proxy(function () {}, {
+		get: (_, name) => (name === 'fillRect' ? (...box) => fills.push(box) : surface),
+		set: () => true,
+		apply: () => surface,
+	});
+	const hadDocument = 'document' in globalThis;
+	const had = globalThis.document;
+
+	globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => surface }) };
+
+	try {
+		const made = shipWith([answer('here', [session()], { projects: ['paude'] })]);
+
+		run(made, 1);
+		made.draw(surface, 1);
+		expect(fills[0]).toEqual([0, 0, made.width, made.height]);
+
+		fills.length = 0;
+		made.draw(surface, 1, { overlay: true });
+		expect(fills.some(([x, y, w, h]) => x === 0 && y === 0 && w === made.width && h === made.height)).toBe(false);
+
+		const { left, right, height } = made.extent();
+
+		expect(right).toBeGreaterThan(left);
+		expect(height).toBeGreaterThan(0);
+	} finally {
+		if (hadDocument) globalThis.document = had;
+		else delete globalThis.document;
+	}
+});
+
 test("a stream that is not through a conduit comes in along the aisle and under the desk, never through any seat's screen", () => {
 	const surface = new Proxy(function () {}, { get: () => surface, set: () => true, apply: () => surface });
 	const hadDocument = 'document' in globalThis;

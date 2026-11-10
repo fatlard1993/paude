@@ -123,6 +123,10 @@ const groupOf = group => ({
 const OPEN_AFTER_MS = 6000;
 // What was last focused, kept for this browser so a reload comes back to it
 const FOCUS_KEPT = 'paude-universe-focus';
+// Which other ships were shown on the one screen, kept for this browser
+const FLEET_KEPT = 'paude-universe-fleet';
+// The space left between ships shown together, in art pixels
+const FLEET_GAP = 60;
 // The width the docks were last dragged to, kept for this browser (where it can be: storage can be off)
 const DOCK_WIDTH = 'paude-universe-dock-width';
 const DOCK_LEAST = 360;
@@ -304,6 +308,16 @@ export default class Universe extends View {
 		this.remotes = [];
 		// Each engine's last known Claude account, so a poll that leaves it out doesn't move the engine to another ship
 		this.accounts = new Map();
+		// The other ships shown on the stage beside the one aboard, by their key
+		this.fleetShown = new Set(
+			(() => {
+				try {
+					return JSON.parse(recall(FLEET_KEPT) || '[]');
+				} catch {
+					return [];
+				}
+			})(),
+		);
 		// An engine whose universe didn't answer isn't asked again for a while
 		this.sealed = new Map();
 		this.calm = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -432,14 +446,60 @@ export default class Universe extends View {
 		];
 	}
 
+	// The ships on the stage: this one aboard and those chosen, stacked down the screen in the fleet's order with their bows
+	// in line, each by where its own origin falls from the one aboard's, in art pixels: [{ key, ship, at: { x, y } }]
+	stage() {
+		const shown = [...this.ships].filter(([key, ship]) => ship === this.aboard || this.fleetShown.has(key));
+		let down = 0;
+		const placed = shown.map(([key, ship]) => {
+			const { right, top, height } = ship.extent();
+			const at = { x: -right, y: down - top };
+
+			down += height + FLEET_GAP;
+
+			return { key, ship, at };
+		});
+		const home = placed.find(({ ship }) => ship === this.aboard)?.at ?? { x: 0, y: 0 };
+
+		return placed.map(placing => ({ ...placing, at: { x: placing.at.x - home.x, y: placing.at.y - home.y } }));
+	}
+
+	// Another ship shown or hidden on the stage, the choice kept
+	showShip(key, shown = !this.fleetShown.has(key)) {
+		if (!this.ships.has(key) || this.ships.get(key) === this.aboard) return;
+		this.fleetShown[shown ? 'add' : 'delete'](key);
+		remember(FLEET_KEPT, JSON.stringify([...this.fleetShown]));
+		this.focusPainted = null;
+		this.paintFocus();
+	}
+
+	// What's hit at a point on the stage: on the ship aboard, or on another shown beside it ({ ...target, over: the other
+	// ship's key })
+	hitAt(x, y) {
+		const target = this.aboard.hit(x, y);
+
+		if (target) return target;
+
+		for (const { key, ship } of this.stage()) {
+			const other = ship !== this.aboard && ship.hit(x, y);
+
+			if (other) return { ...other, over: key };
+		}
+
+		return undefined;
+	}
+
 	// Beamed over to another ship: walking onto this one's transporter pad and beaming out, then beaming in on that
 	// one's and walking to their place there; straight over when they aren't aboard to walk
-	travel(key) {
+	travel(key, { then } = {}) {
 		const ship = this.ships.get(key);
 		const from = this.aboard;
 		const me = this.me();
 
 		if (!ship || ship === from) return;
+		// Where it stands from this one on the stage, for the view to carry on from here without a jump
+		const apart = this.stage().find(placing => placing.ship === ship)?.at;
+
 		this.closeCard();
 		this.closeDock();
 		this.select(null);
@@ -467,12 +527,25 @@ export default class Universe extends View {
 				this.paintFocus();
 			};
 
-			if (!ship.layout?.transporter) return toBridge();
+			// What they came over to, once they've stepped out of the pad: the grey they pressed, else the bridge
+			const arrived = () => {
+				const worker = then && ship.workers.get(then);
+
+				if (!worker || this.aboard !== ship) return toBridge();
+				this.select(selectionOf({ kind: 'worker', worker }, this));
+				this.openWorker(worker);
+
+				return undefined;
+			};
+
+			if (!ship.layout?.transporter) return arrived();
 			ship.look('transporter');
-			Object.assign(ship.camera, ship.goal() ?? {});
+			// Seen from the same place on the stage where the ship was shown beside, so the view flies on from there
+			if (apart) Object.assign(ship.camera, { ...from.camera, x: from.camera.x - apart.x, y: from.camera.y - apart.y });
+			else Object.assign(ship.camera, ship.goal() ?? {});
 			this.focusPainted = null;
 			this.paintFocus();
-			this.beaming = setTimeout(toBridge, BEAM_SECONDS * 1000 + 400);
+			this.beaming = setTimeout(arrived, BEAM_SECONDS * 1000 + 400);
 		};
 
 		clearTimeout(this.beaming);
@@ -515,6 +588,16 @@ export default class Universe extends View {
 			for (const ship of this.ships.values())
 				ship.step(Math.min(LONGEST_FRAME_S, (now - last) / 1000), this.calm.matches);
 			this.aboard.draw(ctx, ratio);
+			// The other ships shown, over the same space, seen from where they stand beside this one
+			for (const { ship, at } of this.stage()) {
+				if (ship === this.aboard) continue;
+				Object.assign(ship.camera, {
+					x: this.aboard.camera.x - at.x,
+					y: this.aboard.camera.y - at.y,
+					zoom: this.aboard.camera.zoom,
+				});
+				ship.draw(ctx, ratio, { overlay: true });
+			}
 			this.showZoom();
 			last = now;
 			// Walked aboard as it opens: what's to be focused is, then and there rather than at the next answer
@@ -754,10 +837,14 @@ export default class Universe extends View {
 	// makes the panel about it, and pressed again gives the panel back to the whole ship. Anywhere else closes what's
 	// open and gives the panel back to the ship. None of it moves the view: that stays where the hand put it.
 	press(point, mouse, { adding = false } = {}) {
-		const target = this.aboard.hit(point.x, point.y);
+		const target = this.hitAt(point.x, point.y);
 		const { looking } = this.aboard;
 
 		this.showTip(null);
+		// A grey or terminal on another ship shown beside this one: beam over to it, and go to it
+		if (target?.over && (target.kind === 'monitor' || target.kind === 'worker'))
+			return this.travel(target.over, { then: target.worker.session.key });
+		if (target?.over) return undefined;
 		if (adding && (target?.kind === 'worker' || target?.kind === 'monitor')) return this.pickAlso(target.worker);
 		this.select(selectionOf(target, this));
 		// Its terminal opens it; the grey itself only says what it is
@@ -1913,6 +2000,11 @@ export default class Universe extends View {
 					...(this.aboard.layout?.transporter
 						? [{ label: 'Transporter', hotkey: 'x', run: () => this.aboard.look('transporter') }]
 						: []),
+					// Each other ship shown on the screen beside this one, or put away
+					...this.aboard.fleet.map(ship => ({
+						label: `${this.fleetShown.has(ship.key) ? 'Hide' : 'Show'} ${ship.name}'s ship`,
+						run: () => this.showShip(ship.key),
+					})),
 					...(identity()?.remotes
 						? [{ label: 'Connect a device', hotkey: 'd', run: () => this.openShipDock('devices') }]
 						: []),

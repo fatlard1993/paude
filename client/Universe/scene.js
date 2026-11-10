@@ -1119,6 +1119,14 @@ export default class Ship {
 		};
 	}
 
+	// The ship's size in art pixels, for stacking it with others: its stern edge's x, its bow edge's x, and its height
+	extent() {
+		const { left, right, top, bottom } = this.ship();
+		const [from, to] = [this.art({ x: left, y: top }), this.art({ x: right, y: bottom })];
+
+		return { left: from.x, right: to.x, top: from.y, height: to.y - from.y };
+	}
+
 	// What's looked at: what the panel is about, and where whoever is looking stands (at the transporter, they walk onto
 	// its pad, ready to go). The view flies to it only when asked (`fly`): a press on a room says what it's about and
 	// leaves the view where the hand put it; a look command, an arrival or Escape frame it.
@@ -2247,20 +2255,23 @@ export default class Ship {
 
 	// Each frame: the sky and its stars on the screen, then the world in art pixels, every one a square of `zoom`
 	// screen pixels
-	draw(ctx, ratio = 1) {
+	// `overlay`: drawn over another ship's, on its space and stars, which it leaves as they are
+	draw(ctx, ratio = 1, { overlay = false } = {}) {
 		setTrim(this.own?.hue);
 		this.hits = [];
 		this.thoughts = [];
 		ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
 		ctx.imageSmoothingEnabled = false;
-		ctx.fillStyle = '#07090f';
-		ctx.fillRect(0, 0, this.width, this.height);
+		if (!overlay) {
+			ctx.fillStyle = '#07090f';
+			ctx.fillRect(0, 0, this.width, this.height);
+		}
 
 		const size = this.camera.zoom;
 		// Coming out of warp, the stars drawn out into streaks, shortening as it slows
 		const warp = (1 - this.entering()) ** 2 * WARP_STREAK;
 
-		for (const star of this.stars) {
+		for (const star of overlay ? [] : this.stars) {
 			const on = Math.sin(this.time * 1.3 + star.phase) > -0.4;
 			const x =
 				Math.round(((((star.x - this.drift * star.depth) % this.width) + this.width) % this.width) / size) * size;
