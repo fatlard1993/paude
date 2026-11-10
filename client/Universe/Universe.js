@@ -552,6 +552,18 @@ export default class Universe extends View {
 			this.closeDock();
 			this.select(null);
 			this.aboard = ship;
+			// Beamed to from the one screen: the ship left stays in view beside, in place of the one beamed to
+			if (apart) {
+				const left = [...this.ships].find(([, other]) => other === from)?.[0];
+
+				this.fleetShown.delete(key);
+				if (left !== undefined) {
+					this.fleetShown.add(left);
+					this.fleetIn.set(left, 1);
+				}
+				this.fleetIn.set(key, 1);
+				remember(FLEET_KEPT, JSON.stringify([...this.fleetShown]));
+			}
 			this.chosenShip = null;
 			ship.viewer = me?.key;
 			ship.beamAt = ship.time;
@@ -579,10 +591,18 @@ export default class Universe extends View {
 			};
 
 			if (!ship.layout?.transporter) return arrived();
+			// Seen from the same place on the screen where the ship was shown beside, the view staying where it is and
+			// what was pressed opening at once, as they walk to it from the pad
+			if (apart) {
+				ship.look('transporter', { fly: false });
+				Object.assign(ship.camera, { ...from.camera, x: from.camera.x - apart.x, y: from.camera.y - apart.y });
+				this.focusPainted = null;
+				this.paintFocus();
+
+				return then ? arrived() : undefined;
+			}
 			ship.look('transporter');
-			// Seen from the same place on the stage where the ship was shown beside, so the view flies on from there
-			if (apart) Object.assign(ship.camera, { ...from.camera, x: from.camera.x - apart.x, y: from.camera.y - apart.y });
-			else Object.assign(ship.camera, ship.goal() ?? {});
+			Object.assign(ship.camera, ship.goal() ?? {});
 			this.focusPainted = null;
 			this.paintFocus();
 			this.beaming = setTimeout(arrived, BEAM_SECONDS * 1000 + 400);
