@@ -1369,46 +1369,14 @@ export default class Universe extends View {
 		];
 	}
 
-	// Opened from a session's page or a project's, the first answer that has it goes to it: the session's grey, flown to
-	// and picked, or the project's machine, looked at with its panel; only once the ship has come in and opened with
-	// the one looking walked aboard, so nothing is picked or flown to under their arrival
+	// However it was opened (from home, a session's page or a project's), it opens on the bridge, selected and framed:
+	// where the one looking has just walked to; only once the ship has come in and opened with them walked aboard, so
+	// nothing is picked or flown to under their arrival
 	focusOpened() {
-		const { session, project } = this.options ?? {};
-
 		if (this.focusedOpen || !this.aboard?.settled()) return;
-		// Opened to nothing in particular: the bridge, where the one looking has just walked to
-		if (!session && !project) {
-			this.focusedOpen = true;
-			this.select(selectionOf({ kind: 'bridge' }, this));
-			this.aboard.look(BRIDGE);
-
-			return;
-		}
-		// On whichever ship has it, that ship then the one played
-		for (const ship of this.ships.values()) {
-			if (project) {
-				const bay = ship.bays.find(({ name }) => name === decodeURIComponent(project));
-
-				if (!bay) continue;
-				this.focusedOpen = true;
-				this.aboard = ship;
-				this.select(selectionOf({ kind: 'bay', bay }, this));
-				ship.look(bay.name);
-
-				return;
-			}
-
-			const id = decodeURIComponent(session);
-			const worker = [...ship.workers.values()].find(({ session: { id: other } }) => other === id);
-
-			if (!worker?.seat) continue;
-			this.focusedOpen = true;
-			this.aboard = ship;
-			this.select(selectionOf({ kind: 'worker', worker }, this));
-			ship.lookAt(worker.seat);
-
-			return;
-		}
+		this.focusedOpen = true;
+		this.select(selectionOf({ kind: 'bridge' }, this));
+		this.aboard.look(BRIDGE);
 	}
 
 	// Everything aboard come in: the plating of the ship the viewer boards opened, and the rest's once it's done, so
