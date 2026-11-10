@@ -1,6 +1,11 @@
+import { mkdtemp, readFile, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
+
 import { expect, test } from 'bun:test';
 
 import {
+	initUniverse,
 	instrumentsOf,
 	logOf,
 	noteHook,
@@ -62,7 +67,7 @@ test("a finished turn keeps Claude's reply and the prompt it answered, by the se
 });
 
 test('what the hooks say goes to the instruments: failures this turn, the todo list, subagents out, the mode', () => {
-	const session = {};
+	const session = { id: 'hooked' };
 	const hook = (hook_event_name, more) => noteHook(session, { hook_event_name, permission_mode: 'plan', ...more });
 
 	hook('UserPromptSubmit');
@@ -94,6 +99,51 @@ test('what the hooks say goes to the instruments: failures this turn, the todo l
 
 	hook('Stop');
 	expect(instrumentsOf(session)).toMatchObject({ agents: 0, subagents: undefined, turnAge: undefined, faults: 1 });
+});
+
+test('the subagents a session has out are still out after paude restarts, until its hooks say otherwise', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'universe-'));
+	const kept = globalThis[Symbol.for('paude/universe/signals')];
+	const out = () => readFile(join(dir, 'subagents.json'), 'utf8').then(JSON.parse);
+	const written = async check => {
+		for (let tries = 0; tries < 50 && !check(await out().catch(() => ({}))); tries++) await Bun.sleep(10);
+	};
+
+	try {
+		await initUniverse(dir);
+
+		const session = { id: 'busy' };
+		const hook = (hook_event_name, more) => noteHook(session, { hook_event_name, ...more });
+
+		hook('UserPromptSubmit');
+		hook('PreToolUse', { tool_name: 'Agent', tool_use_id: 'one', tool_input: { description: 'Read the hull' } });
+		hook('PreToolUse', { tool_name: 'Agent', tool_use_id: 'two', tool_input: { description: 'Read the floor' } });
+		// Written down as they go out, by the session's id
+		await written(kept => kept.busy?.length === 2);
+		expect(await out()).toEqual({
+			busy: [
+				['one', 'Read the hull'],
+				['two', 'Read the floor'],
+			],
+		});
+
+		// Restarted: nothing remembered but what was written, and the session a new object with the id it had
+		kept.clear();
+		await initUniverse(dir);
+
+		const again = { id: 'busy' };
+
+		expect(instrumentsOf(again)).toMatchObject({ agents: 2, subagents: ['Read the hull', 'Read the floor'] });
+		// One comes back, then the turn ends: each as its hooks say, and nothing left written
+		noteHook(again, { hook_event_name: 'PostToolUse', tool_name: 'Agent', tool_use_id: 'one' });
+		expect(instrumentsOf(again)).toMatchObject({ agents: 1, subagents: ['Read the floor'] });
+		noteHook(again, { hook_event_name: 'Stop' });
+		expect(instrumentsOf(again).agents).toBe(0);
+		await written(kept => !kept.busy);
+		expect(await out()).toEqual({});
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
 });
 
 test("each facility's uses in the last ten minutes, and how many failed", async () => {

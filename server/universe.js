@@ -73,8 +73,11 @@ const records = new Map();
 const memo = new Map();
 // What each running session's hooks have said lately, for the ship's instruments: how many tools failed this turn and
 // when the last did, its todo list as last written, the subagents it has out now, its permission mode, and when its
-// turn began
-const signals = new WeakMap();
+// turn began. By the session's id and kept where a hot reload of the server leaves it; and the subagents out are
+// written down as they come and go (`signalsFile`), so a paude restarted while some are out still shows them: a
+// restart is nothing the session's hooks say anything about
+const signals = (globalThis[Symbol.for('paude/universe/signals')] ??= new Map());
+let signalsFile;
 const AGENT_TOOLS = new Set(['Task', 'Agent']);
 const MOST_TODOS = 12;
 // Each tool used on this machine lately, and whether it failed, for how hard each of its facilities is working, and
@@ -123,6 +126,10 @@ const cached = async (key, ms, work) => {
 export const initUniverse = async dataDir => {
 	toolsFile = path.join(dataDir, 'tools.json');
 	tools = new Set(await readJsonFile(toolsFile, []));
+	signalsFile = path.join(dataDir, 'subagents.json');
+	// What was out when paude last stopped, for the sessions it hasn't heard from since
+	for (const [id, agents] of Object.entries(await readJsonFile(signalsFile, {})))
+		if (Array.isArray(agents) && !signals.get(id)?.agents.size) signalsOf({ id }).agents = new Map(agents);
 };
 
 export const noteTool = async (session, name, failed = false, input = undefined) => {
@@ -191,17 +198,28 @@ export const noteTurnDone = (session, reply) => {
 export const replyOf = id => replies.get(id) ?? null;
 
 const signalsOf = session => {
-	if (!signals.has(session))
-		signals.set(session, { faults: 0, faultAt: null, todos: null, agents: new Map(), mode: null, turnAt: null });
+	const id = session?.id;
 
-	return signals.get(session);
+	if (!signals.has(id))
+		signals.set(id, { faults: 0, faultAt: null, todos: null, agents: new Map(), mode: null, turnAt: null });
+
+	return signals.get(id);
 };
+
+// The subagents each session has out, as they're kept on disk: { [session id]: [[tool use id, what it's doing]] }
+const agentsOut = () =>
+	Object.fromEntries(
+		[...signals].filter(([id, { agents }]) => id && agents.size).map(([id, { agents }]) => [id, [...agents]]),
+	);
+
+const keepAgents = () => signalsFile && writeJsonFile(signalsFile, agentsOut).catch(() => {});
 
 // A subagent is out from its tool's start to its end, with what it was sent to do; a turn that ends or is cut short
 // calls them all back
 export const noteHook = (session, payload) => {
 	const known = signalsOf(session);
 	const event = payload.hook_event_name;
+	const out = [...known.agents.keys()].join();
 
 	if (typeof payload.permission_mode === 'string') known.mode = payload.permission_mode;
 	if (event === 'UserPromptSubmit') Object.assign(known, { faults: 0, turnAt: Date.now() });
@@ -219,6 +237,7 @@ export const noteHook = (session, payload) => {
 			status,
 			text: String(activeForm || content || '').slice(0, PROMPT_PREVIEW),
 		}));
+	if ([...known.agents.keys()].join() !== out) keepAgents();
 };
 
 // Times as how long ago, so a machine's clock never has to agree with the browser's
