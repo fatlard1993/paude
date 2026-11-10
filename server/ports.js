@@ -167,6 +167,7 @@ const linuxProcesses = async () => {
 
 			return {
 				pid: Number(pid),
+				parent: Number(fields[1]),
 				session,
 				task: TASK_MARK.exec(environment)?.[1] ?? null,
 				command: command.trim(),
@@ -191,10 +192,11 @@ const seconds = time =>
 		.reduce((total, part, index) => total + Number(part) * [1, 60, 3600, 86400][index], 0);
 
 const macProcesses = async () =>
-	output(['ps', '-A', '-E', '-ww', '-o', 'pid=,time=,rss=,etime=,comm=,command='])
+	output(['ps', '-A', '-E', '-ww', '-o', 'pid=,ppid=,time=,rss=,etime=,comm=,command='])
 		.split('\n')
 		.flatMap(line => {
-			const [, pid, time, rss, elapsed, comm] = /^\s*(\d+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(\S+)/.exec(line) ?? [];
+			const [, pid, parent, time, rss, elapsed, comm] =
+				/^\s*(\d+)\s+(\d+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(\S+)/.exec(line) ?? [];
 			const session = MARK.exec(line)?.[1];
 
 			if (!pid || !session) return [];
@@ -204,6 +206,7 @@ const macProcesses = async () =>
 			return [
 				{
 					pid: Number(pid),
+					parent: Number(parent),
 					session,
 					task: TASK_MARK.exec(line)?.[1] ?? null,
 					command,

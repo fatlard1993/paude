@@ -3,7 +3,19 @@ import os from 'os';
 import path from 'path';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 
-import { discoverTasks, findProblems, runOutput, runTask, runsOf, stopRun, stopTasksOf, testCounts } from './tasks';
+import {
+	discoverTasks,
+	findProblems,
+	initTasks,
+	reapLeftoverRuns,
+	runOutput,
+	runTask,
+	runsOf,
+	stopRun,
+	stopTasksOf,
+	testCounts,
+	workingSaves,
+} from './tasks';
 
 let cwd;
 
@@ -119,4 +131,44 @@ test("stops a session's tasks paude forgot when it restarted, found by their mar
 	expect(await forgotten.exited).not.toBe(0);
 	expect(bystander.exitCode).toBeNull();
 	bystander.kill();
+});
+
+test("a run left by a paude that's gone is stopped; one this paude started, or another live paude's, is kept", async () => {
+	const orphan = Bun.spawn(['sleep', '30']);
+	const ours = Bun.spawn(['sleep', '30']);
+	const processes = async () => [
+		// Its top's parent is gone: left over, and its child with it
+		{ pid: orphan.pid, parent: 2 ** 22 + 7, session: 's', task: 'left' },
+		// Started by this paude
+		{ pid: ours.pid, parent: process.pid, session: 's', task: 'mine' },
+	];
+
+	expect(await reapLeftoverRuns({ processes })).toEqual([orphan.pid]);
+	expect(await orphan.exited).not.toBe(0);
+	expect(ours.killed).toBe(false);
+	ours.kill();
+});
+
+test("an arcade game's server, as it's built, keeps one port and saves apart from the house's live copy", async () => {
+	const data = await mkdtemp(path.join(os.tmpdir(), 'paude-data-'));
+	const game = await mkdtemp(path.join(os.tmpdir(), 'paude-game-'));
+
+	await initTasks(data);
+	await writeFile(path.join(game, '.paude-arcade.json'), '{}');
+	await writeFile(
+		path.join(game, 'package.json'),
+		JSON.stringify({ scripts: { dev: 'echo "port=$PORT saves=$GAME_DATABASE"' } }),
+	);
+
+	const run = await runTask('session-arcade', game, 'package.json:dev');
+
+	for (let tries = 0; runsOf('session-arcade')[0].code === undefined && tries < 50; tries++) await Bun.sleep(100);
+
+	const printed = runOutput('session-arcade', run.id).output;
+
+	expect(printed).toMatch(/port=41\d\d\d/);
+	expect(printed).toContain(`saves=${workingSaves(game)}`);
+	expect(workingSaves(game).startsWith(path.join(data, 'arcade-saves'))).toBe(true);
+	await rm(data, { recursive: true, force: true });
+	await rm(game, { recursive: true, force: true });
 });

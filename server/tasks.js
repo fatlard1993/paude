@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { stat } from 'fs/promises';
 import path from 'path';
 
@@ -263,16 +264,23 @@ export const runTask = async (sessionId, cwd, taskId) => {
 	if (!Bun.which(found.command[0], { PATH: sessionEnvironment().PATH }))
 		throw new TaskError(`${found.command[0]} isn't installed here, so ${found.name} can't run`);
 
+	// One left by an earlier paude would hold the game's port (moving this one to another) and run old code beside it
+	await reapLeftoverRuns();
+
 	const id = crypto.randomUUID();
 	const run = { id, taskId, name: found.name, command: found.command, startedAt: Date.now(), output: '' };
 	// An arcade game's server keeps one port, so starting over on a save doesn't move the game out from under its page
 	const arcadeGame = taskId === GAME_SERVER && (await stat(path.join(cwd, ARCADE_MARKER)).catch(() => null));
 	const port = arcadeGame ? gamePort(cwd) : null;
+	// Its saves its own, as it's built, apart from the live copy the house runs of the same folder (a game on the mother
+	// hub): the two writing one file each overwrite the other's games
+	const saves = arcadeGame && dataDir ? workingSaves(cwd) : null;
 	const child = Bun.spawn(found.command, {
 		cwd,
 		env: {
 			...sessionEnvironment(),
 			...(port ? { PORT: String(port) } : {}),
+			...(saves ? { GAME_DATABASE: saves } : {}),
 			PAUDE_SESSION: sessionId,
 			PAUDE_TASK: id,
 			NO_COLOR: '1',
@@ -324,6 +332,42 @@ export const stopRun = async (sessionId, runId) => {
 	terminate((await sessionProcesses()).filter(found => found.task === runId).map(found => found.pid));
 };
 
+// What a process runs, or '' once it's gone
+const commandOf = pid => {
+	const { stdout } = Bun.spawnSync(['ps', '-o', 'command=', '-p', String(pid)]);
+
+	return stdout.toString().trim();
+};
+
+const isPaude = pid => pid === process.pid || /\bserver\/index\.js\b.*--port/.test(commandOf(pid));
+
+// Runs left by a paude that has since gone (restarted or crashed): nothing reads what they print or will stop them,
+// and a game server among them keeps its port, its old code and its hold on the game's saves, beside the copy started
+// in its place. A run's tree is left over once the top of it has no paude above it any more (another paude on this
+// machine keeps its own). Stopped, and the pids returned once they're gone, or after a while.
+export const reapLeftoverRuns = async ({ processes = sessionProcesses, wait = true } = {}) => {
+	const runsOf = Map.groupBy(
+		(await processes()).filter(found => found.task && found.parent),
+		found => found.task,
+	);
+	const leftover = [...runsOf.values()].flatMap(tree => {
+		const inTree = new Set(tree.map(({ pid }) => pid));
+		const tops = tree.filter(({ parent }) => !inTree.has(parent));
+
+		return tops.some(({ parent }) => isPaude(parent)) ? [] : tree.map(({ pid }) => pid);
+	});
+
+	if (!leftover.length) return [];
+	console.log(`Stopping ${leftover.length} process(es) left running by an earlier paude: ${leftover.join(', ')}`);
+	terminate(leftover);
+	for (let waited = 0; wait && waited < STOP_AFTER_MS + 500; waited += 100) {
+		if (leftover.every(pid => !commandOf(pid))) break;
+		await Bun.sleep(100);
+	}
+
+	return leftover;
+};
+
 // Every run of a session, found by the mark its processes carry, so one started before paude last restarted (and
 // so forgotten here) stops too
 export const stopTasksOf = async sessionId => {
@@ -361,10 +405,21 @@ export const processesOf = async sessionId =>
 // Tasks that run after each of Claude's turns that edited something, per project: { [project]: [taskId] }
 let afterTurnFile;
 let afterTurn = {};
+let dataDir;
 
-export const initTasks = async dataDir => {
-	afterTurnFile = path.join(dataDir, 'after-turn-tasks.json');
+// Where an arcade game's working copy keeps its saves: in paude's data, one file per folder
+export const workingSaves = cwd =>
+	path.join(
+		dataDir,
+		'arcade-saves',
+		`${path.basename(cwd)}-${createHash('sha256').update(cwd).digest('hex').slice(0, 8)}.json`,
+	);
+
+export const initTasks = async folder => {
+	dataDir = folder;
+	afterTurnFile = path.join(folder, 'after-turn-tasks.json');
 	afterTurn = await readJsonFile(afterTurnFile, {});
+	await reapLeftoverRuns({ wait: false }).catch(error => console.warn(`Leftover runs not stopped: ${error.message}`));
 };
 
 export const afterTurnTasks = project => afterTurn[project] ?? [];
