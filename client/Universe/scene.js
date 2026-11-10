@@ -66,6 +66,7 @@ import {
 	COUCH_SEAT,
 	drawIsland,
 	drawLaptop,
+	drawScreen,
 	drawSeat,
 	housingOf,
 	drawHall,
@@ -4588,19 +4589,16 @@ export default class Ship {
 				y: worker.seat.y + 0.15,
 				draw: () => {
 					const at = this.art({ x: spot.x, y: worker.seat.y + 0.2 });
-					const lit = Math.floor(this.time * 4 + index) % 2;
 
+					// A grey's screen in little: its bezel and stand, and on it what a grey's shows at work, scrolling the
+					// same way, in its own lines
 					rect(ctx, at.x - 14, at.y - 22, 10, 8, PALETTE.k);
 					rect(ctx, at.x - 13, at.y - 21, 8, 6, PALETTE.d);
-					for (let line = 0; line < 3; line++)
-						rect(
-							ctx,
-							at.x - 12,
-							at.y - 20 + line * 2,
-							3 + ((line + index + lit) % 3) * 2,
-							1,
-							`hsl(${session.hue ?? 200} 55% ${lit ? 62 : 48}%)`,
-						);
+					drawScreen(
+						ctx,
+						{ x: at.x - 13, y: at.y - 21, w: 8, h: 6 },
+						{ kind: 'work', hue: screenOf(session).hue, time: this.time, seed: worker.seed + index + 1 },
+					);
 					rect(ctx, at.x - 10, at.y - 14, 2, 2, PALETTE.d);
 				},
 			};
@@ -4634,8 +4632,8 @@ export default class Ship {
 
 						const working = Math.floor(this.time * 4 + index) % 2;
 
-						drawSprite(ctx, working ? 'smallGreyWork' : 'smallGrey', at.x, at.y - (working ? 1 : 0), { colors });
-						if (working) rect(ctx, at.x - 2, at.y - 5, 5, 2, `hsl(${ACCENTS.hatchery} 80% 72%)`);
+						// Typing: its hands up at its keys and down, where it sits
+						drawSprite(ctx, working ? 'smallGreyWork' : 'smallGrey', at.x, at.y, { colors });
 						if (born < 1) {
 							ctx.restore();
 							rect(ctx, at.x - 4, at.y - Math.round(11 * born), 9, 1, PALETTE.W);

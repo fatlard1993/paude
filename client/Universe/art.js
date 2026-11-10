@@ -299,31 +299,11 @@ const NEWS = [
 	'....k....',
 ];
 
-// A small grey, a subagent its grey sent out; at work its arms are up at the slate it holds
-const SMALL_GREY = [
-	'..kkkkk..',
-	'kaaaaaaAk',
-	'keWeaeWek',
-	'keeeaeeek',
-	'.kaaeaAk.',
-	'..kccck..',
-	'.kaaaaAk.',
-	'kakaaAkAk',
-	'.kkaaAkk.',
-	'..kk.kk..',
-];
-const SMALL_GREY_WORK = [
-	'..kkkkk..',
-	'kaaaaaaAk',
-	'keWeaeWek',
-	'keeeaeeek',
-	'.kaaeaAk.',
-	'a.kccck.a',
-	'kkaaaaAkk',
-	'.kkaaAkk.',
-	'..kaaAk..',
-	'..kk.kk..',
-];
+// A small grey, a subagent its grey sent out: a grey in little, the same domed skull narrowing to its chin, the same
+// eyes, its collar in its session's color over a bare body; at work its hands are up at its keys
+const SMALL_HEAD = ['..kkkkk..', '.kaaaaak.', 'kaaaaaaAk', 'keWeaeWek', 'keeeaeeek', '.kaeaeAk.', '..kaaAk..'];
+const SMALL_GREY = [...SMALL_HEAD, '..kccck..', '.kaaaaAk.', 'kakaaAkAk', '.kkk.kkk.'];
+const SMALL_GREY_WORK = [...SMALL_HEAD, '..kccck..', 'kkaaaaAkk', '.kkaaAkk.', '.kkk.kkk.'];
 // A fabled session's monitor: a taller grey of another strain, long in the skull and the leg, that stands behind the
 // session's grey and follows its run; its tall collar, up the neck, in the session's color and its chest pip Fable's
 const WATCHER = [

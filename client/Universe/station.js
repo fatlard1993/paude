@@ -533,7 +533,7 @@ const drawFrost = (ctx, { x, y, w, h }) => {
 // What a monitor shows: lines of work scrolling in the color of what's being done, a terminal for the shell, dots while
 // thinking; an amber question while asking, an empty battery at a usage limit, a blinking cursor at rest, and nothing
 // once stopped
-const drawScreen = (ctx, area, { kind, hue, time, seed }) => {
+export const drawScreen = (ctx, area, { kind, hue, time, seed }) => {
 	const { x, y, w, h } = area;
 	const scroll = Math.floor(time * 4 + seed * 10);
 	const blink = Math.floor(time * 2) % 2 === 0;
@@ -552,7 +552,8 @@ const drawScreen = (ctx, area, { kind, hue, time, seed }) => {
 
 	rect(ctx, x, y, w, h, background);
 	if (kind === 'work' || kind === 'terminal')
-		for (let row = 0; row < 4; row++) {
+		// As many lines as it's tall enough for: four on a grey's screen, fewer on a small grey's
+		for (let row = 0; row < Math.min(4, Math.floor(h / 2)); row++) {
 			const line = scroll + row;
 			const length = 2 + Math.floor(seeded(`${seed}|${line}`) * (w - 3));
 			const indent = Math.floor(seeded(`i${seed}|${line}`) * 3);
