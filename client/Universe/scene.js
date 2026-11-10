@@ -55,6 +55,7 @@ import {
 	stockAt,
 	systemFootOf,
 	systemTallOf,
+	NOSE,
 } from './plan';
 import {
 	DESK_PITCH,
@@ -1276,6 +1277,13 @@ export default class Ship {
 			// Drawn back smoothly rather than a step at a time, ending on the whole ship's own zoom
 			zoom: Math.min(ZOOMS.most, whole.zoom + JOIN.closer * (1 - back) ** 2),
 		};
+	}
+
+	// How far right the hull's nose reaches on the screen, its tip's spar (eight art pixels) and all; nothing before there's a hull
+	noseTip() {
+		const { building } = this.layout ?? {};
+
+		return building ? this.screen({ x: building.right + NOSE + 8 / UNIT.x, y: 0 }).x : null;
 	}
 
 	// The whole ship: the building and a little of the saucer round it, its rim cut off at the sides when it must be

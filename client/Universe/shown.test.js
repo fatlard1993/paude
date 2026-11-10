@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { FLEET_GAP, fleetBox, placeShips } from './shown';
+import { FLEET_GAP, fleetBox, placeShips, panelLeft } from './shown';
 
 test('the view takes in every ship shown: the stretch of the stage they cover together, and none for one alone', () => {
 	const aboard = { extent: { left: -300, right: 320, top: -150, height: 300 }, at: { x: 0, y: 0 } };
@@ -46,4 +46,22 @@ test('a ship shown stands below the one aboard, bows in line; what the view take
 	expect(placeShips([aboard, going], { reach, settled: true })).toHaveLength(1);
 	// One neither shown nor on its way isn't on the stage at all
 	expect(placeShips([aboard, { ...other, shown: false, in: 0 }], { reach })).toHaveLength(1);
+});
+
+test("the bridge's panel stands past the ship's nose, clear of its window; another room's beside the room; both inside the stage", () => {
+	const at = { room: 1000, nose: 1120, stage: 1600, panel: 320 };
+
+	// Past the nose's tip, not against the bridge's wall, where the window is
+	expect(panelLeft({ ...at, bridge: true })).toBe(1132);
+	expect(panelLeft({ ...at, bridge: true })).toBeGreaterThan(at.nose);
+	// Any other room's, beside it
+	expect(panelLeft({ ...at, bridge: false })).toBe(1012);
+	// With no room past the nose (a narrow stage, or the ship zoomed in), against the stage's right edge: the one case
+	// it lies over the nose
+	expect(panelLeft({ ...at, bridge: true, stage: 1300 })).toBe(968);
+	expect(panelLeft({ ...at, bridge: true, stage: 1464 })).toBe(1132);
+	// A ship scrolled off to the left: no further left than the stage
+	expect(panelLeft({ room: -400, nose: -280, stage: 1600, panel: 320, bridge: true })).toBe(12);
+	// Before there's a hull, by the room
+	expect(panelLeft({ ...at, nose: null, bridge: true })).toBe(1012);
 });

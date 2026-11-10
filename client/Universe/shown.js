@@ -73,3 +73,13 @@ export const placeShips = (ships, { reach = 0, settled = false } = {}) => {
 
 	return placed.map(placing => ({ ...placing, at: { x: placing.at.x - home.x, y: placing.at.y - home.y } }));
 };
+
+// How far a room's panel stands from what it's beside, and from the stage's edges, in pixels
+const PANEL_GAP = 12;
+
+// Where a room's panel goes across the stage (its left edge): beside the room, past its right edge; the bridge's past
+// the ship's nose, which is beyond the bridge's right wall and has the cockpit's window in it, so that's seen. Kept
+// inside the stage either way, which is the one case it may lie over what it's beside: when there's no room past it.
+// `room` the room's right edge on the screen, `nose` the nose's tip there (or null), `stage` and `panel` their widths
+export const panelLeft = ({ bridge, room, nose, stage, panel }) =>
+	Math.min(stage - panel - PANEL_GAP, Math.max(PANEL_GAP, (bridge ? Math.max(room, nose ?? 0) : room) + PANEL_GAP));

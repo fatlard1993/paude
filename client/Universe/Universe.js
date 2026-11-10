@@ -29,7 +29,7 @@ import { sessionMenu } from '../sessionActions';
 import { PANELS } from '../Terminal/panels';
 import { recall, remember } from '../storage';
 import { ink, isHue } from '../../shared/hues';
-import { LOCAL, fleetBox, placeShips, shipsOf } from './shown';
+import { LOCAL, fleetBox, panelLeft, placeShips, shipsOf } from './shown';
 import olderPaude from './olderPaude';
 import { dockCard, verbsFor } from './dock';
 import {
@@ -2337,9 +2337,15 @@ export default class Universe extends View {
 		const area = this.aboard.area(this.focused.room);
 		const { width, height } = this.stageSize ?? this.stage.elem.getBoundingClientRect();
 		const box = this.focus.getBoundingClientRect();
-		const whole = !this.aboard.looking || this.aboard.looking === 'all';
-		// For the whole ship, at the screen's right edge in the room left for it; for a room, beside it
-		const left = whole ? width - box.width - 12 : Math.min(width - box.width - 12, Math.max(12, area.right + 12));
+		// The bridge's stands off the ship's nose, so the window there is seen; another room's beside it. Either inside
+		// the stage; for the whole ship, at the screen's right edge when the nose leaves it no room
+		const left = panelLeft({
+			bridge: this.focused.kind === 'bridge',
+			room: area.right,
+			nose: this.aboard.noseTip(),
+			stage: width,
+			panel: box.width,
+		});
 		// Folded, in the top corner, clear of the ship
 		const folded = this.focus.classList.contains('folded');
 		const top = Math.min(height - box.height - 12, Math.max(52, area.top));
