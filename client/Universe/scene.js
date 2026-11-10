@@ -273,7 +273,7 @@ const WATCHER_BEHIND = 0.4;
 const WATCHER_REACH = 9;
 // How tall the monitor and a suited person stand, in art pixels; the monitor's footprint for what it walks behind
 const WATCHER_TALL = 30;
-const SUIT_TALL = 19;
+const SUIT_TALL = 23;
 const WATCHER_SIZE = { half: 6, tall: WATCHER_TALL };
 // When its session stops to ask something, the monitor takes it in first, its skull glowing as a thinking grey's does,
 // then raises its arm to point at the terminal: how long each takes, in seconds
@@ -2321,9 +2321,6 @@ export default class Ship {
 			// the view, and their coming aboard through the airlock is what's to be seen
 			if (!this.boarding(walker) && !this.inDoorway(walker) && !this.beamingNow(name))
 				walk(walker, WALK_SPEED * seconds * this.paceOf(name), seconds);
-			// At their cabinet and still: their stool comes out from then, as a grey's does
-			if (walker.pose === 'player' && !walker.path.length && !walker.leaving) walker.stoolAt ??= this.time;
-			else walker.stoolAt = undefined;
 		}
 		this.tendTravel();
 		for (const worker of this.workers.values()) {
@@ -7576,35 +7573,21 @@ export default class Ship {
 		} else drawSprite(ctx, 'paper', at.x, at.y + 2);
 	}
 
-	// A person at an arcade cabinet, playing: on a stool pulled out from its foot, as the greys at it are, which puts
-	// them at the height of those beside them and their arm level with its stick; the arm on the cabinet's side out to
-	// it, working the stick and coming off it onto the buttons in bursts. They stand still at it: the arm is the play.
+	// A person at an arcade cabinet, playing: tall enough to reach it from the floor, with no stool; the arm on the
+	// cabinet's side out to it, working the stick and coming off it onto the buttons in bursts. They stand still at
+	// it: the arm is the play.
 	drawPersonPlaying(ctx, walker, at, colors) {
 		const toward = walker.stand < 0 ? -1 : 1;
 		const seed = seeded(walker.name) * 7;
-		const { bend, out, up } = this.stoolAfter(walker.stoolAt === undefined ? -1 : this.time - walker.stoolAt);
-		const cabinet = (this.lounge?.cabinets ?? []).findIndex(({ id }) => id === this.arcading);
-		const home = cabinet >= 0 ? this.art(cabinetAt(this.lounge, cabinet)).x : at.x;
-		const stool = { x: Math.round(mix(home, at.x, out)), y: at.y };
-		const body = { x: at.x, y: at.y - Math.round(STOOL.tall * up) };
-
-		if (out > 0) this.paintStool(ctx, stool);
-		else rect(ctx, at.x - 3, at.y, 7, 1, PALETTE.k);
-		drawSprite(ctx, 'suitPlay', body.x, body.y, { colors, flip: toward < 0 });
-
-		// The stick stays where it is on the cabinet as they step up to it
 		const stick = at.y - 16;
 		const mashing = Math.floor((this.time + seed * 5) / 4) % 3 === 0;
-		const playing = mashing
-			? { x: body.x + toward * 7, y: stick + 1 + (Math.floor(this.time * 6) % 2) }
-			: { x: body.x + toward * (8 + (Math.floor(this.time * 3 + seed) % 2)), y: stick };
-		// Bent to the stool, their hand is on that instead, going out with it
-		const hand = {
-			x: Math.round(mix(playing.x, stool.x + toward * -5, bend)),
-			y: Math.round(mix(playing.y, stool.y - STOOL.tall, bend)),
-		};
+		const hand = mashing
+			? { x: at.x + toward * 7, y: stick + 1 + (Math.floor(this.time * 6) % 2) }
+			: { x: at.x + toward * (8 + (Math.floor(this.time * 3 + seed) % 2)), y: stick };
 
-		drawLimb(ctx, { x: body.x + toward * 4, y: body.y - 10 }, hand, PALETTE.w);
+		rect(ctx, at.x - 3, at.y, 7, 1, PALETTE.k);
+		drawSprite(ctx, 'suitPlay', at.x, at.y, { colors, flip: toward < 0 });
+		drawLimb(ctx, { x: at.x + toward * 4, y: at.y - SUIT_TALL + 9 }, hand, PALETTE.w);
 	}
 
 	// Walking, seen from the front; at their place by their pose
@@ -7636,8 +7619,8 @@ export default class Ship {
 		} else if (there && walker.pose === 'tourist') {
 			drawSprite(ctx, 'suitBack', at.x, at.y, { colors });
 			if ((this.time + seeded(walker.name) * 7) % 7 < 0.12) {
-				rect(ctx, at.x - 6, at.y - 18, 3, 3, PALETTE.W);
-				rect(ctx, at.x - 7, at.y - 17, 5, 1, PALETTE.W);
+				rect(ctx, at.x - 6, at.y - SUIT_TALL + 1, 3, 3, PALETTE.W);
+				rect(ctx, at.x - 7, at.y - SUIT_TALL + 2, 5, 1, PALETTE.W);
 			}
 		} else {
 			rect(ctx, at.x - 3, at.y, 7, 1, PALETTE.k);
@@ -7655,7 +7638,7 @@ export default class Ship {
 			.map(key => this.workers.get(key)?.session)
 			.find(session => session && this.spoke(session, walker.name));
 
-		if (talking && there) this.drawSpeech(ctx, { x: at.x, y: at.y - 16 }, talking);
+		if (talking && there) this.drawSpeech(ctx, { x: at.x, y: at.y - SUIT_TALL + 3 }, talking);
 	}
 
 	// Every word in the scene, last and on top, at the same size on the screen whatever the zoom: `at` in art pixels,

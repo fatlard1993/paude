@@ -146,15 +146,21 @@ const SUIT_TOP = [
 	'kwwcccccwwk',
 	'kwkwcccwkwk',
 	'kwkwwwwwkwk',
+	'kwkwwwwwkwk',
 	'kwkwlllwkwk',
+	'kwkwwwwwkwk',
 	'kmk.kkk.kmk',
 ];
 
+// Their legs, down to the boots: long enough that a person stands a little over a grey, and reaches what a grey needs
+// a stool for
+const SUIT_LEGS = ['..kwwkwwk..', '..kwwkwwk..', '..kwwkwwk..', '..kwwkwwk..', '..kwwkwwk..'];
+
 const SUIT = {
-	stand: [...SUIT_TOP, '..kwwkwwk..', '..kwwkwwk..', '..kwwkwwk..', '..kwwkwwk..', '..kmmkmmk..', '..kkk.kkk..'],
+	stand: [...SUIT_TOP, ...SUIT_LEGS, '..kwwkwwk..', '..kmmkmmk..', '..kkk.kkk..'],
 	// A boot lifted, the other planted, as the greys walk
-	stepLeft: [...SUIT_TOP, '..kwwkwwk..', '..kwwkwwk..', '..kwwkwwk..', '..kmmkwwk..', '..kkkkmmk..', '.....kkkk..'],
-	stepRight: [...SUIT_TOP, '..kwwkwwk..', '..kwwkwwk..', '..kwwkwwk..', '..kwwkmmk..', '..kmmkkkk..', '..kkkk.....'],
+	stepLeft: [...SUIT_TOP, ...SUIT_LEGS, '..kmmkwwk..', '..kkkkmmk..', '.....kkkk..'],
+	stepRight: [...SUIT_TOP, ...SUIT_LEGS, '..kwwkmmk..', '..kmmkkkk..', '..kkkk.....'],
 };
 
 // Someone at an arcade cabinet to their right: the arm on that side is out to it, drawn apart as it moves, so the
@@ -162,9 +168,9 @@ const SUIT = {
 const SUIT_PLAY = SUIT.stand.map((row, index) => {
 	if (index === 8) return `${row.slice(0, 9)}k.`;
 	// Its hand, at the bottom of the arm
-	if (index === 12) return `${row.slice(0, 8)}...`;
+	if (index === SUIT_TOP.length - 1) return `${row.slice(0, 8)}...`;
 
-	return index > 8 && index < 12 ? `${row.slice(0, 9)}..` : row;
+	return index > 8 && index < SUIT_TOP.length - 1 ? `${row.slice(0, 9)}..` : row;
 });
 
 // Someone seen from behind, looking in: the back of their helmet striped in their color, their air pack
@@ -180,11 +186,11 @@ const SUIT_BACK = [
 	'kwmlllllmwk',
 	'kwmcccccmwk',
 	'kwmmmmmmmwk',
+	'kwmmmmmmmwk',
 	'kwkmmmmmkwk',
+	'kwkwwwwwkwk',
 	'kmk.kkk.kmk',
-	'..kwwkwwk..',
-	'..kwwkwwk..',
-	'..kwwkwwk..',
+	...SUIT_LEGS,
 	'..kwwkwwk..',
 	'..kmmkmmk..',
 	'..kkk.kkk..',
