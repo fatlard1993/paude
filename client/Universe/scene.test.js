@@ -927,7 +927,7 @@ test("a lounger's pile goes when it's resumed, so stopping again starts a fresh 
 	expect(made.workers.has('here/a')).toBe(false);
 });
 
-test('a waiting session whose cache has gone cold rests in the lounge, unless it is kept warm or going, or is asking', () => {
+test('a session whose cache has gone cold leaves its desk for the lounge, asking or not, unless it is kept warm or going', () => {
 	const cold = { warm: false, cache: { left: 0, life: 300_000, ago: 60_000 } };
 
 	expect(resting({ status: 'stopped' })).toBe(true);
@@ -937,7 +937,9 @@ test('a waiting session whose cache has gone cold rests in the lounge, unless it
 	// As an older paude says it
 	expect(resting({ status: 'ready', context: cold, kept: 'going' })).toBe(false);
 	expect(resting({ status: 'ready', context: cold, keeping: 'fabled' })).toBe(false);
-	expect(resting({ status: 'waiting', context: cold })).toBe(false);
+	expect(resting({ status: 'waiting', context: cold })).toBe(true);
+	expect(resting({ status: 'waiting', context: cold, keeping: 'warm' })).toBe(false);
+	expect(resting({ status: 'working', context: cold })).toBe(false);
 	expect(resting({ status: 'ready' })).toBe(false);
 
 	const made = shipWith([
@@ -2623,6 +2625,47 @@ test('one stopped while its cache still holds stands at an arcade cabinet, or ro
 	run(made, 30);
 	expect(made.walking(a)).toBe(false);
 	expect(Math.hypot(a.x - made.placeOf(a).x, a.y - made.placeOf(a).y)).toBeLessThan(0.01);
+});
+
+test('one gone cold with a question open or a reply unread stands about the lounge, its terminal left lit, and sits down once that is seen to', () => {
+	const cold = { warm: false, cache: { left: 0, life: 300_000, ago: 60 * MINUTE } };
+	const looks = sessions => [answer('here', sessions, { projects: ['paude'] })];
+	const made = shipWith(
+		looks([
+			session({ id: 'asks', status: 'waiting', tool: null, context: cold }),
+			session({ id: 'news', status: 'ready', tool: null, context: cold, unseen: 2 }),
+			session({ id: 'quiet', status: 'ready', tool: null, context: cold }),
+		]),
+	);
+
+	run(made, 30);
+
+	const [asks, news, quiet] = ['asks', 'news', 'quiet'].map(id => made.workers.get(`here/${id}`));
+
+	// All three have left their desks; only the one with nothing for the person has a seat
+	expect([asks.lounging, news.lounging, quiet.lounging]).toEqual([true, true, true]);
+	expect(made.lounging).toEqual(['here/quiet']);
+	expect([asks.standing, news.standing, quiet.standing]).toEqual([true, true, false]);
+	expect([made.screenLit(asks), made.screenLit(news), made.screenLit(quiet)]).toEqual([true, true, false]);
+	// On their feet they've had nothing to drink, however long they've been cold
+	expect(made.drunkOf(asks)).toBe(0);
+	expect(made.drunkOf(quiet)).toBeGreaterThan(0);
+
+	// Read: nothing left on its screen for the person, so it takes a seat and its terminal goes idle
+	made.markRead(news.session);
+	made.update(
+		looks([
+			session({ id: 'asks', status: 'waiting', tool: null, context: cold }),
+			session({ id: 'news', status: 'ready', tool: null, context: cold, unseen: 2 }),
+			session({ id: 'quiet', status: 'ready', tool: null, context: cold }),
+		]),
+	);
+	expect(made.lounging).toEqual(['here/quiet', 'here/news']);
+	expect(news.standing).toBe(false);
+	expect(made.screenLit(news)).toBe(false);
+	expect(asks.standing).toBe(true);
+	// A stopped one's terminal is off whatever it left unread
+	expect(made.screenLit({ session: session({ status: 'stopped', unseen: 3 }) })).toBe(false);
 });
 
 test('a couch more needed is dropped out of the tube; one no longer needed is zapped from the ceiling, the lounge its size till its ash is sucked up', () => {

@@ -365,7 +365,7 @@ const LAPTOP_ASIDE = 14;
 // something stays at its seat
 export const resting = session =>
 	session.status === 'stopped' ||
-	(session.status === 'ready' && session.context?.warm === false && !keepingOf(session));
+	(['ready', 'waiting'].includes(session.status) && session.context?.warm === false && !keepingOf(session));
 
 const headFor = fill => (fill >= 0.75 && 'huge') || (fill >= 0.5 && 'big') || 'small';
 
@@ -1352,13 +1352,15 @@ export default class Ship {
 		const onCouches = [...this.workers]
 			.filter(([, worker]) => worker.lounging && (!worker.leaving || worker.opacity > 0))
 			.map(([key]) => key);
-		// Stopped with its cache still holding, one isn't sat down yet: it stands about the lounge, at the arcade's
-		// cabinets or round the TV, and takes a seat once it's gone cold. Once sat, it stays sat.
+		// Not everyone in the lounge is sat down. One stopped with its cache still holding stands about, at the arcade's
+		// cabinets or round the TV, and takes a seat once it's gone cold; one gone cold with something for the person (a
+		// question open, a reply unread) stands about too, until that's seen to. Once sat, it stays sat.
 		const sat = new Set(this.lounging ?? []);
 		const standing = onCouches.filter(key => {
 			const { session, leaving } = this.workers.get(key);
+			const up = session.status === 'stopped' ? !cacheCold(session) : Boolean(this.needs(session));
 
-			return !sat.has(key) && !leaving && session.status === 'stopped' && !cacheCold(session);
+			return !sat.has(key) && !leaving && up;
 		});
 		const lounging = this.seatLoungers(onCouches.filter(key => !standing.includes(key)));
 
@@ -3013,9 +3015,13 @@ export default class Ship {
 		}
 
 		for (const worker of this.workers.values()) {
-			if (!worker.seat || worker.lounging || this.walking(worker)) continue;
+			// Its screen's glow at its desk; off in the lounge, at the desk it left where that's still lit
+			const lit = worker.lounging && this.screenLit(worker) && !worker.homeSeat?.floor && worker.homeSeat;
+			const desk = worker.lounging ? lit : !this.walking(worker) && worker.seat;
 
-			const at = this.art({ x: worker.seat.x, y: worker.seat.y + 0.2 });
+			if (!desk) continue;
+
+			const at = this.art({ x: desk.x, y: desk.y + 0.2 });
 			const { status } = worker.session;
 			const asking = this.needs(worker.session) === 'asking';
 			const glow = { x: at.x - 8, y: at.y - 16 };
@@ -4743,6 +4749,9 @@ export default class Ship {
 	// How drunk a lounger is, 0 to 1: its empties go to its head, by the same clock as its pile, until it's had
 	// PASS_OUT_CANS' worth and is passed out
 	drunkOf(worker) {
+		// On its feet it has had none: the cans are the couch's
+		if (worker.standing || worker.playing) return 0;
+
 		return Math.min(1, coldOf(worker.session) / (PASS_OUT_CANS * CAN_MS));
 	}
 
@@ -4794,6 +4803,12 @@ export default class Ship {
 
 	// The seat it left at its island while it rests: its chair empty, its terminal frosted over gone cold or switched off
 	// stopped, pressed as ever to open it
+	// Whether the terminal a grey left for the lounge stays lit: its session still running, with a question open or a
+	// reply unread on it
+	screenLit(worker) {
+		return worker.session.status !== 'stopped' && Boolean(this.needs(worker.session));
+	}
+
 	homeSeatParts(ctx, worker) {
 		const { session, homeSeat } = worker;
 
@@ -4817,7 +4832,10 @@ export default class Ship {
 						ctx,
 						at,
 						{
-							screen: { ...screenOf(session), kind: session.status === 'stopped' ? 'off' : 'idle' },
+							// Lit as it would be with its grey at it while there's something on it for the person
+							screen: this.screenLit(worker)
+								? screenOf(session)
+								: { ...screenOf(session), kind: session.status === 'stopped' ? 'off' : 'idle' },
 							engineColor: `hsl(${session.engine.hue ?? 215} 45% 50%)`,
 							time: this.time,
 							seed: worker.seed,
