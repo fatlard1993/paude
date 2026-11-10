@@ -273,7 +273,7 @@ const WATCHER_BEHIND = 0.4;
 const WATCHER_REACH = 9;
 // How tall the monitor and a suited person stand, in art pixels; the monitor's footprint for what it walks behind
 const WATCHER_TALL = 30;
-const SUIT_TALL = 28;
+const SUIT_TALL = 30;
 const WATCHER_SIZE = { half: 6, tall: WATCHER_TALL };
 // When its session stops to ask something, the monitor takes it in first, its skull glowing as a thinking grey's does,
 // then raises its arm to point at the terminal: how long each takes, in seconds
@@ -463,9 +463,10 @@ export const appliancesOf = (tools, sessions, usage = {}, log = {}) => {
 	].map(appliance => ({ ...appliance, active: appliance.users.length > 0, load: loadOf(appliance.uses) }));
 };
 
-// An arm from `from` to `to`, in art pixels: one straight line of `color` a pixel thick with a dark edge along either
-// side of it, every pixel of its length drawn, so it reads as a limb rather than a string of blobs
-const drawLimb = (ctx, from, to, color) => {
+// An arm from `from` to `to`, in art pixels: one straight line of `color`, `thick` pixels of it (a grey's thin arm
+// one, a suit's sleeve two), with a dark edge along either side, every pixel of its length drawn, so it reads as a
+// limb rather than a string of blobs
+const drawLimb = (ctx, from, to, color, thick = 1) => {
 	const [across, down] = [to.x - from.x, to.y - from.y];
 	const steps = Math.max(Math.abs(across), Math.abs(down), 1);
 	const flat = Math.abs(across) >= Math.abs(down);
@@ -477,14 +478,21 @@ const drawLimb = (ctx, from, to, color) => {
 	for (let step = 0; step <= steps; step++) {
 		const { x, y } = along(step);
 
-		rect(ctx, x - (flat ? 0 : 1), y - (flat ? 1 : 0), flat ? 1 : 3, flat ? 3 : 1, PALETTE.k);
+		rect(ctx, x - (flat ? 0 : 1), y - (flat ? 1 : 0), flat ? 1 : thick + 2, flat ? thick + 2 : 1, PALETTE.k);
 	}
 	// Its hand, closed off
-	rect(ctx, to.x + Math.sign(across) * (flat ? 1 : 0), to.y + Math.sign(down) * (flat ? 0 : 1), 1, 1, PALETTE.k);
+	rect(
+		ctx,
+		to.x + Math.sign(across) * (flat ? 1 : 0),
+		to.y + Math.sign(down) * (flat ? 0 : 1),
+		flat ? 1 : thick,
+		flat ? thick : 1,
+		PALETTE.k,
+	);
 	for (let step = 0; step <= steps; step++) {
 		const { x, y } = along(step);
 
-		rect(ctx, x, y, 1, 1, color);
+		rect(ctx, x, y, flat ? 1 : thick, flat ? thick : 1, color);
 	}
 };
 
@@ -7579,7 +7587,8 @@ export default class Ship {
 	drawPersonPlaying(ctx, walker, at, colors) {
 		const toward = walker.stand < 0 ? -1 : 1;
 		const seed = seeded(walker.name) * 7;
-		const stick = at.y - 16;
+		// The sleeve is two thick, from this row down: its top on the stick's
+		const stick = at.y - 17;
 		const mashing = Math.floor((this.time + seed * 5) / 4) % 3 === 0;
 		const hand = mashing
 			? { x: at.x + toward * 9, y: stick + 1 + (Math.floor(this.time * 6) % 2) }
@@ -7587,7 +7596,7 @@ export default class Ship {
 
 		rect(ctx, at.x - 5, at.y, 11, 1, PALETTE.k);
 		drawSprite(ctx, 'suitPlay', at.x, at.y, { colors, flip: toward < 0 });
-		drawLimb(ctx, { x: at.x + toward * 6, y: at.y - SUIT_TALL + 13 }, hand, PALETTE.w);
+		drawLimb(ctx, { x: at.x + toward * 6, y: at.y - SUIT_TALL + 13 }, hand, PALETTE.w, 2);
 	}
 
 	// Walking, seen from the front; at their place by their pose

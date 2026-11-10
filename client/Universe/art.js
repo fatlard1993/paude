@@ -158,8 +158,8 @@ const SUIT_TOP = [
 	'kkkkwwwkwwwkkkk',
 ];
 
-// Their legs, down to the boots: about a quarter of them, under a long body and a big helmet
-const SUIT_LEGS = Array(4).fill('...kwwwkwwwk...');
+// Their legs, down to the boots: a third of them, under a long body and a big helmet
+const SUIT_LEGS = Array(6).fill('...kwwwkwwwk...');
 
 const SUIT = {
 	stand: [...SUIT_TOP, ...SUIT_LEGS, '...kwwwkwwwk...', '..kmmmmkmmmmk..', '..kkkkk.kkkkk..'],
