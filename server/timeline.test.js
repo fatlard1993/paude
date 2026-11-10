@@ -122,7 +122,10 @@ test('a whole transcript is read as it grows, once each line, a line still being
 	process.env.CLAUDE_CONFIG_DIR = home;
 	try {
 		await mkdir(join(home, 'projects', '-repo'), { recursive: true });
-		await writeFile(file, line(prompt('fix the tests', 0)) + line(use(1, [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }])));
+		await writeFile(
+			file,
+			line(prompt('fix the tests', 0)) + line(use(1, [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }])),
+		);
 		expect((await read()).map(turn => turn.prompt)).toEqual(['fix the tests']);
 
 		// Cut mid-character, as a write can leave it

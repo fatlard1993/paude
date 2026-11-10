@@ -205,7 +205,7 @@ const parseLines = lines =>
 
 const catchUp = async (read, file, cwd) => {
 	// Up to the last whole line: the rest is still being written, or cut at the slice's end, perhaps mid-character
-	for (let size = WHOLE_SLICE_BYTES; read.offset < file.size; ) {
+	for (let size = WHOLE_SLICE_BYTES; read.offset < file.size;) {
 		const bytes = new Uint8Array(await file.slice(read.offset, read.offset + size).arrayBuffer());
 		const through = bytes.lastIndexOf(NEWLINE) + 1;
 

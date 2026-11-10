@@ -53,7 +53,8 @@ const relayServer = (remote, token = 'secret') => {
 	return `ws://localhost:${server.port}`;
 };
 
-const nextMessage = socket => new Promise(resolve => socket.addEventListener('message', ({ data }) => resolve(data), { once: true }));
+const nextMessage = socket =>
+	new Promise(resolve => socket.addEventListener('message', ({ data }) => resolve(data), { once: true }));
 
 test("a remote session's socket is relayed on this machine's login there, both ways, its frames untouched", async () => {
 	const remote = remoteServer();

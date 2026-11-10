@@ -52,7 +52,9 @@ export const warmMonitor = async (sessionId, monitor, cwd) => {
 		ask(monitor, cwd, MONITOR_PING, { first: false, turns: 1 }),
 	);
 
-	console.log(`Keep fabled ${sessionId}: monitor ${delivered ? `pinged: ${usageWords(usage)}` : `not pinged (${why})`}`);
+	console.log(
+		`Keep fabled ${sessionId}: monitor ${delivered ? `pinged: ${usageWords(usage)}` : `not pinged (${why})`}`,
+	);
 
 	return delivered;
 };

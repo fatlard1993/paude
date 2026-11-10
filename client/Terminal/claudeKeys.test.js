@@ -17,7 +17,12 @@ const key = (keyName, mods = {}) => ({
 });
 const handler = ({ canType = true, leave } = {}) => {
 	const sent = [];
-	const handle = claudeKeys({ terminal: { hasSelection: () => false }, send: data => sent.push(data), canType: () => canType, leave });
+	const handle = claudeKeys({
+		terminal: { hasSelection: () => false },
+		send: data => sent.push(data),
+		canType: () => canType,
+		leave,
+	});
 
 	return { sent, handle };
 };

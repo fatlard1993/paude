@@ -31,7 +31,9 @@ test("a named session's prompt box, its name drawn into the top rule, is read li
 	const rule = '─'.repeat(60);
 	const named = `${'─'.repeat(22)} startup-and-server-join-performance ─`;
 
-	await new Promise(done => terminal.write(`● It builds.\r\n\r\n${named}\r\n❯ \r\n${rule}\r\n  ⏵⏵ auto mode on\r\n`, done));
+	await new Promise(done =>
+		terminal.write(`● It builds.\r\n\r\n${named}\r\n❯ \r\n${rule}\r\n  ⏵⏵ auto mode on\r\n`, done),
+	);
 	expect(promptDraft(terminal.buffer.active)).toBe('');
 
 	await new Promise(done => terminal.write(`\r\n${named}\r\n❯ the mixin sounds\r\n${rule}\r\n`, done));

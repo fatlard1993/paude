@@ -13,13 +13,13 @@ test("a session's window is the million when its model is chosen with it, or it 
 	expect(windowFor('opus', 385_176)).toBe(WINDOWS.million);
 });
 
-test('the model is the environment\'s, else the project\'s local settings, its shared ones, then the user\'s', async () => {
+test("the model is the environment's, else the project's local settings, its shared ones, then the user's", async () => {
 	const home = await fs.mkdtemp(path.join(os.tmpdir(), 'paude-window-home-'));
 	const project = await fs.mkdtemp(path.join(os.tmpdir(), 'paude-window-project-'));
 	const write = (dir, name, model) =>
-		fs.mkdir(path.join(dir, '.claude'), { recursive: true }).then(() =>
-			fs.writeFile(path.join(dir, '.claude', name), JSON.stringify({ model })),
-		);
+		fs
+			.mkdir(path.join(dir, '.claude'), { recursive: true })
+			.then(() => fs.writeFile(path.join(dir, '.claude', name), JSON.stringify({ model })));
 	const was = process.env.CLAUDE_CONFIG_DIR;
 
 	process.env.CLAUDE_CONFIG_DIR = path.join(home, '.claude');
