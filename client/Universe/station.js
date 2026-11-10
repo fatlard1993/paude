@@ -63,49 +63,61 @@ const loungeColumns = count =>
 
 const loungeSpan = columns => columns * COUCH_SEAT + (columns / 2 - 1) * COUCH_GAP;
 
-// The mother hub's games as arcade cabinets along the lounge's near wall, in islands of two back to back (the first
-// facing left, the second right, each player at its own end), out past both ends of the couches and the cans piled at
-// them, so they stand clear of the TV, its couches and its cans: half the islands to the left, half to the right; the
-// row they stand in adds to the lounge's depth
+// The mother hub's games as arcade cabinets in islands of two back to back (the first facing left, the second right,
+// each player at its own end), stacked in a column on each side of the lounge, out past both ends of the couches and the
+// cans piled at them so they stand clear of the TV, its couches and its cans: half the islands up the left column from
+// the near wall, half up the right, a second column on a side only past MOST_STACKED; the lounge as deep as the tallest
 export const CABINET_W = 0.75;
 const ISLE_GAP = 1.5;
 const CAN_ROOM = 1.2;
-const CABINET_ROW = 1.1;
 const CABINET_EDGE = 0.9;
 const ISLE_W = CABINET_W * 2;
 const ISLE_STEP = ISLE_W + ISLE_GAP;
+const ISLE_ROW = 1.8;
+const MOST_STACKED = 4;
 
 // How far from the lounge's middle the islands begin: past the couches' half and the cans beyond them
 const cabinetsInner = count => loungeSpan(loungeColumns(count)) / 2 + CAN_ROOM;
 
 const islesOf = cabinets => Math.ceil(cabinets / 2);
+// The islands on the fuller side, and the columns and rows they take there
+const sideIsles = cabinets => Math.ceil(islesOf(cabinets) / 2);
+const sideColumns = cabinets => Math.ceil(sideIsles(cabinets) / MOST_STACKED);
+const sideRows = cabinets => Math.min(sideIsles(cabinets), MOST_STACKED);
 
 export const loungeWidth = (count, cabinets = 0) =>
 	Math.max(
 		BAY_MIN,
 		loungeSpan(loungeColumns(count)) + 1.6,
-		cabinets ? 2 * (cabinetsInner(count) + Math.ceil(islesOf(cabinets) / 2) * ISLE_STEP + CABINET_EDGE) : 0,
+		cabinets ? 2 * (cabinetsInner(count) + sideColumns(cabinets) * ISLE_STEP + CABINET_EDGE) : 0,
 	);
 
 export const loungeDepth = (count, cabinets = 0) =>
-	FACE + 0.6 + Math.ceil(Math.max(count, 1) / loungeColumns(count)) * LOUNGE_ROW + 1.8 + (cabinets ? CABINET_ROW : 0);
+	Math.max(
+		FACE + 0.6 + Math.ceil(Math.max(count, 1) / loungeColumns(count)) * LOUNGE_ROW + 1.8,
+		cabinets ? FACE + 2.4 + sideRows(cabinets) * ISLE_ROW : 0,
+	);
 
 // Which way a cabinet's screen faces: the first of an island to the left (-1), the second to the right (1)
 export const cabinetFacing = index => (index % 2 ? 1 : -1);
 
-// Where a cabinet stands (its foot, against the near wall): its island's half, the screen's side out
+// Where a cabinet stands (its foot): its island's half, the screen's side out, its island stacked up its side's column
 export const cabinetAt = (lounge, index) => {
 	const isles = islesOf(lounge.cabinets?.length ?? 0);
 	const left = Math.ceil(isles / 2);
 	const isle = Math.floor(index / 2);
+	const onLeft = isle < left;
+	const place = onLeft ? isle : isle - left;
+	const column = Math.floor(place / MOST_STACKED);
+	const row = place % MOST_STACKED;
 	const middle = lounge.x + lounge.w / 2;
-	const inner = cabinetsInner(lounge.count) + ISLE_GAP / 2;
-	const centre =
-		isle < left
-			? middle - inner - (left - 1 - isle + 0.5) * ISLE_STEP
-			: middle + inner + (isle - left + 0.5) * ISLE_STEP;
+	const inner = cabinetsInner(lounge.count) + ISLE_GAP / 2 + (column + 0.5) * ISLE_STEP;
+	const centre = onLeft ? middle - inner : middle + inner;
 
-	return { x: centre + (cabinetFacing(index) * CABINET_W) / 2, y: lounge.y + lounge.d - 0.15 };
+	return {
+		x: centre + (cabinetFacing(index) * CABINET_W) / 2,
+		y: lounge.y + lounge.d - 0.15 - row * ISLE_ROW,
+	};
 };
 
 // Where a grey stands to play a cabinet: out at its screen's end of the island, off the wall (whose band would cut
