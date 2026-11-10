@@ -44,7 +44,17 @@ import {
 	titled,
 	whereWorking,
 } from './flyout';
-import { cabinetPane, enginesPane, foldersPane, listDock, projectPanes, projectsPane, sessionsPane } from './shipDock';
+import {
+	cabinetAddress,
+	cabinetPane,
+	cabinetSharePane,
+	enginesPane,
+	foldersPane,
+	listDock,
+	projectPanes,
+	projectsPane,
+	sessionsPane,
+} from './shipDock';
 import refusal from './reason';
 import { airlockCard } from './airlockCard';
 import { logCard, manifestCard, promptCard, replyCard } from './replyCard';
@@ -1454,18 +1464,37 @@ export default class Universe extends View {
 		});
 	}
 
-	openCabinet(cabinet) {
+	openCabinet(cabinet, open = 'game') {
 		return this.openListDock(`cabinet:${cabinet.id}`, {
 			title: cabinet.title,
 			about: 'a game on the mother hub',
-			entries: [
-				cabinetPane({
-					cabinet,
-					onUnwatch: identity()?.owner ? () => this.watchCabinet(cabinet.id, false) : null,
+			entries: [cabinetPane({ cabinet }), cabinetSharePane({ cabinet })],
+			open,
+			// Where a session's dock has its button to open the session, and the same mark
+			buttons: [
+				button('', () => this.openCabinetTab(cabinet), {
+					icon: 'up-right-from-square',
+					title: 'Open in its own tab',
+					className: 'icon-only variant-flat',
 				}),
 			],
-			open: 'game',
 		});
+	}
+
+	// A cabinet's game in a tab of its own. The tab is opened at the press, before its address is known, so the
+	// browser takes it as the person's doing and doesn't block it
+	async openCabinetTab(cabinet) {
+		const tab = window.open('', '_blank');
+		const address = await cabinetAddress(cabinet);
+
+		if (address && tab) tab.location = address;
+		else {
+			tab?.close();
+			new Notify({
+				intent: 'warning',
+				content: address ? 'The browser would not open a tab.' : `${cabinet.title} has nowhere to open from.`,
+			});
+		}
 	}
 
 	// A cabinet into the lounge or out of it, then the ship laid again with it or without
@@ -1956,14 +1985,8 @@ export default class Universe extends View {
 				...flyoutOf({ kind: 'cabinet', cabinet }, aboard),
 				commands: [
 					{ label: 'Play here', hotkey: 'p', run: () => this.openCabinet(cabinet) },
-					...(cabinet.url
-						? [{ label: 'Open in a tab', hotkey: 't', run: () => window.open(cabinet.url, '_blank') }]
-						: []),
-					...owned({
-						label: 'Take it out of the lounge',
-						hotkey: 'u',
-						run: () => this.watchCabinet(cabinet.id, false),
-					}),
+					{ label: 'Open in its own tab', hotkey: 't', run: () => this.openCabinetTab(cabinet) },
+					{ label: 'Share', hotkey: 's', run: () => this.openCabinet(cabinet, 'share') },
 				],
 			};
 		}

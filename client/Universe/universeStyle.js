@@ -175,6 +175,29 @@ export const Stage = styled(
 			padding-bottom: 8px;
 		}
 
+		/* Where a cabinet's game can be reached, an address to a line with who it's for and a button to copy it */
+		.pane.cabinet-share {
+			display: flex;
+			flex-direction: column;
+			gap: 12px;
+		}
+
+		.pane.cabinet-share .address {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+		}
+
+		.pane.cabinet-share .words {
+			flex: 1;
+			min-width: 0;
+		}
+
+		.pane.cabinet-share a {
+			display: block;
+			overflow-wrap: anywhere;
+		}
+
 		.pane.cabinet .cabinet-game {
 			flex: 1;
 			width: 100%;

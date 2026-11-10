@@ -59,6 +59,8 @@ test("each hub game is a cabinet with its look, where it's played, and whether i
 		icon: '/api/cabinets/humanity/icon?v=0',
 		hubIcon: `http://127.0.0.1:${hub.port}/api/games/humanity/icon?v=1`,
 		url: 'http://humanity.home',
+		publicUrl: null,
+		lanUrl: 'http://humanity.home',
 		running: true,
 		players: 2,
 		watched: true,

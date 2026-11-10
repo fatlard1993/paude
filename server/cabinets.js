@@ -32,6 +32,9 @@ export const cabinetOf = (game, hubUrl) => ({
 	icon: game.look?.icon ? `/api/cabinets/${encodeURIComponent(game.id)}/icon?v=${game.look.iconVersion ?? 0}` : null,
 	hubIcon: game.look?.icon ? new URL(game.look.icon, `${hubUrl}/`).href : null,
 	url: game.publicUrl || game.lanUrl || null,
+	// Each address it's reached at, to hand to someone else: anyone's, and the home network's
+	publicUrl: game.publicUrl || null,
+	lanUrl: game.lanUrl || null,
 	running: Boolean(game.unit?.active ?? game.health?.ok),
 	players: game.report?.connections ?? 0,
 	watched: !unwatched.has(game.id),

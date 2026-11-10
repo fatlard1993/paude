@@ -25,19 +25,21 @@ import { matchesFilter } from '../../shared/sessionSearch';
 import ArtifactsPanel from '../Terminal/ArtifactsPanel';
 import LinksPanel from '../Terminal/LinksPanel';
 import { PANELS } from '../Terminal/panels';
+import { copyWithNotice } from '../Terminal/copySelection';
 import { heading } from './replyCard';
 
 // A dock of panes for something bigger than a session (a project, the whole ship): the same frame as a session's,
 // tabs along its top, each pane built the first time it's wanted. `entries` are { key, label, make(body) },
 // make answering { elem, refresh? }. `show(key)` switches; `dispose()` lets them go.
-export const listDock = ({ title, about, entries, open, onClose }) => {
+// `buttons`: in its head before the close, there whichever pane shows
+export const listDock = ({ title, about, entries, open, onClose, buttons = [] }) => {
 	const card = element('div', 'dock');
 	const tabs = element('div', 'tabs');
 	const body = element('div', 'body');
 	const panes = new Map();
 	let showing;
 
-	const head = heading(title, about, onClose, { close: 'Close' });
+	const head = heading(title, about, onClose, { close: 'Close', buttons });
 	for (const { key, label } of entries) {
 		const tab = button(label, () => card.show(key), { className: 'variant-flat' });
 
@@ -381,9 +383,8 @@ export const foldersPane = ({ onAdded, machines = [] }) => ({
 // A new arcade game on one of `machines` ({ name, url }, url null for this one): what it's called if that's known, the
 // idea so far if there is one, for whom, how they read, and made there from the game scaffold with Claude started in
 // A mother-hub game from its cabinet in the lounge, to play right here: the game itself in a frame, served through
-// paude's preview listener (so over the page's own https), or a button that opens it in a tab of its own. `onUnwatch`
-// takes the cabinet out of the lounge.
-export const cabinetPane = ({ cabinet, onUnwatch }) => ({
+// paude's preview listener (so over the page's own https)
+export const cabinetPane = ({ cabinet }) => ({
 	key: 'game',
 	label: cabinet.title,
 	make: appendTo => {
@@ -393,10 +394,6 @@ export const cabinetPane = ({ cabinet, onUnwatch }) => ({
 
 		bar.append(
 			element('span', 'meta', (!cabinet.running && 'off') || (cabinet.players && `${cabinet.players} playing`) || 'on'),
-			...(cabinet.url
-				? [button('Open in a tab', () => window.open(cabinet.url, '_blank'), { className: 'variant-flat' })]
-				: []),
-			...(onUnwatch ? [button('Take it out of the lounge', onUnwatch, { className: 'variant-flat' })] : []),
 		);
 		elem.append(bar);
 		const frame = element('iframe', 'cabinet-game');
@@ -420,6 +417,59 @@ export const cabinetPane = ({ cabinet, onUnwatch }) => ({
 		appendTo.append(elem);
 
 		return { elem, refresh: () => {} };
+	},
+});
+
+// Where a cabinet's game opens in a tab of its own: its own address where it has one, else through paude's preview
+// listener; null when neither is to be had
+export const cabinetAddress = async cabinet => {
+	if (cabinet.url) return cabinet.url;
+
+	const { body, response } = await getCabinetPlay(cabinet.id);
+
+	return (response?.ok && body?.url) || null;
+};
+
+// A cabinet's game to hand to someone else: each address it's reached at, who can open it there, and a button to copy
+// it
+export const cabinetSharePane = ({ cabinet }) => ({
+	key: 'share',
+	label: 'Share',
+	make: appendTo => {
+		const elem = element('div', 'pane cabinet-share');
+		const row = (label, about, url) => {
+			const line = element('div', 'address');
+			const link = Object.assign(element('a', '', url), { href: url, target: '_blank', rel: 'noopener' });
+			const words = element('div', 'words');
+
+			words.append(element('strong', '', label), element('div', 'about', about), link);
+			line.append(
+				words,
+				button('Copy', () => copyWithNotice(url, 'Address copied'), { icon: 'copy', className: 'variant-flat' }),
+			);
+
+			return line;
+		};
+		const refresh = async () => {
+			const { body, response } = await getCabinetPlay(cabinet.id);
+			const through = response?.ok && body?.url;
+			const rows = [
+				cabinet.publicUrl && row('Public', 'anyone with the address', cabinet.publicUrl),
+				cabinet.lanUrl && row('On this network', 'anyone on the same network as the hub', cabinet.lanUrl),
+				through && row('Through this paude', 'whoever is logged in to this paude', through),
+			].filter(Boolean);
+
+			elem.replaceChildren(
+				...(rows.length
+					? rows
+					: [element('p', 'about', `${cabinet.title} has no address to share: it isn't being served anywhere.`)]),
+			);
+		};
+
+		elem.append(element('p', 'about', 'Finding where it can be reached…'));
+		appendTo.append(elem);
+
+		return { elem, refresh };
 	},
 });
 
