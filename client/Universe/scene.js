@@ -896,11 +896,9 @@ export const runsFor = ends => {
 const RISER_GAP = 2;
 // How far into the lounge, from its back wall, its couches start, in world units: a droid by the wall is clear of them
 const LOUNGE_FURNISHED = 0.6;
-// A lounger moving to another couch: how far before its row it walks (the aisle), how far in from the lounge's side it
-// goes along when the rows differ, in world units, and how high it hops off one couch and onto the other, in art pixels
-const COUCH_HOP = 0.55;
-const LOUNGE_SIDE = 0.4;
-const HOP_PIXELS = 6;
+// How quickly the couches left slide up to close the gap where one stood: the share of the way left gone each second,
+// as a rate (most of the way in a second), slow enough to watch them go
+const COUCH_SLIDE = 3;
 // How many times the risers of a bridge with too many to try every order are gone over, pairs swapped
 const SWAP_PASSES = 4;
 
@@ -1308,13 +1306,7 @@ export default class Ship {
 		const onCouches = [...this.workers]
 			.filter(([, worker]) => worker.lounging && (!worker.leaving || worker.opacity > 0))
 			.map(([key]) => key);
-		// Each keeps its couch while it stays, and one deleted there keeps its place until its dust has gone, so the couches
-		// aren't moved from under its heap; newcomers after them
-		const held = new Set(this.dust.map(({ key }) => key).filter(Boolean));
-		const kept = (this.lounging ?? []).filter(key => onCouches.includes(key) || held.has(key));
-		const lounging = [...kept, ...onCouches.filter(key => !kept.includes(key))];
-
-		this.lounging = lounging;
+		const lounging = this.seatLoungers(onCouches);
 
 		// Each session watched by whoever isn't any one session's guest, once
 		const pilots = [...this.people.values()].filter(person => !this.guestOf(person));
@@ -1328,9 +1320,6 @@ export default class Ship {
 			(engine, appliance) => `${engine.key}/${appliance.key}`,
 		);
 		this.loadCargo(answers);
-		// A couch no longer needed goes before the lounge is laid again: the lounge keeps its size until the couch's ash
-		// is sucked up, so the ship isn't moved round under the zapper and the tube
-		this.tendCouches(Math.ceil(Math.max(lounging.length, 1) / 2));
 		// Each island in the row it stood in last time
 		const keptOf = bridge =>
 			bridge?.islands && Object.fromEntries(bridge.islands.map(({ key, row, at }) => [key, { row, at }]));
@@ -1415,23 +1404,6 @@ export default class Ship {
 			// Done playing (or the game went off): it walks from the cabinet to its couch
 			if (worker && wasPlaying && !playing && !worker.trip && !this.walking(worker))
 				worker.trip = { from: cabinetStandAt(this.lounge, wasPlaying.index, wasPlaying.side), room: this.lounge };
-			// The couch it sat on last, as drawn: its seat here was just set to its island's, as every session's is
-			const shown = worker?.seatShown;
-
-			// Its couch changed under it as one before it got up: it hops down and scoots over to the one it has now
-			if (
-				worker?.lounging &&
-				!playing &&
-				!wasPlaying &&
-				shown &&
-				!shown.bridge &&
-				!this.moved &&
-				!worker.trip &&
-				!worker.leaving &&
-				!this.walking(worker) &&
-				(seat.x !== shown.x || seat.y !== shown.y)
-			)
-				worker.trip = { from: { x: shown.x, y: shown.y }, room: this.lounge, scoot: true };
 			Object.assign(worker ?? {}, { seat, bay: this.lounge, room: this.lounge });
 		});
 		// Islands that had to move: those sat at them get up and walk to where they've gone, rather than gliding there
@@ -1629,9 +1601,7 @@ export default class Ship {
 			// Where it was walking to is gone with the old plan; a new one still comes out of the materializer, and one
 			// stopped or woken sets off from its old room's door, or from the hall where that room was
 			if (this.moved) worker.path = [];
-			if (this.moved && worker.trip?.scoot) worker.trip = null;
 			if (this.moved && worker.trip && !worker.trip.fromSeat) worker.trip = this.tripAfterMoving(worker.trip);
-			if (this.moved || worker.trip || worker.arriving) worker.scoot = undefined;
 			if (worker.arriving && this.layout.materializer) {
 				const cloner = clonerAt(this.layout.materializer);
 
@@ -1642,19 +1612,6 @@ export default class Ship {
 					step: 0,
 				});
 				this.chargedAt = -Infinity;
-			} else if (worker.trip?.scoot) {
-				const path = this.scootPath(worker.trip.from, place);
-
-				Object.assign(worker, worker.trip.from, {
-					path,
-					scoot: {
-						legs: path.length,
-						off: { from: worker.trip.from, to: path[0] },
-						on: { from: path.at(-2), to: place },
-					},
-					facing: 1,
-					step: 0,
-				});
 			} else if (worker.trip)
 				Object.assign(worker, worker.trip.from, {
 					path: this.route(worker.trip.from, worker.trip.room, place, worker.room),
@@ -1666,41 +1623,6 @@ export default class Ship {
 			}
 			Object.assign(worker, { arriving: false, trip: null });
 		}
-	}
-
-	// From one couch to another: down off it into the aisle before its row, along it, and up onto the new one; to
-	// another row by the lounge's nearer side, where no couch stands in the way
-	scootPath(from, to) {
-		const { lounge } = this;
-		const aisle = y => y + COUCH_HOP;
-
-		if (Math.abs(from.y - to.y) < 0.01) return [{ x: from.x, y: aisle(from.y) }, { x: to.x, y: aisle(to.y) }, to];
-
-		const side = from.x < lounge.x + lounge.w / 2 ? lounge.x + LOUNGE_SIDE : lounge.x + lounge.w - LOUNGE_SIDE;
-
-		return [
-			{ x: from.x, y: aisle(from.y) },
-			{ x: side, y: aisle(from.y) },
-			{ x: side, y: aisle(to.y) },
-			{ x: to.x, y: aisle(to.y) },
-			to,
-		];
-	}
-
-	// How far through a hop a scooting lounger is, 0 to 1: off its couch on its first leg, onto the new one on its last;
-	// null between, or not scooting
-	hopOf(worker) {
-		const { scoot, path } = worker;
-
-		if (!scoot || !path?.length) return null;
-
-		const leg = (path.length === scoot.legs && scoot.off) || (path.length === 1 && scoot.on) || null;
-
-		if (!leg) return null;
-
-		const length = Math.hypot(leg.to.x - leg.from.x, leg.to.y - leg.from.y);
-
-		return length ? Math.min(1, Math.hypot(worker.x - leg.from.x, worker.y - leg.from.y) / length) : 1;
 	}
 
 	tripAfterMoving({ room }) {
@@ -2165,6 +2087,7 @@ export default class Ship {
 	step(seconds, calm) {
 		this.time += seconds;
 		this.tendLayoutEase(seconds);
+		this.slideCouches(calm ? Infinity : seconds);
 		// Sealed, it comes in out of warp once there's a ship to show, and is opened only once it's arrived
 		if (this.sealed && this.enteredAt === undefined && this.answered.size) {
 			this.enteredAt = this.time;
@@ -2231,7 +2154,6 @@ export default class Ship {
 		for (const worker of this.workers.values()) {
 			if (worker.path?.length && (calm || this.time - (worker.madeAt ?? -Infinity) >= MAKE_SECONDS))
 				walk(worker, calm ? Infinity : WORKER_SPEED * seconds, seconds);
-			if (!worker.path?.length) worker.scoot = undefined;
 			this.walkWatcher(worker, calm, seconds);
 		}
 		this.walkMonitorsGone(calm, seconds);
@@ -2620,6 +2542,9 @@ export default class Ship {
 					time: this.time,
 					lifted: this.couchesLifted(),
 					gone: this.couchesGone(),
+					shifts: (this.couchShifts ?? []).map(
+						shift => shift && { x: Math.round(shift.x * UNIT.x), y: Math.round(shift.y * UNIT.y) },
+					),
 				}),
 				...this.couchParts(ctx),
 			);
@@ -5358,9 +5283,6 @@ export default class Ship {
 	standingAt(worker) {
 		const walking = this.walking(worker);
 		const at = this.art(walking ? worker : this.placeOf(worker));
-		const hop = walking ? this.hopOf(worker) : null;
-
-		if (hop !== null) at.y -= Math.round(Math.sin(hop * Math.PI) * HOP_PIXELS);
 		// Standing at a cabinet: on the floor, as walking; on a couch a little up; at a console up on its chair
 		if (!walking && !worker.playing && !worker.seat?.housing && !briefOf(worker)) at.y -= worker.lounging ? 4 : 10;
 
@@ -5555,19 +5477,138 @@ export default class Ship {
 		this.drawDustHeap(ctx, dustAt, gone);
 	}
 
-	// A heap of dust, `size` 0 to 1 of its full size
-	// The lounge's couches come and go with those resting there, `needed` how many now: one more needed is dropped out
-	// of the tube onto its place; one no longer needed is zapped to ash by the emitter let down from the ceiling over
-	// it, and its ash sucked up by the tube as any is
-	tendCouches(needed) {
-		const had = this.couches ?? needed;
+	// Playing a cabinet: an arm up on its stick, working it, now and then both hands slapping the buttons
+	drawPlaying(ctx, worker, at) {
+		const toward = worker.seat?.side ?? 1;
+		const beat = Math.floor(this.time * 3 + worker.seed);
+		const wiggle = beat % 2;
+		const mashing = Math.floor((this.time + worker.seed * 5) / 4) % 3 === 0;
+		const hand = { x: at.x + toward * (8 + wiggle), y: at.y - 11 - (mashing ? wiggle : 0) };
+		const shoulder = { x: at.x + toward * 4, y: at.y - 5 };
 
+		for (let step = 0; step <= 3; step++) {
+			const x = Math.round(shoulder.x + ((hand.x - shoulder.x) * step) / 3);
+			const y = Math.round(shoulder.y + ((hand.y - shoulder.y) * step) / 3);
+
+			rect(ctx, x - 1, y - 1, 3, 3, PALETTE.k);
+		}
+		for (let step = 0; step <= 3; step++) {
+			const x = Math.round(shoulder.x + ((hand.x - shoulder.x) * step) / 3);
+			const y = Math.round(shoulder.y + ((hand.y - shoulder.y) * step) / 3);
+
+			rect(ctx, x, y, 1, 1, PALETTE.a);
+		}
+	}
+
+	// A heap of dust, `size` 0 to 1 of its full size
+	// Who rests where: `resting` each in a seat of the lounge's couches, two to a couch, as `lounging`, a seat nobody
+	// is in null. Each keeps its seat while it stays (one deleted there until its dust has gone), and nobody is moved
+	// to fill a seat left empty, so a couch can be left with one on it; a newcomer takes the first empty seat, or a new
+	// couch dropped out of the tube after the rest. A couch goes only once both its seats are empty: zapped to ash
+	// where it stands by the emitter let down from the ceiling, the lounge its size until the ash is sucked up, and
+	// only then taken out, those after it sliding up to close the gap (slideCouches). One couch always stays, waiting.
+	seatLoungers(resting) {
+		const held = new Set(this.dust.map(({ key }) => key).filter(Boolean));
+		const slots = (this.lounging ?? []).map(key => (key && (resting.includes(key) || held.has(key)) ? key : null));
+
+		this.couchIds ??= [];
 		this.couchDrops ??= [];
 		this.couchZaps ??= [];
-		for (let index = had; index < needed; index++) this.couchDrops.push({ index, at: this.time });
-		for (let index = needed; index < had; index++) if (this.lounge) this.couchZaps.push({ index, at: this.time });
-		this.couchDrops = this.couchDrops.filter(({ index }) => index < needed);
-		this.couches = needed;
+		this.couchesDoomed ??= new Set();
+
+		const doomed = this.couchesDoomed;
+
+		// In whole couches while it's worked out
+		if (slots.length % 2) slots.push(null);
+
+		// Zapped, and their ash gone: taken out together, so nothing still falling or burning is moved under
+		if (
+			doomed.size &&
+			!this.couchZaps.length &&
+			!this.couchDrops.length &&
+			!this.dust.some(({ couch }) => couch !== undefined)
+		) {
+			for (const couch of [...doomed].sort((a, b) => b - a)) {
+				slots.splice(couch * 2, 2);
+				this.couchIds.splice(couch, 1);
+			}
+			doomed.clear();
+		}
+
+		const seated = new Set(slots.filter(Boolean));
+
+		for (const key of resting) {
+			if (seated.has(key)) continue;
+
+			const free = slots.findIndex((slot, index) => slot === null && !doomed.has(Math.floor(index / 2)));
+			const at = free < 0 ? slots.length : free;
+
+			if (free < 0) {
+				slots.push(null, null);
+				// Past those there were: dropped in. The first ever laid are simply there, as is the one that waits
+				if (this.couches !== undefined && at / 2 >= this.couches)
+					this.couchDrops.push({ index: at / 2, at: this.time });
+			}
+			slots[at] = key;
+		}
+
+		const empty = couch => !slots[couch * 2] && !slots[couch * 2 + 1];
+		const couches = Array.from({ length: slots.length / 2 }, (_, couch) => couch);
+		let standing = couches.filter(couch => !doomed.has(couch)).length;
+
+		for (const couch of couches.reverse()) {
+			if (doomed.has(couch) || !empty(couch) || standing <= 1 || !this.lounge) continue;
+			doomed.add(couch);
+			standing--;
+			this.couchDrops = this.couchDrops.filter(({ index }) => index !== couch);
+			this.couchZaps.push({ index: couch, at: this.time });
+		}
+		// Nobody resting and nothing on its way out: the one couch left waits, the lounge laid as for nobody
+		if (!slots.some(Boolean) && !doomed.size) slots.length = 0;
+		this.couches = Math.max(1, slots.length / 2);
+		// The last couch's second seat, empty, isn't counted: the lounge is laid for those seats up to the last taken
+		if (slots.at(-1) === null && slots.at(-2)) slots.pop();
+		for (let couch = 0; couch < this.couches; couch++)
+			this.couchIds[couch] ??= this.couchesMade = (this.couchesMade ?? 0) + 1;
+		this.couchIds.length = this.couches;
+		this.lounging = slots;
+
+		return slots;
+	}
+
+	// Each step: every couch a little nearer its place among the lounge's, from where it was last shown (kept by where
+	// it stands from the lounge's middle, so it goes with the lounge when the rooms move round), and whoever sits on
+	// it carried along. How far each still is from its place, by its index, for the lounge to draw it there.
+	slideCouches(seconds) {
+		const { lounge } = this;
+
+		if (!lounge) return;
+
+		const near = 1 - Math.exp(-seconds * COUCH_SLIDE);
+		const toward = (from, to) => (Math.abs(to - from) < 0.01 ? to : from + (to - from) * near);
+		const shown = new Map();
+
+		this.couchShifts = (this.couchIds ?? []).map((id, couch) => {
+			const seat = loungeSeatAt(lounge, couch * 2);
+			const goal = { x: seat.x - lounge.x - lounge.w / 2, y: seat.y - lounge.y };
+			const was = this.couchShown?.get(id) ?? goal;
+			const now = { x: toward(was.x, goal.x), y: toward(was.y, goal.y) };
+
+			shown.set(id, now);
+
+			return now.x === goal.x && now.y === goal.y ? null : { x: now.x - goal.x, y: now.y - goal.y };
+		});
+		this.couchShown = shown;
+		(this.lounging ?? []).forEach((key, index) => {
+			const worker = key && this.workers.get(key);
+			const shift = this.couchShifts[Math.floor(index / 2)];
+
+			if (!worker?.lounging || worker.playing || !worker.seat || worker.room !== lounge) return;
+
+			const seat = loungeSeatAt(lounge, index);
+
+			Object.assign(worker.seat, { x: seat.x + (shift?.x ?? 0), y: seat.y + (shift?.y ?? 0) });
+		});
 	}
 
 	// How many couches the lounge must keep room for beyond those needed: up to the last still being zapped or lying in
@@ -5587,6 +5628,7 @@ export default class Ship {
 		const needed = this.couches ?? laid;
 
 		return new Set([
+			...(this.couchesDoomed ?? []),
 			...(this.couchZaps ?? []).map(({ index }) => index),
 			...this.dust.map(({ couch }) => couch).filter(couch => couch !== undefined),
 			...Array.from({ length: Math.max(0, laid - needed) }, (_, past) => needed + past),

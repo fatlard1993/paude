@@ -1888,7 +1888,7 @@ const cabinetPart = (ctx, art, lounge, cabinet, index, time) => {
 	};
 };
 
-export const drawLounge = (ctx, art, label, lounge, { time, lifted = [], gone = new Set() }) => {
+export const drawLounge = (ctx, art, label, lounge, { time, lifted = [], gone = new Set(), shifts = [] }) => {
 	floor(ctx, art, lounge);
 
 	const couches = [];
@@ -1898,10 +1898,12 @@ export const drawLounge = (ctx, art, label, lounge, { time, lifted = [], gone = 
 		if (gone.has(index / 2)) continue;
 
 		const first = art(loungeSeatAt(lounge, index));
+		// Sliding to its place from where it stood: how far it still is from it, in art pixels
+		const shift = shifts[index / 2] ?? { x: 0, y: 0 };
 
 		couches.push({
-			x: first.x - Math.round(COUCH_SEAT * UNIT.x) / 2,
-			y: first.y - Math.round(lifted[index / 2] ?? 0),
+			x: first.x + shift.x - Math.round(COUCH_SEAT * UNIT.x) / 2,
+			y: first.y + shift.y - Math.round(lifted[index / 2] ?? 0),
 			seat: loungeSeatAt(lounge, index),
 			landed: !lifted[index / 2],
 		});

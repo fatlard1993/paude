@@ -1988,7 +1988,7 @@ test('several sessions picked together are each bracketed', () => {
 	expect(boxes.filter(around(at('here/b')))).toHaveLength(1);
 });
 
-test('one deleted on a couch keeps its place till its dust has gone, the others staying where they sit, and only then are the couches laid again', () => {
+test('one deleted on a couch keeps its place till its dust has gone, and its seat is then left empty: the others stay where they sit, and a newcomer takes it', () => {
 	const stopped = id => session({ id, status: 'stopped', tool: null, coldAgo: 60_000, stoppedAgo: 60_000 });
 	const all = [stopped('a'), stopped('b'), stopped('c')];
 	const made = shipWith([answer('here', all, { projects: ['paude'] })]);
@@ -2001,7 +2001,7 @@ test('one deleted on a couch keeps its place till its dust has gone, the others 
 
 		return { x: Math.round((place.x - made.lounge.x) * 100), y: Math.round((place.y - made.lounge.y) * 100) };
 	};
-	const [a, c] = [seatOf('here/a'), seatOf('here/c')];
+	const [a, b, c] = [seatOf('here/a'), seatOf('here/b'), seatOf('here/c')];
 
 	made.vaporize('here/b');
 	run(made, 3);
@@ -2011,14 +2011,22 @@ test('one deleted on a couch keeps its place till its dust has gone, the others 
 	expect(seatOf('here/a')).toEqual(a);
 	expect(seatOf('here/c')).toEqual(c);
 
-	// Its dust gone, the couch it freed is zapped, and the lounge keeps its size till that ash is gone too
+	// Its dust gone, its seat is empty: nobody is moved into it, and no couch goes while anyone is on it
 	run(made, 7);
 	made.update([answer('here', [stopped('a'), stopped('c')], { projects: ['paude'] })]);
-	expect(made.couchZaps).toMatchObject([{ index: 1 }]);
+	run(made, 1);
+	expect(made.lounging).toEqual(['here/a', null, 'here/c']);
+	expect(made.couchZaps).toEqual([]);
 	expect(made.layout.rooms.find(({ kind }) => kind === 'lounge').count).toBe(3);
-	run(made, 9);
-	made.update([answer('here', [stopped('a'), stopped('c')], { projects: ['paude'] })]);
-	expect(made.layout.rooms.find(({ kind }) => kind === 'lounge').count).toBe(2);
+	expect(seatOf('here/a')).toEqual(a);
+	expect(seatOf('here/c')).toEqual(c);
+	expect(made.walking(made.workers.get('here/c'))).toBe(false);
+
+	// One newly come to rest takes the empty seat rather than a new couch
+	made.update([answer('here', [stopped('a'), stopped('c'), stopped('d')], { projects: ['paude'] })]);
+	expect(made.lounging).toEqual(['here/a', 'here/d', 'here/c']);
+	expect(made.couchDrops).toEqual([]);
+	expect(seatOf('here/d')).toEqual(b);
 });
 
 test('a sealed ship comes in out of warp once there is one to show, and opens only once it has arrived, however soon it is asked to', () => {
@@ -2510,13 +2518,12 @@ test('a couch more needed is dropped out of the tube; one no longer needed is za
 	run(made, 3);
 	expect(made.couchesLifted()[1] ?? 0).toBe(0);
 
-	// The one on it gets up: it's no longer needed, and the emitter comes down for it; the lounge stays its size
+	// The one on it gets up: it's empty, and the emitter comes down for it where it stands; the lounge stays its size
 	const loungeCount = () => made.layout.rooms.find(({ kind }) => kind === 'lounge').count;
 
 	made.update(resting(['a', 'b']));
-	expect(made.couches).toBe(1);
 	expect(made.couchZaps).toMatchObject([{ index: 1 }]);
-	expect(loungeCount()).toBe(3);
+	expect(loungeCount()).toBe(4);
 
 	const ashes = made.dust.length;
 
@@ -2527,19 +2534,20 @@ test('a couch more needed is dropped out of the tube; one no longer needed is za
 	expect(made.dust.at(-1).couch).toBe(1);
 	expect([...made.couchesGone()]).toEqual([1]);
 	made.update(resting(['a', 'b']));
-	expect(loungeCount()).toBe(3);
+	expect(loungeCount()).toBe(4);
 
 	// Its ash sucked up, the lounge still leaves the couch out until it's laid again, for the one couch
 	run(made, 7);
 	expect(made.dust.some(({ couch }) => couch === 1)).toBe(false);
-	expect(loungeCount()).toBe(3);
+	expect(loungeCount()).toBe(4);
 	expect([...made.couchesGone()]).toEqual([1]);
 	made.update(resting(['a', 'b']));
+	expect(made.couches).toBe(1);
 	expect(loungeCount()).toBe(2);
 	expect([...made.couchesGone()]).toEqual([]);
 });
 
-test('a lounger whose couch moves up as one before it gets up hops down and scoots over to it, rather than appearing there; to another row by the side', () => {
+test('nobody is moved to fill an empty seat; a couch goes only once both its seats are empty, zapped where it stands, and those after it then slide up with whoever sits on them', () => {
 	const resting = ids => [
 		answer(
 			'here',
@@ -2547,47 +2555,55 @@ test('a lounger whose couch moves up as one before it gets up hops down and scoo
 			{ projects: ['paude'] },
 		),
 	];
-	const made = shipWith(resting(['a', 'b', 'c']));
+	const made = shipWith(resting(['a', 'b', 'c', 'd', 'e']));
 
-	run(made, 30);
-
-	const c = made.workers.get('here/c');
-	const was = { ...made.placeOf(c) };
-
-	expect(made.walking(c)).toBe(false);
-	made.update(resting(['a', 'c']));
-
-	const now = made.placeOf(c);
-
-	expect(now).not.toEqual(was);
-	// Off from where it sat, down into the aisle, along, and up onto the couch it has now
-	expect([c.x, c.y]).toEqual([was.x, was.y]);
-	expect(c.path).toEqual([{ x: was.x, y: was.y + 0.55 }, { x: now.x, y: now.y + 0.55 }, now]);
-	// The one before it, whose couch didn't move, stays put
-	expect(made.walking(made.workers.get('here/a'))).toBe(false);
-	// Mid-hop it's off the ground
-	run(made, 0.1);
-	expect(made.hopOf(c)).toBeGreaterThan(0);
-	expect(made.standingAt(c).y).toBeLessThan(made.art(c).y);
-	run(made, 30);
-	expect(made.walking(c)).toBe(false);
-	expect(made.hopOf(c)).toBe(null);
-	expect(Math.hypot(c.x - now.x, c.y - now.y)).toBeLessThan(0.01);
-
-	// Five resting fill a row and start a second; the first of the second row, its couch gone up a row, goes round by
-	// the lounge's side rather than through the couches
-	made.update(resting(['a', 'b', 'c', 'd', 'e']));
 	run(made, 40);
 
-	const e = made.workers.get('here/e');
-	const seatedAt = { ...made.placeOf(e) };
+	// Where on the couches, from the lounge's middle, wherever the lounge itself stands and however wide it is
+	const seatOf = key => {
+		const place = made.placeOf(made.workers.get(`here/${key}`));
 
-	made.update(resting(['b', 'c', 'd', 'e']));
-	expect(made.placeOf(e).y).toBeLessThan(seatedAt.y);
-	expect(e.path).toHaveLength(5);
-	expect(e.path[1].x).toBeCloseTo(made.lounge.x + 0.4, 5);
-	expect(e.path[1].y).toBeCloseTo(seatedAt.y + 0.55, 5);
-	expect(e.path[2].y).toBeCloseTo(made.placeOf(e).y + 0.55, 5);
+		return { x: place.x - made.lounge.x - made.lounge.w / 2, y: place.y - made.lounge.y };
+	};
+	const apart = (one, other) => Math.hypot(one.x - other.x, one.y - other.y);
+	const [d, e] = [seatOf('d'), seatOf('e')];
+
+	// One of the middle couch's two gets up: the other stays on it, alone, and nothing is zapped
+	made.update(resting(['a', 'b', 'd', 'e']));
+	run(made, 1);
+	expect(made.lounging).toEqual(['here/a', 'here/b', null, 'here/d', 'here/e']);
+	expect(made.couchZaps).toEqual([]);
+	expect(apart(seatOf('d'), d)).toBeLessThan(0.001);
+	expect(apart(seatOf('e'), e)).toBeLessThan(0.001);
+
+	// The other gets up too: the couch is empty, and is zapped where it stands, the one after it not yet moved
+	made.update(resting(['a', 'b', 'e']));
+	expect(made.couchZaps).toMatchObject([{ index: 1 }]);
+	expect([...made.couchesGone()]).toEqual([1]);
+	run(made, 1);
+	expect(apart(seatOf('e'), e)).toBeLessThan(0.001);
+
+	// Its ash sucked up, it's taken out: the couch after it slides up into its place, the one on it carried along
+	// rather than getting up to walk or turning up there
+	run(made, 12);
+	made.update(resting(['a', 'b', 'e']));
+	expect(made.lounging).toEqual(['here/a', 'here/b', 'here/e']);
+	made.step(1 / 60, false);
+
+	const goal = seatOf('e');
+
+	expect(made.walking(made.workers.get('here/e'))).toBe(false);
+	expect(apart(goal, e)).toBeLessThan(0.2);
+	expect(made.couchShifts[1]).not.toBeNull();
+	run(made, 0.5);
+	expect(apart(seatOf('e'), e)).toBeGreaterThan(0.2);
+	expect(apart(seatOf('e'), d)).toBeGreaterThan(0.01);
+	run(made, 5);
+	// Come to rest where the middle couch's first seat was
+	expect(made.couchShifts[1]).toBeNull();
+	expect(seatOf('e').y).toBeCloseTo(d.y, 5);
+	expect(seatOf('e').x).toBeCloseTo(d.x - 0.9, 5);
+	expect(made.walking(made.workers.get('here/e'))).toBe(false);
 });
 
 test('islands stay where they stood as others come and go, unless they no longer fit there', () => {
