@@ -5,6 +5,7 @@ import { LIFETIMES } from '../shared/lifetimes';
 import { MODELS } from '../shared/models';
 import tokens from '../shared/tokenCount';
 import { READING, makesGame } from '../shared/arcade';
+import { carriedInto, promptPlan, startWith } from '../shared/promptPlan';
 import {
 	createSession,
 	findPromptHome,
@@ -64,6 +65,13 @@ const Compose = styled(
 			align-items: center;
 			gap: ${space.sm};
 			min-width: 0;
+		}
+
+		/* Where it goes and what a new session is started with: small fields in the row, not each a row of its own */
+		.options select.choice {
+			width: auto;
+			max-width: 16em;
+			flex: 0 1 auto;
 		}
 
 		/* A setting the prompt goes out with, as the session's bar shows it; a press opens its choices */
@@ -328,7 +336,7 @@ const looking = text => {
 };
 
 // The model a new session runs on, as suggested (and why) and changeable before it starts: { node, value() }
-const modelPicker = (suggested, why) => {
+const modelPicker = (suggested, why, chosen) => {
 	const node = element('div', 'model');
 	const picking = element('label', 'pick');
 	const select = element('select');
@@ -339,7 +347,8 @@ const modelPicker = (suggested, why) => {
 		option.value = model;
 		select.append(option);
 	}
-	select.value = suggested in MODELS ? suggested : 'default';
+	// What was already picked where the prompt was written stands; the suggestion is only marked
+	select.value = (chosen in MODELS && chosen) || (suggested in MODELS ? suggested : 'default');
 	picking.append('Runs on', select);
 	node.append(picking, ...(why ? [element('div', 'model-why', why)] : []));
 
@@ -348,7 +357,7 @@ const modelPicker = (suggested, why) => {
 
 // How long the new session lasts, Haiku's suggestion picked (ordinary when it made none): every lifetime, the ones that
 // act unattended on the owner's usage included, since this is the person choosing
-const lifetimePicker = suggested => {
+const lifetimePicker = (suggested, chosen) => {
 	const node = element('div', 'model');
 	const picking = element('label', 'pick');
 	const select = element('select');
@@ -359,7 +368,7 @@ const lifetimePicker = suggested => {
 		option.value = lifetime;
 		select.append(option);
 	}
-	select.value = suggested in LIFETIMES ? suggested : 'ordinary';
+	select.value = (chosen in LIFETIMES && chosen) || (suggested in LIFETIMES ? suggested : 'ordinary');
 	picking.append('Lasts', select);
 	node.append(picking);
 
@@ -415,7 +424,10 @@ export const arcadePicker = () => {
 // Each place a prompt can go, as { heading, lines, accent, go, after }: the sessions it carries on, then a new session
 // in the project that fits, here or on another server, with the model it runs on and how long it lasts to pick under
 // it (`after`). go() takes it there and resolves true once it's on its way.
-const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive, arcade }) => {
+const placesFor = (
+	{ matches, fresh },
+	{ prompt, project, startFresh, onArrive, arcade, model: runs, lifetime: lasts },
+) => {
 	const sessions = matches.map(({ session, remote, why, meter }) => ({
 		heading: 'Carries on',
 		lines: [
@@ -446,8 +458,8 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive, 
 		},
 	}));
 	const where = fresh.project ?? project;
-	const model = modelPicker(fresh.model, fresh.modelWhy);
-	const lifetime = lifetimePicker(fresh.lifetime);
+	const model = modelPicker(fresh.model, fresh.modelWhy, runs);
+	const lifetime = lifetimePicker(fresh.lifetime, lasts);
 	const after = element('div', 'pickers');
 
 	after.append(model.node, lifetime.node);
@@ -483,41 +495,92 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive, 
 			],
 			after,
 			fresh: true,
-			go: async () => {
-				const mode = lifetime.value() === 'ordinary' ? undefined : lifetime.value();
+			go: () => {
+				if (startFresh && !fresh.remote) return startFresh(where, lifetime.value(), model.value());
 
-				if (fresh.remote) {
-					const { body, response } = await startRemoteSession(fresh.remote.url, where, prompt, mode, model.value());
-
-					if (!response?.ok) return failed(`Could not start it on ${fresh.remote.name}`);
-					if (onArrive) return onArrive({ id: body.id, remote: fresh.remote }) ?? true;
-
-					return await openThere(fresh.remote.url, { sessionId: body.id });
-				}
-				if (startFresh) return startFresh(where, lifetime.value(), model.value());
-
-				const { body, response } = await createSession(
-					where,
+				return startSessionIn({
 					prompt,
-					undefined,
-					mode,
-					model.value(),
-					arcade ? { reading: arcade } : undefined,
-				);
-
-				if (!response?.ok) return failed(`Could not start it in ${where}`);
-				if (arcade) {
-					window.location.hash = `#/arcade/${body.id}`;
-
-					return true;
-				}
-				if (onArrive) return onArrive({ id: body.id }) ?? true;
-				window.location.hash = `#/sessions/${body.id}`;
-
-				return true;
+					project: where,
+					remote: fresh.remote,
+					model: model.value(),
+					lifetime: lifetime.value(),
+					arcade,
+					onArrive,
+				});
 			},
 		},
 	];
+};
+
+// A new session started in `project` with `prompt`, and gone to: no looking for one it carries on, nothing asked. On
+// another paude with `remote` ({ url, name }); run on `model` and lasting `lifetime` (each as picked, or left out for
+// the ordinary); in the arcade with `arcade`. `model: 'suggest'` asks what the prompt wants first, which is the one
+// wait there can be. Goes to `onArrive({ id, remote })` when given, else to the session's page. Resolves true once
+// it's on its way.
+export const startSessionIn = async ({ prompt, project, remote, model, lifetime, arcade, onArrive }) => {
+	let suggested;
+
+	if (promptPlan({ project, remote, arcade, model }).suggest) {
+		const { body, response } = await findPromptHome(prompt, project);
+
+		suggested = response?.ok ? body.fresh?.model : undefined;
+	}
+
+	const { model: tier, mode } = startWith({ model, lifetime, suggested });
+
+	if (remote) {
+		const { body, response } = await startRemoteSession(remote.url, project, prompt, mode, tier);
+
+		if (!response?.ok) return failed(`Could not start it on ${remote.name}`);
+		if (onArrive) return onArrive({ id: body.id, remote }) ?? true;
+
+		return await openThere(remote.url, { sessionId: body.id });
+	}
+
+	const { body, response } = await createSession(
+		project,
+		prompt,
+		undefined,
+		mode,
+		tier,
+		arcade ? { reading: arcade } : undefined,
+	);
+
+	if (!response?.ok) return failed(`Could not start it in ${project}`);
+	if (arcade) {
+		window.location.hash = `#/arcade/${body.id}`;
+
+		return true;
+	}
+	if (onArrive) return onArrive({ id: body.id }) ?? true;
+	window.location.hash = `#/sessions/${body.id}`;
+
+	return true;
+};
+
+// What a new session is started with, picked where its prompt is written rather than asked after it's sent: the
+// model it runs on (the default, a tier, or whatever paude suggests for the prompt) and how long it lasts. Two small
+// fields for a prompt box's options: { nodes, value() → { model, lifetime } }
+export const sessionChoices = () => {
+	const model = element('select', 'choice');
+	const lifetime = element('select', 'choice');
+
+	for (const [key, { label, detail }] of Object.entries(MODELS))
+		model.append(Object.assign(element('option', '', label), { value: key, title: detail }));
+	model.append(
+		Object.assign(element('option', '', 'Suggest a model'), {
+			value: 'suggest',
+			title: 'paude reads the prompt and picks the model that fits it',
+		}),
+	);
+	model.title = 'The model a new session runs on';
+	model.setAttribute('aria-label', 'Model');
+	for (const [key, { label, detail }] of Object.entries(LIFETIMES))
+		lifetime.append(Object.assign(element('option', '', label), { value: key, title: detail }));
+	lifetime.title = 'How long a new session lasts';
+	lifetime.setAttribute('aria-label', 'How long it lasts');
+
+	return { nodes: [model, lifetime], value: () => ({ model: model.value, lifetime: lifetime.value }) };
 };
 
 // Finds where `prompt` belongs, in a dialog that shows it looking, then offers each place it could go; each goes
@@ -527,7 +590,19 @@ const placesFor = ({ matches, fresh }, { prompt, project, startFresh, onArrive, 
 // once it's gone.
 // `remote` ({ url, name }): the project is on that paude, so the prompt starts a session there without asking Haiku
 // where it goes; this paude can't place it among sessions it doesn't have
-export const placePrompt = async ({ prompt, project, remote, startFresh, onArrive, onSent, arcade = null }) => {
+// `model` and `lifetime`: what was already picked for a new session where the prompt was written, which the dialog's
+// own pickers then start on, so nothing chosen is asked again ('suggest', or none, leaves it to the suggestion)
+export const placePrompt = async ({
+	prompt,
+	project,
+	remote,
+	startFresh,
+	onArrive,
+	onSent,
+	arcade = null,
+	model,
+	lifetime,
+}) => {
 	if (!prompt) return new Notify({ intent: 'warning', content: 'Say what Claude should do first' });
 
 	const body = new Placing({});
@@ -587,7 +662,14 @@ export const placePrompt = async ({ prompt, project, remote, startFresh, onArriv
 		return new Notify({ intent: 'warning', content: "Couldn't place it just now" });
 	}
 
-	const places = placesFor(found, { prompt, project, startFresh, onArrive, arcade });
+	const places = placesFor(found, {
+		prompt,
+		project,
+		startFresh,
+		onArrive,
+		arcade,
+		...carriedInto({ model, lifetime }),
+	});
 	const go = async (place, pressed) => {
 		const buttons = [...body.elem.querySelectorAll('button.place, .model select')];
 

@@ -128,6 +128,17 @@ export const Stage = styled(
 			overflow: auto;
 		}
 
+		/* What a new session is started with: its model and how long it lasts, side by side under where it goes */
+		.reply-card .choices {
+			display: flex;
+			gap: ${space.sm};
+		}
+
+		.reply-card .choices select {
+			flex: 1;
+			min-width: 0;
+		}
+
 		.reply-card .answer {
 			display: flex;
 			flex-direction: column;

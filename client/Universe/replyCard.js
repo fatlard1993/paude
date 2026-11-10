@@ -7,7 +7,8 @@ import { sendPrompt, sendRemotePrompt } from '../api';
 import { AskingCard, showAsking } from '../Asking';
 import { button, element } from '../dom';
 import { intoBox, micButton } from '../micButton';
-import { arcadePicker, HOME_PROMPT_KEY, placePrompt } from '../PromptHome';
+import { promptPlan } from '../../shared/promptPlan';
+import { arcadePicker, HOME_PROMPT_KEY, placePrompt, sessionChoices, startSessionIn } from '../PromptHome';
 import { forget, recall, remember } from '../storage';
 import refusal from './reason';
 import { sessionKey } from './scene';
@@ -77,14 +78,16 @@ const composer = ({ placeholder, send, actions, keep, session }) => {
 
 	const row = element('div', 'actions');
 	const mic = micButton({ session, onText: words => intoBox(text, words), className: 'variant-flat' });
-	const buttons = [...actions, mic, button('Send', submit, { icon: 'paper-plane' })].filter(Boolean);
+	// Its words in a part of their own, for a card whose send is called by what it will do
+	const sendLabel = element('span', 'label', 'Send');
+	const buttons = [...actions, mic, button(sendLabel, submit, { icon: 'paper-plane' })].filter(Boolean);
 
 	// Pressed, not submitting: Enter in the box sends
 	for (const node of buttons) node.type = 'button';
 	row.append(...buttons);
 	form.append(text, row);
 
-	return { form, sent: () => forget(keep) };
+	return { form, sent: () => forget(keep), text, sendLabel };
 };
 
 // One session's reply, beside its worker. `session` is as the last answer had it.
@@ -164,9 +167,7 @@ export const promptCard = ({ project, projects = [], onSent, onArrive, onClose }
 	const about = () => {
 		if (!where.value) return 'paude finds where it goes';
 
-		return chosen()?.remote
-			? `starts a session there, on ${chosen().remote.name}`
-			: 'paude finds the session it carries on there, or starts one';
+		return chosen()?.remote ? `starts a new session there, on ${chosen().remote.name}` : 'starts a new session there';
 	};
 	const head = heading(project ? `New prompt in ${project.name}` : 'New prompt', about(), onClose);
 
@@ -182,30 +183,53 @@ export const promptCard = ({ project, projects = [], onSent, onArrive, onClose }
 	);
 	where.value = project?.name ?? '';
 	where.title = 'Where it goes';
-	where.addEventListener('change', () => (head.querySelector('.about').textContent = about()));
 
-	// Sent for the arcade or not, as on the home page
+	// Sent for the arcade or not, as on the home page; and what a new session runs on and how long it lasts, picked
+	// here with the rest, not asked once it's sent
 	const arcade = arcadePicker();
+	const session = sessionChoices();
+	const done = () => {
+		box.sent();
+		onSent?.();
+		onClose();
+	};
+	const asked = text => ({
+		prompt: text,
+		project: where.value || undefined,
+		remote: chosen()?.remote,
+		arcade: arcade.value(),
+		...session.value(),
+		onArrive,
+	});
+	// Looked for: the session it carries on, or the project it belongs in, offered before anything starts
+	const find = text => placePrompt({ ...asked(text), onSent: done });
+	const finder = button('Find a session', () => box.text.value.trim() && find(box.text.value.trim()), {
+		icon: 'magnifying-glass',
+		className: 'variant-flat',
+		title: 'Carry it on in a session already going there, if one fits, instead of starting a new one',
+	});
 	const box = composer({
 		keep: HOME_PROMPT_KEY,
 		placeholder: 'What should Claude do?',
-		actions: [arcade.node],
-		send: text =>
-			placePrompt({
-				prompt: text,
-				project: where.value || undefined,
-				remote: chosen()?.remote,
-				arcade: arcade.value(),
-				onArrive,
-				onSent: () => {
-					box.sent();
-					onSent?.();
-					onClose();
-				},
-			}),
+		actions: [arcade.node, finder],
+		// A project said: a new session there, started at once. None said: paude has to find where it goes (or, for
+		// the arcade, it's a new game)
+		send: async text => {
+			if (promptPlan(asked(text)).does !== 'start') return find(text);
+			if (await startSessionIn(asked(text))) done();
+		},
 	});
+	const starting = element('div', 'choices');
+	const said = () => {
+		head.querySelector('.about').textContent = about();
+		finder.style.display = where.value && !chosen()?.remote ? '' : 'none';
+		box.sendLabel.textContent = where.value ? 'Start new session' : 'Find where it goes';
+	};
 
-	card.append(head, where, box.form);
+	where.addEventListener('change', said);
+	starting.append(...session.nodes);
+	card.append(head, where, starting, box.form);
+	said();
 
 	return card;
 };
