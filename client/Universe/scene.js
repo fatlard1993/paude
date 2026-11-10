@@ -273,7 +273,7 @@ const WATCHER_BEHIND = 0.4;
 const WATCHER_REACH = 9;
 // How tall the monitor and a suited person stand, in art pixels; the monitor's footprint for what it walks behind
 const WATCHER_TALL = 30;
-const SUIT_TALL = 23;
+const SUIT_TALL = 26;
 const WATCHER_SIZE = { half: 6, tall: WATCHER_TALL };
 // When its session stops to ask something, the monitor takes it in first, its skull glowing as a thinking grey's does,
 // then raises its arm to point at the terminal: how long each takes, in seconds
@@ -7582,12 +7582,12 @@ export default class Ship {
 		const stick = at.y - 16;
 		const mashing = Math.floor((this.time + seed * 5) / 4) % 3 === 0;
 		const hand = mashing
-			? { x: at.x + toward * 7, y: stick + 1 + (Math.floor(this.time * 6) % 2) }
-			: { x: at.x + toward * (8 + (Math.floor(this.time * 3 + seed) % 2)), y: stick };
+			? { x: at.x + toward * 8, y: stick + 1 + (Math.floor(this.time * 6) % 2) }
+			: { x: at.x + toward * (9 + (Math.floor(this.time * 3 + seed) % 2)), y: stick };
 
-		rect(ctx, at.x - 3, at.y, 7, 1, PALETTE.k);
+		rect(ctx, at.x - 4, at.y, 9, 1, PALETTE.k);
 		drawSprite(ctx, 'suitPlay', at.x, at.y, { colors, flip: toward < 0 });
-		drawLimb(ctx, { x: at.x + toward * 4, y: at.y - SUIT_TALL + 9 }, hand, PALETTE.w);
+		drawLimb(ctx, { x: at.x + toward * 5, y: at.y - SUIT_TALL + 10 }, hand, PALETTE.w);
 	}
 
 	// Walking, seen from the front; at their place by their pose
@@ -7623,7 +7623,7 @@ export default class Ship {
 				rect(ctx, at.x - 7, at.y - SUIT_TALL + 2, 5, 1, PALETTE.W);
 			}
 		} else {
-			rect(ctx, at.x - 3, at.y, 7, 1, PALETTE.k);
+			rect(ctx, at.x - 4, at.y, 9, 1, PALETTE.k);
 			drawSprite(ctx, `suit${stride}`, at.x, at.y, { colors, flip: walker.facing < 0 });
 		}
 		ctx.globalAlpha = 1;

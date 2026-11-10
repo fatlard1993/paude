@@ -135,65 +135,67 @@ Object.assign(BODIES, { sit: sat(BODIES.stand), sitWave: sat(BODIES.wave) });
 // for walking
 // Its helmet, body and arms, over legs standing or walking
 const SUIT_TOP = [
-	'...kkkkk...',
-	'..kwcccwk..',
-	'.kwkkkkkwk.',
-	'.kwkyyWkwk.',
-	'.kwkYyykwk.',
-	'.kwwkkkwwk.',
-	'..kklllkk..',
-	'.kwwwwwwwk.',
-	'kwwcccccwwk',
-	'kwkwcccwkwk',
-	'kwkwwwwwkwk',
-	'kwkwwwwwkwk',
-	'kwkwlllwkwk',
-	'kwkwwwwwkwk',
-	'kmk.kkk.kmk',
+	'....kkkkk....',
+	'..kkwcccwkk..',
+	'.kwwkkkkkwwk.',
+	'.kwkyyyyWkwk.',
+	'.kwkYyyyykwk.',
+	'.kwkYYyyykwk.',
+	'.kwwkkkkkwwk.',
+	'..kkwlllwkk..',
+	'.kwwwwwwwwwk.',
+	'kwwwcccccwwwk',
+	'kwkwwcccwwkwk',
+	'kwkwwwwwwwkwk',
+	'kwkwwwwwwwkwk',
+	'kwkwwlllwwkwk',
+	'kwkwwwwwwwkwk',
+	'kmk.kkkkk.kmk',
 ];
 
-// Their legs, down to the boots: long enough that a person stands a little over a grey, and reaches what a grey needs
-// a stool for
-const SUIT_LEGS = ['..kwwkwwk..', '..kwwkwwk..', '..kwwkwwk..', '..kwwkwwk..', '..kwwkwwk..'];
+// Their legs, down to the boots: long enough that a person stands level with a grey, and reaches what a grey needs a
+// stool for
+const SUIT_LEGS = Array(7).fill('..kwwwkwwwk..');
 
 const SUIT = {
-	stand: [...SUIT_TOP, ...SUIT_LEGS, '..kwwkwwk..', '..kmmkmmk..', '..kkk.kkk..'],
+	stand: [...SUIT_TOP, ...SUIT_LEGS, '..kwwwkwwwk..', '..kmmmkmmmk..', '..kkkk.kkkk..'],
 	// A boot lifted, the other planted, as the greys walk
-	stepLeft: [...SUIT_TOP, ...SUIT_LEGS, '..kmmkwwk..', '..kkkkmmk..', '.....kkkk..'],
-	stepRight: [...SUIT_TOP, ...SUIT_LEGS, '..kwwkmmk..', '..kmmkkkk..', '..kkkk.....'],
+	stepLeft: [...SUIT_TOP, ...SUIT_LEGS, '..kmmmkwwwk..', '..kkkkkmmmk..', '......kkkkk..'],
+	stepRight: [...SUIT_TOP, ...SUIT_LEGS, '..kwwwkmmmk..', '..kmmmkkkkk..', '..kkkkk......'],
 };
 
 // Someone at an arcade cabinet to their right: the arm on that side is out to it, drawn apart as it moves, so the
 // suit has only its shoulder there
 const SUIT_PLAY = SUIT.stand.map((row, index) => {
-	if (index === 8) return `${row.slice(0, 9)}k.`;
+	if (index === 9) return `${row.slice(0, 11)}k.`;
 	// Its hand, at the bottom of the arm
-	if (index === SUIT_TOP.length - 1) return `${row.slice(0, 8)}...`;
+	if (index === SUIT_TOP.length - 1) return `${row.slice(0, 10)}...`;
 
-	return index > 8 && index < SUIT_TOP.length - 1 ? `${row.slice(0, 9)}..` : row;
+	return index > 9 && index < SUIT_TOP.length - 1 ? `${row.slice(0, 11)}..` : row;
 });
 
 // Someone seen from behind, looking in: the back of their helmet striped in their color, their air pack
 const SUIT_BACK = [
-	'...kkkkk...',
-	'..kwcccwk..',
-	'.kwwcccwwk.',
-	'.kwwwwwwwk.',
-	'.kwwwwwwwk.',
-	'.kwwwwwwwk.',
-	'..kklllkk..',
-	'.kmmmmmmmk.',
-	'kwmlllllmwk',
-	'kwmcccccmwk',
-	'kwmmmmmmmwk',
-	'kwmmmmmmmwk',
-	'kwkmmmmmkwk',
-	'kwkwwwwwkwk',
-	'kmk.kkk.kmk',
+	'....kkkkk....',
+	'..kkwcccwkk..',
+	'.kwwwcccwwwk.',
+	'.kwwwwwwwwwk.',
+	'.kwwwwwwwwwk.',
+	'.kwwwwwwwwwk.',
+	'.kwwwwwwwwwk.',
+	'..kkwlllwkk..',
+	'.kmmmmmmmmmk.',
+	'kwmmlllllmmwk',
+	'kwmmcccccmmwk',
+	'kwmmmmmmmmmwk',
+	'kwmmmmmmmmmwk',
+	'kwkmmmmmmmkwk',
+	'kwkwwwwwwwkwk',
+	'kmk.kkkkk.kmk',
 	...SUIT_LEGS,
-	'..kwwkwwk..',
-	'..kmmkmmk..',
-	'..kkk.kkk..',
+	'..kwwwkwwwk..',
+	'..kmmmkmmmk..',
+	'..kkkk.kkkk..',
 ];
 
 // A camera on its bracket, its lens to the right and its light (s) red while it's watching
