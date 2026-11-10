@@ -302,6 +302,8 @@ export default class Universe extends View {
 		this.ships = new Map([['', this.makeShip()]]);
 		this.aboard = this.ships.get('');
 		this.remotes = [];
+		// Each engine's last known Claude account, so a poll that leaves it out doesn't move the engine to another ship
+		this.accounts = new Map();
 		// An engine whose universe didn't answer isn't asked again for a while
 		this.sealed = new Map();
 		this.calm = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -345,7 +347,7 @@ export default class Universe extends View {
 	// A ship for each subscription, this paude's first. Ships come and go with their subscriptions.
 	updateShips() {
 		const answers = this.answers ?? [];
-		const groups = shipsOf(answers);
+		const groups = shipsOf(answers, this.accounts);
 
 		// No answers yet: one empty ship, so there's always one to draw
 		if (!groups.size) groups.set('', []);

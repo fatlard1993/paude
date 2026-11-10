@@ -884,7 +884,7 @@ test("a lounger's empties go to its head by the same clock as its pile: steady a
 	expect(gone.made.cansOf(gone.worker)).toBe(10);
 });
 
-test("two passed out on one couch slump to the side, mostly to their own arms and now and then onto each other, faces never lost in the lap", () => {
+test('two passed out on one couch slump to the side, mostly to their own arms and now and then onto each other, faces never lost in the lap', () => {
 	const made = shipWith([
 		answer('here', [
 			session({ id: 'a', status: 'stopped', tool: null, coldAgo: 5 * 60 * MINUTE, stoppedAgo: 5 * 60 * MINUTE }),
@@ -967,6 +967,16 @@ test("a ship for each subscription: paudes on one account together, one that doe
 		['account:b', ['work']],
 	]);
 	expect(keys(shipsOf([{ key: 'here' }, { key: 'old' }]))).toEqual([['own:here', ['here', 'old']]]);
+
+	// An engine that leaves its account out of one answer stays on the ship it was last on
+	const known = new Map();
+	const answer = (key, account) => ({ key, ...(account && { fuel: { account } }) });
+
+	shipsOf([answer('here', 'a'), answer('workbook', 'b')], known);
+	expect(keys(shipsOf([answer('here', 'a'), answer('workbook')], known))).toEqual([
+		['account:a', ['here']],
+		['account:b', ['workbook']],
+	]);
 });
 
 test("a session's subagent count is its paude's word: no more small greys are made than are ever drawn", () => {
