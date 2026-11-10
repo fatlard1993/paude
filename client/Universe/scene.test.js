@@ -32,7 +32,7 @@ import {
 	setTrim,
 	walls,
 } from './station';
-import { drawAirlock, drawTransporter, shuttleAt } from './hull';
+import { SHUTTLE_HOVER, drawAirlock, drawShuttle, drawTransporter, shuttleAt } from './hull';
 import { spriteSize } from './art';
 
 const session = changes => ({
@@ -3118,6 +3118,54 @@ test("another paude's owner with no terminal open there is this paude asking it,
 	// And this paude's own owner is never dropped, whatever they have open
 	made.update([here]);
 	expect([...made.people.keys()]).toEqual(['me']);
+});
+
+test('a shuttle hangs over the airlock with a tube down to the hull long and wide enough for a person, who is drawn in it as themselves', () => {
+	const dock = { x: 200, y: 100 };
+
+	// Docked: straight over the hatch, a tube's length up, which is more than a person in their suit is tall
+	expect(shuttleAt(dock, 0)).toEqual({ x: dock.x, y: dock.y - SHUTTLE_HOVER });
+	expect(SHUTTLE_HOVER).toBeGreaterThan(30);
+
+	const sprites = [];
+	const clips = [];
+	const fills = [];
+	const ctx = {
+		fillStyle: '',
+		fillRect: (x, y, w, h) => fills.push({ x, y, w, h }),
+		drawImage: (image, x, y) => sprites.push({ image, x, y }),
+		rect: (x, y, w, h) => clips.push({ x, y, w, h }),
+		save() {},
+		restore() {},
+		beginPath() {},
+		clip() {},
+		translate() {},
+		scale() {},
+	};
+	const hadDocument = 'document' in globalThis;
+	const had = globalThis.document;
+
+	globalThis.document = {
+		createElement: () => ({ width: 15, height: 30, getContext: () => ({ fillStyle: '', fillRect() {} }) }),
+	};
+	try {
+		drawShuttle(ctx, dock, { away: 0, tube: 1, walker: 0.5, hue: 200, rider: 30, time: 0 });
+	} finally {
+		if (hadDocument) globalThis.document = had;
+		else delete globalThis.document;
+	}
+	// The person, as their own figure, seen only inside the tube: which is over the hatch, wider than they are, and
+	// reaches from the craft to the hull
+	expect(sprites).toHaveLength(1);
+	expect(clips).toEqual([{ x: dock.x - 8, y: dock.y - SHUTTLE_HOVER, w: 17, h: SHUTTLE_HOVER }]);
+	// The craft itself is longer than the person is tall, over the tube
+	const hull = fills.filter(({ y, h }) => y + h <= dock.y - SHUTTLE_HOVER);
+
+	expect(Math.max(...hull.map(({ x, w }) => x + w)) - Math.min(...hull.map(({ x }) => x))).toBeGreaterThan(40);
+	// With nobody in it, no figure
+	sprites.length = 0;
+	drawShuttle(ctx, dock, { away: 0, tube: 1, walker: null, hue: 200, time: 0 });
+	expect(sprites).toEqual([]);
 });
 
 test('a couch more needed is dropped out of the tube; one no longer needed is zapped from the ceiling, the lounge its size till its ash is sucked up', () => {

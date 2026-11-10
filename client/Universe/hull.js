@@ -606,11 +606,13 @@ export const hullEdges = building => {
 // A shuttle bringing someone aboard or taking them off, docked over the airlock: `dock` the hull's top over it, `away`
 // how far off it still is (0 docked, 1 out of sight ahead and above), `tube` how far its boarding tube reaches down to
 // the hull (0 to 1), `walker` how far down it someone is (0 at the shuttle, 1 at the hull; null for nobody), `hue`
-// theirs. A small white craft striped in their color, its cockpit forward; or, bringing a fabled session's monitor
+// theirs. A white craft big enough to have carried them, striped in their color, ports along it and its cockpit
+// forward, its tube wide enough for a person in their suit; or, bringing a fabled session's monitor
 // (`craft` 'monitor'), a longer dark craft of Fable's livery (`accent`), its window strip lit, striped in the session's
 // color, with the monitor's tall figure in its tube.
 export const SHUTTLE_HOVER = 40;
 
+// How far over the hull a docked shuttle hangs, in art pixels: its tube's length, more than a person's height
 // Where a shuttle hangs `away` from its dock, in art pixels: its hull's bottom, over the hatch
 export const shuttleAt = (dock, away) => ({
 	x: Math.round(dock.x + away * 240),
