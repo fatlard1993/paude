@@ -224,8 +224,11 @@ export const cacheCold = session =>
 const HAUL_SECONDS = 6;
 // One in the lounge on its feet stands at one of the arcade cabinets, two to a cabinet
 // A grey is too short for a cabinet's stick: it plays stood on a stool pulled out from the cabinet's foot. How tall the
-// stool is, in art pixels, and how long it takes to slide out to where the grey stands and the grey to step up onto it
-const STOOL = { tall: 8, slide: 0.35, step: 0.25 };
+// stool is, in art pixels, and how long the grey takes to bend down for it, to slide it out to where it stands, to
+// straighten up again, and to step up onto it; and, done playing, how long it stands down off it and swings a foot
+// (`windup`) before the stool shoots back under the cabinet from its kick (`kicked`), the grey not walking off until
+// both are done
+const STOOL = { tall: 8, reach: 0.25, slide: 0.4, rise: 0.2, step: 0.25, windup: 0.22, kicked: 0.2 };
 const PLAYERS_PER_CABINET = 2;
 // How fast the bay doors in the belly slide, as a part of their way a second
 const BAY_DOOR_RATE = 2.5;
@@ -1630,27 +1633,32 @@ export default class Ship {
 	}
 
 	// Who stands at which cabinet ({ index, side } by session) of those on their feet, `standing`, in their order: two
-	// to a cabinet, those whose game is on filled first; a cabinet played alone is stood before, a pair stands side by
-	// side. Anyone past what the cabinets hold has none
+	// to a cabinet, the first before it (side 0) and the second a little further out (side 1). Whoever is at one keeps
+	// their place there while they stay, so nobody shuffles over when another leaves; newcomers take the places free,
+	// before each cabinet first, those whose game is on first. Anyone past what the cabinets hold has none
 	cabinetPlayers(standing) {
 		const players = new Map();
 		const cabinets = (this.lounge?.cabinets ?? [])
 			.map((cabinet, index) => ({ ...cabinet, index }))
 			.sort((one, other) => Boolean(other.running) - Boolean(one.running));
+		const taken = new Set();
+		const place = ({ index, side }) => `${index}:${side > 0 ? 1 : 0}`;
 
-		if (!cabinets.length) return players;
+		for (const key of standing) {
+			const { playing } = this.workers.get(key) ?? {};
 
-		const playing = standing.slice(0, cabinets.length * PLAYERS_PER_CABINET);
-		const crowd = cabinets.map((_, at) => playing.filter((__, which) => which % cabinets.length === at).length);
+			if (!playing || !cabinets.some(({ index }) => index === playing.index) || taken.has(place(playing))) continue;
+			taken.add(place(playing));
+			players.set(key, playing);
+		}
 
-		playing.forEach((key, which) => {
-			const at = which % cabinets.length;
-			// Alone at it: before its middle; one of two: the first to its left, the second to its right
-			const pair = crowd[at] > 1 ? 1 : 0;
-			const side = which >= cabinets.length ? pair : -pair;
+		const free = Array.from({ length: PLAYERS_PER_CABINET }, (_, side) =>
+			cabinets.map(({ index }) => ({ index, side })),
+		)
+			.flat()
+			.filter(spot => !taken.has(place(spot)));
 
-			players.set(key, { index: cabinets[at].index, side });
-		});
+		for (const key of standing) if (!players.has(key) && free.length) players.set(key, free.shift());
 
 		return players;
 	}
@@ -2224,9 +2232,21 @@ export default class Ship {
 		for (const worker of this.workers.values()) {
 			this.tendSmallGreys(worker, calm);
 			this.tendSip(worker);
-			// At its cabinet and still: its stool comes out from then; walking again, the stool's gone back in
-			if (worker.playing && !this.walking(worker)) worker.stoolAt ??= this.time;
-			else worker.stoolAt = undefined;
+			// At its cabinet and still: its stool comes out from then, where it stands kept for when it's done
+			if (worker.playing && !this.walking(worker)) {
+				worker.stoolAt ??= this.time;
+				if (this.lounge && this.stoolOf(worker).out > 0)
+					worker.stoolWas = {
+						...this.stoolSpot(worker),
+						home: this.art(cabinetAt(this.lounge, worker.playing.index)).x,
+						depth: cabinetAt(this.lounge, worker.playing.index).y,
+					};
+			} else {
+				// Done playing: down off it, and it's kicked back under the cabinet before the grey walks off
+				if (worker.stoolWas && !calm) worker.kick = { ...worker.stoolWas, at: this.time };
+				worker.stoolAt = worker.stoolWas = undefined;
+				if (worker.kick && this.time - worker.kick.at >= STOOL.windup + STOOL.kicked) worker.kick = undefined;
+			}
 		}
 		this.tendCrew(seconds);
 		this.tendCrane(seconds);
@@ -2241,7 +2261,7 @@ export default class Ship {
 				);
 		this.tendTravel();
 		for (const worker of this.workers.values()) {
-			if (worker.path?.length && (calm || this.time - (worker.madeAt ?? -Infinity) >= MAKE_SECONDS))
+			if (worker.path?.length && !worker.kick && (calm || this.time - (worker.madeAt ?? -Infinity) >= MAKE_SECONDS))
 				walk(worker, calm ? Infinity : WORKER_SPEED * seconds, seconds);
 			this.walkWatcher(worker, calm, seconds);
 		}
@@ -2682,6 +2702,7 @@ export default class Ship {
 		}
 		for (const heap of this.dust) standing.push({ y: heap.depth, draw: () => this.drawAshSucked(ctx, heap) });
 		standing.push(...this.litterParts(ctx));
+		standing.push(...this.kickedStools(ctx));
 		for (const zap of this.zaps) standing.push({ y: zap.depth + 0.01, draw: () => this.drawGreyZap(ctx, zap) });
 		for (const parcel of this.parcels)
 			standing.push({
@@ -4980,15 +5001,27 @@ export default class Ship {
 		});
 	}
 
-	// How far out a player's stool is from under its cabinet (`out`, 0 to 1), and how far up onto it the grey has
-	// stepped (`up`, 0 to 1): both 0 while it's still walking over
+	// A player and its stool, once it's at its cabinet: how far bent down to the stool the grey is (`bend`, 0 to 1), how
+	// far out from under the cabinet it has pulled it (`out`, 0 to 1), and how far up onto it it has stepped (`up`, 0
+	// to 1). It bends, pulls the stool out, straightens, and steps up; all 0 while it's still walking over
 	stoolOf(worker) {
 		const since = worker.playing && worker.stoolAt !== undefined ? this.time - worker.stoolAt : -1;
+		const { reach, slide, rise, step } = STOOL;
 
 		return {
-			out: eased(since / STOOL.slide),
-			up: eased((since - STOOL.slide) / STOOL.step),
+			bend: Math.min(eased(since / reach), 1 - eased((since - reach - slide) / rise)),
+			out: eased((since - reach) / slide),
+			up: eased((since - reach - slide - rise) / step),
 		};
+	}
+
+	// Where a player's stool is on the floor, in art pixels: from under its cabinet's front to under where the grey
+	// stands, as far as it's been pulled
+	stoolSpot(worker) {
+		const foot = this.art(worker.seat);
+		const cabinet = this.art(cabinetAt(this.lounge, worker.playing.index));
+
+		return { x: Math.round(cabinet.x + (foot.x - cabinet.x) * this.stoolOf(worker).out), y: foot.y };
 	}
 
 	// A player's stool: a low step slid out along the floor from the foot of its cabinet to under where it stands
@@ -4997,12 +5030,35 @@ export default class Ship {
 
 		if (out <= 0 || this.walking(worker)) return;
 
-		const foot = this.art(worker.seat);
-		const cabinet = this.art(cabinetAt(this.lounge, worker.playing.index));
-		// From under the cabinet's front to under the grey
-		const x = Math.round(cabinet.x + (foot.x - cabinet.x) * out);
-		const y = foot.y;
+		this.paintStool(ctx, this.stoolSpot(worker));
+	}
 
+	// The stools kicked back in by those done playing: each standing a moment where it was while its grey, down off it,
+	// swings a foot at it, then shooting back under its cabinet
+	kickedStools(ctx) {
+		return [...this.workers.values()]
+			.filter(({ kick }) => kick)
+			.map(({ kick, x: standsAt }) => ({
+				y: kick.depth + 0.005,
+				draw: () => {
+					const since = this.time - kick.at;
+					const gone = Math.max(0, Math.min(1, (since - STOOL.windup) / STOOL.kicked));
+					const toward = Math.sign(kick.home - kick.x) || 1;
+
+					this.paintStool(ctx, { x: Math.round(mix(kick.x, kick.home, gone ** 0.6)), y: kick.y });
+					if (standsAt === undefined) return;
+
+					// Its foot, drawn back and then swung into the stool's near side
+					const swing = Math.min(1, since / STOOL.windup);
+					const foot = Math.round(this.art({ x: standsAt, y: 0 }).x + toward * (swing < 0.5 ? -2 : 2 + swing * 3));
+
+					rect(ctx, foot - 1, kick.y - 3, 4, 3, PALETTE.k);
+					rect(ctx, foot, kick.y - 2, 2, 1, PALETTE.a);
+				},
+			}));
+	}
+
+	paintStool(ctx, { x, y }) {
 		rect(ctx, x - 6, y - STOOL.tall, 12, 3, PALETTE.k);
 		rect(ctx, x - 5, y - STOOL.tall, 10, 2, PALETTE.l);
 		rect(ctx, x - 5, y - STOOL.tall, 10, 1, PALETTE.w);
@@ -5579,7 +5635,9 @@ export default class Ship {
 		const stride = walking && making >= 1 ? STEPS[Math.floor(worker.step) % STEPS.length] : '';
 		const sitting = !walking && briefOf(worker);
 		const body = (waving && (sitting ? 'bodySitWave' : 'bodyWave')) || (sitting ? 'bodySit' : `body${stride}`);
-		const neck = at.y - lift - (sitting ? 6 : 5) + sag;
+		// Bent down to pull its stool out from under a cabinet: its head down and forward over it
+		const stoop = worker.playing && !walking ? this.stoolOf(worker).bend : 0;
+		const neck = at.y - lift - (sitting ? 6 : 5) + sag + Math.round(stoop * 7);
 
 		drawSprite(ctx, body, at.x + (pose?.lurch ?? 0), at.y - lift, {
 			colors,
@@ -5598,7 +5656,10 @@ export default class Ship {
 			ctx.fillRect(at.x - 20, neck - tall / 2 - 20, 40, 40);
 		}
 		if (fill >= 0.9 && Math.floor(this.time * 4) % 2) ctx.globalAlpha = 0.85;
-		const aside = (squeezing ? (Math.floor(this.time * 20) % 2) * 2 - 1 : 0) + (pose ? pose.sway + pose.lean.x : 0);
+		const aside =
+			(squeezing ? (Math.floor(this.time * 20) % 2) * 2 - 1 : 0) +
+			(pose ? pose.sway + pose.lean.x : 0) +
+			Math.round(stoop * 4) * (worker.seat?.side ?? 1);
 
 		drawSprite(ctx, head, at.x + aside, neck, {
 			colors: size === 'bursting' ? { ...colors, r: '#ff4a3a' } : colors,
@@ -5701,9 +5762,16 @@ export default class Ship {
 		const mashing = Math.floor((this.time + worker.seed * 5) / 4) % 3 === 0;
 		// The stick stays where it is on the cabinet as the grey steps up to it: from the floor its arm reaches up for
 		// it, from the stool straight out
-		const stick = at.y - 14 + Math.round(STOOL.tall * this.stoolOf(worker).up);
-		const hand = { x: at.x + toward * (8 + wiggle), y: stick - (mashing ? wiggle : 0) };
-		const shoulder = { x: at.x + toward * 3, y: at.y - 5 };
+		const { bend, up } = this.stoolOf(worker);
+		const stick = at.y - 14 + Math.round(STOOL.tall * up);
+		const playing = { x: at.x + toward * (8 + wiggle), y: stick - (mashing ? wiggle : 0) };
+		// Bent down for its stool, its hand is on that instead: on its near edge, going out with it
+		const stool = this.stoolSpot(worker);
+		const hand = {
+			x: Math.round(mix(playing.x, stool.x + toward * -5, bend)),
+			y: Math.round(mix(playing.y, stool.y - STOOL.tall, bend)),
+		};
+		const shoulder = { x: at.x + toward * 3, y: at.y - 5 + Math.round(bend * 5) };
 
 		for (let step = 0; step <= 3; step++) {
 			const x = Math.round(shoulder.x + ((hand.x - shoulder.x) * step) / 3);

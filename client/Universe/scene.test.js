@@ -2649,16 +2649,42 @@ test('those in the lounge on their feet stand at an arcade cabinet, two to each,
 	// Too short for the stick, each plays stood on a stool: slid out from the cabinet's foot once the grey is there,
 	// the grey then stepping up onto it; the one by the TV stays on the floor
 	made.step(1 / 60, false);
-	expect(made.stoolOf(a)).toEqual({ out: 0, up: 0 });
+	expect(made.stoolOf(a)).toMatchObject({ out: 0, up: 0 });
+	// It bends down for the stool first, then pulls it out, still bent, its feet on the floor
 	run(made, 0.2);
+	expect(made.stoolOf(a).bend).toBeGreaterThan(0.5);
+	expect(made.stoolOf(a).out).toBe(0);
+	run(made, 0.3);
+	expect(made.stoolOf(a).bend).toBe(1);
 	expect(made.stoolOf(a).out).toBeGreaterThan(0);
 	expect(made.stoolOf(a).up).toBe(0);
 	expect(made.standingAt(a).y).toBe(made.art(made.placeOf(a)).y);
+	// Out, it straightens and steps up
 	run(made, 2);
-	expect(made.stoolOf(a)).toEqual({ out: 1, up: 1 });
+	expect(made.stoolOf(a)).toEqual({ bend: 0, out: 1, up: 1 });
 	expect(made.standingAt(a).y).toBe(made.art(made.placeOf(a)).y - 8);
 	expect(made.standingAt(c).y).toBe(made.art(made.placeOf(c)).y);
-	expect(made.stoolOf(c)).toEqual({ out: 0, up: 0 });
+	expect(made.stoolOf(c)).toEqual({ bend: 0, out: 0, up: 0 });
+
+	// Done playing (its question answered, it's off to a couch): down off the stool, it kicks it back under the cabinet
+	// before it walks off
+	const stood = { x: a.x ?? made.placeOf(a).x, y: a.y ?? made.placeOf(a).y };
+	const cabinets = [{ id: 'game', name: 'Game', watched: true, running: true }];
+
+	made.update(
+		looks([session({ id: 'a', status: 'ready', tool: null, context: cold }), asking('b'), asking('c')], cabinets),
+	);
+	made.step(1 / 60, false);
+	expect(a.playing).toBeNull();
+	expect(a.kick).toBeDefined();
+	expect(made.kickedStools({ fillStyle: '', fillRect() {} })).toHaveLength(1);
+	run(made, 0.2);
+	expect(made.walking(a)).toBe(true);
+	expect([a.x, a.y]).toEqual([stood.x, stood.y]);
+	run(made, 0.5);
+	expect(a.kick).toBeUndefined();
+	expect(made.kickedStools({})).toEqual([]);
+	expect(Math.hypot(a.x - stood.x, a.y - stood.y)).toBeGreaterThan(0.1);
 });
 
 test('one gone cold with a question open or a reply unread stands about the lounge, its terminal left lit, and sits down once that is seen to', () => {
