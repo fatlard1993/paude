@@ -2645,6 +2645,20 @@ test('those in the lounge on their feet stand at an arcade cabinet, two to each,
 	expect(b.playing).toMatchObject({ index: 0 });
 	expect(c.playing).toBeNull();
 	expect([a.standing, b.standing, c.standing]).toEqual([false, false, true]);
+
+	// Too short for the stick, each plays stood on a stool: slid out from the cabinet's foot once the grey is there,
+	// the grey then stepping up onto it; the one by the TV stays on the floor
+	made.step(1 / 60, false);
+	expect(made.stoolOf(a)).toEqual({ out: 0, up: 0 });
+	run(made, 0.2);
+	expect(made.stoolOf(a).out).toBeGreaterThan(0);
+	expect(made.stoolOf(a).up).toBe(0);
+	expect(made.standingAt(a).y).toBe(made.art(made.placeOf(a)).y);
+	run(made, 2);
+	expect(made.stoolOf(a)).toEqual({ out: 1, up: 1 });
+	expect(made.standingAt(a).y).toBe(made.art(made.placeOf(a)).y - 8);
+	expect(made.standingAt(c).y).toBe(made.art(made.placeOf(c)).y);
+	expect(made.stoolOf(c)).toEqual({ out: 0, up: 0 });
 });
 
 test('one gone cold with a question open or a reply unread stands about the lounge, its terminal left lit, and sits down once that is seen to', () => {

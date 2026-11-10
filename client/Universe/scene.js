@@ -223,6 +223,9 @@ export const cacheCold = session =>
 	session.status === 'stopped' ? (session.coldAgo ?? 1) > 0 : session.context?.warm === false;
 const HAUL_SECONDS = 6;
 // One in the lounge on its feet stands at one of the arcade cabinets, two to a cabinet
+// A grey is too short for a cabinet's stick: it plays stood on a stool pulled out from the cabinet's foot. How tall the
+// stool is, in art pixels, and how long it takes to slide out to where the grey stands and the grey to step up onto it
+const STOOL = { tall: 8, slide: 0.35, step: 0.25 };
 const PLAYERS_PER_CABINET = 2;
 // How fast the bay doors in the belly slide, as a part of their way a second
 const BAY_DOOR_RATE = 2.5;
@@ -2221,6 +2224,9 @@ export default class Ship {
 		for (const worker of this.workers.values()) {
 			this.tendSmallGreys(worker, calm);
 			this.tendSip(worker);
+			// At its cabinet and still: its stool comes out from then; walking again, the stool's gone back in
+			if (worker.playing && !this.walking(worker)) worker.stoolAt ??= this.time;
+			else worker.stoolAt = undefined;
 		}
 		this.tendCrew(seconds);
 		this.tendCrane(seconds);
@@ -4856,8 +4862,14 @@ export default class Ship {
 
 		// At a cabinet it stands and plays: no couch to dangle its legs from, its cans left on the couch
 		// Drawn just over the cabinet, so the hand on its stick shows
-		if (worker.playing)
-			return [{ y: cabinetAt(this.lounge, worker.playing.index).y + 0.01, draw: () => this.drawWorker(ctx, worker) }];
+		if (worker.playing) {
+			const depth = cabinetAt(this.lounge, worker.playing.index).y;
+
+			return [
+				{ y: depth + 0.005, draw: () => this.drawStool(ctx, worker) },
+				{ y: depth + 0.01, draw: () => this.drawWorker(ctx, worker) },
+			];
+		}
 		// On its feet by the TV: no couch under it either
 		if (worker.standing) return [{ y: seat.y, draw: () => this.drawWorker(ctx, worker) }];
 
@@ -4964,6 +4976,39 @@ export default class Ship {
 				},
 			];
 		});
+	}
+
+	// How far out a player's stool is from under its cabinet (`out`, 0 to 1), and how far up onto it the grey has
+	// stepped (`up`, 0 to 1): both 0 while it's still walking over
+	stoolOf(worker) {
+		const since = worker.playing && worker.stoolAt !== undefined ? this.time - worker.stoolAt : -1;
+
+		return {
+			out: eased(since / STOOL.slide),
+			up: eased((since - STOOL.slide) / STOOL.step),
+		};
+	}
+
+	// A player's stool: a low step slid out along the floor from the foot of its cabinet to under where it stands
+	drawStool(ctx, worker) {
+		const { out } = this.stoolOf(worker);
+
+		if (out <= 0 || this.walking(worker)) return;
+
+		const foot = this.art(worker.seat);
+		const cabinet = this.art(cabinetAt(this.lounge, worker.playing.index));
+		// From under the cabinet's front to under the grey
+		const x = Math.round(cabinet.x + (foot.x - cabinet.x) * out);
+		const y = foot.y;
+
+		rect(ctx, x - 6, y - STOOL.tall, 12, 3, PALETTE.k);
+		rect(ctx, x - 5, y - STOOL.tall, 10, 2, PALETTE.l);
+		rect(ctx, x - 5, y - STOOL.tall, 10, 1, PALETTE.w);
+		for (const leg of [x - 5, x + 3]) {
+			rect(ctx, leg - 1, y - STOOL.tall + 3, 4, STOOL.tall - 2, PALETTE.k);
+			rect(ctx, leg, y - STOOL.tall + 3, 2, STOOL.tall - 3, PALETTE.m);
+		}
+		rect(ctx, x - 3, y - 3, 6, 1, PALETTE.d);
 	}
 
 	// A lounger's empties as they lie, the first `count` of them: where each is, in art pixels, whether it's one of
@@ -5447,7 +5492,10 @@ export default class Ship {
 	standingAt(worker) {
 		const walking = this.walking(worker);
 		const at = this.art(walking ? worker : this.placeOf(worker));
-		// Standing at a cabinet: on the floor, as walking; on a couch a little up; at a console up on its chair
+
+		// At a cabinet: up on its stool, once that's out
+		if (!walking && worker.playing) at.y -= Math.round(STOOL.tall * this.stoolOf(worker).up);
+		// Standing by the TV: on the floor, as walking; on a couch a little up; at a console up on its chair
 		if (!walking && !worker.playing && !worker.standing && !worker.seat?.housing && !briefOf(worker))
 			at.y -= worker.lounging ? 4 : 10;
 
@@ -5649,7 +5697,10 @@ export default class Ship {
 		const beat = Math.floor(this.time * 3 + worker.seed);
 		const wiggle = beat % 2;
 		const mashing = Math.floor((this.time + worker.seed * 5) / 4) % 3 === 0;
-		const hand = { x: at.x + toward * (8 + wiggle), y: at.y - 14 - (mashing ? wiggle : 0) };
+		// The stick stays where it is on the cabinet as the grey steps up to it: from the floor its arm reaches up for
+		// it, from the stool straight out
+		const stick = at.y - 14 + Math.round(STOOL.tall * this.stoolOf(worker).up);
+		const hand = { x: at.x + toward * (8 + wiggle), y: stick - (mashing ? wiggle : 0) };
 		const shoulder = { x: at.x + toward * 3, y: at.y - 5 };
 
 		for (let step = 0; step <= 3; step++) {
