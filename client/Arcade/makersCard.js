@@ -1,15 +1,8 @@
 import { Elem, styled } from '@vanilla-bean/components';
 
-import { getRemotes } from '../api';
-import { button, element } from '../dom';
-import { identity } from '../identity';
-import { knownServers, setServers } from '../servers';
-import { newArcadeForm } from './makeArcade';
 import makersPanel from './makersPanel';
 
-// The home page's way into the arcade: name the game and who's building it, and paude makes a project from the game
-// scaffold, starts Claude in it on its builder's terms, and opens the arcade page on it. On this paude, or on any other
-// this machine is logged into, asked for as the card opens, where the game then lives and runs.
+// The home page's arcade card: the owner's way to give someone an arcade of their own
 const Card = styled(
 	Elem,
 	({ colors, radius, space }) => `
@@ -96,37 +89,14 @@ const Card = styled(
 	`,
 );
 
-// The other paudes this machine can make a game on, for this machine's own login: the ones last found, at once, then
-// asked again (which takes a moment per paude) in case one came or went
-const otherPaudes = async onFound => {
-	if (!identity()?.remotes) return;
-	onFound(knownServers());
-
-	const { body } = await getRemotes().catch(() => ({}));
-
-	if (!Array.isArray(body)) return;
-	setServers(body);
-	onFound(body.filter(remote => !remote.error));
-};
-
-const newArcadeCard = () => {
+// Making a game is a prompt sent to the arcade (the home prompt's arcade chip, then "A new game"); what stays on the
+// home page is the owner's way to give someone an arcade of their own
+const makersCard = () => {
 	const card = new Card({});
-	const opener = element('button', 'open-form variant-flat', '🕹️ New arcade game');
-	const { form, hint, setRemotes, focus } = newArcadeForm({ onMade: () => close() });
-	const close = () => {
-		card.elem.classList.remove('open');
-	};
 
-	form.insertBefore(button('', close, { icon: 'xmark', title: 'Cancel (Esc)', className: 'icon-only' }), hint);
-	card.elem.append(opener, form, makersPanel());
-	opener.addEventListener('click', () => {
-		card.elem.classList.add('open');
-		focus();
-		otherPaudes(setRemotes);
-	});
-	form.addEventListener('keydown', event => event.key === 'Escape' && close());
+	card.elem.append(makersPanel());
 
 	return card.elem;
 };
 
-export default newArcadeCard;
+export default makersCard;
