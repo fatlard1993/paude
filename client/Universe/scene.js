@@ -563,6 +563,11 @@ const drawLimb = (ctx, from, to, color, thick = 1) => {
 	}
 };
 
+// Where a rack stands: at its island's left end behind the desk's line, or beside the machine or seat it's for
+const rackSpotOf = ({ island, seat }) =>
+	(island && { x: island.x - 0.3, y: island.y - 0.15 }) ||
+	(seat.housing && { x: seat.x - 0.65, y: seat.y + 0.05 }) || { x: seat.x - 1.1, y: seat.y - 0.15 };
+
 // One of a lounger's empties as it lies: crushed flat on the floor, or on the backrest stood up, on its side or dented
 const drawCan = (ctx, { x, y, dropped, flip, lie }, color) => {
 	if (dropped) {
@@ -2256,7 +2261,14 @@ export default class Ship {
 	// the lounge's couches change
 	get floor() {
 		const terminals = this.bridge ? this.fleetSpots().map(({ x, y }) => ({ x, y })) : [];
-		const made = `${this.couches ?? 0}|${this.cargo?.length ?? 0}|${terminals.map(({ x }) => x.toFixed(2))}`;
+		// A rack is there only while something runs at its island
+		const racks = this.racks().map(({ spot }) => spot);
+		const made = [
+			this.couches ?? 0,
+			this.cargo?.length ?? 0,
+			terminals.map(({ x }) => x.toFixed(2)),
+			racks.map(({ x, y }) => `${x.toFixed(2)},${y.toFixed(2)}`),
+		].join('|');
 
 		if (this.floorFor !== this.layout || this.floorMade !== made) {
 			this.floorFor = this.layout;
@@ -2266,7 +2278,7 @@ export default class Ship {
 
 			this.floorMap = floorOf(
 				this.layout,
-				footprintsOf(this.layout, { couches: this.couches, pods: this.cargo?.length ?? 0, terminals }),
+				footprintsOf(this.layout, { couches: this.couches, pods: this.cargo?.length ?? 0, terminals, racks }),
 				{ quiet: box ? [{ x: box.left, y: box.top, w: box.right - box.left, d: box.bottom - box.top }] : [] },
 			);
 		}
@@ -6620,7 +6632,7 @@ export default class Ship {
 	// where its conduit comes in and nobody stands in front of it: a sled in it for each process its sessions run beside Claude, as many as it holds, and a
 	// beacon atop it while any of them serves something. Pressed, it opens the processes of the one that runs some, or
 	// offers each that does.
-	rackParts(ctx) {
+	racks() {
 		const racks = new Map();
 
 		for (const worker of this.workers.values()) {
@@ -6638,13 +6650,11 @@ export default class Ship {
 			racks.set(key, rack);
 		}
 
-		return [...racks.values()].map(rack => {
-			const { island, seat } = rack;
-			const spot = (island && { x: island.x - 0.3, y: island.y - 0.15 }) ||
-				(seat.housing && { x: seat.x - 0.65, y: seat.y + 0.05 }) || { x: seat.x - 1.1, y: seat.y - 0.15 };
+		return [...racks.values()].map(rack => ({ ...rack, spot: rackSpotOf(rack) }));
+	}
 
-			return { y: spot.y, draw: () => this.drawRack(ctx, this.art(spot), rack) };
-		});
+	rackParts(ctx) {
+		return this.racks().map(rack => ({ y: rack.spot.y, draw: () => this.drawRack(ctx, this.art(rack.spot), rack) }));
 	}
 
 	drawRack(ctx, at, { processes, services, workers }) {

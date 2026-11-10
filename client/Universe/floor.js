@@ -31,6 +31,7 @@ const DEPTHS = {
 	pod: { back: 0.5, front: 0.15 },
 	tug: { back: 0.45, front: 0.2 },
 	terminal: { back: 0.4, front: 0.1 },
+	rack: { back: 0.35, front: 0.15 },
 	pad: { back: 0.3, front: 0.2 },
 };
 
@@ -46,8 +47,9 @@ const footprint = (kind, { left, right, y }, more = {}) => ({
 // Everything that stands on a laid-out ship's floor, each a box in world units: { kind, x, y, w, d }, and `key` where
 // there are several of a kind; one that's stood on rather than in the way (the transporter's pad) is `open`.
 // `couches`: how many the lounge has (it keeps one when nobody's resting); `pods`: how many checkouts are docked in
-// the hold; `terminals`: where the other ships' terminals stand on the bridge ([{ x, y }])
-export const footprintsOf = (layout, { couches = 0, pods = 0, terminals = [] } = {}) => {
+// the hold; `terminals`: where the other ships' terminals stand on the bridge ([{ x, y }]); `racks`: where a rack of
+// processes stands by an island or a machine while a session there runs some ([{ x, y }])
+export const footprintsOf = (layout, { couches = 0, pods = 0, terminals = [], racks = [] } = {}) => {
 	const { bridge, lounge, materializer, transporter, engineering, hold, hangar } = layout;
 	const found = [];
 
@@ -137,6 +139,9 @@ export const footprintsOf = (layout, { couches = 0, pods = 0, terminals = [] } =
 		);
 	}
 
+	racks.forEach(({ x, y }, index) =>
+		found.push(footprint('rack', { left: x - 0.3, right: x + 0.3, y }, { key: index })),
+	);
 	// The transporter's pad: there to be seen on the map, but stood on, so not in anyone's way
 	if (transporter) {
 		const at = clonerAt(transporter);

@@ -2912,6 +2912,11 @@ test("an island's rack stands at its left end, behind its desk's line, where nob
 
 		// One for each island with something running, drawn where it stands: behind the island's own line
 		expect(racks).toHaveLength(islands.length);
+		// And each on the floor's map while it's there, so nothing is walked or stood through it
+		const onMap = made.floor.things.filter(({ kind }) => kind === 'rack');
+
+		expect(onMap).toHaveLength(islands.length);
+		for (const island of islands) expect(made.floor.open({ x: island.x - 0.3, y: island.y - 0.3 })).toBe(false);
 		expect(racks.map(({ y }) => y).sort()).toEqual(islands.map(({ y }) => y - 0.15).sort());
 		for (const island of islands) {
 			const rack = { x: island.x - 0.3, y: island.y - 0.15 };
@@ -2929,6 +2934,17 @@ test("an island's rack stands at its left end, behind its desk's line, where nob
 				if (watcher && Math.abs(watcher.x - rack.x) < 0.6) expect(Math.abs(watcher.y - rack.y)).toBeGreaterThan(0.3);
 			}
 		}
+
+		// Nothing running any more: the racks are gone from the map with their drawing
+		made.update([
+			answer(
+				'here',
+				sessions.map(each => ({ ...each, processes: [] })),
+				{ projects: names, people },
+			),
+		]);
+		expect(made.rackParts(ctx)).toEqual([]);
+		expect(made.floor.things.filter(({ kind }) => kind === 'rack')).toEqual([]);
 	}
 });
 
