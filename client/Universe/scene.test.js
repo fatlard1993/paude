@@ -2952,6 +2952,34 @@ test('the parts of a couch and of a cabinet are drawn in their named order, each
 	]);
 });
 
+test('looking over a stretch of the stage flies the view to its middle, drawn back far enough to fit it beside the panel', () => {
+	const made = shipWith([answer('here', [session()], { projects: ['paude'] })]);
+
+	made.resize(1600, 1200);
+	run(made, 10);
+	made.aside = 300;
+	made.look('#bridge');
+	run(made, 10);
+
+	const close = made.camera.zoom;
+	const box = { left: -300, right: 300, top: 50, bottom: 550 };
+
+	made.lookOver(box);
+	expect(made.flying).toBe(true);
+	run(made, 20);
+	// All of it fits in what the panel leaves of the screen, at a whole zoom, further back than the bridge alone
+	expect(Number.isInteger(made.camera.zoom)).toBe(true);
+	expect(made.camera.zoom).toBeLessThan(close);
+	expect((box.right - box.left) * made.camera.zoom).toBeLessThanOrEqual(made.width - made.aside);
+	expect((box.bottom - box.top) * made.camera.zoom).toBeLessThanOrEqual(made.height);
+	expect(made.camera.y).toBeCloseTo(300, 0);
+	// Its middle left of the screen's, the panel taking the right
+	expect(made.camera.x).toBeGreaterThan(0);
+	// And the hand takes the view back as from any flight
+	made.pan(10, 10);
+	expect(made.flying).toBe(false);
+});
+
 test('a couch more needed is dropped out of the tube; one no longer needed is zapped from the ceiling, the lounge its size till its ash is sucked up', () => {
 	const resting = ids => [
 		answer(

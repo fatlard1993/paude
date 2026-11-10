@@ -20,3 +20,24 @@ export const shipsOf = (answers, known = new Map()) => {
 
 	return ships;
 };
+
+// The stretch of the stage that takes in every ship shown on it, in art pixels, for the view to open on: each ship
+// by its own extent ({ left, right, top, height }) and where it stands from the one aboard (`at`). null for fewer
+// than two: one ship alone is framed as it always is.
+export const fleetBox = placed => {
+	if (placed.length < 2) return null;
+
+	const boxes = placed.map(({ extent: { left, right, top, height }, at }) => ({
+		left: left + at.x,
+		right: right + at.x,
+		top: top + at.y,
+		bottom: top + height + at.y,
+	}));
+
+	return {
+		left: Math.min(...boxes.map(box => box.left)),
+		right: Math.max(...boxes.map(box => box.right)),
+		top: Math.min(...boxes.map(box => box.top)),
+		bottom: Math.max(...boxes.map(box => box.bottom)),
+	};
+};

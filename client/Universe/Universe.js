@@ -28,7 +28,7 @@ import confirmDialog, { confirmDeleteSession } from '../confirmDialog';
 import { sessionMenu } from '../sessionActions';
 import { PANELS } from '../Terminal/panels';
 import { recall, remember } from '../storage';
-import { LOCAL, shipsOf } from './shown';
+import { LOCAL, fleetBox, shipsOf } from './shown';
 import olderPaude from './olderPaude';
 import { dockCard, verbsFor } from './dock';
 import {
@@ -1409,22 +1409,13 @@ export default class Universe extends View {
 
 	// The view flown to take in this ship and every other shown beside it; left as it is when there's none
 	frameFleet() {
-		const shown = this.shipsShown().filter(({ key, ship }) => ship === this.aboard || this.fleetShown.has(key));
+		const box = fleetBox(
+			this.shipsShown()
+				.filter(({ key, ship }) => ship === this.aboard || this.fleetShown.has(key))
+				.map(({ ship, at }) => ({ extent: ship.extent(), at })),
+		);
 
-		if (shown.length < 2) return;
-
-		const boxes = shown.map(({ ship, at }) => {
-			const { left, right, top, height } = ship.extent();
-
-			return { left: left + at.x, right: right + at.x, top: top + at.y, bottom: top + height + at.y };
-		});
-
-		this.aboard.lookOver({
-			left: Math.min(...boxes.map(({ left }) => left)),
-			right: Math.max(...boxes.map(({ right }) => right)),
-			top: Math.min(...boxes.map(({ top }) => top)),
-			bottom: Math.max(...boxes.map(({ bottom }) => bottom)),
-		});
+		if (box) this.aboard.lookOver(box);
 	}
 
 	// Everything aboard come in: the plating of the ship the viewer boards opened, and the rest's once it's done, so
