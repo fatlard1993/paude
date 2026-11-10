@@ -4,7 +4,7 @@ import path from 'path';
 
 import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
-import { askHub, connectedHub } from './motherHub';
+import { HubError, askHub, connectedHub, tellHub } from './motherHub';
 
 // The games of the mother hub this paude is connected to, as arcade cabinets in the universe's lounge: one for each
 // game watched (every game, until one is unwatched), lit while its game runs, opening the game itself. Asked of the
@@ -18,6 +18,19 @@ export const initCabinets = async dataDir => {
 	file = path.join(dataDir, 'cabinets.json');
 	unwatched = new Set((await readJsonFile(file, {})).unwatched ?? []);
 };
+
+// How a game is doing, in the hub's own words for it: busy with something asked of it (`doing` says what), crashing,
+// off, up, or silent (its unit running but its port not answering)
+const stateOf = ({ unit, health, operation }) =>
+	(operation?.running && 'busy') ||
+	(['auto-restart', 'failed'].includes(unit?.state) && 'crashing') ||
+	(unit && !unit.active && 'off') ||
+	(health?.ok && 'up') ||
+	(unit?.active ? 'silent' : 'off');
+
+// What the owner can have the hub do with a game from its cabinet, by the hub's own names for them. Resetting it,
+// forgetting it and opening it to the internet are left to the hub's own page.
+export const CABINET_ACTIONS = ['turnOn', 'turnOff', 'restart', 'update'];
 
 // A hub game as a cabinet: what it's called, its colors and icon, where it's played, and whether it's on
 export const cabinetOf = (game, hubUrl) => ({
@@ -36,6 +49,10 @@ export const cabinetOf = (game, hubUrl) => ({
 	publicUrl: game.publicUrl || null,
 	lanUrl: game.lanUrl || null,
 	running: Boolean(game.unit?.active ?? game.health?.ok),
+	state: stateOf(game),
+	doing: (game.operation?.running && game.operation.kind) || null,
+	// The hub's own page, to manage it there
+	hub: hubUrl,
 	players: game.report?.connections ?? 0,
 	watched: !unwatched.has(game.id),
 });
@@ -51,6 +68,22 @@ export const allCabinets = async ({ now = Date.now(), hub } = {}) => {
 	known = { at: now, games: games.map(game => cabinetOf(game, connected.url)), host: await gameHost(connected) };
 
 	return known.games;
+};
+
+// The hub told to do one of CABINET_ACTIONS with a cabinet's game, answered once it's begun there; the games are asked
+// of the hub afresh after, so the cabinet shows it under way
+export const manageCabinet = async (id, action, { hub: given } = {}) => {
+	if (!CABINET_ACTIONS.includes(action)) throw new HubError('The hub has no such thing to do with a game', 400);
+
+	const hub = given ?? (await connectedHub().catch(() => null));
+
+	if (!hub) throw new HubError('No mother hub is connected', 503);
+
+	const begun = await tellHub(hub, `/api/games/${encodeURIComponent(id)}/${action}`);
+
+	known.at = 0;
+
+	return begun;
 };
 
 // The cabinets the lounge shows: the watched ones

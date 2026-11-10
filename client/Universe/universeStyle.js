@@ -175,6 +175,14 @@ export const Stage = styled(
 			padding-bottom: 8px;
 		}
 
+		/* A cabinet's game on its hub: how it's doing, then what the hub can be told to do with it */
+		.pane.cabinet-manage .verbs {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			padding: 8px 0;
+		}
+
 		/* Where a cabinet's game can be reached, an address to a line with who it's for and a button to copy it */
 		.pane.cabinet-share {
 			display: flex;

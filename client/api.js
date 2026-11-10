@@ -442,6 +442,11 @@ export const attachFile = async (sessionId, file, base = sessionBase(sessionId))
 export const setCabinetWatched = async (id, watch) =>
 	await PUT('/api/cabinets/:id/watch', { urlParameters: { id }, body: { watch } });
 
+// A cabinet's game turned on or off, restarted or updated on its hub (`action`: turnOn, turnOff, restart or update);
+// answered once it's begun there
+export const manageCabinet = async (id, action) =>
+	await POST('/api/cabinets/:id/:action', { urlParameters: { id, action } });
+
 // Where a cabinet's game is played inside paude's page: { url } on the preview listener
 export const getCabinetPlay = async id =>
 	await GET('/api/cabinets/:id/play', { urlParameters: { id }, invalidateAfter: 0 });

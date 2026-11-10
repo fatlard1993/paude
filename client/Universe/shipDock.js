@@ -6,6 +6,7 @@ import {
 	connectRemote,
 	getProjectArtifacts,
 	getCabinetPlay,
+	manageCabinet,
 	getProjectLinks,
 	getProjectSessions,
 	getProjects,
@@ -467,6 +468,89 @@ export const cabinetSharePane = ({ cabinet }) => ({
 		};
 
 		elem.append(element('p', 'about', 'Finding where it can be reached…'));
+		appendTo.append(elem);
+
+		return { elem, refresh };
+	},
+});
+
+const CABINET_STATES = {
+	busy: 'busy',
+	crashing: 'crashing',
+	off: 'off',
+	up: 'running',
+	silent: 'running, but not answering',
+};
+// What the hub does with a game, as a button says it, as it's said under way, and when it's offered
+const CABINET_VERBS = [
+	{ action: 'turnOn', label: 'Turn on', doing: 'Turning it on…', when: state => state === 'off' },
+	{ action: 'turnOff', label: 'Turn off', doing: 'Turning it off…', when: state => state !== 'off' },
+	{ action: 'restart', label: 'Restart', doing: 'Restarting it…', when: state => state !== 'off' },
+	{ action: 'update', label: 'Update', doing: 'Updating it…', when: () => true },
+];
+const LOOPBACK = /^(127\.0\.0\.1|localhost|\[::1\])$/;
+
+// A cabinet's game managed on its hub: how it's doing there, and the hub told to turn it on or off, restart it or
+// update it; the rest (its logs, resetting it, opening it to the internet) on the hub's own page, linked where this
+// browser can reach it (a hub on paude's own machine isn't reached from another). `current` answers the cabinet as
+// it is now, `changed` is called once the hub has been told something.
+export const cabinetManagePane = ({ current, changed }) => ({
+	key: 'manage',
+	label: 'Manage',
+	make: appendTo => {
+		const elem = element('div', 'pane cabinet-manage');
+		const status = element('p', 'about');
+		const verbs = element('div', 'verbs');
+		const note = element('p', 'about');
+		let busy = false;
+		const refresh = () => {
+			const cabinet = current();
+
+			if (!cabinet) return;
+			status.textContent = [
+				cabinet.doing ? `${cabinet.doing}…` : (CABINET_STATES[cabinet.state] ?? (cabinet.running ? 'running' : 'off')),
+				cabinet.players && `${cabinet.players} playing`,
+			]
+				.filter(Boolean)
+				.join(' · ');
+
+			const there =
+				cabinet.hub && (!LOOPBACK.test(new URL(cabinet.hub).hostname) || LOOPBACK.test(window.location.hostname));
+
+			verbs.replaceChildren(
+				...CABINET_VERBS.filter(({ when }) => when(cabinet.state)).map(({ action, label, doing }) => {
+					const press = button(label, () => tell(action, doing), { className: 'variant-flat' });
+
+					press.disabled = busy || cabinet.state === 'busy';
+
+					return press;
+				}),
+				...(there
+					? [
+							button('Manage in mother hub', () => window.open(cabinet.hub, '_blank'), {
+								icon: 'up-right-from-square',
+								className: 'variant-flat',
+							}),
+						]
+					: []),
+			);
+		};
+		const tell = async (action, doing) => {
+			busy = true;
+			note.textContent = doing;
+			refresh();
+
+			const { body, response } = await manageCabinet(current().id, action);
+
+			busy = false;
+			note.textContent = response?.ok ? '' : `The hub wouldn't: ${typeof body === 'string' ? body : response?.status}`;
+			changed();
+			// How it's doing comes with the universe's next answers
+			for (const wait of [1500, 4000, 8000, 16_000]) setTimeout(refresh, wait);
+			refresh();
+		};
+
+		elem.append(status, verbs, note);
 		appendTo.append(elem);
 
 		return { elem, refresh };

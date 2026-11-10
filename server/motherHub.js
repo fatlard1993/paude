@@ -149,6 +149,9 @@ export const connectedHub = async () => {
 // A read of the hub's own API (GET), as its token
 export const askHub = (hub, path) => call(hub, path);
 
+// Something begun on the hub (POST), as its token: answered once it's begun there
+export const tellHub = (hub, path) => call(hub, path, { method: 'POST' });
+
 // Where it is, for the arcade page to link: the configured hub, or the copy's, once there is one
 export const hubLink = async () =>
 	(await configured())?.url ?? (existsSync(databaseFile()) ? `http://127.0.0.1:${INTERNAL_PORT}` : null);

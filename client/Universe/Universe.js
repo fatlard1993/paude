@@ -46,6 +46,7 @@ import {
 } from './flyout';
 import {
 	cabinetAddress,
+	cabinetManagePane,
 	cabinetPane,
 	cabinetSharePane,
 	enginesPane,
@@ -1468,7 +1469,16 @@ export default class Universe extends View {
 		return this.openListDock(`cabinet:${cabinet.id}`, {
 			title: cabinet.title,
 			about: 'a game on the mother hub',
-			entries: [cabinetPane({ cabinet }), cabinetSharePane({ cabinet })],
+			entries: [
+				cabinetPane({ cabinet }),
+				cabinetSharePane({ cabinet }),
+				...owned(
+					cabinetManagePane({
+						current: () => (this.aboard.cabinets ?? []).find(({ id }) => id === cabinet.id) ?? cabinet,
+						changed: () => this.poll(),
+					}),
+				),
+			],
 			open,
 			// Where a session's dock has its button to open the session, and the same mark
 			buttons: [
@@ -1987,6 +1997,7 @@ export default class Universe extends View {
 					{ label: 'Play here', hotkey: 'p', run: () => this.openCabinet(cabinet) },
 					{ label: 'Open in its own tab', hotkey: 't', run: () => this.openCabinetTab(cabinet) },
 					{ label: 'Share', hotkey: 's', run: () => this.openCabinet(cabinet, 'share') },
+					...owned({ label: 'Manage', hotkey: 'm', run: () => this.openCabinet(cabinet, 'manage') }),
 				],
 			};
 		}
