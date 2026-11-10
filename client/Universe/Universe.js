@@ -2118,7 +2118,7 @@ export default class Universe extends View {
 				})),
 				commands: [
 					...owned({ label: 'All sessions', hotkey: 'h', run: () => this.openShipDock('sessions') }),
-					...owned({ label: 'New project', hotkey: 'p', run: () => this.openShipDock('projects') }),
+					...owned({ label: 'Projects', hotkey: 'p', run: () => this.openShipDock('projects') }),
 					...(identity()?.remotes
 						? [{ label: 'Connect a device', hotkey: 'd', run: () => this.openShipDock('devices') }]
 						: []),
@@ -2156,7 +2156,7 @@ export default class Universe extends View {
 				items: [...needed.map(workerItem), ...this.healthItems(), ...watched.map(workerItem)],
 				commands: [
 					...this.placeCommands('bridge'),
-					...owned({ label: 'New project', hotkey: 'p', run: () => this.openShipDock('projects') }),
+					...owned({ label: 'Projects', hotkey: 'p', run: () => this.openShipDock('projects') }),
 					...(this.aboard.layout?.transporter
 						? [{ label: 'Transporter', hotkey: 'x', run: () => this.aboard.look('transporter') }]
 						: []),
