@@ -41,3 +41,35 @@ export const fleetBox = placed => {
 		bottom: Math.max(...boxes.map(box => box.bottom)),
 	};
 };
+
+// The space left between ships shown together, in art pixels
+export const FLEET_GAP = 60;
+
+const eased = t => t * t * (3 - 2 * t);
+// A ship coming alongside is fast at first and slows to match speed; one leaving pulls away from rest
+const slowing = t => 1 - (1 - t) ** 3;
+const quickening = t => t ** 3;
+
+// Where each ship on the stage stands from the one aboard, in art pixels: stacked down the screen in the order given,
+// their bows in line. `ships`: [{ key, extent: { right, top, height }, aboard, shown (chosen to be shown beside), in
+// (how far in it is, 0 away to 1 in place) }]; `reach` how far off the screen's edge is. One coming in comes up from
+// astern, past the edge, slowing to hold its place alongside; one going pulls away ahead; each takes its room, or
+// gives it back, as it goes. `settled`: where they'll stand once all that's done, those on their way out left out
+// (for what the view should take in, which isn't where a ship just shown happens to be).
+export const placeShips = (ships, { reach = 0, settled = false } = {}) => {
+	const here = ships.filter(ship => ship.aboard || ship.shown || (!settled && ship.in > 0));
+	let down = 0;
+	const placed = here.map(ship => {
+		const { right, top, height } = ship.extent;
+		const was = ship.aboard || settled ? 1 : (ship.in ?? 1);
+		const slide = ship.shown ? -(1 - slowing(was)) * reach : quickening(1 - was) * reach;
+		const at = { x: -right + slide, y: down - top };
+
+		down += (height + FLEET_GAP) * eased(was);
+
+		return { ...ship, at };
+	});
+	const home = placed.find(({ aboard }) => aboard)?.at ?? { x: 0, y: 0 };
+
+	return placed.map(placing => ({ ...placing, at: { x: placing.at.x - home.x, y: placing.at.y - home.y } }));
+};

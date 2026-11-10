@@ -28,7 +28,7 @@ import confirmDialog, { confirmDeleteSession } from '../confirmDialog';
 import { sessionMenu } from '../sessionActions';
 import { PANELS } from '../Terminal/panels';
 import { recall, remember } from '../storage';
-import { LOCAL, fleetBox, shipsOf } from './shown';
+import { LOCAL, fleetBox, placeShips, shipsOf } from './shown';
 import olderPaude from './olderPaude';
 import { dockCard, verbsFor } from './dock';
 import {
@@ -138,14 +138,8 @@ const groupOf = group => ({
 const OPEN_AFTER_MS = 6000;
 // Which other ships were shown on the one screen, kept for this browser
 const FLEET_KEPT = 'paude-universe-fleet';
-// The space left between ships shown together, in art pixels
-const FLEET_GAP = 60;
 // How long a ship takes to slide in or out of the screen, in seconds
 const FLEET_SLIDE_S = 2.4;
-const eased = t => t * t * (3 - 2 * t);
-// A ship coming alongside is fast at first and slows to match speed; one leaving pulls away from rest
-const slowing = t => 1 - (1 - t) ** 3;
-const quickening = t => t ** 3;
 // The width the docks were last dragged to, kept for this browser (where it can be: storage can be off)
 const DOCK_WIDTH = 'paude-universe-dock-width';
 const DOCK_LEAST = 360;
@@ -479,28 +473,19 @@ export default class Universe extends View {
 	// in line, each by where its own origin falls from the one aboard's, in art pixels: [{ key, ship, at: { x, y } }]
 	// `settled`: where they'll stand once those sliding in or out are done, those on their way out left out
 	shipsShown({ settled = false } = {}) {
-		const here = [...this.ships].filter(
-			([key, ship]) => ship === this.aboard || this.fleetShown.has(key) || (!settled && this.fleetIn.get(key) > 0),
-		);
 		const { width = 0 } = this.stageSize ?? {};
-		let down = 0;
-		const placed = here.map(([key, ship]) => {
-			const { right, top, height } = ship.extent();
-			// One coming in comes up from astern, past the screen's edge, slowing to hold its place alongside; one going
-			// pulls away ahead, past the bow's. Each takes its room on the stage, or gives it back, as it goes.
-			const was = ship === this.aboard || settled ? 1 : (this.fleetIn.get(key) ?? 1);
-			const entering = this.fleetShown.has(key);
-			const reach = width / Math.max(1, this.aboard.camera.zoom) + 200;
-			const slide = entering ? -(1 - slowing(was)) * reach : quickening(1 - was) * reach;
-			const at = { x: -right + slide, y: down - top };
 
-			down += (height + FLEET_GAP) * eased(was);
-
-			return { key, ship, at };
-		});
-		const home = placed.find(({ ship }) => ship === this.aboard)?.at ?? { x: 0, y: 0 };
-
-		return placed.map(placing => ({ ...placing, at: { x: placing.at.x - home.x, y: placing.at.y - home.y } }));
+		return placeShips(
+			[...this.ships].map(([key, ship]) => ({
+				key,
+				ship,
+				extent: ship.extent(),
+				aboard: ship === this.aboard,
+				shown: this.fleetShown.has(key),
+				in: this.fleetIn.get(key),
+			})),
+			{ reach: width / Math.max(1, this.aboard.camera.zoom) + 200, settled },
+		).map(({ key, ship, at }) => ({ key, ship, at }));
 	}
 
 	// Each ship's slide moved on by `seconds`, at once when motion is reduced
