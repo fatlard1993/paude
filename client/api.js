@@ -437,3 +437,7 @@ export const attachFile = async (sessionId, file, base = sessionBase(sessionId))
 
 	return { response, body: response.ok ? await response.json() : await response.text() };
 };
+
+// A mother-hub game's cabinet in the universe's lounge, watched or not
+export const setCabinetWatched = async (id, watch) =>
+	await PUT('/api/cabinets/:id/watch', { urlParameters: { id }, body: { watch } });

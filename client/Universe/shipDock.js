@@ -402,6 +402,48 @@ export const arcadePane = ({ machines = [] }) => ({
 	},
 });
 
+// A mother-hub game from its cabinet in the lounge, to play right here: the game itself in a frame, or, where a page
+// served over https can't frame a game served over http, a button that opens it in a tab of its own. `onUnwatch`
+// takes the cabinet out of the lounge.
+export const cabinetPane = ({ cabinet, onUnwatch }) => ({
+	key: 'game',
+	label: cabinet.title,
+	make: appendTo => {
+		const elem = element('div', 'pane cabinet');
+		const bar = element('div', 'cabinet-bar');
+		const blocked = !cabinet.url || (window.location.protocol === 'https:' && cabinet.url.startsWith('http:'));
+
+		bar.append(
+			element('span', 'meta', (!cabinet.running && 'off') || (cabinet.players && `${cabinet.players} playing`) || 'on'),
+			...(cabinet.url
+				? [button('Open in a tab', () => window.open(cabinet.url, '_blank'), { className: 'variant-flat' })]
+				: []),
+			...(onUnwatch ? [button('Take it out of the lounge', onUnwatch, { className: 'variant-flat' })] : []),
+		);
+		elem.append(bar);
+		if (blocked)
+			elem.append(
+				element(
+					'p',
+					'about',
+					cabinet.url
+						? `${cabinet.title} is served over http, which this page (over https) can't show inside it: open it in a tab.`
+						: `${cabinet.title} has no address this paude can reach yet.`,
+				),
+			);
+		else {
+			const frame = element('iframe', 'cabinet-game');
+
+			frame.src = cabinet.url;
+			frame.allow = 'autoplay; fullscreen';
+			elem.append(frame);
+		}
+		appendTo.append(elem);
+
+		return { elem, refresh: () => {} };
+	},
+});
+
 // What a project's sessions brought up and made, across all of them
 export const projectPanes = project => [
 	{

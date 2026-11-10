@@ -499,7 +499,8 @@ export const layOut = ({
 		});
 	};
 	// The lounge stays when nobody's resting in it, so the islands don't move
-	const loungeBlock = lounge && { w: loungeWidth(lounge.count), d: loungeDepth(lounge.count) };
+	const cabinets = lounge?.cabinets?.length ?? 0;
+	const loungeBlock = lounge && { w: loungeWidth(lounge.count, cabinets), d: loungeDepth(lounge.count, cabinets) };
 	// The hull grows in levels, a pair of decks round a spine of its own each, the first with the core's rooms beside
 	// its spine and the rest starting right behind engineering: as few as keep the ship no more than about three times
 	// as long as it's deep, so a hundred projects make a deeper ship rather than an endless one

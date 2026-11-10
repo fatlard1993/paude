@@ -159,6 +159,31 @@ export const Stage = styled(
 
 		/* A new arcade game: where, what it's called, who builds it, how they read, each on its own line, and what the
 		   making prints */
+		/* A mother-hub game opened from its cabinet: a bar of what can be done, then the game filling the rest */
+		.pane.cabinet {
+			display: flex;
+			flex-direction: column;
+			height: 100%;
+			min-height: 60vh;
+		}
+
+		.pane.cabinet .cabinet-bar {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			flex-wrap: wrap;
+			padding-bottom: 8px;
+		}
+
+		.pane.cabinet .cabinet-game {
+			flex: 1;
+			width: 100%;
+			min-height: 55vh;
+			border: 0;
+			border-radius: 8px;
+			background: #000;
+		}
+
 		.pane .new-arcade {
 			display: flex;
 			flex-direction: column;

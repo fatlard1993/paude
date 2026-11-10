@@ -17,6 +17,7 @@ import { drawExterior } from './machine';
 import { pixelText } from './retro';
 import {
 	COUCH_SEAT,
+	cabinetAt,
 	DOOR,
 	FACE,
 	UNIT,
@@ -1779,6 +1780,71 @@ export const drawHangar = (ctx, art, label, room, { time, journey, launching = f
 // The lounge: a TV and couches of two facing it, so whoever sits on one has their back to the viewer
 // `lifted`: how far up each couch still is (art pixels, by its index), dropping out of the tube onto its place;
 // `gone`: the indices of couches not to draw, being zapped to ash (drawn crumbling by their zap) or lying in it
+// One of the mother hub's games, as an arcade cabinet against the lounge's near wall, seen side on, its screen turned
+// to the side its player stands (away from the TV), so that, as with the TV, only the light it throws shows: its
+// silhouette (the tall back, the marquee's hood jutting forward over the screen's slanted bezel, the control deck out
+// at the player's waist, the kick plate at its foot) with the side panel in its game's colors and a stripe of side art,
+// and while the game's on, a flickering cone of its color spilling from the screen onto whoever's playing
+const cabinetPart = (ctx, art, lounge, cabinet, index, time) => {
+	const foot = cabinetAt(lounge, index);
+	const facing = foot.x < lounge.x + lounge.w / 2 ? -1 : 1;
+
+	return {
+		y: foot.y,
+		draw: () => {
+			const at = art(foot);
+			const body = cabinet.background ?? '#22262e';
+			const trim = cabinet.color ?? 'hsl(280 60% 62%)';
+			// x across the profile, from its back (0) to its front (14), turned to face its player
+			const x = from => at.x + facing * (from - 7);
+			const span = (from, to, y, h, color) =>
+				rect(ctx, Math.min(x(from), x(to)), y, Math.abs(x(to) - x(from)) + 1, h, color);
+			const top = at.y - 36;
+
+			if (cabinet.running) {
+				const flicker = 0.12 + 0.07 * Math.abs(Math.sin(time * 6 + index * 1.9)) + 0.04 * Math.sin(time * 17 + index);
+
+				ctx.fillStyle = trim;
+				ctx.globalAlpha = Math.max(0.05, flicker);
+				ctx.beginPath();
+				ctx.moveTo(x(13), top + 10);
+				ctx.lineTo(x(30), top + 2);
+				ctx.lineTo(x(30), at.y);
+				ctx.lineTo(x(14), top + 24);
+				ctx.closePath();
+				ctx.fill();
+				ctx.globalAlpha = 1;
+			}
+			// The outline, then the side panel inside it: back, hood, bezel, deck and the lower front
+			span(0, 9, top, 1, PALETTE.k);
+			span(0, 14, top + 1, 6, PALETTE.k);
+			span(0, 11, top + 7, 13, PALETTE.k);
+			span(0, 16, top + 20, 4, PALETTE.k);
+			span(0, 12, top + 24, 12, PALETTE.k);
+			span(1, 8, top + 1, 1, body);
+			span(1, 13, top + 2, 4, body);
+			span(1, 10, top + 7, 13, body);
+			span(1, 15, top + 21, 2, body);
+			span(1, 11, top + 24, 11, body);
+			// The marquee's lit edge under the hood, and the screen's bezel slanting back below it, lit while it's on
+			span(11, 13, top + 6, 1, cabinet.running ? trim : PALETTE.d);
+			for (let row = 0; row < 13; row++)
+				span(10 - Math.floor(row / 5), 10 - Math.floor(row / 5), top + 7 + row, 1, cabinet.running ? trim : PALETTE.d);
+			// The side art: a stripe of the game's color sweeping down the panel
+			span(2, 4, top + 3, 1, trim);
+			span(2, 3, top + 4, 14, trim);
+			span(3, 5, top + 18, 1, trim);
+			span(4, 9, top + 26, 1, trim);
+			// The deck's edge, a stick standing up from it, and the kick plate
+			span(13, 15, top + 20, 1, PALETTE.m);
+			span(13, 13, top + 17, 3, PALETTE.m);
+			span(12, 14, top + 16, 1, 'hsl(0 70% 55%)');
+			span(1, 11, top + 33, 2, 'rgba(0, 0, 0, 0.45)');
+			if (cabinet.players && Math.floor(time * 2) % 2) span(6, 7, top + 3, 1, PALETTE.W);
+		},
+	};
+};
+
 export const drawLounge = (ctx, art, label, lounge, { time, lifted = [], gone = new Set() }) => {
 	floor(ctx, art, lounge);
 
@@ -1850,6 +1916,7 @@ export const drawLounge = (ctx, art, label, lounge, { time, lifted = [], gone = 
 				rect(ctx, at.x - 3, at.y - 3, 6, 3, PALETTE.d);
 			},
 		},
+		...(lounge.cabinets ?? []).map((cabinet, index) => cabinetPart(ctx, art, lounge, cabinet, index, time)),
 		...couches.flatMap(({ x, y, seat }) => [
 			// In two parts: its back behind those sitting on it, its cushions and arms over their legs
 			{

@@ -14,6 +14,7 @@ import {
 	setRemoteWatching,
 	setWatching,
 	sessionElsewhere,
+	setCabinetWatched,
 } from '../api';
 import { Bar, ghostButton } from '../Bar';
 import { breadcrumbs } from '../Breadcrumbs';
@@ -43,7 +44,16 @@ import {
 	titled,
 	whereWorking,
 } from './flyout';
-import { enginesPane, foldersPane, listDock, projectPanes, projectsPane, sessionsPane, arcadePane } from './shipDock';
+import {
+	arcadePane,
+	cabinetPane,
+	enginesPane,
+	foldersPane,
+	listDock,
+	projectPanes,
+	projectsPane,
+	sessionsPane,
+} from './shipDock';
 import refusal from './reason';
 import { airlockCard } from './airlockCard';
 import { logCard, manifestCard, promptCard, replyCard } from './replyCard';
@@ -618,6 +628,7 @@ export default class Universe extends View {
 			// Every ship going on, the one aboard drawn
 			for (const ship of this.ships.values())
 				ship.step(Math.min(LONGEST_FRAME_S, (now - last) / 1000), this.calm.matches);
+			this.openFleet();
 			this.slideShips(Math.min(LONGEST_FRAME_S, (now - last) / 1000));
 			this.aboard.draw(ctx, ratio);
 			// The other ships shown, over the same space, seen from where they stand beside this one
@@ -628,7 +639,6 @@ export default class Universe extends View {
 					y: this.aboard.camera.y - at.y,
 					zoom: this.aboard.camera.zoom,
 				});
-			this.openFleet();
 				ship.draw(ctx, ratio, { overlay: true });
 			}
 			this.showZoom();
@@ -916,6 +926,8 @@ export default class Universe extends View {
 		if (target?.kind === 'processes') return this.openRack(target, point);
 		if (target?.kind === 'use' && this.workerOf(target.use.session))
 			return this.openWorker(this.workerOf(target.use.session));
+		// A cabinet in the lounge opens its game, right here in the dock
+		if (target?.kind === 'cabinet') return this.openCabinet(target.cabinet);
 		if (target?.kind === 'bridge' || target?.kind === 'lounge') {
 			const at = target.kind === 'bridge' ? BRIDGE : LOUNGE;
 
@@ -1354,7 +1366,8 @@ export default class Universe extends View {
 		}
 	}
 
-	// Everything aboard come in: the ships' plating opened
+	// Everything aboard come in: the plating of the ship the viewer boards opened, and the rest's once it's done, so
+	// none shows what's aboard before the one being boarded does
 	opened() {
 		if (this.loaded) return;
 		this.loaded = true;
@@ -1451,6 +1464,45 @@ export default class Universe extends View {
 			],
 			open,
 		});
+	}
+
+	openCabinet(cabinet) {
+		return this.openListDock(`cabinet:${cabinet.id}`, {
+			title: cabinet.title,
+			about: 'a game on the mother hub',
+			entries: [
+				cabinetPane({
+					cabinet,
+					onUnwatch: identity()?.owner ? () => this.watchCabinet(cabinet.id, false) : null,
+				}),
+			],
+			open: 'game',
+		});
+	}
+
+	// A cabinet into the lounge or out of it, then the ship laid again with it or without
+	async watchCabinet(id, watch) {
+		const { response } = await setCabinetWatched(id, watch);
+
+		if (!response?.ok) return new Notify({ intent: 'danger', content: 'Could not change the lounge.' });
+		if (!watch && this.dock?.key === `cabinet:${id}`) this.closeDock();
+		this.poll();
+	}
+
+	// Every cabinet the hub has, each to put in the lounge or take out of it
+	cabinetMenu(point) {
+		const cabinets = this.aboard?.cabinets ?? [];
+		const box = this.canvas.getBoundingClientRect();
+
+		return openMenu({ x: box.left + (point?.x ?? box.width / 2), y: box.top + (point?.y ?? box.height / 2) }, [
+			{ heading: cabinets.length ? 'Cabinets in the lounge' : 'No games on a mother hub' },
+			...cabinets.map(cabinet => ({
+				label: cabinet.title,
+				detail: cabinet.running ? 'on' : 'off',
+				...(cabinet.watched && { icon: 'check' }),
+				onPress: () => this.watchCabinet(cabinet.id, !cabinet.watched),
+			})),
+		]);
 	}
 
 	openListDock(key, options) {
@@ -2010,7 +2062,10 @@ export default class Universe extends View {
 				title: 'Resting',
 				rows: [['here', plural(room.sessions.length, 'resting session')]],
 				items: workersIn(room.sessions).map(workerItem),
-				commands: owned({ label: 'All sessions', hotkey: 'h', run: () => this.openShipDock('sessions') }),
+				commands: [
+					...owned({ label: 'All sessions', hotkey: 'h', run: () => this.openShipDock('sessions') }),
+					...(aboard.cabinets?.length ? owned({ label: 'Cabinets', hotkey: 'k', run: () => this.cabinetMenu() }) : []),
+				],
 			};
 		if (kind === 'bridge') {
 			const flyout = flyoutOf({ kind: 'bridge', room }, aboard);

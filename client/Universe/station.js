@@ -63,10 +63,50 @@ const loungeColumns = count =>
 
 const loungeSpan = columns => columns * COUCH_SEAT + (columns / 2 - 1) * COUCH_GAP;
 
-export const loungeWidth = count => Math.max(BAY_MIN, loungeSpan(loungeColumns(count)) + 1.6);
+// The mother hub's games as arcade cabinets along the lounge's near wall, out past both ends of the couches and the
+// cans piled at them, so they stand clear of the TV, its couches and its cans: half to the left, half to the right, each
+// this wide and far enough apart for a player to stand beside it; the row they stand in adds to the lounge's depth
+export const CABINET_W = 0.75;
+const CABINET_GAP = 0.8;
+const CAN_ROOM = 1.2;
+const CABINET_ROW = 1.1;
+const CABINET_EDGE = 0.5;
 
-export const loungeDepth = count =>
-	FACE + 0.6 + Math.ceil(Math.max(count, 1) / loungeColumns(count)) * LOUNGE_ROW + 1.8;
+// How far from the lounge's middle the cabinets begin: past the couches' half and the cans beyond them
+const cabinetsInner = count => loungeSpan(loungeColumns(count)) / 2 + CAN_ROOM;
+
+export const loungeWidth = (count, cabinets = 0) =>
+	Math.max(
+		BAY_MIN,
+		loungeSpan(loungeColumns(count)) + 1.6,
+		cabinets ? 2 * (cabinetsInner(count) + Math.ceil(cabinets / 2) * (CABINET_W + CABINET_GAP) + CABINET_EDGE) : 0,
+	);
+
+export const loungeDepth = (count, cabinets = 0) =>
+	FACE + 0.6 + Math.ceil(Math.max(count, 1) / loungeColumns(count)) * LOUNGE_ROW + 1.8 + (cabinets ? CABINET_ROW : 0);
+
+// Where a cabinet stands (its foot, against the near wall): the first half out to the left, the rest out to the right
+export const cabinetAt = (lounge, index) => {
+	const count = lounge.cabinets?.length ?? 0;
+	const left = Math.ceil(count / 2);
+	const middle = lounge.x + lounge.w / 2;
+	const step = CABINET_W + CABINET_GAP;
+	const inner = cabinetsInner(lounge.count) + CABINET_GAP / 2;
+	const x =
+		index < left ? middle - inner - (left - 1 - index + 0.5) * step : middle + inner + (index - left + 0.5) * step;
+
+	return { x, y: lounge.y + lounge.d - 0.15 };
+};
+
+// Where a grey stands to play a cabinet: at its side, off the wall (whose band would cut across it), on the side away
+// from the TV when it plays alone (`side` 0) or as the first of two (-1), on the TV's side as the second (1)
+export const cabinetStandAt = (lounge, index, side = 0) => {
+	const at = cabinetAt(lounge, index);
+	const away = at.x < lounge.x + lounge.w / 2 ? -1 : 1;
+	const toward = side > 0 ? -away : away;
+
+	return { x: at.x + toward * (CABINET_W / 2 + 0.32), y: at.y - 0.35 };
+};
 
 export const loungeSeatAt = (lounge, index) => {
 	const columns = loungeColumns(lounge.count);

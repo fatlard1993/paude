@@ -457,6 +457,17 @@ const FLYOUTS = {
 			hint: lookHint(ship, BRIDGE),
 		};
 	},
+	cabinet: ({ cabinet }) => ({
+		title: cabinet.title,
+		rows: [
+			['game', 'on the mother hub'],
+			[
+				'now',
+				(!cabinet.running && 'off') || (cabinet.players && `on, ${plural(cabinet.players, 'player')} in it`) || 'on',
+			],
+		],
+		hint: cabinet.url ? 'Press to play it' : 'Not reachable from here yet',
+	}),
 	lounge: (target, ship) => ({
 		title: 'Resting',
 		rows: [['resting', plural(target.room.sessions.length, 'session')]],
