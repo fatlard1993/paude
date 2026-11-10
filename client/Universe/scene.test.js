@@ -4,6 +4,7 @@ import Ship, {
 	BEHIND_CONSOLE,
 	appliancesOf,
 	bendAround,
+	cacheCold,
 	countdown,
 	remoteOfBay,
 	resting,
@@ -2561,6 +2562,21 @@ test('the empties a lounger leaves behind, deleted on its couch or woken from it
 	expect(made.litter).toEqual([]);
 	made.update([answer('here', [lounger('b'), lounger('c', 'working')], { projects: ['paude'] })]);
 	expect(made.couchZaps).toMatchObject([{ index: 1 }]);
+});
+
+test("a terminal is frosted whenever its session's cache is cold, whatever the session is doing", () => {
+	const cold = { warm: false };
+
+	// Running: as its paude says, idle, asking or at work alike
+	for (const status of ['ready', 'waiting', 'working']) {
+		expect(cacheCold(session({ status, context: cold }))).toBe(true);
+		expect(cacheCold(session({ status, context: { warm: true } }))).toBe(false);
+		expect(cacheCold(session({ status, context: undefined }))).toBe(false);
+	}
+	// Stopped: once its cache has gone cold, or when that isn't known; not while it still holds
+	expect(cacheCold(session({ status: 'stopped', coldAgo: 60_000 }))).toBe(true);
+	expect(cacheCold(session({ status: 'stopped' }))).toBe(true);
+	expect(cacheCold(session({ status: 'stopped', coldAgo: 0 }))).toBe(false);
 });
 
 test('a couch more needed is dropped out of the tube; one no longer needed is zapped from the ceiling, the lounge its size till its ash is sucked up', () => {

@@ -215,6 +215,11 @@ const CAN_MS = 30 * 60_000;
 const PASS_OUT_CANS = 8;
 // How long a lounger's session has been cold, in ms: since its cache went cold, or since it stopped where that isn't known
 const coldOf = session => session.coldAgo ?? session.context?.cache?.ago ?? session.stoppedAgo ?? 0;
+// Whether Claude's prompt cache no longer holds a session's context, whatever else the session is doing: its terminal
+// is frosted over, at its desk or left behind for the lounge, lit or switched off. A running one says so itself; a
+// stopped one's went cold some while ago, and is taken as cold where it isn't known when
+export const cacheCold = session =>
+	session.status === 'stopped' ? (session.coldAgo ?? 1) > 0 : session.context?.warm === false;
 const HAUL_SECONDS = 6;
 // A session come to rest plays one of the mother hub's games that's on, for this long since it went cold, before its
 // couch; two to a cabinet
@@ -3781,7 +3786,7 @@ export default class Ship {
 										time: this.time,
 										seed: worker.seed,
 										todos: session.todos,
-										frost: session.status === 'ready' && session.context?.warm === false,
+										frost: cacheCold(session),
 									},
 									seat.island?.key,
 								);
@@ -4788,7 +4793,7 @@ export default class Ship {
 							engineColor: `hsl(${session.engine.hue ?? 215} 45% 50%)`,
 							time: this.time,
 							seed: worker.seed,
-							frost: session.status !== 'stopped',
+							frost: cacheCold(session),
 						},
 						homeSeat.island?.key,
 						this.seatRise(worker),
