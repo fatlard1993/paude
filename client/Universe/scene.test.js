@@ -3034,6 +3034,48 @@ test("a room's fittings, what's drawn over everything, and what's drawn at a pla
 	expect(Math.min(...Object.values(OVER_LAYER))).toBeGreaterThan(1e5);
 });
 
+test('picking a grey sends the one looking over to stand before its terminal, at once, on their own ship or one they are visiting', () => {
+	const me = { key: 'me', name: 'chase', role: 'owner', sessions: [] };
+	const sessions = ['a', 'b', 'c'].map(id => session({ id, project: id === 'c' ? 'site' : 'paude' }));
+	const made = shipWith([answer('here', sessions, { projects: ['paude', 'site'], people: [me] })]);
+
+	made.viewer = 'me';
+	run(made, 30);
+
+	const walker = made.walkers.get('me');
+	const before = worker => ({ x: worker.seat.x - 0.6, y: standingOf(made.bridge, worker.seat.y) });
+	const [b, c] = ['here/b', 'here/c'].map(key => made.workers.get(key));
+
+	// Picked: off to it on foot, with no answer from its paude in between
+	made.selected = 'worker:here/c';
+	expect(walker.spot).toEqual(before(c));
+	expect(walker.path.length).toBeGreaterThan(0);
+	run(made, 60);
+	expect([walker.x, walker.y]).toEqual([before(c).x, before(c).y]);
+	// Another picked: on to that one; and it holds through the answers that follow, which say nothing of it
+	made.selected = 'worker:here/b';
+	made.update([answer('here', sessions, { projects: ['paude', 'site'], people: [me] })]);
+	expect(walker.spot).toEqual(before(b));
+	run(made, 60);
+	expect([walker.x, walker.y]).toEqual([before(b).x, before(b).y]);
+
+	// Visiting another ship, whose paude doesn't list them or their terminals: the same
+	const other = shipWith([answer('there', sessions, { projects: ['paude', 'site'], people: [] })]);
+
+	other.beamIn(me);
+	other.viewer = 'me';
+	run(other, 30);
+	other.selected = 'worker:there/c';
+
+	const visiting = other.walkers.get('me');
+	const there = other.workers.get('there/c');
+
+	expect(visiting.spot).toEqual({ x: there.seat.x - 0.6, y: standingOf(other.bridge, there.seat.y) });
+	run(other, 60);
+	expect(visiting.path).toEqual([]);
+	expect(visiting.x).toBe(there.seat.x - 0.6);
+});
+
 test('a couch more needed is dropped out of the tube; one no longer needed is zapped from the ceiling, the lounge its size till its ash is sucked up', () => {
 	const resting = ids => [
 		answer(

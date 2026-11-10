@@ -1108,7 +1108,6 @@ export default class Ship {
 	stars = [];
 	// Screen pixels at the right reserved for the panel about a room looked at
 	aside = 0;
-	selected = null;
 	bots = new Map();
 	drift = 0;
 	pace = 1;
@@ -2162,8 +2161,14 @@ export default class Ship {
 				if (!worker) {
 					const index = pilots.indexOf(name);
 					const seated = other => other?.seat && !other.lounging && !other.leaving;
-					// Those whose terminals they have open, or with none open, every grey aboard: all of them are watched
-					const open = person.sessions.map(key => this.workers.get(key)).filter(seated);
+					// The grey the one looking has picked, before anything else: they go and stand at its terminal
+					const picked =
+						name === this.viewer && this.selected?.startsWith('worker:')
+							? this.workers.get(this.selected.slice('worker:'.length))
+							: null;
+					// Otherwise those whose terminals they have open, or with none open, every grey aboard: all of them
+					// are watched
+					const open = seated(picked) ? [picked] : person.sessions.map(key => this.workers.get(key)).filter(seated);
 					const watched = open.length ? open : [...this.workers.values()].filter(seated);
 
 					if (!watched.length) {
@@ -2365,9 +2370,28 @@ export default class Ship {
 	playAt(id) {
 		if ((this.arcading ?? null) === (id ?? null)) return;
 		this.arcading = id ?? null;
+		this.boardWalking();
+	}
+
+	// What's picked on this ship, by its key (`worker:<session>`, `bay:<project>`, ...), as the view tells it. Picking a
+	// grey sends the one looking over to stand before its terminal, there and then, rather than when its paude next
+	// says whose terminals they have open (which another ship's never does of a visitor)
+	get selected() {
+		return this.selectedKey ?? null;
+	}
+
+	set selected(key) {
+		const was = this.selectedKey ?? null;
+
+		this.selectedKey = key ?? null;
+		if (was !== this.selectedKey && this.viewer) this.boardWalking();
+	}
+
+	// Everyone sent to where they belong now, on foot: whatever the last answer did to the rooms (`moved` is that
+	// answer's, and would put them straight there)
+	boardWalking() {
 		if (!this.layout?.building) return;
 
-		// Walked there, whatever the last answer did to the rooms: `moved` is that answer's, not this
 		const { moved } = this;
 
 		this.moved = false;
