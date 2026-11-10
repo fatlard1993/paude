@@ -747,7 +747,7 @@ export default class Universe extends View {
 				return;
 			}
 			if (!press) {
-				if (event.pointerType === 'mouse') this.showTip(this.aboard.hit(point.x, point.y), point);
+				if (event.pointerType === 'mouse') this.showTip(this.hitAt(point.x, point.y), point);
 
 				return;
 			}
@@ -878,7 +878,7 @@ export default class Universe extends View {
 			return;
 		}
 
-		const { title, rows = [], hint, hue, titleHue } = flyoutOf(target, this.aboard);
+		const { title, rows = [], hint, hue, titleHue } = flyoutOf(target, this.ships.get(target.over) ?? this.aboard);
 		const table = element('div', 'rows');
 		const heading = element('strong', '', title);
 		const icon = iconOf(target.bay);
@@ -907,7 +907,7 @@ export default class Universe extends View {
 		// A grey or terminal on another ship shown beside this one: beam over to it, and go to it
 		if (target?.over && (target.kind === 'monitor' || target.kind === 'worker'))
 			return this.travel(target.over, { then: target.worker.session.key });
-		if (target?.over) return undefined;
+		if (target?.over) return mouse ? undefined : this.showTip(target, point);
 		if (adding && (target?.kind === 'worker' || target?.kind === 'monitor')) return this.pickAlso(target.worker);
 		this.select(selectionOf(target, this));
 		// Its terminal opens it; the grey itself only says what it is
