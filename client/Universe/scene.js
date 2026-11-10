@@ -2168,21 +2168,22 @@ export default class Ship {
 		return this.arcading && this.viewer === name ? TO_ARCADE : 1;
 	}
 
-	// Whether a person is in the lounge, where they're drawn among its furniture rather than over everything
+	// Whether a person is inside the ship's rooms and halls, where they're drawn among what stands there rather than
+	// over everything
 	amongFurniture(walker) {
-		const { lounge } = this;
+		const { building } = this.layout ?? {};
 
 		return Boolean(
-			lounge &&
-			walker.x >= lounge.x &&
-			walker.x <= lounge.x + lounge.w &&
-			walker.y >= lounge.y &&
-			walker.y <= lounge.y + lounge.d,
+			building &&
+			walker.x >= building.left &&
+			walker.x <= building.right &&
+			walker.y >= building.top &&
+			walker.y <= building.bottom,
 		);
 	}
 
-	// How far back a person in the lounge is drawn: where their feet are; at a cabinet they're playing, just over it, as
-	// the greys at it are, so their arm on its stick shows
+	// How far back a person is drawn: where their feet are; at a cabinet they're playing, just over it, as the greys at
+	// it are, so their arm on its stick shows
 	depthOf(walker) {
 		const cabinet =
 			walker.pose === 'player' && !walker.path.length
@@ -2965,8 +2966,9 @@ export default class Ship {
 				draw: () => this.drawParcel(ctx, parcel),
 			});
 
-		// Someone in the lounge is drawn in among what stands there, by how far back they are, so its cabinets, couches
-		// and TV hide them where they pass behind
+		// Someone aboard is drawn in among what stands there, by how far back their feet are: the screens of the row
+		// before them, the lounge's cabinets and couches, hide them where they pass behind, and they hide what they pass
+		// before
 		for (const walker of this.walkers.values())
 			if (walker.x !== undefined && !this.boarding(walker) && this.amongFurniture(walker))
 				standing.push({ y: this.depthOf(walker), draw: () => this.drawWalker(ctx, walker) });
@@ -2975,8 +2977,7 @@ export default class Ship {
 		this.drawCoreCharge(ctx);
 		// Lit, so laid over the light
 		this.drawPathways(ctx);
-		// Whoever's aboard elsewhere over everything, as a game draws its people over the scenery: the bridge's aisles are
-		// too narrow to clear the consoles and screens about them
+		// Anyone not in a room of the ship (there's none, as the ship is laid) over everything
 		for (const walker of this.walkers.values())
 			if (walker.x !== undefined && !this.boarding(walker) && !this.amongFurniture(walker)) {
 				this.drawWalker(ctx, walker);
@@ -3319,6 +3320,15 @@ export default class Ship {
 				color: (asking && [255, 190, 80]) || (status === 'working' && [150, 215, 255]) || [110, 130, 175],
 				strength: status === 'working' || asking ? 0.8 : 0.35,
 			});
+		}
+		// Each person carries a little light of their own: drawn in among what stands aboard they're lit as it is, and
+		// would be lost in the dark of an aisle
+		for (const walker of this.walkers.values()) {
+			if (walker.x === undefined || this.boarding(walker)) continue;
+
+			const at = this.art(walker);
+
+			lights.push({ x: at.x, y: at.y - 16, r: 22, color: [225, 232, 255], strength: 0.55, moving: true });
 		}
 		for (const engine of this.engines) {
 			const at = this.art(engine.reactor);
