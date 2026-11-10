@@ -2359,7 +2359,7 @@ test('coming aboard, the view is held on the shuttle, drawn back to the whole sh
 	const far = shuttleAt(made.shuttleDock(), 1);
 
 	expect(made.camera.x).toBeCloseTo(far.x - 1, 0);
-	expect(made.camera.y).toBeCloseTo(far.y - 4, 0);
+	expect(made.camera.y).toBeCloseTo(far.y - 8, 0);
 	expect(made.camera.zoom).toBeGreaterThanOrEqual(4);
 	made.pan(300, 300);
 	made.zoom(0.5, { x: 0, y: 0 });

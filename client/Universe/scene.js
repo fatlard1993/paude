@@ -1271,7 +1271,7 @@ export default class Ship {
 
 		return {
 			x: mix(at.x - 1, whole.x, back),
-			y: mix(at.y - 4, whole.y, back),
+			y: mix(at.y - 8, whole.y, back),
 			// Drawn back smoothly rather than a step at a time, ending on the whole ship's own zoom
 			zoom: Math.min(ZOOMS.most, whole.zoom + JOIN.closer * (1 - back) ** 2),
 		};

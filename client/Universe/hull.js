@@ -1,4 +1,4 @@
-import { PALETTE, plating } from './art';
+import { PALETTE, drawSprite, plating } from './art';
 import { tintsOf } from '../../shared/hues';
 import {
 	AIRLOCK_DROP,
@@ -609,7 +609,7 @@ export const hullEdges = building => {
 // theirs. A small white craft striped in their color, its cockpit forward; or, bringing a fabled session's monitor
 // (`craft` 'monitor'), a longer dark craft of Fable's livery (`accent`), its window strip lit, striped in the session's
 // color, with the monitor's tall figure in its tube.
-export const SHUTTLE_HOVER = 20;
+export const SHUTTLE_HOVER = 40;
 
 // Where a shuttle hangs `away` from its dock, in art pixels: its hull's bottom, over the hatch
 export const shuttleAt = (dock, away) => ({
@@ -625,51 +625,70 @@ export const drawShuttle = (
 ) => {
 	const { x, y } = shuttleAt(dock, away);
 	const stripe = `hsl(${hue ?? 200} 60% 55%)`;
-	const band = rider === undefined ? stripe : `hsl(${rider} 60% 55%)`;
 
 	if (craft === 'monitor') return drawMonitorCraft(ctx, dock, { x, y, away, tube, walker, stripe, accent, time });
 
-	// Its tube down to the hull: glass in a frame, someone in it on their way through
+	// Its tube down to the hull: glass in a frame wide enough for a person in their suit, who's seen in it on their way
+	// through, walking down it or up
 	if (tube > 0) {
 		const reach = Math.round(SHUTTLE_HOVER * tube);
 
-		rect(ctx, x - 3, y, 7, reach, PALETTE.k);
-		rect(ctx, x - 2, y, 5, reach, 'rgba(120, 190, 230, 0.35)');
-		rect(ctx, x - 2, y, 1, reach, 'rgba(220, 245, 255, 0.5)');
-		for (let rib = y + 3; rib < y + reach; rib += 4) rect(ctx, x - 3, rib, 7, 1, PALETTE.m);
-		if (tube >= 1) {
-			rect(ctx, x - 4, dock.y - 1, 9, 2, PALETTE.k);
-			rect(ctx, x - 3, dock.y - 1, 7, 1, PALETTE.l);
-		}
+		rect(ctx, x - 9, y, 19, reach, PALETTE.k);
+		rect(ctx, x - 8, y, 17, reach, 'rgba(120, 190, 230, 0.35)');
+		rect(ctx, x - 8, y, 2, reach, 'rgba(220, 245, 255, 0.5)');
 		if (walker !== null) {
-			const at = Math.round(y + 1 + (reach - 7) * walker);
+			// Their feet from just under the craft's belly down to the hull, seen only where the tube is
+			const foot = Math.round(y + 8 + (reach - 8) * walker);
+			const stride = Math.floor(time * 6) % 2 ? 'suitStepLeftLow' : 'suitStepRightLow';
+			const color = `hsl(${rider ?? hue ?? 200} 45% 45%)`;
 
-			rect(ctx, x - 1, at, 3, 3, '#e8eef6');
-			rect(ctx, x, at + 1, 1, 1, '#f0c040');
-			rect(ctx, x - 1, at + 3, 3, 2, band);
-			rect(ctx, x - 1, at + 5, 1, 2, '#e8eef6');
-			rect(ctx, x + 1, at + 5 - (Math.floor(time * 6) % 2), 1, 2, '#e8eef6');
+			ctx.save();
+			ctx.beginPath();
+			ctx.rect(x - 8, y, 17, reach);
+			ctx.clip();
+			drawSprite(ctx, stride, x, foot, { colors: { c: color, s: color } });
+			ctx.restore();
+		}
+		// Its ribs, over whoever's in it
+		for (let rib = y + 5; rib < y + reach; rib += 7) rect(ctx, x - 9, rib, 19, 1, PALETTE.m);
+		if (tube >= 1) {
+			rect(ctx, x - 11, dock.y - 2, 23, 3, PALETTE.k);
+			rect(ctx, x - 10, dock.y - 2, 21, 1, PALETTE.l);
 		}
 	}
 	// Its engine aft, flaring while it moves
-	const flare = away > 0.01 ? 3 + (Math.floor(time * 20) % 3) : 1;
+	const flare = away > 0.01 ? 6 + (Math.floor(time * 20) % 3) * 2 : 2;
 
-	rect(ctx, x - 12 - flare, y - 5, flare, 2, PALETTE.Y);
-	// Its hull: white, outlined, its stripe in their color, rounded at the nose, its cockpit forward
-	rect(ctx, x - 12, y - 8, 22, 8, PALETTE.k);
-	rect(ctx, x + 10, y - 7, 2, 6, PALETTE.k);
-	rect(ctx, x - 11, y - 7, 21, 6, '#d8dee8');
-	rect(ctx, x + 10, y - 6, 1, 4, '#d8dee8');
-	rect(ctx, x - 11, y - 7, 21, 1, '#f4f7fb');
-	rect(ctx, x - 11, y - 3, 21, 1, '#a8b2c2');
-	rect(ctx, x - 11, y - 5, 18, 1, stripe);
-	rect(ctx, x + 5, y - 7, 5, 3, PALETTE.k);
-	rect(ctx, x + 6, y - 7, 4, 2, '#7fd6ff');
-	rect(ctx, x + 6, y - 7, 1, 1, '#e0f6ff');
+	rect(ctx, x - 26 - flare, y - 11, flare, 4, PALETTE.Y);
+	rect(ctx, x - 26 - Math.floor(flare / 2), y - 10, Math.floor(flare / 2), 2, PALETTE.W);
+	rect(ctx, x - 26, y - 13, 4, 9, PALETTE.k);
+	rect(ctx, x - 25, y - 12, 2, 7, PALETTE.m);
+	// Its hull: white, outlined, its stripe in their color, rounded at the nose, its cockpit forward, a fin aft; big
+	// enough to have carried whoever comes down its tube
+	rect(ctx, x - 23, y - 16, 44, 16, PALETTE.k);
+	rect(ctx, x + 21, y - 14, 3, 12, PALETTE.k);
+	rect(ctx, x + 24, y - 12, 1, 8, PALETTE.k);
+	rect(ctx, x - 22, y - 15, 42, 14, '#d8dee8');
+	rect(ctx, x + 20, y - 13, 3, 10, '#d8dee8');
+	rect(ctx, x + 23, y - 11, 1, 6, '#d8dee8');
+	rect(ctx, x - 22, y - 15, 42, 2, '#f4f7fb');
+	rect(ctx, x - 22, y - 5, 45, 2, '#a8b2c2');
+	rect(ctx, x - 22, y - 3, 42, 2, '#8a94a6');
+	rect(ctx, x - 22, y - 10, 34, 2, stripe);
+	rect(ctx, x - 20, y - 20, 9, 4, PALETTE.k);
+	rect(ctx, x - 19, y - 19, 6, 3, '#d8dee8');
+	rect(ctx, x - 19, y - 17, 7, 1, stripe);
+	for (const port of [-17, -9, -1]) {
+		rect(ctx, x + port, y - 8, 4, 4, PALETTE.k);
+		rect(ctx, x + port + 1, y - 7, 2, 2, '#7fd6ff');
+	}
+	rect(ctx, x + 9, y - 15, 12, 7, PALETTE.k);
+	rect(ctx, x + 10, y - 14, 10, 5, '#7fd6ff');
+	rect(ctx, x + 10, y - 14, 3, 2, '#e0f6ff');
 	// Its belly hatch, open while its tube is out
-	rect(ctx, x - 2, y - 1, 5, 1, tube > 0 ? '#05070a' : '#8a94a6');
+	rect(ctx, x - 8, y - 2, 17, 2, tube > 0 ? '#05070a' : '#8a94a6');
 	// Its beacon
-	rect(ctx, x - 8, y - 9, 2, 1, Math.floor(time * 2) % 2 ? '#ff4a3a' : '#5a1a16');
+	rect(ctx, x - 6, y - 18, 3, 2, Math.floor(time * 2) % 2 ? '#ff4a3a' : '#5a1a16');
 };
 
 // The tube a craft lets down to the hull: glass in a frame, `figure` drawn in it at its way down (0 to 1), when given
