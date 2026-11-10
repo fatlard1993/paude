@@ -361,14 +361,20 @@ export const pathAcross = (floor, from, to) => {
 
 				if ((!stepAcross && !stepDown) || !openAt(next.across, next.down)) continue;
 				if (!floor.passable(index(here), index(next))) continue;
-				// Across a corner only where both cells beside it are open, and in reach of here
+				// Across a corner only where both cells beside it are open, and the way through either of them is: from here
+				// into it and from it on, so no corner of a wall is cut where a doorway's edge meets it
 				if (
 					stepAcross &&
 					stepDown &&
 					[
 						{ across: here.across + stepAcross, down: here.down },
 						{ across: here.across, down: here.down + stepDown },
-					].some(beside => !openAt(beside.across, beside.down) || !floor.passable(index(here), index(beside)))
+					].some(
+						beside =>
+							!openAt(beside.across, beside.down) ||
+							!floor.passable(index(here), index(beside)) ||
+							!floor.passable(index(beside), index(next)),
+					)
 				)
 					continue;
 

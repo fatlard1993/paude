@@ -206,3 +206,43 @@ test("the airlock's sill, on the floor before the bridge's wall, is open floor c
 		expect(pathAcross(floor, sill, { x: nav.x - 1.2, y: nav.y })).not.toBeNull();
 	}
 });
+
+test('every leg of every way between rooms stays on open floor, at the corners of doorways too', () => {
+	// A small ship, and one with enough projects for decks over and under its hall
+	for (const layout of [
+		laid(),
+		layOut({
+			bays: ['paude', 'site', 'notes', 'tools', 'games'].map(name => ({
+				name,
+				sessions: [`${name}-0`, `${name}-1`],
+				seated: 2,
+			})),
+			engines: [{ key: 'here', name: 'here' }],
+			lounge: { count: 1, sessions: ['x'], cabinets: [{ id: 'game' }] },
+			checkouts: 0,
+		}),
+	])
+		everyLegClear(layout);
+});
+
+const everyLegClear = layout => {
+	const floor = floorWith(layout);
+	const rooms = [layout.bridge, layout.lounge, layout.engineering, layout.hold, ...layout.bays].filter(Boolean);
+	// Somewhere on each room's floor, before its near edge
+	const spots = rooms
+		.map(room => nearestOpen(floor, { x: room.x + room.w * 0.4, y: room.y + room.d - 0.6 }, 3))
+		.filter(Boolean);
+
+	expect(spots.length).toBe(rooms.length);
+	for (const from of spots)
+		for (const to of spots) {
+			if (from === to) continue;
+
+			const way = pathAcross(floor, from, to);
+
+			expect(way).not.toBeNull();
+			[from, ...way].forEach((point, index, all) => {
+				if (all[index + 1]) expect(clearBetween(floor, point, all[index + 1])).toBe(true);
+			});
+		}
+};
