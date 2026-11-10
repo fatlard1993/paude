@@ -1798,13 +1798,15 @@ const iconOf = address => {
 	if (!icons.has(address)) {
 		const image = new Image();
 
+		// Loaded, not sized: an SVG with no size of its own reports a width of 0
+		image.onload = () => (image.ready = true);
 		image.src = address;
 		icons.set(address, image);
 	}
 
 	const image = icons.get(address);
 
-	return image.complete && image.naturalWidth ? image : null;
+	return image.ready ? image : null;
 };
 
 const cabinetPart = (ctx, art, lounge, cabinet, index, time) => {
@@ -1863,7 +1865,13 @@ const cabinetPart = (ctx, art, lounge, cabinet, index, time) => {
 
 				ctx.imageSmoothingEnabled = false;
 				rect(ctx, Math.min(x(1), x(10)), top + 8, 10, 10, PALETTE.k);
-				ctx.drawImage(icon, Math.min(x(2), x(9)), top + 9, 8, 8);
+				// Its own shape kept, fitted inside the frame's 8 pixels square
+				const wide = icon.naturalWidth || 1;
+				const tall = icon.naturalHeight || 1;
+				const scale = 8 / Math.max(wide, tall);
+				const [width, height] = [Math.max(1, Math.round(wide * scale)), Math.max(1, Math.round(tall * scale))];
+
+				ctx.drawImage(icon, Math.min(x(2), x(9)) + (8 - width) / 2, top + 9 + (8 - height) / 2, width, height);
 				ctx.imageSmoothingEnabled = smooth;
 			} else span(3, 5, top + 18, 1, trim);
 			span(4, 9, top + 26, 1, trim);
