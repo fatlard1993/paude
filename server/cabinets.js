@@ -26,7 +26,9 @@ export const cabinetOf = (game, hubUrl) => ({
 	title: game.look?.title || game.name || game.id,
 	color: game.look?.color ?? null,
 	background: game.look?.background ?? null,
-	icon: game.look?.icon ? new URL(game.look.icon, `${hubUrl}/`).href : null,
+	// The game's icon by way of paude (cabinetIcon), from the page's own origin, so the universe can draw it on its canvas
+	icon: game.look?.icon ? `/api/cabinets/${encodeURIComponent(game.id)}/icon?v=${game.look.iconVersion ?? 0}` : null,
+	hubIcon: game.look?.icon ? new URL(game.look.icon, `${hubUrl}/`).href : null,
 	url: game.publicUrl || game.lanUrl || null,
 	running: Boolean(game.unit?.active ?? game.health?.ok),
 	players: game.report?.connections ?? 0,
@@ -83,6 +85,33 @@ export const cabinetShare = name => {
 	if (!cabinet?.port || !known.host) return null;
 
 	return { name, kind: 'port', host: known.host, port: cabinet.port, cabinet: id };
+};
+
+// A cabinet's game icon, fetched from the hub as its token: { body, type }, or null when it has none or the hub won't
+// give it. Kept a while, by game and version, since the universe asks for it on every load.
+const icons = new Map();
+
+export const cabinetIcon = async id => {
+	const cabinet = known.games.find(game => game.id === id) ?? (await allCabinets()).find(game => game.id === id);
+
+	if (!cabinet?.hubIcon) return null;
+	if (icons.has(cabinet.hubIcon)) return icons.get(cabinet.hubIcon);
+
+	const hub = await connectedHub().catch(() => null);
+	const response = hub
+		? await fetch(cabinet.hubIcon, { headers: { authorization: `Bearer ${hub.token}` } }).catch(() => null)
+		: null;
+
+	if (!response?.ok) return null;
+
+	const icon = {
+		body: new Uint8Array(await response.arrayBuffer()),
+		type: response.headers.get('content-type') ?? 'image/png',
+	};
+
+	icons.set(cabinet.hubIcon, icon);
+
+	return icon;
 };
 
 // For tests: forget what was last asked

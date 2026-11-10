@@ -130,12 +130,16 @@ const paintHull = (building, hue) => {
 		const row = Math.floor((y - shape.top) / 14);
 		const within = (y - shape.top) % 14;
 
-		for (let x = from; x <= to; x++) {
-			const column = Math.floor((x - shape.left) / 20);
-			const shade = seeded(`plate${column}:${row}`);
-			const base = (lit < 0.2 && 23) || (lit < 0.75 && 18) || 15;
+		const base = (lit < 0.2 && 23) || (lit < 0.75 && 18) || 15;
 
-			put(x, y, 1, 1, plating(hue, base + (shade - 0.5) * 3));
+		// A plate's stretch of the row at a time: it's one shade across
+		for (let x = from; x <= to;) {
+			const column = Math.floor((x - shape.left) / 20);
+			const end = Math.min(to, shape.left + (column + 1) * 20 - 1);
+			const shade = seeded(`plate${column}:${row}`);
+
+			put(x, y, end - x + 1, 1, plating(hue, base + (shade - 0.5) * 3));
+			x = end + 1;
 		}
 		if (within === 0) put(from, y, to - from + 1, 1, '#141a26');
 		else if (within === 1) put(from, y, to - from + 1, 1, 'rgba(120, 140, 170, 0.18)');
@@ -1786,6 +1790,23 @@ export const drawHangar = (ctx, art, label, room, { time, journey, launching = f
 // silhouette (the tall back, the marquee's hood jutting forward over the screen's slanted bezel, the control deck out
 // at the player's waist, the kick plate at its foot) with the side panel in its game's colors and a stripe of side art,
 // and while the game's on, a flickering cone of its color spilling from the screen onto whoever's playing
+// Each game's icon, loaded once by its address: drawn once it has come, nothing until then (or if it never does)
+const icons = new Map();
+
+const iconOf = address => {
+	if (!address || typeof Image === 'undefined') return null;
+	if (!icons.has(address)) {
+		const image = new Image();
+
+		image.src = address;
+		icons.set(address, image);
+	}
+
+	const image = icons.get(address);
+
+	return image.complete && image.naturalWidth ? image : null;
+};
+
 const cabinetPart = (ctx, art, lounge, cabinet, index, time) => {
 	const foot = cabinetAt(lounge, index);
 	const facing = cabinetFacing(index);
@@ -1831,10 +1852,20 @@ const cabinetPart = (ctx, art, lounge, cabinet, index, time) => {
 			span(11, 13, top + 6, 1, cabinet.running ? trim : PALETTE.d);
 			for (let row = 0; row < 13; row++)
 				span(10 - Math.floor(row / 5), 10 - Math.floor(row / 5), top + 7 + row, 1, cabinet.running ? trim : PALETTE.d);
-			// The side art: a stripe of the game's color sweeping down the panel
+			// The side art: the game's own icon on the panel when it has one (never mirrored, so it reads the same on
+			// either side of an island), a stripe of its color sweeping down past it
+			const icon = iconOf(cabinet.icon);
+
 			span(2, 4, top + 3, 1, trim);
-			span(2, 3, top + 4, 14, trim);
-			span(3, 5, top + 18, 1, trim);
+			span(2, 3, top + 4, icon ? 4 : 14, trim);
+			if (icon) {
+				const smooth = ctx.imageSmoothingEnabled;
+
+				ctx.imageSmoothingEnabled = false;
+				rect(ctx, Math.min(x(1), x(10)), top + 8, 10, 10, PALETTE.k);
+				ctx.drawImage(icon, Math.min(x(2), x(9)), top + 9, 8, 8);
+				ctx.imageSmoothingEnabled = smooth;
+			} else span(3, 5, top + 18, 1, trim);
 			span(4, 9, top + 26, 1, trim);
 			// The deck's edge, a stick standing up from it, and the kick plate
 			span(13, 15, top + 20, 1, PALETTE.m);
