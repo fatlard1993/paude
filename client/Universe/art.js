@@ -218,6 +218,28 @@ const SUIT_PLAY = SUIT.stand.map((row, index) => {
 	return index > 12 && index < SUIT_TOP.length ? `${row.slice(0, 12)}...` : row;
 });
 
+// Someone in their suit a size smaller, for where they're seen a little way off: in a shuttle's tube over the hull
+const SUIT_SMALL_TOP = [
+	'..kkkkk..',
+	'.kwcccwk.',
+	'kwkkkkkwk',
+	'kwkyyWkwk',
+	'kwkYyykwk',
+	'.kwkkkwk.',
+	'..klllk..',
+	'.kwwwwwk.',
+	'kwwcccwwk',
+	'kwkwwwkwk',
+	'kwkwlwkwk',
+	'kmkkkkkmk',
+	'..kwkwk..',
+	'..kwkwk..',
+	'..kwkwk..',
+];
+const SUIT_SMALL = [...SUIT_SMALL_TOP, '..kwkwk..', '..kmkmk..', '..kkkkk..'];
+// A boot lifted, on the way down the tube
+const SUIT_SMALL_STEP = [...SUIT_SMALL_TOP, '..kmkwk..', '..kkkmk..', '....kkk..'];
+
 // Someone seen from behind, looking in: the back of their helmet striped in their color, their air pack
 const SUIT_BACK = [
 	'.....kkkkk.....',
@@ -461,6 +483,8 @@ const COOLER = [
 
 const SPRITES = {
 	suitBack: SUIT_BACK,
+	suitSmall: SUIT_SMALL,
+	suitSmallStep: SUIT_SMALL_STEP,
 	suitPlay: SUIT_PLAY,
 	camera: CAMERA,
 	vending: VENDING,

@@ -607,12 +607,13 @@ export const hullEdges = building => {
 // how far off it still is (0 docked, 1 out of sight ahead and above), `tube` how far its boarding tube reaches down to
 // the hull (0 to 1), `walker` how far down it someone is (0 at the shuttle, 1 at the hull; null for nobody), `hue`
 // theirs. A white craft big enough to have carried them, striped in their color, ports along it and its cockpit
-// forward, its tube wide enough for a person in their suit; or, bringing a fabled session's monitor
+// forward, whoever's in its tube seen a size smaller than aboard; or, bringing a fabled session's monitor
 // (`craft` 'monitor'), a longer dark craft of Fable's livery (`accent`), its window strip lit, striped in the session's
 // color, with the monitor's tall figure in its tube.
-export const SHUTTLE_HOVER = 40;
+export const SHUTTLE_HOVER = 28;
 
-// How far over the hull a docked shuttle hangs, in art pixels: its tube's length, more than a person's height
+// How far over the hull a docked shuttle hangs, in art pixels: its tube's length, more than the height of who's seen
+// in it (a size smaller than on the bridge: they're a little way off, up over the hull)
 // Where a shuttle hangs `away` from its dock, in art pixels: its hull's bottom, over the hatch
 export const shuttleAt = (dock, away) => ({
 	x: Math.round(dock.x + away * 240),
@@ -630,32 +631,32 @@ export const drawShuttle = (
 
 	if (craft === 'monitor') return drawMonitorCraft(ctx, dock, { x, y, away, tube, walker, stripe, accent, time });
 
-	// Its tube down to the hull: glass in a frame wide enough for a person in their suit, who's seen in it on their way
-	// through, walking down it or up
+	// Its tube down to the hull: glass in a frame, and whoever's on their way through seen in it, walking down it or
+	// up, a size smaller than they are aboard
 	if (tube > 0) {
 		const reach = Math.round(SHUTTLE_HOVER * tube);
 
-		rect(ctx, x - 9, y, 19, reach, PALETTE.k);
-		rect(ctx, x - 8, y, 17, reach, 'rgba(120, 190, 230, 0.35)');
-		rect(ctx, x - 8, y, 2, reach, 'rgba(220, 245, 255, 0.5)');
+		rect(ctx, x - 6, y, 13, reach, PALETTE.k);
+		rect(ctx, x - 5, y, 11, reach, 'rgba(120, 190, 230, 0.35)');
+		rect(ctx, x - 5, y, 2, reach, 'rgba(220, 245, 255, 0.5)');
 		if (walker !== null) {
 			// Their feet from just under the craft's belly down to the hull, seen only where the tube is
-			const foot = Math.round(y + 8 + (reach - 8) * walker);
-			const stride = Math.floor(time * 6) % 2 ? 'suitStepLeftLow' : 'suitStepRightLow';
+			const foot = Math.round(y + 6 + (reach - 6) * walker);
+			const stride = Math.floor(time * 6) % 2 ? 'suitSmallStep' : 'suitSmall';
 			const color = `hsl(${rider ?? hue ?? 200} 45% 45%)`;
 
 			ctx.save();
 			ctx.beginPath();
-			ctx.rect(x - 8, y, 17, reach);
+			ctx.rect(x - 5, y, 11, reach);
 			ctx.clip();
 			drawSprite(ctx, stride, x, foot, { colors: { c: color, s: color } });
 			ctx.restore();
 		}
 		// Its ribs, over whoever's in it
-		for (let rib = y + 5; rib < y + reach; rib += 7) rect(ctx, x - 9, rib, 19, 1, PALETTE.m);
+		for (let rib = y + 4; rib < y + reach; rib += 6) rect(ctx, x - 6, rib, 13, 1, PALETTE.m);
 		if (tube >= 1) {
-			rect(ctx, x - 11, dock.y - 2, 23, 3, PALETTE.k);
-			rect(ctx, x - 10, dock.y - 2, 21, 1, PALETTE.l);
+			rect(ctx, x - 8, dock.y - 2, 17, 3, PALETTE.k);
+			rect(ctx, x - 7, dock.y - 2, 15, 1, PALETTE.l);
 		}
 	}
 	// Its engine aft, flaring while it moves
@@ -688,7 +689,7 @@ export const drawShuttle = (
 	rect(ctx, x + 10, y - 14, 10, 5, '#7fd6ff');
 	rect(ctx, x + 10, y - 14, 3, 2, '#e0f6ff');
 	// Its belly hatch, open while its tube is out
-	rect(ctx, x - 8, y - 2, 17, 2, tube > 0 ? '#05070a' : '#8a94a6');
+	rect(ctx, x - 5, y - 2, 11, 2, tube > 0 ? '#05070a' : '#8a94a6');
 	// Its beacon
 	rect(ctx, x - 6, y - 18, 3, 2, Math.floor(time * 2) % 2 ? '#ff4a3a' : '#5a1a16');
 };

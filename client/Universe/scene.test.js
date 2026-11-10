@@ -3125,12 +3125,16 @@ test("another paude's owner with no terminal open there is this paude asking it,
 	expect([...made.people.keys()]).toEqual(['me']);
 });
 
-test('a shuttle hangs over the airlock with a tube down to the hull long and wide enough for a person, who is drawn in it as themselves', () => {
+test('a shuttle hangs over the airlock with a tube down to the hull, and whoever is in it is drawn as themselves, a size smaller, inside it', () => {
 	const dock = { x: 200, y: 100 };
 
-	// Docked: straight over the hatch, a tube's length up, which is more than a person in their suit is tall
+	// Docked: straight over the hatch, a tube's length up: more than the height of who's seen in it (eighteen, a size
+	// under the thirty they are aboard), and less than they are aboard
 	expect(shuttleAt(dock, 0)).toEqual({ x: dock.x, y: dock.y - SHUTTLE_HOVER });
-	expect(SHUTTLE_HOVER).toBeGreaterThan(30);
+	expect(SHUTTLE_HOVER).toBe(28);
+	expect(spriteSize('suitSmall')).toEqual({ w: 9, h: 18 });
+	expect(spriteSize('suitSmallStep')).toEqual({ w: 9, h: 18 });
+	expect(spriteSize('suit')).toEqual({ w: 15, h: 30 });
 
 	const sprites = [];
 	const clips = [];
@@ -3151,7 +3155,7 @@ test('a shuttle hangs over the airlock with a tube down to the hull long and wid
 	const had = globalThis.document;
 
 	globalThis.document = {
-		createElement: () => ({ width: 15, height: 30, getContext: () => ({ fillStyle: '', fillRect() {} }) }),
+		createElement: () => ({ width: 9, height: 18, getContext: () => ({ fillStyle: '', fillRect() {} }) }),
 	};
 	try {
 		drawShuttle(ctx, dock, { away: 0, tube: 1, walker: 0.5, hue: 200, rider: 30, time: 0 });
@@ -3159,10 +3163,13 @@ test('a shuttle hangs over the airlock with a tube down to the hull long and wid
 		if (hadDocument) globalThis.document = had;
 		else delete globalThis.document;
 	}
-	// The person, as their own figure, seen only inside the tube: which is over the hatch, wider than they are, and
+	// The tube's frame: thirteen wide, over the hatch, from the craft's belly down to the hull
+	expect(fills).toContainEqual({ x: dock.x - 6, y: dock.y - SHUTTLE_HOVER, w: 13, h: SHUTTLE_HOVER });
+	// The person, as their own figure a size smaller (nine by eighteen), seen only inside the tube's glass: which is
+	// over the hatch, wider than they are, and
 	// reaches from the craft to the hull
 	expect(sprites).toHaveLength(1);
-	expect(clips).toEqual([{ x: dock.x - 8, y: dock.y - SHUTTLE_HOVER, w: 17, h: SHUTTLE_HOVER }]);
+	expect(clips).toEqual([{ x: dock.x - 5, y: dock.y - SHUTTLE_HOVER, w: 11, h: SHUTTLE_HOVER }]);
 	// The craft itself is longer than the person is tall, over the tube
 	const hull = fills.filter(({ y, h }) => y + h <= dock.y - SHUTTLE_HOVER);
 
