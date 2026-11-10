@@ -579,7 +579,8 @@ export default class Universe extends View {
 		};
 
 		clearTimeout(this.beaming);
-		if (me && from.beamOut(me.key, arrive, ship.own?.hue)) return;
+		// From wherever they stand, landing on the other ship's pad
+		if (me && from.beamOut(me.key, arrive, ship.own?.hue, { direct: true })) return;
 		from.beamAt = from.time;
 		this.beaming = setTimeout(arrive, BEAM_SECONDS * 1000);
 	}

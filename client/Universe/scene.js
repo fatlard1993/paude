@@ -1852,7 +1852,7 @@ export default class Ship {
 		return new Map(
 			names.map(name => {
 				// Off to another ship: onto the middle of the transporter's pad, only once beaming there is chosen
-				if (this.departing?.key === name && this.layout.transporter)
+				if (this.departing?.key === name && !this.departing.direct && this.layout.transporter)
 					return [name, { pose: 'traveler', spot: clonerAt(this.layout.transporter), room: this.layout.transporter }];
 
 				// The viewer goes to whatever they've looked at closely: the transporter's side, by its pad but not on it,
@@ -2001,9 +2001,14 @@ export default class Ship {
 
 	// The person `key` walks onto the transporter's pad, in a hurry, and beams away in the color of the ship they're off
 	// to (`hue`), `then` called once they're gone; false when there's no transporter or they're not aboard, so they go
-	// at once
-	beamOut(key, then, hue = null) {
-		if (!this.layout.transporter || !this.walkers.has(key)) return false;
+	// at once. `direct`: from wherever they stand, no walk to the pad, dissolving where they are
+	beamOut(key, then, hue = null, { direct = false } = {}) {
+		if (!this.walkers.has(key) || (!direct && !this.layout.transporter)) return false;
+		if (direct) {
+			this.departing = { key, then, since: this.time, hue, beamAt: this.time, direct };
+
+			return true;
+		}
 		this.departing = { key, then, since: this.time, hue };
 		this.board();
 		this.look('transporter');
