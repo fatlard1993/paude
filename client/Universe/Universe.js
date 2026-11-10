@@ -628,6 +628,7 @@ export default class Universe extends View {
 					y: this.aboard.camera.y - at.y,
 					zoom: this.aboard.camera.zoom,
 				});
+			this.openFleet();
 				ship.draw(ctx, ratio, { overlay: true });
 			}
 			this.showZoom();
@@ -1357,7 +1358,13 @@ export default class Universe extends View {
 	opened() {
 		if (this.loaded) return;
 		this.loaded = true;
-		for (const ship of this.ships.values()) ship.open();
+		this.aboard.open();
+	}
+
+	// The other ships' plating opens once the boarded one's has all gone
+	openFleet() {
+		if (!this.loaded || this.aboard.sealed || this.aboard.coverOf() > 0) return;
+		for (const ship of this.ships.values()) if (ship.sealed) ship.open();
 	}
 
 	// Opened to nothing in particular, what was focused before the page was last left, once the first answer is in: a
