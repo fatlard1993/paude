@@ -125,8 +125,6 @@ const groupOf = group => ({
 
 // The longest the ship stays sealed waiting for other paudes to answer
 const OPEN_AFTER_MS = 6000;
-// What was last focused, kept for this browser so a reload comes back to it
-const FOCUS_KEPT = 'paude-universe-focus';
 // Which other ships were shown on the one screen, kept for this browser
 const FLEET_KEPT = 'paude-universe-fleet';
 // The space left between ships shown together, in art pixels
@@ -1095,8 +1093,6 @@ export default class Universe extends View {
 		this.selected = selected;
 		this.aboard.selected = selectionKey(selected);
 		if (!same) this.paintFocus();
-		// Kept for a reload, once whatever it was opened to has been gone to
-		if (!same && this.focusedOpen) remember(FOCUS_KEPT, selectionKey(selected) ?? '');
 	}
 
 	// Several sessions picked together, for doing the same to all: `worker` added, or taken away when already picked; down
@@ -1380,7 +1376,14 @@ export default class Universe extends View {
 		const { session, project } = this.options ?? {};
 
 		if (this.focusedOpen || !this.aboard?.settled()) return;
-		if (!session && !project) return this.focusKept();
+		// Opened to nothing in particular: the bridge, where the one looking has just walked to
+		if (!session && !project) {
+			this.focusedOpen = true;
+			this.select(selectionOf({ kind: 'bridge' }, this));
+			this.aboard.look(BRIDGE);
+
+			return;
+		}
 		// On whichever ship has it, that ship then the one played
 		for (const ship of this.ships.values()) {
 			if (project) {
@@ -1420,34 +1423,6 @@ export default class Universe extends View {
 	openFleet() {
 		if (!this.loaded || this.aboard.sealed || this.aboard.coverOf() > 0) return;
 		for (const ship of this.ships.values()) if (ship.sealed) ship.open();
-	}
-
-	// Opened to nothing in particular, what was focused before the page was last left, once the first answer is in: a
-	// session's grey, a project, the bridge, the lounge or an engine; gone since, nothing
-	focusKept() {
-		this.focusedOpen = true;
-
-		const [kind, ...rest] = recall(FOCUS_KEPT).split(':');
-		const name = rest.join(':');
-
-		for (const ship of this.ships.values()) {
-			const worker = kind === 'worker' && ship.workers.get(name);
-			const bay = kind === 'bay' && ship.bays.find(bayOf => bayOf.name === name);
-			const engine = kind === 'engine' && ship.engines?.find(({ key }) => key === name);
-			const target =
-				(worker && { kind: 'worker', worker }) ||
-				(bay && { kind: 'bay', bay }) ||
-				(engine && { kind: 'engine', engine }) ||
-				(kind === 'room' && ['bridge', 'lounge'].includes(name) && ship === this.aboard && { kind: name });
-
-			if (!target) continue;
-			this.aboard = ship;
-			this.select(selectionOf(target, this));
-			if (worker?.seat) ship.lookAt(worker.seat);
-			else ship.look({ bay: bay?.name, engine: engine?.key, room: { bridge: BRIDGE, lounge: LOUNGE }[name] }[kind]);
-
-			return;
-		}
 	}
 
 	// Which engines and projects the ship shows, each toggled; every one listed, those hidden too
