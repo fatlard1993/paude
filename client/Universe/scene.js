@@ -2166,11 +2166,25 @@ export default class Ship {
 				if (!worker) {
 					const index = pilots.indexOf(name);
 					const seated = other => other?.seat && !other.lounging && !other.leaving;
-					// The grey the one looking has picked, before anything else: they go and stand at its terminal
+					// The grey the one looking has picked, before anything else: they go and stand at its terminal, which for
+					// one resting in the lounge is the one it left at its island
 					const picked =
 						name === this.viewer && this.selected?.startsWith('worker:')
 							? this.workers.get(this.selected.slice('worker:'.length))
 							: null;
+					const left = picked?.lounging && !picked.leaving && !picked.homeSeat?.floor && picked.homeSeat;
+
+					if (left)
+						return [
+							name,
+							{
+								pose: 'overseer',
+								room: this.bridge,
+								spot: { x: left.x - 0.6 - index * 0.4, y: standingOf(this.bridge, left.y) },
+								facing: 1,
+							},
+						];
+
 					// Otherwise those whose terminals they have open, or with none open, every grey aboard: all of them
 					// are watched
 					const open = seated(picked) ? [picked] : person.sessions.map(key => this.workers.get(key)).filter(seated);

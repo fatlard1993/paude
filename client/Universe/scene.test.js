@@ -3059,6 +3059,20 @@ test('picking a grey sends the one looking over to stand before its terminal, at
 	run(made, 60);
 	expect([walker.x, walker.y]).toEqual([before(b).x, before(b).y]);
 
+	// One resting in the lounge: its terminal is the one it left at its island, and that's where they stand
+	const cold = { warm: false, cache: { left: 0, life: 300_000, ago: 60 * MINUTE } };
+	const resting = sessions.map(each =>
+		each.id === 'c' ? { ...each, status: 'ready', tool: null, context: cold } : each,
+	);
+
+	made.selected = null;
+	made.update([answer('here', resting, { projects: ['paude', 'site'], people: [me] })]);
+	run(made, 60);
+	expect(c.lounging).toBe(true);
+	made.selected = 'worker:here/c';
+	expect(walker.spot).toEqual({ x: c.homeSeat.x - 0.6, y: standingOf(made.bridge, c.homeSeat.y) });
+	expect(walker.room).toBe(made.bridge);
+
 	// Visiting another ship, whose paude doesn't list them or their terminals: the same
 	const other = shipWith([answer('there', sessions, { projects: ['paude', 'site'], people: [] })]);
 
