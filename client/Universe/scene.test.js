@@ -2776,6 +2776,44 @@ test("opening a cabinet's game walks the one looking over to it to play, and shu
 	expect([walker.x, walker.y]).toEqual([before.x, before.y]);
 });
 
+test('a session kept until its time ran out leaves its drink on its desk, finished: not taken away, and there when its grey has gone to the lounge', () => {
+	const looks = changes => [
+		answer('here', [session({ status: 'ready', tool: null, ...changes })], { projects: ['paude'] }),
+	];
+	const made = shipWith(looks({ keeping: 'going', context: { warm: true } }));
+
+	run(made, 4);
+
+	const worker = made.workers.get('here/a');
+	const drawnAt = [];
+
+	made.drawSpentDrink = (ctx, kind, at) => drawnAt.push({ kind, x: at.x, y: at.y });
+
+	const draw = parts => parts.forEach(part => part.draw());
+	const ctx = new Proxy({}, { get: () => () => {} });
+
+	// Run out: nothing comes down the tube for the cup, and it's drawn finished at the desk
+	made.update(looks({ spent: 'going', context: { warm: true } }));
+	expect(worker.serving).toBeUndefined();
+	// Switched off by hand instead, it would have been taken away
+	made.update(looks({ keeping: 'warm', context: { warm: true } }));
+	run(made, 3);
+	made.update(looks({ context: { warm: true } }));
+	expect(worker.serving).toMatchObject({ take: 'warm' });
+	run(made, 3);
+
+	// Its cache gone cold, the grey is off to the lounge, and the drained mug stays on the desk it left
+	made.update(looks({ spent: 'warm', context: { warm: false } }));
+	expect(worker.lounging).toBe(true);
+	draw(made.homeSeatParts(ctx, worker).slice(1));
+	expect(drawnAt).toMatchObject([{ kind: 'warm' }]);
+	// Kept again, it's gone; fabled had no drink to leave
+	made.update(looks({ keeping: 'warm', spent: 'warm', context: { warm: false } }));
+	expect(made.homeSeatParts(ctx, worker)).toHaveLength(1);
+	made.update(looks({ spent: 'fabled', context: { warm: false } }));
+	expect(made.homeSeatParts(ctx, worker)).toHaveLength(1);
+});
+
 test('a couch more needed is dropped out of the tube; one no longer needed is zapped from the ceiling, the lounge its size till its ash is sucked up', () => {
 	const resting = ids => [
 		answer(

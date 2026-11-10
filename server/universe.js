@@ -16,7 +16,7 @@ import { ownerName } from './serverSettings';
 import { sessionArtifacts } from './artifacts';
 import { meterOf } from './cacheMeter';
 import { modelFor, windowFor } from './contextWindow';
-import { boostOf, keptOf, readingOf } from './keepWarm';
+import { boostOf, keptOf, readingOf, spentOf } from './keepWarm';
 import { lifetimeOf } from './lifetime';
 import { crewOf } from './crew';
 import { fuelOf } from './fuel';
@@ -643,6 +643,8 @@ export const universe = async identity => {
 				limit: limitOf(session.id) ?? undefined,
 				// 'warm', 'going', 'fabled' or none
 				keeping: keptOf(session.id) ?? undefined,
+				// Kept until its time ran out, and not since: what it was kept as ('warm', 'going' or 'fabled')
+				spent: spentOf(session.id) ?? undefined,
 				lifetime: lifetimeOf(session.id),
 				boost: boostOf(session.id) ?? undefined,
 				// Its keeper reading its reply, before it's nudged on or left to wait

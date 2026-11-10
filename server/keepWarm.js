@@ -62,6 +62,18 @@ const boosts = new Map();
 
 const save = () => writeJsonFile(file, () => warm);
 
+// Sessions whose keeping ran its whole course, to its cutoff, rather than being switched off: { [sessionId]: { kind:
+// 'warm' | 'going' | 'fabled', at } }, until it's kept again or the session ends. What was on its desk is left there,
+// finished.
+let spentFile;
+let spent = {};
+
+const saveSpent = () => spentFile && writeJsonFile(spentFile, () => spent);
+
+// How a session was last kept, where that ran out its time and it hasn't been kept since: 'warm', 'going' or 'fabled';
+// null otherwise
+export const spentOf = id => spent[id]?.kind ?? null;
+
 const HOUR_MS = 60 * 60 * 1000;
 
 export const warmUntil = (id, now = Date.now()) => (warm[id]?.until > now ? warm[id].until : null);
@@ -142,6 +154,11 @@ const letGo = id => {
 };
 
 export const keepWarm = async (id, hours, now = Date.now(), { going = false, fabled = false } = {}) => {
+	// Kept again, or switched off by hand: what its last keeping left behind is cleared away
+	if (id in spent) {
+		delete spent[id];
+		await saveSpent();
+	}
 	if (hours > 0) {
 		const kept = Math.min(hours, MAX_HOURS);
 		const { monitor, seen, missed, read } = warm[id] ?? {};
@@ -169,6 +186,10 @@ export const keepWarm = async (id, hours, now = Date.now(), { going = false, fab
 export const stopKeepingWarm = async id => {
 	lastTurnAt.delete(id);
 	pinged.delete(id);
+	if (id in spent) {
+		delete spent[id];
+		await saveSpent();
+	}
 	if (!(id in warm)) return;
 	console.log(`Keep warm ${id}: off, the session ended`);
 	letGo(id);
@@ -263,6 +284,7 @@ const ping = async (id, session, now, pause) => {
 export const checkWarm = async (sessionOf, now = Date.now(), { pause = () => Bun.sleep(100) } = {}) => {
 	const pings = [];
 	let changed = false;
+	let ranOut = false;
 
 	for (const [id, { until }] of Object.entries(warm)) {
 		const session = sessionOf(id);
@@ -271,6 +293,11 @@ export const checkWarm = async (sessionOf, now = Date.now(), { pause = () => Bun
 		if (!lastTurnAt.has(id)) lastTurnAt.set(id, now);
 		if (until <= now || !session) {
 			console.log(`Keep warm ${id}: off, ${session ? 'past its cutoff' : 'not running'}`);
+			// Run out to its cutoff, not stopped short: remembered as spent
+			if (until <= now) {
+				spent[id] = { kind: (warm[id].fabled && 'fabled') || (warm[id].going && 'going') || 'warm', at: now };
+				ranOut = true;
+			}
 			letGo(id);
 			changed = true;
 		} else {
@@ -295,12 +322,15 @@ export const checkWarm = async (sessionOf, now = Date.now(), { pause = () => Bun
 		}
 	}
 	if (changed && file) await save();
+	if (ranOut) await saveSpent();
 
 	return pings;
 };
 
 export const initKeepWarm = async (dataDir, sessionOf) => {
 	file = path.join(dataDir, 'keep-warm.json');
+	spentFile = path.join(dataDir, 'keep-spent.json');
+	spent = await readJsonFile(spentFile, {});
 	// Kept before as a bare cutoff
 	warm = Object.fromEntries(
 		Object.entries(await readJsonFile(file, {})).map(([id, kept]) => [

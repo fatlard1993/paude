@@ -15,6 +15,8 @@ import {
 	keptOf,
 	monitorOf,
 	noteMonitor,
+	spentOf,
+	stopKeepingWarm,
 	nudgeWith,
 	typeWhenIdle,
 	warmMonitorsWith,
@@ -58,7 +60,7 @@ test("Claude's own turns push the ping back", async () => {
 	expect(await checkWarm(only('busy-day', session), 30 * 60 * 1000 + PING_AFTER_MS)).toEqual(['busy-day']);
 });
 
-test("a ping waits for Claude to finish and for someone typing in the prompt box", async () => {
+test('a ping waits for Claude to finish and for someone typing in the prompt box', async () => {
 	const session = fakeSession();
 	const sessionOf = only('drafting', session);
 
@@ -276,4 +278,29 @@ test("a fabled session's monitor is pinged on its own clock once quiet long enou
 	} finally {
 		warmMonitorsWith(async () => {});
 	}
+});
+
+test('a session kept until its time ran out is remembered as spent, until it is kept again or ends; one switched off by hand is not', async () => {
+	const session = fakeSession();
+
+	await keepWarm('ran-out', 1, 0, { going: true });
+	expect(spentOf('ran-out')).toBeNull();
+	await checkWarm(only('ran-out', session), HOUR);
+	expect(keptOf('ran-out', HOUR)).toBeNull();
+	expect(spentOf('ran-out')).toBe('going');
+	// Kept again: what the last keeping left is cleared away
+	await keepWarm('ran-out', 1, HOUR);
+	expect(spentOf('ran-out')).toBeNull();
+	await checkWarm(only('ran-out', session), 2 * HOUR);
+	expect(spentOf('ran-out')).toBe('warm');
+	await stopKeepingWarm('ran-out');
+	expect(spentOf('ran-out')).toBeNull();
+
+	// Switched off before its time, or let go because it isn't running: nothing spent
+	await keepWarm('switched-off', 1, 0);
+	await keepWarm('switched-off', 0, 10);
+	expect(spentOf('switched-off')).toBeNull();
+	await keepWarm('stopped', 1, 0);
+	await checkWarm(only('other', session), 10);
+	expect(spentOf('stopped')).toBeNull();
 });

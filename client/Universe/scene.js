@@ -380,6 +380,10 @@ const drinkOf = session => {
 
 	return keeping === 'fabled' ? undefined : keeping;
 };
+// What's left on its console of a drink it finished: kept warm or kept going until that ran out its time, and not
+// kept since (`spent`, as its paude tells it); fabled, it had none
+const spentDrinkOf = session =>
+	!drinkOf(session) && ['warm', 'going'].includes(session.spent) ? session.spent : undefined;
 // One deleted once its cache lets go, sitting on the floor past its island's desk with a laptop rather than at a seat
 const briefOf = worker => worker.session.lifetime === 'brief' && !worker.lounging && !worker.seat?.housing;
 // How far left of where it sits its laptop stands, in art pixels: between it and the desk's end it's plugged into
@@ -1345,7 +1349,8 @@ export default class Ship {
 				worker.compactedFrom = this.headOf(worker.session);
 			}
 			// Its coffee or giant cup given or taken: the tube brings it, or takes it away
-			if (worker && drinkOf(worker.session) !== drinkOf(session))
+			// Run out its time, its drink isn't taken away: it's left where it stands, finished
+			if (worker && drinkOf(worker.session) !== drinkOf(session) && !spentDrinkOf(session))
 				worker.serving = { at: this.time, give: drinkOf(session), take: drinkOf(worker.session) };
 			if (worker) this.noteWatcher(worker, session);
 			if (worker) Object.assign(worker, { session, lounging, leaving: worker.vaporizedAt !== undefined });
@@ -4035,6 +4040,9 @@ export default class Ship {
 			...((drinkOf(session) || this.serving(worker)) && !walker.length
 				? [{ y: seat.y + 0.2, draw: () => this.drawPick(ctx, worker, at) }]
 				: []),
+			...(spentDrinkOf(session) && !this.serving(worker)
+				? [{ y: seat.y + 0.2, draw: () => this.drawSpentDrink(ctx, spentDrinkOf(session), at) }]
+				: []),
 			{
 				y: seat.y + 0.16,
 				draw: () => {
@@ -5064,6 +5072,7 @@ export default class Ship {
 		if (!homeSeat || homeSeat.floor) return [];
 
 		const at = this.art({ x: homeSeat.x, y: homeSeat.y + 0.2 });
+		const finished = spentDrinkOf(session);
 
 		this.hits.push({
 			...this.toScreen({ x: at.x - 7, y: at.y - 21 }),
@@ -5095,6 +5104,8 @@ export default class Ship {
 						this.seatRise(worker),
 					),
 			},
+			// What it finished before it left is still on its desk
+			...(finished ? [{ y: homeSeat.y + 0.2, draw: () => this.drawSpentDrink(ctx, finished, at) }] : []),
 		];
 	}
 
@@ -5749,6 +5760,53 @@ export default class Ship {
 
 	// A mug of coffee, steaming while it sits on the desk, or a giant cup of something caffeinated, `spot` the mug's place at the
 	// desk's front edge, `lift` art pixels up from it (negative)
+	// What a session kept until its time ran out leaves on its console, `at` its seat's desk: kept warm, its mug drained,
+	// a ring of coffee dried in the bottom and no steam off it; kept going, its giant cup tipped over on its side, the
+	// lid come off beside it and the last of it spilt
+	drawSpentDrink(ctx, kind, at) {
+		const spot = { x: at.x + 12, y: at.y - 7 };
+		const { x, y } = spot;
+
+		if (kind === 'warm') {
+			rect(ctx, x - 3, y - 6, 7, 7, PALETTE.k);
+			rect(ctx, x - 2, y - 5, 5, 5, '#e8e2d6');
+			// Empty: the dark of its inside at the rim, a stain round it
+			rect(ctx, x - 2, y - 5, 5, 1, '#1c1611');
+			rect(ctx, x - 2, y - 4, 1, 1, '#8a6a4a');
+			rect(ctx, x + 2, y - 4, 1, 1, '#8a6a4a');
+			rect(ctx, x + 4, y - 4, 2, 3, PALETTE.k);
+			rect(ctx, x + 4, y - 3, 1, 1, '#e8e2d6');
+
+			return;
+		}
+
+		// On its side along the desk's top, its foot toward the grey's place and its mouth away
+		const floor = y - 6;
+		const left = x - 4;
+
+		// The spill, out from its mouth along the desk
+		rect(ctx, left + 11, floor, 6, 1, '#7a2416');
+		rect(ctx, left + 13, floor + 1, 3, 1, '#7a2416');
+		// Its body lying, narrow at the foot and widening to the rim
+		rect(ctx, left - 1, floor - 5, 13, 6, PALETTE.k);
+		rect(ctx, left, floor - 4, 3, 3, CUP.white);
+		rect(ctx, left + 3, floor - 4, 5, 4, CUP.red);
+		rect(ctx, left + 3, floor - 4, 5, 1, CUP.lit);
+		rect(ctx, left + 3, floor - 1, 5, 1, CUP.shade);
+		rect(ctx, left + 8, floor - 4, 3, 4, CUP.white);
+		rect(ctx, left + 8, floor - 1, 3, 1, CUP.whiteShade);
+		rect(ctx, left, floor - 1, 3, 1, PALETTE.k);
+		// Its mark, on its side with it
+		rect(ctx, left + 4, floor - 3, 2, 1, CUP.zap);
+		rect(ctx, left + 5, floor - 2, 2, 1, CUP.zap);
+		// Its open mouth, dark
+		rect(ctx, left + 11, floor - 4, 1, 4, '#2a0f0a');
+		// The lid come off, flat on the desk past the spill, and the straw lying by it
+		rect(ctx, left + 17, floor - 1, 7, 2, PALETTE.k);
+		rect(ctx, left + 18, floor - 1, 5, 1, CUP.lid);
+		rect(ctx, left + 13, floor - 2, 5, 1, CUP.straw);
+	}
+
 	drawDrink(ctx, worker, kind, spot, lift) {
 		const { x } = spot;
 		const y = spot.y + lift;
