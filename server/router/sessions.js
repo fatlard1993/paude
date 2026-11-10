@@ -26,6 +26,7 @@ import { LIFETIMES, WARM_LIFETIMES, lastSwitch, lifetimeOf, setLifetime, switchL
 import { MODEL_NAMES } from '../../shared/models';
 import { setModel } from '../sessionModels';
 import { setArcadeMode } from '../arcadeMode';
+import { watchCabinet } from '../cabinets';
 import { READING } from '../../shared/arcade';
 import removeSession from '../removeSession';
 import { meterOf } from '../cacheMeter';
@@ -545,6 +546,18 @@ const sessionsRoutes = async (request, server) => {
 		return new Response(Bun.file(icon.path), {
 			headers: { 'content-type': icon.type, 'cache-control': 'private, max-age=600' },
 		});
+	}
+
+	// A mother-hub game's cabinet in the lounge, watched or not ({ watch }): the owner's
+	match = requestMatch('PUT', '/api/cabinets/:id/watch', request);
+	if (match) {
+		if (!identity.owner) return new Response("The lounge's cabinets are the owner's", { status: 403 });
+
+		const { watch } = await request.json().catch(() => ({}));
+
+		await watchCabinet(match.id, Boolean(watch));
+
+		return new Response(null, { status: 204 });
 	}
 
 	match = requestMatch('PUT', '/api/projects/:project/watch', request);

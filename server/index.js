@@ -41,6 +41,7 @@ import { resumeKeepingGoing } from './keepGoing';
 import { initCommandEdits } from './commandEdits';
 import { initLifetime } from './lifetime';
 import { initArcadeMode } from './arcadeMode';
+import { initCabinets } from './cabinets';
 import { initSessionModels } from './sessionModels';
 import { initUsageLimits, onLimitChange } from './usageLimit';
 import { initBriefSessions } from './briefSessions';
@@ -135,6 +136,7 @@ resumeKeepingGoing().catch(error => console.error('Keeping going after a restart
 await initLifetime(options.data);
 await initSessionModels(options.data);
 await initArcadeMode(options.data);
+await initCabinets(options.data);
 await initCommandEdits(options.data);
 lastRun.stops.push(await initUsageLimits(options.data, runningSession));
 onLimitChange(sessionId => runningSession(sessionId)?.broadcastPresence());

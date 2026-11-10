@@ -133,6 +133,22 @@ export const recordHosting = (cwd, record) =>
 
 export const motherHub = async () => (await configured()) ?? internal();
 
+// The hub this paude already has, without starting one: the configured hub, or its own copy when it's running. null
+// for none.
+export const connectedHub = async () => {
+	const hub = await configured();
+
+	if (hub) return hub;
+	if (!existsSync(databaseFile())) return null;
+
+	const own = { url: `http://127.0.0.1:${INTERNAL_PORT}`, token: await internalToken(), internal: true };
+
+	return (await answers(own)) ? own : null;
+};
+
+// A read of the hub's own API (GET), as its token
+export const askHub = (hub, path) => call(hub, path);
+
 // Where it is, for the arcade page to link: the configured hub, or the copy's, once there is one
 export const hubLink = async () =>
 	(await configured())?.url ?? (existsSync(databaseFile()) ? `http://127.0.0.1:${INTERNAL_PORT}` : null);
