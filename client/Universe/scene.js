@@ -179,6 +179,8 @@ const OPEN_SECONDS = 0.8;
 export const GROUP_SEPARATOR = '|';
 // Someone off to the transporter walks this many times as fast, and beams out after this long however far they got
 const HURRY = 5;
+// How many times as fast the one looking walks to an arcade cabinet they've opened: brisk, the way being long, not a dash
+const TO_ARCADE = 1.8;
 const TRAVEL_MOST = 3;
 // How long a stream stays after its tool, fading, and how far apart its packets run
 const STREAM_LINGER = 4;
@@ -459,6 +461,31 @@ export const appliancesOf = (tools, sessions, usage = {}, log = {}) => {
 			log: (log[key] ?? []).map(use => ({ ...use, session: sessions.find(({ id }) => id === use.session) })),
 		})),
 	].map(appliance => ({ ...appliance, active: appliance.users.length > 0, load: loadOf(appliance.uses) }));
+};
+
+// An arm from `from` to `to`, in art pixels: one straight line of `color` a pixel thick with a dark edge along either
+// side of it, every pixel of its length drawn, so it reads as a limb rather than a string of blobs
+const drawLimb = (ctx, from, to, color) => {
+	const [across, down] = [to.x - from.x, to.y - from.y];
+	const steps = Math.max(Math.abs(across), Math.abs(down), 1);
+	const flat = Math.abs(across) >= Math.abs(down);
+	const along = step => ({
+		x: Math.round(from.x + (across * step) / steps),
+		y: Math.round(from.y + (down * step) / steps),
+	});
+
+	for (let step = 0; step <= steps; step++) {
+		const { x, y } = along(step);
+
+		rect(ctx, x - (flat ? 0 : 1), y - (flat ? 1 : 0), flat ? 1 : 3, flat ? 3 : 1, PALETTE.k);
+	}
+	// Its hand, closed off
+	rect(ctx, to.x + Math.sign(across) * (flat ? 1 : 0), to.y + Math.sign(down) * (flat ? 0 : 1), 1, 1, PALETTE.k);
+	for (let step = 0; step <= steps; step++) {
+		const { x, y } = along(step);
+
+		rect(ctx, x, y, 1, 1, color);
+	}
 };
 
 // One of a lounger's empties as it lies: crushed flat on the floor, or on the backrest stood up, on its side or dented
@@ -2062,6 +2089,13 @@ export default class Ship {
 		return this.bridge && airlockAt(this.bridge);
 	}
 
+	// How many times their walking pace someone goes at: off to the transporter in a hurry, to an arcade cabinet briskly
+	paceOf(name) {
+		if (this.departing?.key === name || (this.readying && this.viewer === name)) return HURRY;
+
+		return this.arcading && this.viewer === name ? TO_ARCADE : 1;
+	}
+
 	// The one looking has opened a cabinet's game (by its id), or shut it (null): they walk over to play it, and back
 	playAt(id) {
 		if ((this.arcading ?? null) === (id ?? null)) return;
@@ -2281,13 +2315,7 @@ export default class Ship {
 			// People walk at their pace even asked for less motion: one small figure crossing the floor is no sweep of
 			// the view, and their coming aboard through the airlock is what's to be seen
 			if (!this.boarding(walker) && !this.inDoorway(walker) && !this.beamingNow(name))
-				walk(
-					walker,
-					WALK_SPEED *
-						seconds *
-						(this.departing?.key === name || ((this.readying || this.arcading) && this.viewer === name) ? HURRY : 1),
-					seconds,
-				);
+				walk(walker, WALK_SPEED * seconds * this.paceOf(name), seconds);
 		this.tendTravel();
 		for (const worker of this.workers.values()) {
 			if (worker.path?.length && !worker.kick && (calm || this.time - (worker.madeAt ?? -Infinity) >= MAKE_SECONDS))
@@ -5802,18 +5830,7 @@ export default class Ship {
 		};
 		const shoulder = { x: at.x + toward * 3, y: at.y - 5 + Math.round(bend * 5) };
 
-		for (let step = 0; step <= 3; step++) {
-			const x = Math.round(shoulder.x + ((hand.x - shoulder.x) * step) / 3);
-			const y = Math.round(shoulder.y + ((hand.y - shoulder.y) * step) / 3);
-
-			rect(ctx, x - 1, y - 1, 3, 3, PALETTE.k);
-		}
-		for (let step = 0; step <= 3; step++) {
-			const x = Math.round(shoulder.x + ((hand.x - shoulder.x) * step) / 3);
-			const y = Math.round(shoulder.y + ((hand.y - shoulder.y) * step) / 3);
-
-			rect(ctx, x, y, 1, 1, PALETTE.a);
-		}
+		drawLimb(ctx, shoulder, hand, PALETTE.a);
 	}
 
 	// A heap of dust, `size` 0 to 1 of its full size
@@ -7546,8 +7563,8 @@ export default class Ship {
 		} else drawSprite(ctx, 'paper', at.x, at.y + 2);
 	}
 
-	// A person at an arcade cabinet, playing: tall enough for it with no stool, leaning into it with the game, one arm
-	// out working its stick, the other coming down on its buttons in bursts, a little hop when it goes their way
+	// A person at an arcade cabinet, playing: tall enough for it with no stool, leaning into it with the game, an arm
+	// out working its stick and coming down on its buttons in bursts, a little hop when it goes their way
 	drawPersonPlaying(ctx, walker, at, colors) {
 		const toward = walker.stand < 0 ? -1 : 1;
 		const seed = seeded(walker.name) * 7;
@@ -7556,29 +7573,14 @@ export default class Ship {
 		const hop = Math.floor((this.time + seed) / 5) % 4 === 0 && (this.time + seed) % 5 < 0.25 ? 2 : 0;
 		const lean = Math.floor((this.time + seed) * 1.5) % 4 === 0 ? toward : 0;
 		const body = { x: at.x + lean, y: at.y - hop };
-		const arm = (shoulder, hand) => {
-			for (const [grow, color] of [
-				[1, PALETTE.k],
-				[0, PALETTE.w],
-			])
-				for (let step = 0; step <= 3; step++) {
-					const x = Math.round(shoulder.x + ((hand.x - shoulder.x) * step) / 3);
-					const y = Math.round(shoulder.y + ((hand.y - shoulder.y) * step) / 3);
-
-					rect(ctx, x - grow, y - grow, 1 + grow * 2, 1 + grow * 2, color);
-				}
-		};
-
 		rect(ctx, at.x - 3, at.y, 7, 1, PALETTE.k);
-		drawSprite(ctx, 'suit', body.x, body.y, { colors, flip: toward < 0 });
-		// The stick, worked side to side
-		arm({ x: body.x + toward * 3, y: body.y - 11 }, { x: body.x + toward * (8 + (beat % 2)), y: body.y - 15 });
-		// The buttons, hammered now and then
-		if (mashing)
-			arm(
-				{ x: body.x + toward * 2, y: body.y - 10 },
-				{ x: body.x + toward * 6, y: body.y - 12 + (Math.floor(this.time * 9) % 2) * 2 },
-			);
+		drawSprite(ctx, 'suitPlay', body.x, body.y, { colors, flip: toward < 0 });
+		// The arm on the cabinet's side, out to it: on its stick, worked side to side, and off it onto the buttons in bursts
+		const hand = mashing
+			? { x: body.x + toward * 7, y: body.y - 13 + (Math.floor(this.time * 9) % 2) * 2 }
+			: { x: body.x + toward * (8 + (beat % 2)), y: body.y - 15 };
+
+		drawLimb(ctx, { x: body.x + toward * 4, y: body.y - 10 }, hand, PALETTE.w);
 	}
 
 	// Walking, seen from the front; at their place by their pose

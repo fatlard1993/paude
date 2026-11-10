@@ -98,7 +98,6 @@ const HEADS = {
 	],
 };
 
-
 // Its eyes shut: all but the lowest row of each eye go the color of its face, leaving the line of its lids
 const shut = rows => {
 	const lowest = rows.findLastIndex(row => row.includes('e'));
@@ -157,6 +156,16 @@ const SUIT = {
 	stepLeft: [...SUIT_TOP, '..kwwkwwk..', '..kwwkwwk..', '..kwwkwwk..', '..kmmkwwk..', '..kkkkmmk..', '.....kkkk..'],
 	stepRight: [...SUIT_TOP, '..kwwkwwk..', '..kwwkwwk..', '..kwwkwwk..', '..kwwkmmk..', '..kmmkkkk..', '..kkkk.....'],
 };
+
+// Someone at an arcade cabinet to their right: the arm on that side is out to it, drawn apart as it moves, so the
+// suit has only its shoulder there
+const SUIT_PLAY = SUIT.stand.map((row, index) => {
+	if (index === 8) return `${row.slice(0, 9)}k.`;
+	// Its hand, at the bottom of the arm
+	if (index === 12) return `${row.slice(0, 8)}...`;
+
+	return index > 8 && index < 12 ? `${row.slice(0, 9)}..` : row;
+});
 
 // Someone seen from behind, looking in: the back of their helmet striped in their color, their air pack
 const SUIT_BACK = [
@@ -415,6 +424,7 @@ const COOLER = [
 
 const SPRITES = {
 	suitBack: SUIT_BACK,
+	suitPlay: SUIT_PLAY,
 	camera: CAMERA,
 	vending: VENDING,
 	cooler: COOLER,
