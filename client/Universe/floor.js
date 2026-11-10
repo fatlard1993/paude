@@ -274,6 +274,37 @@ export const nearestOpen = (floor, point, reach = 1.5) => {
 	return best && { x: best.x, y: best.y };
 };
 
+// Somewhere to stand: `wanted` itself when it's open floor and nobody of `taken` ([{ x, y }]) stands within `apart` of
+// it, else the nearest open cell that is, so no two are given one place and nobody is stood in a wall or a couch.
+// `wanted` back when there's nowhere within `reach`.
+export const standingSpot = (floor, wanted, taken = [], { apart = 0.55, reach = 3 } = {}) => {
+	const free = point => floor.open(point) && taken.every(({ x, y }) => Math.hypot(x - point.x, y - point.y) >= apart);
+
+	if (free(wanted)) return wanted;
+
+	const { across, down } = floor.cellOf(wanted);
+	let best = null;
+
+	for (let ring = 1; ring <= Math.ceil(reach / CELL) && !best; ring++)
+		for (let offset = -ring; offset <= ring; offset++)
+			for (const [stepAcross, stepDown] of [
+				[offset, -ring],
+				[offset, ring],
+				[-ring, offset],
+				[ring, offset],
+			]) {
+				const middle = floor.middleOf(across + stepAcross, down + stepDown);
+
+				if (!free(middle)) continue;
+
+				const far = Math.hypot(middle.x - wanted.x, middle.y - wanted.y);
+
+				if (!best || far < best.far) best = { ...middle, far };
+			}
+
+	return best ? { ...wanted, x: best.x, y: best.y } : wanted;
+};
+
 // What a step onto floor that's kept off costs, as so many steps on any other: enough to go a long way round it
 const KEPT_OFF = 12;
 

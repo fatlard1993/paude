@@ -1,6 +1,17 @@
 import { expect, test } from 'bun:test';
 
-import { CELL, FLOOR, SOLID, WALL, clearBetween, floorOf, footprintsOf, nearestOpen, pathAcross } from './floor';
+import {
+	CELL,
+	FLOOR,
+	SOLID,
+	WALL,
+	clearBetween,
+	floorOf,
+	footprintsOf,
+	nearestOpen,
+	pathAcross,
+	standingSpot,
+} from './floor';
 import { layOut } from './plan';
 
 const laid = () =>
@@ -131,4 +142,33 @@ test('the way across the floor goes from room to room by their doors and round w
 	expect(Math.hypot(beside.x - seat.x, beside.y - seat.y)).toBeLessThan(1);
 	// And there's no way to somewhere off the ship
 	expect(pathAcross(floor, from, { x: layout.building.left - 20, y: 0 })).toBeNull();
+});
+
+test('somewhere to stand is open floor that nobody else has, the place wanted when that is free', () => {
+	const layout = laid();
+	const floor = floorWith(layout);
+	const { lounge } = layout;
+	const wanted = { x: lounge.x + lounge.w / 2 - 1.2, y: lounge.y + lounge.d - 0.75 };
+
+	expect(floor.open(wanted)).toBe(true);
+	expect(standingSpot(floor, wanted)).toBe(wanted);
+
+	// Ten asking for the one place are each given their own, on open floor, apart from the rest
+	const stood = [];
+
+	for (let turn = 0; turn < 10; turn++) stood.push(standingSpot(floor, wanted, stood));
+	for (const [index, spot] of stood.entries()) {
+		expect(floor.open(spot)).toBe(true);
+		for (const other of stood.slice(index + 1))
+			expect(Math.hypot(spot.x - other.x, spot.y - other.y)).toBeGreaterThanOrEqual(0.55 - 1e-9);
+	}
+	// Somewhere under a couch is no place to stand: the open floor beside it is given
+	const couch = floor.things.find(({ kind }) => kind === 'couch');
+	const under = { x: couch.x + couch.w / 2, y: couch.y + couch.d / 2, facing: 1 };
+	const beside = standingSpot(floor, under);
+
+	expect(floor.open(under)).toBe(false);
+	expect(floor.open(beside)).toBe(true);
+	expect(beside.facing).toBe(1);
+	expect(Math.hypot(beside.x - under.x, beside.y - under.y)).toBeLessThan(1.2);
 });

@@ -1,7 +1,19 @@
 import { facilitiesFor, facilityOf } from '../../shared/facilities';
 import { cksum, huesApart } from '../../shared/hues';
 import { PALETTE, cheeksOf, drawSprite, spriteSize } from './art';
-import { CELL, FLOOR, SOLID, VOID, WALL, clearBetween, floorOf, footprintsOf, nearestOpen, pathAcross } from './floor';
+import {
+	CELL,
+	FLOOR,
+	SOLID,
+	VOID,
+	WALL,
+	clearBetween,
+	floorOf,
+	footprintsOf,
+	nearestOpen,
+	pathAcross,
+	standingSpot,
+} from './floor';
 import { drawLighting, lightOf } from './lighting';
 import { FORMS, drawCore, drawHousing } from './machine';
 import { pixelText, textWidth } from './retro';
@@ -1507,15 +1519,23 @@ export default class Ship {
 
 		// Those on their feet: at a cabinet while there's one free, the rest gathered round the TV
 		const players = this.cabinetPlayers(standing);
+		// Where anyone stands in the lounge so far: the people there, then each grey as it's placed, so the floor's map
+		// gives no two of them one place
+		const standers = [...this.walkers.values()]
+			.filter(({ spot, room }) => spot && room === this.lounge)
+			.map(({ spot }) => spot);
 		let gathered = 0;
 
 		for (const key of this.lounge ? standing : []) {
 			const worker = this.workers.get(key);
 			const playing = players.get(key) ?? null;
+			// At a cabinet, exactly where its stick is reached from; by the TV, the nearest open floor to its turn there
 			const seat = playing
 				? cabinetStandAt(this.lounge, playing.index, playing.side)
-				: tvStandAt(this.lounge, gathered++);
+				: standingSpot(this.floor, tvStandAt(this.lounge, gathered++), standers);
 			const was = worker.stoodAt;
+
+			standers.push(seat);
 
 			// Its place changed as others came and went: it walks over rather than turning up there
 			if (was && !this.moved && !worker.trip && !this.walking(worker) && (was.x !== seat.x || was.y !== seat.y))
