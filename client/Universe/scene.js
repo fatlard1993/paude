@@ -311,6 +311,9 @@ const STEAM_SECONDS = 5 * 60;
 const HOT_SECONDS = 15 * 60;
 // A walk's frames by turns, as suffixes of the standing sprite's name
 const STEPS = ['', 'StepLeft', '', 'StepRight'];
+// A person's stride has more to it than a grey's: each boot on its way up, high, and on its way down, one after the
+// other with no standing still between
+const SUIT_STEPS = ['StepLeftLow', 'StepLeft', 'StepLeftLow', 'StepRightLow', 'StepRight', 'StepRightLow'];
 // An island's hit sorts after every figure on it and before the rooms round it
 const ISLAND_HIT = 1e6;
 // Where each kind of stream runs from, in the order their packets are spaced along a shared conduit
@@ -7760,7 +7763,8 @@ export default class Ship {
 		const beam = out ?? (into !== null && into < 1 ? 1 - into : null);
 
 		if (beam !== null) ctx.globalAlpha = Math.max(0, 1 - beam);
-		const stride = walker.path.length && beam === null ? STEPS[Math.floor(walker.step) % STEPS.length] : '';
+		const stride =
+			walker.path.length && beam === null ? SUIT_STEPS[Math.floor(walker.step * 1.5) % SUIT_STEPS.length] : '';
 		const colors = { c: `hsl(${walker.person.hue} 45% 45%)`, s: `hsl(${walker.person.hue} 45% 45%)` };
 		const there = !walker.path.length && !walker.leaving && walker.spot;
 
@@ -7788,7 +7792,7 @@ export default class Ship {
 				rect(ctx, at.x - 10, at.y - SUIT_TALL + 4, 5, 1, PALETTE.W);
 			}
 		} else {
-			// Walking: level, the stride in the boots and the arms alone (lifted on each stride too, the whole of them
+			// Walking: level, the stride in the legs and the arms alone (lifted on each stride too, the whole of them
 			// bounced)
 			rect(ctx, at.x - 5, at.y, 11, 1, PALETTE.k);
 			drawSprite(ctx, `suit${stride}`, at.x, at.y, { colors, flip: walker.facing < 0 });

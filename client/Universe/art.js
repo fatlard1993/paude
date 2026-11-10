@@ -171,12 +171,37 @@ const swung = side =>
 		return arm ? `${row.slice(0, from)}${arm}${row.slice(from + 4)}` : row;
 	});
 
+// The suit's legs in a stride, seen from the front: one planted, the other's knee come up so its boot is `lift` rows
+// off the floor, the leg that much shorter. `side`: the lifted leg on the left of the picture (0) or its right (1)
+const striding = (side, lift) => {
+	const rows = SUIT_LEGS.length + 3;
+	const leg = (at, up) => {
+		const boot = rows - 2 - up;
+
+		if (at > boot + 1) return ['.......', '.......'];
+		if (at === boot + 1) return ['..kkkkk', 'kkkkk..'];
+
+		return at === boot ? ['..kmmmm', 'mmmmk..'] : ['...kwww', 'wwwk...'];
+	};
+
+	return Array.from({ length: rows }, (_, at) => {
+		const [left] = leg(at, side ? 0 : lift);
+		const [, right] = leg(at, side ? lift : 0);
+		// The seam between the legs: there while either leg is, closing the planted boot's sole under the lifted one
+		const seam = at < rows - 1 || lift ? 'k' : '.';
+
+		return `${left}${seam}${right}`;
+	});
+};
+
 const SUIT = {
 	stand: [...SUIT_TOP, ...SUIT_LEGS, '...kwwwkwwwk...', '..kmmmmkmmmmk..', '..kkkkk.kkkkk..'],
-	// A stride: a boot lifted and the other planted, as the greys walk, the arm across from the lifted boot swung
-	// forward
-	stepLeft: [...swung(1), ...SUIT_LEGS, '..kmmmmkwwwk...', '..kkkkkkmmmmk..', '.......kkkkkk..'],
-	stepRight: [...swung(0), ...SUIT_LEGS, '...kwwwkmmmmk..', '..kmmmmkkkkkk..', '..kkkkk........'],
+	// A stride, as the greys walk but with the knee coming well up: a boot a little off the floor on its way up and
+	// down, then high, the arm across from it swung forward at the top of it
+	stepLeftLow: [...SUIT_TOP, ...striding(0, 1)],
+	stepLeft: [...swung(1), ...striding(0, 3)],
+	stepRightLow: [...SUIT_TOP, ...striding(1, 1)],
+	stepRight: [...swung(0), ...striding(1, 3)],
 	// Stood still, now and then: the light across their visor from its other side, as they look about
 	glint: [...SUIT_TOP, ...SUIT_LEGS, '...kwwwkwwwk...', '..kmmmmkmmmmk..', '..kkkkk.kkkkk..'].map(
 		(row, index) => ({ 4: '.kwkyWWyyyykwk.', 5: '.kwkYWyyyyykwk.' })[index] ?? row,
@@ -483,6 +508,8 @@ const SPRITES = {
 	suitSit: SUIT.sit,
 	suitStepLeft: SUIT.stepLeft,
 	suitStepRight: SUIT.stepRight,
+	suitStepLeftLow: SUIT.stepLeftLow,
+	suitStepRightLow: SUIT.stepRightLow,
 	lamp: LAMP,
 	core: CORE,
 	asking: ASKING,
