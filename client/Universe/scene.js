@@ -1700,7 +1700,9 @@ export default class Ship {
 	walkTo(walker, spot, room) {
 		if (this.roomNow(walker.room) !== room) return this.route(walker, walker.room, spot, room);
 
-		return room?.kind === 'bridge' ? this.acrossBridge(walker, spot) : [spot];
+		// Within a room too the way is checked against the floor's map: straight across the lounge from one cabinet to
+		// another is through the cabinets between
+		return this.overFloor(walker, room?.kind === 'bridge' ? this.acrossBridge(walker, spot) : [spot], spot);
 	}
 
 	// The room `room` is now: the layout's rooms are made anew with each update, so one kept from before is found again
@@ -2166,6 +2168,30 @@ export default class Ship {
 		if (this.departing?.key === name || (this.readying && this.viewer === name)) return HURRY;
 
 		return this.arcading && this.viewer === name ? TO_ARCADE : 1;
+	}
+
+	// Whether a person is in the lounge, where they're drawn among its furniture rather than over everything
+	amongFurniture(walker) {
+		const { lounge } = this;
+
+		return Boolean(
+			lounge &&
+			walker.x >= lounge.x &&
+			walker.x <= lounge.x + lounge.w &&
+			walker.y >= lounge.y &&
+			walker.y <= lounge.y + lounge.d,
+		);
+	}
+
+	// How far back a person in the lounge is drawn: where their feet are; at a cabinet they're playing, just over it, as
+	// the greys at it are, so their arm on its stick shows
+	depthOf(walker) {
+		const cabinet =
+			walker.pose === 'player' && !walker.path.length
+				? (this.lounge?.cabinets ?? []).findIndex(({ id }) => id === this.arcading)
+				: -1;
+
+		return cabinet >= 0 ? cabinetAt(this.lounge, cabinet).y + 0.012 : walker.y;
 	}
 
 	// The airlock's hatch stands up past the top of the bridge's wall, into the hull's rim over it, where the rooms
@@ -2972,15 +2998,20 @@ export default class Ship {
 				draw: () => this.drawParcel(ctx, parcel),
 			});
 
+		// Someone in the lounge is drawn in among what stands there, by how far back they are, so its cabinets, couches
+		// and TV hide them where they pass behind
+		for (const walker of this.walkers.values())
+			if (walker.x !== undefined && !this.boarding(walker) && this.amongFurniture(walker))
+				standing.push({ y: this.depthOf(walker), draw: () => this.drawWalker(ctx, walker) });
 		for (const thing of standing.sort((a, b) => a.y - b.y)) thing.draw();
 		this.light(ctx, working, running);
 		this.drawCoreCharge(ctx);
 		// Lit, so laid over the light
 		this.drawPathways(ctx);
-		// Whoever's aboard over everything, as a game draws its people over the scenery: the bridge's aisles are too narrow
-		// to clear the consoles and screens about them
+		// Whoever's aboard elsewhere over everything, as a game draws its people over the scenery: the bridge's aisles are
+		// too narrow to clear the consoles and screens about them
 		for (const walker of this.walkers.values())
-			if (walker.x !== undefined && !this.boarding(walker)) {
+			if (walker.x !== undefined && !this.boarding(walker) && !this.amongFurniture(walker)) {
 				this.drawWalker(ctx, walker);
 				this.drawWatchersOver(ctx, walker);
 			}
