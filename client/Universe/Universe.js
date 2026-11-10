@@ -127,6 +127,9 @@ const FOCUS_KEPT = 'paude-universe-focus';
 const FLEET_KEPT = 'paude-universe-fleet';
 // The space left between ships shown together, in art pixels
 const FLEET_GAP = 60;
+// How long a ship takes to slide in or out of the screen, in seconds
+const FLEET_SLIDE_S = 0.6;
+const eased = t => t * t * (3 - 2 * t);
 // The width the docks were last dragged to, kept for this browser (where it can be: storage can be off)
 const DOCK_WIDTH = 'paude-universe-dock-width';
 const DOCK_LEAST = 360;
@@ -309,6 +312,8 @@ export default class Universe extends View {
 		// Each engine's last known Claude account, so a poll that leaves it out doesn't move the engine to another ship
 		this.accounts = new Map();
 		// The other ships shown on the stage beside the one aboard, by their key
+		// How far in each is, 0 (away) to 1 (shown), by key: those between are sliding in or out
+		this.fleetIn = new Map();
 		this.fleetShown = new Set(
 			(() => {
 				try {
@@ -449,19 +454,38 @@ export default class Universe extends View {
 	// The ships on the screen: this one aboard and those chosen, stacked down the screen in the fleet's order with their bows
 	// in line, each by where its own origin falls from the one aboard's, in art pixels: [{ key, ship, at: { x, y } }]
 	shipsShown() {
-		const shown = [...this.ships].filter(([key, ship]) => ship === this.aboard || this.fleetShown.has(key));
+		const here = [...this.ships].filter(
+			([key, ship]) => ship === this.aboard || this.fleetShown.has(key) || this.fleetIn.get(key) > 0,
+		);
+		const { width = 0 } = this.stageSize ?? {};
 		let down = 0;
-		const placed = shown.map(([key, ship]) => {
+		const placed = here.map(([key, ship]) => {
 			const { right, top, height } = ship.extent();
-			const at = { x: -right, y: down - top };
+			// One sliding in or out comes from past the bow edge of the screen, and takes its room on the stage as it does
+			const far = ship === this.aboard ? 1 : eased(this.fleetIn.get(key) ?? 1);
+			const slide = (1 - far) * (width / Math.max(1, this.aboard.camera.zoom) + 200);
+			const at = { x: -right + slide, y: down - top };
 
-			down += height + FLEET_GAP;
+			down += (height + FLEET_GAP) * far;
 
 			return { key, ship, at };
 		});
 		const home = placed.find(({ ship }) => ship === this.aboard)?.at ?? { x: 0, y: 0 };
 
 		return placed.map(placing => ({ ...placing, at: { x: placing.at.x - home.x, y: placing.at.y - home.y } }));
+	}
+
+	// Each ship's slide moved on by `seconds`, at once when motion is reduced
+	slideShips(seconds) {
+		for (const key of this.ships.keys()) {
+			const goal = this.fleetShown.has(key) ? 1 : 0;
+			const now = this.fleetIn.get(key) ?? goal;
+			const next = this.calm.matches
+				? goal
+				: now + Math.sign(goal - now) * Math.min(Math.abs(goal - now), seconds / FLEET_SLIDE_S);
+
+			if (next !== now || !this.fleetIn.has(key)) this.fleetIn.set(key, next);
+		}
 	}
 
 	// Another ship shown or hidden on the stage, the choice kept
@@ -481,7 +505,7 @@ export default class Universe extends View {
 		if (target) return target;
 
 		for (const { key, ship } of this.shipsShown()) {
-			const other = ship !== this.aboard && ship.hit(x, y);
+			const other = ship !== this.aboard && this.fleetShown.has(key) && ship.hit(x, y);
 
 			if (other) return { ...other, over: key };
 		}
@@ -587,6 +611,7 @@ export default class Universe extends View {
 			// Every ship going on, the one aboard drawn
 			for (const ship of this.ships.values())
 				ship.step(Math.min(LONGEST_FRAME_S, (now - last) / 1000), this.calm.matches);
+			this.slideShips(Math.min(LONGEST_FRAME_S, (now - last) / 1000));
 			this.aboard.draw(ctx, ratio);
 			// The other ships shown, over the same space, seen from where they stand beside this one
 			for (const { ship, at } of this.shipsShown()) {
