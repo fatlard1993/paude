@@ -18,6 +18,7 @@ import { pixelText } from './retro';
 import {
 	COUCH_SEAT,
 	cabinetAt,
+	cabinetFacing,
 	DOOR,
 	FACE,
 	UNIT,
@@ -1781,13 +1782,13 @@ export const drawHangar = (ctx, art, label, room, { time, journey, launching = f
 // `lifted`: how far up each couch still is (art pixels, by its index), dropping out of the tube onto its place;
 // `gone`: the indices of couches not to draw, being zapped to ash (drawn crumbling by their zap) or lying in it
 // One of the mother hub's games, as an arcade cabinet against the lounge's near wall, seen side on, its screen turned
-// to the side its player stands (away from the TV), so that, as with the TV, only the light it throws shows: its
+// out from its island to where its player stands, so that, as with the TV, only the light it throws shows: its
 // silhouette (the tall back, the marquee's hood jutting forward over the screen's slanted bezel, the control deck out
 // at the player's waist, the kick plate at its foot) with the side panel in its game's colors and a stripe of side art,
 // and while the game's on, a flickering cone of its color spilling from the screen onto whoever's playing
 const cabinetPart = (ctx, art, lounge, cabinet, index, time) => {
 	const foot = cabinetAt(lounge, index);
-	const facing = foot.x < lounge.x + lounge.w / 2 ? -1 : 1;
+	const facing = cabinetFacing(index);
 
 	return {
 		y: foot.y,

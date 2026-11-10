@@ -441,3 +441,7 @@ export const attachFile = async (sessionId, file, base = sessionBase(sessionId))
 // A mother-hub game's cabinet in the universe's lounge, watched or not
 export const setCabinetWatched = async (id, watch) =>
 	await PUT('/api/cabinets/:id/watch', { urlParameters: { id }, body: { watch } });
+
+// Where a cabinet's game is played inside paude's page: { url } on the preview listener
+export const getCabinetPlay = async id =>
+	await GET('/api/cabinets/:id/play', { urlParameters: { id }, invalidateAfter: 0 });

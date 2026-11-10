@@ -5,6 +5,7 @@ import {
 	addFolder,
 	connectRemote,
 	getProjectArtifacts,
+	getCabinetPlay,
 	getProjectLinks,
 	getProjectSessions,
 	getProjects,
@@ -402,8 +403,8 @@ export const arcadePane = ({ machines = [] }) => ({
 	},
 });
 
-// A mother-hub game from its cabinet in the lounge, to play right here: the game itself in a frame, or, where a page
-// served over https can't frame a game served over http, a button that opens it in a tab of its own. `onUnwatch`
+// A mother-hub game from its cabinet in the lounge, to play right here: the game itself in a frame, served through
+// paude's preview listener (so over the page's own https), or a button that opens it in a tab of its own. `onUnwatch`
 // takes the cabinet out of the lounge.
 export const cabinetPane = ({ cabinet, onUnwatch }) => ({
 	key: 'game',
@@ -421,23 +422,24 @@ export const cabinetPane = ({ cabinet, onUnwatch }) => ({
 			...(onUnwatch ? [button('Take it out of the lounge', onUnwatch, { className: 'variant-flat' })] : []),
 		);
 		elem.append(bar);
-		if (blocked)
-			elem.append(
-				element(
-					'p',
-					'about',
-					cabinet.url
-						? `${cabinet.title} is served over http, which this page (over https) can't show inside it: open it in a tab.`
-						: `${cabinet.title} has no address this paude can reach yet.`,
-				),
-			);
-		else {
-			const frame = element('iframe', 'cabinet-game');
+		const frame = element('iframe', 'cabinet-game');
+		const note = element('p', 'about', `Opening ${cabinet.title}…`);
 
-			frame.src = cabinet.url;
-			frame.allow = 'autoplay; fullscreen';
-			elem.append(frame);
-		}
+		frame.allow = 'autoplay; fullscreen';
+		elem.append(note);
+		// Through paude's own preview listener, over the page's own https, wherever the hub serves it from; straight
+		// from the hub where paude can't reach its port and the page allows it
+		getCabinetPlay(cabinet.id).then(({ body, response }) => {
+			const url = (response?.ok && body?.url) || (!blocked && cabinet.url);
+
+			if (!url) {
+				note.textContent = `${cabinet.title} can't be shown here: open it in a tab.`;
+
+				return;
+			}
+			frame.src = url;
+			note.replaceWith(frame);
+		});
 		appendTo.append(elem);
 
 		return { elem, refresh: () => {} };

@@ -243,6 +243,7 @@ const selectionKey = selected =>
 	(selected?.worker && `worker:${selected.worker.session.key}`) ||
 	(selected?.bay && `bay:${selected.bay.name}`) ||
 	(selected?.engine && `engine:${selected.engine.key}`) ||
+	(selected?.cabinet && `cabinet:${selected.cabinet.id}`) ||
 	(selected?.place && `room:${selected.place}`) ||
 	null;
 
@@ -964,8 +965,12 @@ export default class Universe extends View {
 		if (target?.kind === 'processes') return this.openRack(target, point);
 		if (target?.kind === 'use' && this.workerOf(target.use.session))
 			return this.openWorker(this.workerOf(target.use.session));
-		// A cabinet in the lounge opens its game, right here in the dock
-		if (target?.kind === 'cabinet') return this.openCabinet(target.cabinet);
+		// A cabinet in the lounge: its card, and its game right here in the dock
+		if (target?.kind === 'cabinet') {
+			this.select({ cabinet: target.cabinet });
+
+			return this.openCabinet(target.cabinet);
+		}
 		if (target?.kind === 'bridge' || target?.kind === 'lounge') {
 			const at = target.kind === 'bridge' ? BRIDGE : LOUNGE;
 
@@ -1930,6 +1935,12 @@ export default class Universe extends View {
 
 			return { key: `worker:${worker.session.key}`, kind: 'worker', worker, room };
 		}
+		// A cabinet in the lounge: as it is now, by its game
+		if (selected?.cabinet) {
+			const cabinet = (aboard.cabinets ?? []).find(({ id }) => id === selected.cabinet.id) ?? selected.cabinet;
+
+			return { key: `cabinet:${cabinet.id}`, kind: 'cabinet', cabinet, room: aboard.lounge ?? aboard.bridge };
+		}
 		if (selected?.engine)
 			return {
 				key: `engine:${selected.engine.key}`,
@@ -1993,6 +2004,24 @@ export default class Universe extends View {
 			return { ...flyoutOf({ kind: 'worker', worker }, aboard), commands: this.workerCommands(worker) };
 		if (kind === 'engine')
 			return { ...flyoutOf({ kind: 'engine', engine }, aboard), commands: this.engineCommands(engine) };
+		if (kind === 'cabinet') {
+			const { cabinet } = focus;
+
+			return {
+				...flyoutOf({ kind: 'cabinet', cabinet }, aboard),
+				commands: [
+					{ label: 'Play here', hotkey: 'p', run: () => this.openCabinet(cabinet) },
+					...(cabinet.url
+						? [{ label: 'Open in a tab', hotkey: 't', run: () => window.open(cabinet.url, '_blank') }]
+						: []),
+					...owned({
+						label: 'Take it out of the lounge',
+						hotkey: 'u',
+						run: () => this.watchCabinet(cabinet.id, false),
+					}),
+				],
+			};
+		}
 		if (kind === 'group') {
 			const { group } = focus;
 
