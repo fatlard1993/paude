@@ -1,4 +1,4 @@
-import { hotReload, serve } from '@vanilla-bean/components/app';
+import { serve } from '@vanilla-bean/components/app';
 
 import router from './router/router';
 import attachSocket from './sessions/attachSocket';
@@ -6,18 +6,14 @@ import remoteAttach from './sessions/remoteAttach';
 import sideShell from './sessions/sideShell';
 
 // How long the client's files are left quiet before it's built again and its pages reloaded, in development. A change
-// is rarely one write (a save then a format, a session's run of edits), and at the library's own tenth of a second
-// each was a build and a reload of every open page, which the universe stutters through. The library's own wait is
-// this from its next release, with a `watch` option on serve to set it; until paude is on that, it's set here.
+// is rarely one write (a save then a format, a session's run of edits), and each build reloads every open page, which
+// the universe, slow to draw, stutters through. The library's own wait, said here so it's paude's to change.
 export const RELOAD_QUIET_MS = 30_000;
 
 export default {
-	init: async ({ host, port }) => {
-		// Watched from here, ahead of serve, which would start the watch with the library's wait: the first to start it
-		// sets how long it waits, and serve's own call then only joins it
-		if (process.env.NODE_ENV === 'development') await hotReload.watch(undefined, { debounce: RELOAD_QUIET_MS });
-
-		return serve({
+	init: ({ host, port }) =>
+		serve({
+			watch: { debounce: RELOAD_QUIET_MS },
 			hostname: host,
 			port,
 			// Nothing paude accepts comes close; the limits keep one client from tying up memory
@@ -41,6 +37,5 @@ export default {
 					else if (socket.data.route === 'shell') sideShell.close(socket);
 				},
 			},
-		});
-	},
+		}),
 };
