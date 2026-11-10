@@ -222,7 +222,7 @@ const HALL_FLOOR = { base: '#20252f', alt: '#1c2029' };
 export const corners = (art, room) => [art({ x: room.x, y: room.y }), art({ x: room.x + room.w, y: room.y + room.d })];
 
 // A floor laid in its pattern on the world's grid, so the seams of rooms side by side line up
-const grate = (x, y) => y % 2 === 1;
+const grate = y => y % 2 === 1;
 
 const floors = new Map();
 
@@ -255,8 +255,7 @@ export const floor = (ctx, art, room, colors = BARE_FLOOR) => {
 		paint.fillStyle = colors.base;
 		paint.fillRect(0, 0, w, h);
 		paint.fillStyle = colors.alt;
-		for (let y = 0; y < h; y++)
-			for (let x = 0; x < w; x++) if (grate(wrap(from.x + x), wrap(from.y + y))) paint.fillRect(x, y, 1, 1);
+		for (let y = 0; y < h; y++) if (grate(wrap(from.y + y))) paint.fillRect(0, y, w, 1);
 		floors.set(key, canvas);
 	}
 	ctx.drawImage(floors.get(key), from.x, from.y);
