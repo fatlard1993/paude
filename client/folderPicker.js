@@ -138,6 +138,7 @@ export const folderPicker = ({ list, onPick }) => {
 		const input = element('input');
 
 		input.placeholder = 'Its name, then Enter';
+		input.setAttribute('aria-label', 'New folder name');
 		row.append(icon('folder-plus'), input);
 		input.addEventListener('keydown', event => {
 			if (event.key === 'Escape') {

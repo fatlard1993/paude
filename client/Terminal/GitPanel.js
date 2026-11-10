@@ -341,6 +341,7 @@ export default class GitPanel extends Panel {
 		});
 
 		message.placeholder = 'Commit message';
+		message.setAttribute('aria-label', 'Commit message');
 		message.rows = 3;
 		message.value = this.draft ?? '';
 		message.addEventListener('input', () => (this.draft = message.value));
@@ -627,7 +628,9 @@ export default class GitPanel extends Panel {
 		);
 
 		title.placeholder = 'Title';
+		title.setAttribute('aria-label', 'Pull request title');
 		body.placeholder = 'What it changes, and why';
+		body.setAttribute('aria-label', 'Pull request description');
 		body.rows = 6;
 		draft.append(drafting, ' As a draft');
 		options.append(draft, write, open);
@@ -648,6 +651,7 @@ export default class GitPanel extends Panel {
 			const name = element('input');
 
 			name.placeholder = 'New branch from here';
+			name.setAttribute('aria-label', 'New branch name');
 			form.append(
 				name,
 				button('Create', () => {}, { className: 'primary' }),
@@ -729,6 +733,7 @@ export default class GitPanel extends Panel {
 			const message = element('input');
 
 			message.placeholder = 'Stash the changes as…';
+			message.setAttribute('aria-label', 'Stash message');
 			form.append(
 				message,
 				button('Stash', () => {}, { className: 'primary' }),

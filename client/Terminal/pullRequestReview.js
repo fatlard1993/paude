@@ -54,6 +54,7 @@ const reviewDialog = plan =>
 			gap: theme.space.md,
 		});
 		const summary = Object.assign(element('textarea'), { rows: 4, placeholder: 'A summary, if any' });
+		summary.setAttribute('aria-label', 'Review summary');
 		const event = element('select');
 		const items = [...plan.inline, ...plan.inBody];
 

@@ -516,6 +516,7 @@ export default class FilesPanel extends Panel {
 		const input = element('input');
 
 		input.placeholder = placeholder;
+		input.setAttribute('aria-label', `Files to ${key}`);
 		input.value = this.searchOptions[key];
 		input.addEventListener('input', () => {
 			this.searchOptions[key] = input.value;
@@ -618,6 +619,7 @@ export default class FilesPanel extends Panel {
 			symbols: 'Find a function, class or type',
 			changes: 'Find a changed file',
 		}[mode];
+		this.query.setAttribute('aria-label', this.query.placeholder);
 
 		for (const [key, node] of Object.entries(this.modeButtons)) node.classList.toggle('active', key === mode);
 
@@ -732,6 +734,7 @@ export default class FilesPanel extends Panel {
 		const replacement = element('input');
 
 		replacement.placeholder = 'Replace every match with…';
+		replacement.setAttribute('aria-label', 'Replacement');
 		row.append(
 			replacement,
 			button('Replace all', () => {}, { className: 'primary' }),

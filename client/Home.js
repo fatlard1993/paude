@@ -183,6 +183,7 @@ export default class Home extends View {
 		};
 
 		input.placeholder = 'Pick a folder below, or type: ~/path/to/it, or ~/path/* for each folder in it';
+		input.setAttribute('aria-label', 'Folder to add');
 
 		// What's picked in the tree is what's in the field, until the field is typed in
 		let chosen = null;

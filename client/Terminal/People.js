@@ -62,6 +62,7 @@ const renderPeople = async sessionId => {
 	);
 	arcadeLabel.title = 'For anyone who would rather tap and talk than read a terminal; takes the drive role to answer';
 	name.placeholder = 'Their name';
+	name.setAttribute('aria-label', 'Their name');
 	name.maxLength = 40;
 	expiry.value = String(24);
 

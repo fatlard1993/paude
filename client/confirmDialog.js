@@ -52,6 +52,7 @@ export const nameDialog = ({
 
 		input.value = current ?? '';
 		input.placeholder = placeholder;
+		input.setAttribute('aria-label', header);
 		input.style.width = '100%';
 		input.addEventListener('keydown', event => {
 			// Left to itself, the Enter would go on to press the button focus returns to

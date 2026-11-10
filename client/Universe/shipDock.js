@@ -266,6 +266,9 @@ export const enginesPane = ({ remotes = [], localName, onConnected }) => ({
 		Object.assign(url, { placeholder: 'Its address: https://paude.example.com', autocomplete: 'off' });
 		Object.assign(password, { type: 'password', placeholder: 'Its owner password', autocomplete: 'off' });
 		Object.assign(name, { placeholder: 'A name to show it by (optional)', autocomplete: 'off' });
+		url.setAttribute('aria-label', 'Its address');
+		password.setAttribute('aria-label', 'Its owner password');
+		name.setAttribute('aria-label', 'A name to show it by');
 		list.append(
 			...[
 				{ name: localName, detail: 'this machine' },
@@ -346,6 +349,7 @@ export const foldersPane = ({ onAdded, machines = [] }) => ({
 		watching.checked = true;
 		watch.append(watching, ' Watch it, so it comes aboard now');
 		input.placeholder = 'Pick a folder below, or type: ~/path/to/it, or ~/path/* for each folder in it';
+		input.setAttribute('aria-label', 'Folder to add');
 
 		const where = () => (machines[Number(machine.value)] ?? { url: null }).url;
 		// What's picked in the tree is what's in the field, until the field is typed in

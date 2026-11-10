@@ -117,9 +117,11 @@ export const newArcadeForm = ({ remotes = [], onMade, asMaker = false } = {}) =>
 	let busy = false;
 
 	name.placeholder = "What's it called? (optional: Claude can help name it)";
+	name.setAttribute('aria-label', 'Game name');
 	name.maxLength = 60;
 	idea.placeholder =
 		'The idea, as rough or detailed as you like (optional: leave it blank to brainstorm one with Claude)';
+	idea.setAttribute('aria-label', 'Game idea');
 	idea.rows = 2;
 	idea.maxLength = 4000;
 	progress.style.display = 'none';

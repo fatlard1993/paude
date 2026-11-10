@@ -74,7 +74,7 @@ export default class Login extends View {
 			appendTo: card,
 			type: 'password',
 			placeholder: 'Password',
-			attributes: { autocomplete: 'current-password', autofocus: true },
+			attributes: { 'aria-label': 'Password', autocomplete: 'current-password', autofocus: true },
 			onKeyDown: event => {
 				if (event.key === 'Enter') this.login();
 			},

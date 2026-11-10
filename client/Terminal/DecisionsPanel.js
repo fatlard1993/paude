@@ -30,6 +30,7 @@ export default class DecisionsPanel extends Panel {
 		this.search = element('input', 'link-search');
 		this.body = element('div', 'body');
 		this.search.placeholder = 'Find something settled here';
+		this.search.setAttribute('aria-label', 'Find something settled here');
 		this.search.addEventListener('input', () => this.renderDecisions());
 		this.bar.append(
 			element('span', 'branch', 'Decisions'),
@@ -212,6 +213,7 @@ export default class DecisionsPanel extends Panel {
 		const send = button('Answer', () => {});
 
 		input.placeholder = 'Your answer';
+		input.setAttribute('aria-label', 'Your answer');
 		form.append(input, send);
 		form.addEventListener('submit', async event => {
 			event.preventDefault();

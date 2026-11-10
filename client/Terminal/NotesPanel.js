@@ -32,6 +32,7 @@ const composer = ({ placeholder, label, onSend, onAsk, drafts, draftKey, session
 	const ask = onAsk && canType() && element('button', 'ask', 'Ask Claude');
 
 	input.placeholder = placeholder;
+	input.setAttribute('aria-label', placeholder);
 	input.rows = 1;
 	input.value = drafts?.get(draftKey) ?? '';
 	if (draftKey) input.dataset.draftKey = draftKey;
@@ -426,6 +427,7 @@ export default class NotesPanel extends Panel {
 			palette.append(pick);
 		}
 		other.placeholder = 'any emoji';
+		other.setAttribute('aria-label', 'Another emoji');
 		other.maxLength = 16;
 		other.addEventListener('keydown', event => {
 			if (event.key === 'Enter' && other.value.trim()) react(other.value.trim());

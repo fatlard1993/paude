@@ -59,6 +59,7 @@ const composer = ({ placeholder, send, actions, keep, session }) => {
 	};
 
 	text.placeholder = placeholder;
+	text.setAttribute('aria-label', placeholder);
 	text.rows = 2;
 	text.addEventListener('input', () => (text.value ? remember(keep, text.value) : forget(keep)));
 	text.addEventListener('keydown', event => {

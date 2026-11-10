@@ -33,6 +33,7 @@ export default class LinksPanel extends Panel {
 		this.search = element('input', 'link-search');
 		this.body = element('div', 'body');
 		this.search.placeholder = 'Find a link';
+		this.search.setAttribute('aria-label', 'Find a link');
 		this.search.addEventListener('input', () => this.renderLinks());
 		this.bar.append(
 			element('span', 'branch', 'Links'),

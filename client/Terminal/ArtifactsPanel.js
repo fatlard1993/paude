@@ -51,6 +51,7 @@ export default class ArtifactsPanel extends Panel {
 		this.search = element('input', 'link-search');
 		this.body = element('div', 'body');
 		this.search.placeholder = 'Find something made here';
+		this.search.setAttribute('aria-label', 'Find something made here');
 		this.search.addEventListener('input', () => this.renderArtifacts());
 		this.bar.append(
 			element('span', 'branch', 'Artifacts'),

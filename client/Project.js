@@ -128,6 +128,8 @@ export default class Project extends View {
 		this.fromInput = Object.assign(element('input', 'chip-name'), {
 			placeholder: 'branch, tag, commit or PR (#123)',
 		});
+		this.newName.setAttribute('aria-label', 'Worktree name');
+		this.fromInput.setAttribute('aria-label', 'Start from');
 		this.lifetimeChip = element('button', 'chip variant-chip');
 		this.modelChip = element('button', 'chip variant-chip');
 		this.arcadeChip = element('button', 'chip variant-chip');

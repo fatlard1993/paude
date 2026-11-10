@@ -123,6 +123,7 @@ export default class SharesPanel extends Panel {
 		const input = element('input');
 
 		input.placeholder = placeholder;
+		input.setAttribute('aria-label', placeholder);
 		form.append(
 			input,
 			...actions.map(([label, kind]) => button(label, () => (this.kind = kind), { className: 'primary' })),

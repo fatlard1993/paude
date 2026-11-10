@@ -18,6 +18,7 @@ const makersPanel = () => {
 	const list = element('div', 'meta');
 
 	name.placeholder = 'Their name';
+	name.setAttribute('aria-label', 'Their name');
 	name.maxLength = 40;
 	opener.type = 'button';
 	form.append(name, reading, give, hint, result);

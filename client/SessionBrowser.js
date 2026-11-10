@@ -198,6 +198,7 @@ export default class SessionBrowser {
 		this.latest = 0;
 
 		this.search = Object.assign(element('input', 'search'), { type: 'search', placeholder });
+		this.search.setAttribute('aria-label', 'Find a session');
 		this.search.addEventListener(
 			'input',
 			debounce(() => this.reload(), SEARCH_DELAY_MS),
