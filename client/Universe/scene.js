@@ -3036,19 +3036,7 @@ export default class Ship {
 				system: room.kind === 'system' ? this.systemOf(room) : undefined,
 			});
 		// Each cabinet in the lounge, to press and play
-		(this.lounge?.cabinets ?? []).forEach((cabinet, index) => {
-			const foot = cabinetAt(this.lounge, index);
-			// As tall as it's drawn (36 art pixels up from its foot)
-			const box = { x: foot.x - CABINET_W / 2, y: foot.y - 2.6, w: CABINET_W, d: 2.6 };
-
-			this.hits.push({
-				...this.screen({ x: foot.x, y: foot.y - 1.3 }),
-				area: this.area(box),
-				kind: 'cabinet',
-				cabinet,
-				room: this.lounge,
-			});
-		});
+		this.hits.push(...this.cabinetHits());
 		this.cables = this.conduitsOf();
 		this.fed = this.feedsOf();
 		// Each whole, machine to island, in one layer so none is broken where two would meet; on the floor, under all that
@@ -8096,6 +8084,33 @@ export default class Ship {
 			pixelText(ctx, text, x + 1, y + 1, { color: PALETTE.k, align, max: fit });
 			pixelText(ctx, text, x, y, { color, align, max: fit });
 		}
+	}
+
+	// Each cabinet in the lounge as what's hit to press it: as tall as it's drawn (36 art pixels up from its foot),
+	// which is taller than the rows of a column stand apart. So one behind another is hit only where it shows over the
+	// top of the one in front: no two overlap, and what's pressed is what's seen there. (Left overlapping, the smaller
+	// of two is the one hit, and a pixel's rounding decides which that is.)
+	cabinetHits() {
+		const stood = (this.lounge?.cabinets ?? []).map((cabinet, index) => {
+			const foot = cabinetAt(this.lounge, index);
+
+			return {
+				...this.screen({ x: foot.x, y: foot.y - 1.3 }),
+				area: this.area({ x: foot.x - CABINET_W / 2, y: foot.y - 2.6, w: CABINET_W, d: 2.6 }),
+				kind: 'cabinet',
+				cabinet,
+				room: this.lounge,
+			};
+		});
+
+		return stood.map(hit => {
+			const { left, right, bottom } = hit.area;
+			const inFront = stood
+				.filter(({ area }) => area.bottom > bottom && area.left < right && area.right > left)
+				.map(({ area }) => area.top);
+
+			return { ...hit, area: { ...hit.area, bottom: Math.min(bottom, ...inFront) } };
+		});
 	}
 
 	// A room's floor on the screen, for what's hit there

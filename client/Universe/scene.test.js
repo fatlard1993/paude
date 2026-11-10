@@ -2746,6 +2746,36 @@ test('one gone cold with a question open or a reply unread stands about the loun
 	expect(made.drawMarker).toBeUndefined();
 });
 
+test('where one cabinet of a column stands in front of another, the one seen there is the one pressed', () => {
+	const games = ['a', 'b', 'c', 'd', 'e', 'f'].map(id => ({ id, name: id, watched: true, running: true }));
+	const made = shipWith([{ ...answer('here', [session()], { projects: ['paude'] }), cabinets: games }]);
+
+	run(made, 10);
+	Object.defineProperty(made, 'offset', { value: { x: 0, y: 0 }, configurable: true });
+	made.hits = made.cabinetHits();
+
+	// A column: the first island at the floor, the next behind it and higher up the screen, the third behind that
+	const column = [0, 2, 4].map(index => made.hits.find(({ cabinet }) => cabinet.id === games[index].id));
+	const [front, middle, back] = column;
+
+	// Each is drawn taller than the rows stand apart, and hit only down to the top of the one in front of it
+	expect(front.area.bottom - front.area.top).toBeGreaterThan(front.area.top - middle.area.top);
+	expect(middle.area.bottom).toBe(front.area.top);
+	expect(back.area.bottom).toBe(middle.area.top);
+	for (const [near, far] of [
+		[front, middle],
+		[middle, back],
+	]) {
+		const x = (near.area.left + near.area.right) / 2;
+
+		// Across the whole of the nearer one's height, its top (which the one behind stands behind) as much as its foot
+		expect(made.hit(x, near.area.top + 1).cabinet.id).toBe(near.cabinet.id);
+		expect(made.hit(x, near.area.bottom - 1).cabinet.id).toBe(near.cabinet.id);
+		// And the one behind where it shows over the nearer's top
+		expect(made.hit(x, far.area.top + 1).cabinet.id).toBe(far.cabinet.id);
+	}
+});
+
 test("opening a cabinet's game walks the one looking over to it to play, and shutting it walks them back", () => {
 	const me = { key: 'me', name: 'chase', role: 'owner', sessions: [] };
 	const looks = [
