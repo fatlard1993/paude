@@ -1458,11 +1458,11 @@ test('walking about the bridge, off it to the spine, or onto it from where new s
 	for (const path of [there, back, out, leaving, tour, arriving])
 		for (const [index, point] of path.slice(1).entries()) {
 			const at = path[index];
-			const crosses =
-				Math.max(at.x, point.x) > inside.left &&
-				Math.min(at.x, point.x) < inside.right &&
-				Math.max(at.y, point.y) > inside.top &&
-				Math.min(at.y, point.y) < inside.bottom;
+			// Anywhere along the leg, which may run aslant round a corner of it
+			const crosses = Array.from({ length: 41 }, (_, step) => ({
+				x: at.x + ((point.x - at.x) * step) / 40,
+				y: at.y + ((point.y - at.y) * step) / 40,
+			})).some(({ x, y }) => x > inside.left && x < inside.right && y > inside.top && y < inside.bottom);
 
 			expect(crosses).toBe(false);
 		}

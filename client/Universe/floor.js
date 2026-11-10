@@ -148,62 +148,84 @@ export const footprintsOf = (layout, { couches = 0, pods = 0, terminals = [] } =
 };
 
 // The map of a laid-out ship's floor with `things` (footprintsOf) standing on it. Rooms and halls are open floor from
-// under their far wall's face to their near edge; a room with a door onto a hall is walled from it but for the
-// doorway, and from the rooms beside it unless it's joined to them; rooms within another (the lounge on the bridge)
-// are part of its floor.
-export const floorOf = (layout, things = []) => {
+// under their far wall's face to their near edge. Walls take no floor: each cell knows which room or hall it's in
+// (`regions`; a room within another, the lounge on the bridge, is part of its floor), and the way from a cell to the
+// next is shut when they're in different ones, but through a doorway (`doors`): a room over a hall has its door
+// through the hall's far wall; a room under its hall is open onto it all along; every hall is open at both its ends,
+// into the engine bay and onto the bridge.
+export const floorOf = (layout, things = [], { quiet: keptOff = [] } = {}) => {
 	const { left, right, top, bottom } = layout.building ?? { left: 0, right: 0, top: 0, bottom: 0 };
 	const columns = Math.max(1, Math.ceil((right - left) / CELL));
 	const rows = Math.max(1, Math.ceil((bottom - top) / CELL));
 	const cells = new Uint8Array(columns * rows);
+	const regions = new Int16Array(columns * rows);
+	const doors = new Uint8Array(columns * rows);
+	// Floor that's open but kept off (`quiet` boxes): a way goes round it unless it starts or ends there
+	const quiet = new Uint8Array(columns * rows);
 	const column = x => Math.floor((x - left) / CELL + 1e-9);
 	const row = y => Math.floor((y - top) / CELL + 1e-9);
 	const within = (across, down) => across >= 0 && across < columns && down >= 0 && down < rows;
 	// Every cell a box covers, at least the one its corner is in
-	const fill = ({ x, y, w, d }, kind, { only } = {}) => {
+	const each = ({ x, y, w, d }, visit) => {
 		for (let down = row(y); down <= row(y + d - 1e-6); down++)
-			for (let across = column(x); across <= column(x + w - 1e-6); across++) {
-				if (!within(across, down)) continue;
-				if (only !== undefined && cells[down * columns + across] !== only) continue;
-				cells[down * columns + across] = kind;
-			}
+			for (let across = column(x); across <= column(x + w - 1e-6); across++)
+				if (within(across, down)) visit(down * columns + across);
 	};
+	const fill = (box, kind, { only, region } = {}) =>
+		each(box, at => {
+			if (only !== undefined && cells[at] !== only) return;
+			cells[at] = kind;
+			if (region !== undefined) regions[at] = region;
+		});
+	const doorway = box =>
+		each(box, at => {
+			doors[at] = 1;
+		});
+	const halls = layout.halls ?? [];
 	const rooms = (layout.rooms ?? []).filter(room => !room.within);
 
-	for (const hall of layout.halls ?? []) fill(hall, FLOOR);
-	for (const room of rooms) {
+	// A hall's far wall, under the rooms over it, is the wall between them: its face takes the hall's top
+	halls.forEach((hall, index) => {
+		fill(hall, FLOOR, { region: index + 1 });
+		fill({ x: hall.x, y: hall.y, w: hall.w, d: hall.face ?? 0 }, WALL);
+	});
+	rooms.forEach((room, index) => {
 		const face = room.face ?? 0;
 
-		fill({ x: room.x, y: room.y + face, w: room.w, d: room.d - face }, FLOOR);
-	}
+		fill({ x: room.x, y: room.y + face, w: room.w, d: room.d - face }, FLOOR, { region: halls.length + index + 1 });
+	});
 	for (const room of rooms) {
-		const { door, joined = {} } = room;
-		const face = room.face ?? 0;
-		const floor = { y: room.y + face, d: room.d - face };
+		const { door } = room;
 
-		// Its walls to the rooms beside it
-		if (!joined.left) fill({ x: room.x, w: CELL, ...floor }, WALL);
-		if (!joined.right) fill({ x: room.x + room.w - CELL, w: CELL, ...floor }, WALL);
-		// Its wall to the hall its door is on, the doorway left open; a room under its hall is open onto it
+		// Over a hall: its doorway through the hall's far wall, from the room's near edge down onto the hall's floor
 		if (door?.side === 'bottom') {
-			fill({ x: room.x, y: room.y + room.d - CELL, w: room.w, d: CELL }, WALL);
-			fill({ x: door.x - DOOR / 2, y: room.y + room.d - CELL, w: DOOR, d: CELL }, FLOOR);
-		}
-		if (door?.side === 'left' || door?.side === 'right') {
-			const x = door.side === 'left' ? room.x : room.x + room.w - CELL;
+			const hall = halls.find(({ y }) => Math.abs(y - door.y) < 1e-6);
+			const gap = { x: door.x - DOOR / 2, w: DOOR };
 
-			fill({ x, w: CELL, ...floor }, WALL);
-			fill({ x, y: door.y - DOOR / 2, w: CELL, d: DOOR }, FLOOR);
+			if (!hall) continue;
+			fill({ ...gap, y: hall.y, d: hall.face ?? 0 }, FLOOR, { only: WALL });
+			doorway({ ...gap, y: door.y - CELL, d: CELL * 2 });
 		}
+		// Under its hall: open onto it all along
+		if (door?.side === 'top') doorway({ x: room.x, y: door.y - CELL, w: room.w, d: CELL * 2 });
 	}
 	// A hall runs the ship's length: where it meets the engine bay and the bridge, they're open to it, whichever hall
 	// their own door is on
-	for (const hall of layout.halls ?? [])
-		for (const x of [hall.x - CELL, hall.x + hall.w])
-			fill({ x, y: hall.lane - DOOR / 2, w: CELL, d: DOOR }, FLOOR, { only: WALL });
+	for (const hall of halls)
+		for (const x of [hall.x - CELL, hall.x + hall.w - CELL])
+			doorway({ x, y: hall.lane - DOOR / 2, w: CELL * 2, d: DOOR });
 	for (const thing of things) if (!thing.open) fill(thing, SOLID, { only: FLOOR });
+	for (const box of keptOff)
+		each(box, at => {
+			quiet[at] = 1;
+		});
 
 	const kindAt = ({ x, y }) => (within(column(x), row(y)) ? cells[row(y) * columns + column(x)] : VOID);
+	// Whether the way from one cell to one beside it is open: both floor, and in the same room, or through a doorway
+	const passable = (from, to) =>
+		cells[from] === FLOOR &&
+		cells[to] === FLOOR &&
+		(regions[from] === regions[to] || (doors[from] === 1 && doors[to] === 1));
 
 	return {
 		left,
@@ -211,12 +233,17 @@ export const floorOf = (layout, things = []) => {
 		columns,
 		rows,
 		cells,
+		regions,
+		doors,
+		quiet,
 		things,
 		kindAt,
+		passable,
 		open: point => kindAt(point) === FLOOR,
 		// The middle of the cell a point is in, and of a cell by its column and row
 		middleOf: (across, down) => ({ x: left + (across + 0.5) * CELL, y: top + (down + 0.5) * CELL }),
 		cellOf: ({ x, y }) => ({ across: column(x), down: row(y) }),
+		indexOf: ({ x, y }) => (within(column(x), row(y)) ? row(y) * columns + column(x) : -1),
 	};
 };
 
@@ -247,14 +274,23 @@ export const nearestOpen = (floor, point, reach = 1.5) => {
 	return best && { x: best.x, y: best.y };
 };
 
-// Whether the straight line between two points crosses only open floor
-export const clearBetween = (floor, from, to) => {
-	const steps = Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / (CELL / 2));
+// What a step onto floor that's kept off costs, as so many steps on any other: enough to go a long way round it
+const KEPT_OFF = 12;
+
+// Whether the straight line between two points crosses only open floor, and no wall between rooms but by a doorway;
+// and, asked to keep off (`quiet`: false), no floor that's kept off either
+export const clearBetween = (floor, from, to, { quiet = true } = {}) => {
+	const steps = Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / (CELL / 4));
+	let last = -1;
 
 	for (let step = 0; step <= steps; step++) {
 		const along = steps ? step / steps : 0;
+		const at = floor.indexOf({ x: from.x + (to.x - from.x) * along, y: from.y + (to.y - from.y) * along });
 
-		if (!floor.open({ x: from.x + (to.x - from.x) * along, y: from.y + (to.y - from.y) * along })) return false;
+		if (at < 0 || floor.cells[at] !== FLOOR) return false;
+		if (!quiet && floor.quiet[at]) return false;
+		if (last >= 0 && at !== last && !floor.passable(last, at)) return false;
+		last = at;
 	}
 
 	return true;
@@ -293,15 +329,19 @@ export const pathAcross = (floor, from, to) => {
 				const next = { across: here.across + stepAcross, down: here.down + stepDown };
 
 				if ((!stepAcross && !stepDown) || !openAt(next.across, next.down)) continue;
-				// Across a corner only where both cells beside it are open
+				if (!floor.passable(index(here), index(next))) continue;
+				// Across a corner only where both cells beside it are open, and in reach of here
 				if (
 					stepAcross &&
 					stepDown &&
-					(!openAt(here.across + stepAcross, here.down) || !openAt(here.across, here.down + stepDown))
+					[
+						{ across: here.across + stepAcross, down: here.down },
+						{ across: here.across, down: here.down + stepDown },
+					].some(beside => !openAt(beside.across, beside.down) || !floor.passable(index(here), index(beside)))
 				)
 					continue;
 
-				const so = cost[index(here)] + Math.hypot(stepAcross, stepDown);
+				const so = cost[index(here)] + Math.hypot(stepAcross, stepDown) * (floor.quiet[index(next)] ? KEPT_OFF : 1);
 
 				if (so >= cost[index(next)]) continue;
 				cost[index(next)] = so;
@@ -317,6 +357,9 @@ export const pathAcross = (floor, from, to) => {
 		cellsBack.push(floor.middleOf(at % columns, Math.floor(at / columns)));
 
 	const way = [start, ...cellsBack.reverse().slice(1, -1), goal];
+	// Bound for somewhere kept off, or setting out from it, the way may be pulled straight across it; otherwise it
+	// keeps the way round that was found
+	const bound = Boolean(floor.quiet[index(first)] || floor.quiet[index(last)]);
 	const corners = [way[0]];
 
 	// Pulled straight: from each corner kept, on to the farthest point the floor's clear to
@@ -324,7 +367,7 @@ export const pathAcross = (floor, from, to) => {
 		let far = at + 1;
 
 		for (let next = way.length - 1; next > at + 1; next--)
-			if (clearBetween(floor, way[at], way[next])) {
+			if (clearBetween(floor, way[at], way[next], { quiet: bound })) {
 				far = next;
 				break;
 			}

@@ -60,18 +60,37 @@ test('the floor is open in the rooms and halls, shut under what stands on it, an
 	expect(floor.kindAt({ x: island.x + island.w / 2, y: island.y })).toBe(SOLID);
 	// The bridge's floor in the aisle before an island is open
 	expect(floor.open({ x: island.x + island.w / 2, y: island.y + 0.8 })).toBe(true);
-	// A bay over its hall: its wall to the hall, open at its door
-	expect(floor.kindAt({ x: bay.x + bay.w * 0.1, y: bay.y + bay.d - CELL / 2 })).toBe(WALL);
-	expect(floor.kindAt({ x: bay.door.x, y: bay.y + bay.d - CELL / 2 })).toBe(FLOOR);
+	// A bay over its hall: the hall's far wall between them, open at the bay's door
+	expect(floor.kindAt({ x: bay.x + bay.w * 0.1, y: bay.y + bay.d + CELL / 2 })).toBe(WALL);
+	expect(floor.kindAt({ x: bay.door.x, y: bay.y + bay.d + CELL / 2 })).toBe(FLOOR);
 	// Under a project's machine the floor is shut; before it, open
 	const machine = footprintsOf(layout).find(({ kind }) => kind === 'machine');
 
 	expect(floor.kindAt({ x: machine.x + machine.w / 2, y: machine.y + machine.d / 2 })).toBe(SOLID);
-	// Every hall is open at both its ends, into the engine bay and onto the bridge
-	for (const each of layout.halls) {
-		expect(floor.kindAt({ x: each.x - CELL / 2, y: each.lane })).toBe(FLOOR);
-		expect(floor.kindAt({ x: each.x + each.w + CELL / 2, y: each.lane })).toBe(FLOOR);
-	}
+	// Every hall is open at both its ends, into the engine bay and onto the bridge, along its lane
+	for (const each of layout.halls)
+		for (const [inside, outside] of [
+			[each.x + CELL / 2, each.x - CELL / 2],
+			[each.x + each.w - CELL / 2, each.x + each.w + CELL / 2],
+		])
+			expect(clearBetween(floor, { x: inside, y: each.lane }, { x: outside, y: each.lane })).toBe(true);
+	// The bridge is walled from the bay beside it: no way from one to the other but round by the hall
+	const beside = layout.bays.find(({ x, w }) => Math.abs(x + w - layout.bridge.x) < 1e-9);
+	const level = { y: beside.y + beside.d - 0.5 };
+
+	expect(floor.open({ x: layout.bridge.x - CELL / 2, ...level })).toBe(true);
+	expect(floor.open({ x: layout.bridge.x + CELL / 2, ...level })).toBe(true);
+	expect(
+		clearBetween(floor, { x: layout.bridge.x - CELL / 2, ...level }, { x: layout.bridge.x + CELL / 2, ...level }),
+	).toBe(false);
+	// A wall takes no floor: the cells either side of the wall between two bays are both open, with no way between
+	const [one, next] = layout.bays.filter(({ door }) => door.side === 'bottom');
+	const between = { y: one.y + one.d - 0.5 };
+
+	expect(Math.abs(one.x + one.w - next.x)).toBeLessThan(1e-9);
+	expect(floor.open({ x: next.x - CELL / 2, ...between })).toBe(true);
+	expect(floor.open({ x: next.x + CELL / 2, ...between })).toBe(true);
+	expect(clearBetween(floor, { x: next.x - CELL / 2, ...between }, { x: next.x + CELL / 2, ...between })).toBe(false);
 	// Outside the hull there's no floor
 	expect(floor.open({ x: layout.building.left - 5, y: 0 })).toBe(false);
 	// What's given no footprint leaves the floor as it was
@@ -95,7 +114,7 @@ test('the way across the floor goes from room to room by their doors and round w
 		if (all[index + 1]) expect(clearBetween(floor, point, all[index + 1])).toBe(true);
 	});
 	// Through the bay's doorway: where the way crosses the bay's near wall, it's within the door
-	const wall = bay.y + bay.d - CELL / 2;
+	const wall = bay.y + bay.d + CELL / 2;
 	const legs = [nearestOpen(floor, from), ...way];
 	const crossing = legs.findIndex((point, index) => legs[index + 1] && point.y <= wall && legs[index + 1].y > wall);
 	const [above, below] = [legs[crossing], legs[crossing + 1]];

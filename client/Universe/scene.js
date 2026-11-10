@@ -1,7 +1,7 @@
 import { facilitiesFor, facilityOf } from '../../shared/facilities';
 import { cksum, huesApart } from '../../shared/hues';
 import { PALETTE, cheeksOf, drawSprite, spriteSize } from './art';
-import { CELL, SOLID, VOID, WALL, floorOf, footprintsOf } from './floor';
+import { CELL, FLOOR, SOLID, VOID, WALL, clearBetween, floorOf, footprintsOf, nearestOpen, pathAcross } from './floor';
 import { drawLighting, lightOf } from './lighting';
 import { FORMS, drawCore, drawHousing } from './machine';
 import { pixelText, textWidth } from './retro';
@@ -1560,7 +1560,34 @@ export default class Ship {
 
 	// From a point in one room to one in another: to its door, out to the spine (along `lane`, the spine's middle unless
 	// given), along it, and in; from nowhere (`room` null) it starts on the spine
-	route(from, was, to, bound, lane = this.layout.halls[0]?.lane) {
+	route(from, was, to, bound, lane) {
+		return this.overFloor(from, this.laneRoute(from, was, to, bound, lane), to);
+	}
+
+	// A way to walk, checked against the floor's map: kept as it is while every leg of it is over open floor and
+	// through no wall (so those who keep to the halls' lanes and the bridge's aisles still do); where any leg isn't,
+	// the way across the floor is taken in its place, round whatever stands in it and by the doorways. Either end may
+	// be under something (a seat at a console): the way is to the open floor beside it, and then into place.
+	overFloor(from, path, to) {
+		if (!this.layout?.building || !path.length || from?.x === undefined) return path;
+
+		const { floor } = this;
+		const onFloor = point => nearestOpen(floor, point, 0.75) ?? point;
+		const way = [from, ...path];
+
+		if (way.every((point, index) => !way[index + 1] || clearBetween(floor, onFloor(point), onFloor(way[index + 1]))))
+			return path;
+
+		const found = pathAcross(floor, from, to);
+
+		if (!found) return path;
+
+		const last = found.at(-1) ?? from;
+
+		return Math.hypot(last.x - to.x, last.y - to.y) > 1e-6 ? [...found, to] : found;
+	}
+
+	laneRoute(from, was, to, bound, lane = this.layout.halls[0]?.lane) {
 		const [room, toRoom] = [this.roomNow(was), this.roomNow(bound)];
 		// Within one room, or between rooms on the bridge, straight there
 		const home = place => place?.within ?? place;
@@ -2119,9 +2146,13 @@ export default class Ship {
 		if (this.floorFor !== this.layout || this.floorMade !== made) {
 			this.floorFor = this.layout;
 			this.floorMade = made;
+			// The lounge's couches and the step before them are kept off: nobody cuts through those resting
+			const box = this.lounge?.count ? this.loungeBox() : null;
+
 			this.floorMap = floorOf(
 				this.layout,
 				footprintsOf(this.layout, { couches: this.couches, pods: this.cargo?.length ?? 0, terminals }),
+				{ quiet: box ? [{ x: box.left, y: box.top, w: box.right - box.left, d: box.bottom - box.top }] : [] },
 			);
 		}
 
@@ -2144,6 +2175,29 @@ export default class Ship {
 				const to = this.art({ x: floor.left + (across + 1) * CELL, y: floor.top + (down + 1) * CELL });
 
 				rect(ctx, from.x, from.y, to.x - from.x, to.y - from.y, tints[kind]);
+			}
+		// The walls between rooms, which take no floor: a line wherever the way from a cell to the next is shut; a doorway
+		// green
+		for (let down = 0; down < floor.rows; down++)
+			for (let across = 0; across < floor.columns; across++) {
+				const at = down * floor.columns + across;
+
+				if (floor.cells[at] !== FLOOR) continue;
+
+				const from = this.art({ x: floor.left + across * CELL, y: floor.top + down * CELL });
+				const to = this.art({ x: floor.left + (across + 1) * CELL, y: floor.top + (down + 1) * CELL });
+
+				if (floor.doors[at]) rect(ctx, from.x, from.y, to.x - from.x, to.y - from.y, 'rgba(110, 255, 160, 0.3)');
+				// Kept off: open, but gone round by anyone not bound for it
+				if (floor.quiet[at]) rect(ctx, from.x, from.y, to.x - from.x, to.y - from.y, 'rgba(120, 150, 255, 0.18)');
+				if (across + 1 < floor.columns && floor.cells[at + 1] === FLOOR && !floor.passable(at, at + 1))
+					rect(ctx, to.x - 1, from.y, 2, to.y - from.y, '#ff5a5a');
+				if (
+					down + 1 < floor.rows &&
+					floor.cells[at + floor.columns] === FLOOR &&
+					!floor.passable(at, at + floor.columns)
+				)
+					rect(ctx, from.x, to.y - 1, to.x - from.x, 2, '#ff5a5a');
 			}
 		for (const thing of floor.things) {
 			const from = this.art(thing);
@@ -4259,7 +4313,7 @@ export default class Ship {
 			const along = this.trunkLane(sources.indexOf(key));
 			const hall = { x: along / UNIT.x, y: lane + offset };
 			const onward = this.clearOfLounge(
-				[hall, ...this.route(hall, null, end, worker.room, lane + offset)].map(point => this.art(point)),
+				[hall, ...this.laneRoute(hall, null, end, worker.room, lane + offset)].map(point => this.art(point)),
 			);
 
 			return [
@@ -4277,7 +4331,7 @@ export default class Ship {
 			];
 		}
 		const points = this.clearOfLounge(
-			[start, ...this.route(start, room, end, worker.room, lane + offset)].map(point => this.art(point)),
+			[start, ...this.laneRoute(start, room, end, worker.room, lane + offset)].map(point => this.art(point)),
 		);
 
 		if (tech)
