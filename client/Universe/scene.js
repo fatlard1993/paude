@@ -2975,8 +2975,23 @@ export default class Ship {
 		for (const thing of standing.sort((a, b) => a.y - b.y)) thing.draw();
 		this.light(ctx, working, running);
 		this.drawCoreCharge(ctx);
-		// Lit, so laid over the light
+		// Lit, so laid over the light; but under whoever's stood or walking over them, who was drawn before the light:
+		// each person's shape (helmet, body, legs) is cut out of where the cables' lights are drawn
+		const over = [...this.walkers.values()].filter(walker => walker.x !== undefined && !this.boarding(walker));
+
+		ctx.save();
+		ctx.beginPath();
+		ctx.rect(-1e5, -1e5, 2e5, 2e5);
+		for (const walker of over) {
+			const at = this.art(walker);
+
+			ctx.rect(at.x - 6, at.y - SUIT_TALL, 13, 10);
+			ctx.rect(at.x - 8, at.y - SUIT_TALL + 10, 16, 11);
+			ctx.rect(at.x - 5, at.y - SUIT_TALL + 21, 11, SUIT_TALL - 20);
+		}
+		ctx.clip('evenodd');
 		this.drawPathways(ctx);
+		ctx.restore();
 		// Anyone not in a room of the ship (there's none, as the ship is laid) over everything
 		for (const walker of this.walkers.values())
 			if (walker.x !== undefined && !this.boarding(walker) && !this.amongFurniture(walker)) {
