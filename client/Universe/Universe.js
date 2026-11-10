@@ -477,9 +477,10 @@ export default class Universe extends View {
 
 	// The ships on the screen: this one aboard and those chosen, stacked down the screen in the fleet's order with their bows
 	// in line, each by where its own origin falls from the one aboard's, in art pixels: [{ key, ship, at: { x, y } }]
-	shipsShown() {
+	// `settled`: where they'll stand once those sliding in or out are done, those on their way out left out
+	shipsShown({ settled = false } = {}) {
 		const here = [...this.ships].filter(
-			([key, ship]) => ship === this.aboard || this.fleetShown.has(key) || this.fleetIn.get(key) > 0,
+			([key, ship]) => ship === this.aboard || this.fleetShown.has(key) || (!settled && this.fleetIn.get(key) > 0),
 		);
 		const { width = 0 } = this.stageSize ?? {};
 		let down = 0;
@@ -487,7 +488,7 @@ export default class Universe extends View {
 			const { right, top, height } = ship.extent();
 			// One coming in comes up from astern, past the screen's edge, slowing to hold its place alongside; one going
 			// pulls away ahead, past the bow's. Each takes its room on the stage, or gives it back, as it goes.
-			const was = ship === this.aboard ? 1 : (this.fleetIn.get(key) ?? 1);
+			const was = ship === this.aboard || settled ? 1 : (this.fleetIn.get(key) ?? 1);
 			const entering = this.fleetShown.has(key);
 			const reach = width / Math.max(1, this.aboard.camera.zoom) + 200;
 			const slide = entering ? -(1 - slowing(was)) * reach : quickening(1 - was) * reach;
@@ -1409,8 +1410,9 @@ export default class Universe extends View {
 
 	// The view flown to take in this ship and every other shown beside it; left as it is when there's none
 	frameFleet() {
+		// Where each will stand, not where one just shown is now: that's still far astern, on its way in
 		const box = fleetBox(
-			this.shipsShown()
+			this.shipsShown({ settled: true })
 				.filter(({ key, ship }) => ship === this.aboard || this.fleetShown.has(key))
 				.map(({ ship, at }) => ({ extent: ship.extent(), at })),
 		);
