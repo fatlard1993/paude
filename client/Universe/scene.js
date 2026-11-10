@@ -2560,7 +2560,7 @@ export default class Ship {
 		(this.lounge?.cabinets ?? []).forEach((cabinet, index) => {
 			const foot = cabinetAt(this.lounge, index);
 			// As tall as it's drawn (36 art pixels up from its foot)
-			const box = { x: foot.x - CABINET_W / 2, y: foot.y - 2, w: CABINET_W, d: 2 };
+			const box = { x: foot.x - CABINET_W / 2, y: foot.y - 2.6, w: CABINET_W, d: 2.6 };
 
 			this.hits.push({
 				...this.screen({ x: foot.x, y: foot.y - 1.3 }),
@@ -4754,6 +4754,11 @@ export default class Ship {
 		const { seat } = worker;
 		const cans = this.cansOf(worker);
 
+		// At a cabinet it stands and plays: no couch to dangle its legs from, its cans left on the couch
+		// Drawn just over the cabinet, so the hand on its stick shows
+		if (worker.playing)
+			return [{ y: cabinetAt(this.lounge, worker.playing.index).y + 0.01, draw: () => this.drawWorker(ctx, worker) }];
+
 		return [
 			{ y: seat.y + 0.3, draw: () => this.drawCans(ctx, worker, Math.min(cans, CANS_DROPPED), 0) },
 			// Behind the couch's back, so the heap shows over it rather than lying on its front
@@ -5388,6 +5393,7 @@ export default class Ship {
 		drawSprite(ctx, head, at.x + aside, neck, {
 			colors: size === 'bursting' ? { ...colors, r: '#ff4a3a' } : colors,
 		});
+		if (worker.playing && !walking) this.drawPlaying(ctx, worker, at);
 		if (pose?.flush) this.drawFlush(ctx, size, at.x + aside, neck, pose.flush);
 		ctx.globalAlpha = 1;
 		if (making < 1) ctx.restore();
@@ -5483,8 +5489,8 @@ export default class Ship {
 		const beat = Math.floor(this.time * 3 + worker.seed);
 		const wiggle = beat % 2;
 		const mashing = Math.floor((this.time + worker.seed * 5) / 4) % 3 === 0;
-		const hand = { x: at.x + toward * (8 + wiggle), y: at.y - 11 - (mashing ? wiggle : 0) };
-		const shoulder = { x: at.x + toward * 4, y: at.y - 5 };
+		const hand = { x: at.x + toward * (8 + wiggle), y: at.y - 14 - (mashing ? wiggle : 0) };
+		const shoulder = { x: at.x + toward * 3, y: at.y - 5 };
 
 		for (let step = 0; step <= 3; step++) {
 			const x = Math.round(shoulder.x + ((hand.x - shoulder.x) * step) / 3);

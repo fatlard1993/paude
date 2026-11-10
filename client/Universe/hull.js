@@ -1826,64 +1826,65 @@ const cabinetPart = (ctx, art, lounge, cabinet, index, time) => {
 			const x = from => at.x + facing * (from - 6);
 			const span = (from, to, y, h, color) =>
 				rect(ctx, Math.min(x(from), x(to)), y, Math.abs(x(to) - x(from)) + 1, h, color);
-			const top = at.y - 27;
+			const top = at.y - 36;
 
 			if (cabinet.running) {
-				const flicker = 0.12 + 0.07 * Math.abs(Math.sin(time * 6 + index * 1.9)) + 0.04 * Math.sin(time * 17 + index);
+				// A low, slow shimmer, as a screen's glow on the floor, not a strobe
+				const flicker = 0.07 + 0.02 * Math.sin(time * 1.3 + index * 1.9) + 0.008 * Math.sin(time * 3.1 + index);
 
 				ctx.fillStyle = trim;
 				ctx.globalAlpha = Math.max(0.05, flicker);
 				ctx.beginPath();
-				ctx.moveTo(x(10), top + 7);
-				ctx.lineTo(x(24), top + 2);
-				ctx.lineTo(x(24), at.y);
-				ctx.lineTo(x(11), top + 17);
+				ctx.moveTo(x(13), top + 10);
+				ctx.lineTo(x(30), top + 2);
+				ctx.lineTo(x(30), at.y);
+				ctx.lineTo(x(14), top + 24);
 				ctx.closePath();
 				ctx.fill();
 				ctx.globalAlpha = 1;
 			}
 			// The outline, then the side panel inside it: back, hood, bezel, deck and the lower front
-			span(0, 7, top, 1, PALETTE.k);
-			span(0, 11, top + 1, 5, PALETTE.k);
-			span(0, 10, top + 6, 10, PALETTE.k);
-			span(0, 12, top + 16, 3, PALETTE.k);
-			span(0, 9, top + 19, 8, PALETTE.k);
-			span(1, 6, top + 1, 1, body);
-			span(1, 10, top + 2, 3, body);
-			span(1, 9, top + 6, 10, body);
-			span(1, 11, top + 17, 1, body);
-			span(1, 8, top + 19, 7, body);
+			span(0, 9, top, 1, PALETTE.k);
+			span(0, 14, top + 1, 6, PALETTE.k);
+			span(0, 11, top + 7, 13, PALETTE.k);
+			span(0, 16, top + 20, 4, PALETTE.k);
+			span(0, 12, top + 24, 12, PALETTE.k);
+			span(1, 8, top + 1, 1, body);
+			span(1, 13, top + 2, 4, body);
+			span(1, 10, top + 7, 13, body);
+			span(1, 15, top + 21, 2, body);
+			span(1, 11, top + 24, 11, body);
 			// The marquee's lit edge under the hood, and the screen's bezel slanting back below it, lit while it's on
-			span(8, 10, top + 5, 1, cabinet.running ? trim : PALETTE.d);
-			for (let row = 0; row < 10; row++)
-				span(9 - Math.floor(row / 5), 9 - Math.floor(row / 5), top + 6 + row, 1, cabinet.running ? trim : PALETTE.d);
+			span(11, 13, top + 6, 1, cabinet.running ? trim : PALETTE.d);
+			for (let row = 0; row < 13; row++)
+				span(10 - Math.floor(row / 5), 10 - Math.floor(row / 5), top + 7 + row, 1, cabinet.running ? trim : PALETTE.d);
 			// The side art: the game's own icon on the panel when it has one (never mirrored, so it reads the same on
 			// either side of an island), a stripe of its color sweeping down past it
 			const icon = iconOf(cabinet.icon);
 
-			span(2, 3, top + 2, 1, trim);
-			span(2, 2, top + 3, icon ? 2 : 11, trim);
+			span(2, 4, top + 3, 1, trim);
+			span(2, 3, top + 4, icon ? 4 : 14, trim);
 			if (icon) {
 				const smooth = ctx.imageSmoothingEnabled;
 
 				ctx.imageSmoothingEnabled = false;
-				rect(ctx, Math.min(x(0), x(7)), top + 6, 8, 8, PALETTE.k);
-				// Its own shape kept, fitted inside the frame's 6 pixels square
+				rect(ctx, Math.min(x(1), x(10)), top + 8, 10, 10, PALETTE.k);
+				// Its own shape kept, fitted inside the frame's 8 pixels square
 				const wide = icon.naturalWidth || 1;
 				const tall = icon.naturalHeight || 1;
-				const scale = 6 / Math.max(wide, tall);
+				const scale = 8 / Math.max(wide, tall);
 				const [width, height] = [Math.max(1, Math.round(wide * scale)), Math.max(1, Math.round(tall * scale))];
 
-				ctx.drawImage(icon, Math.min(x(1), x(6)) + (6 - width) / 2, top + 7 + (6 - height) / 2, width, height);
+				ctx.drawImage(icon, Math.min(x(2), x(9)) + (8 - width) / 2, top + 9 + (8 - height) / 2, width, height);
 				ctx.imageSmoothingEnabled = smooth;
-			} else span(3, 4, top + 14, 1, trim);
-			span(3, 6, top + 21, 1, trim);
+			} else span(3, 5, top + 18, 1, trim);
+			span(4, 9, top + 26, 1, trim);
 			// The deck's edge, a stick standing up from it, and the kick plate
-			span(10, 12, top + 16, 1, PALETTE.m);
-			span(10, 10, top + 14, 2, PALETTE.m);
-			span(9, 11, top + 13, 1, 'hsl(0 70% 55%)');
-			span(1, 8, top + 25, 1, 'rgba(0, 0, 0, 0.45)');
-			if (cabinet.players && Math.floor(time * 2) % 2) span(5, 6, top + 2, 1, PALETTE.W);
+			span(13, 15, top + 20, 1, PALETTE.m);
+			span(13, 13, top + 17, 3, PALETTE.m);
+			span(12, 14, top + 16, 1, 'hsl(0 70% 55%)');
+			span(1, 11, top + 33, 2, 'rgba(0, 0, 0, 0.45)');
+			if (cabinet.players && Math.floor(time * 0.8 + index) % 2) span(6, 7, top + 3, 1, PALETTE.W);
 		},
 	};
 };
