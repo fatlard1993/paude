@@ -1315,7 +1315,7 @@ test('looking at the transporter, whoever looks walks to beside its pad, onto th
 });
 
 test("a stream's straight run across the lounge bends round it, by its far side when it's against the hull; one clear of it is left be", () => {
-	const made = shipWith([lounger(0)]);
+	const made = shipWith([lounger(MINUTE)]);
 	const { lounge } = made;
 	const [from, past] = [made.art(lounge), made.art({ x: lounge.x + lounge.w, y: lounge.y + lounge.d })];
 	const nearTop = Math.round(from.y + (past.y - from.y) / 4);
@@ -1351,7 +1351,7 @@ test("a stream's straight run across the lounge bends round it, by its far side 
 });
 
 test('several bent round the lounge run side by side, each its own way out from it, never on one line', () => {
-	const made = shipWith([lounger(0)]);
+	const made = shipWith([lounger(MINUTE)]);
 	const { lounge } = made;
 	const [from, past] = [made.art(lounge), made.art({ x: lounge.x + lounge.w, y: lounge.y + lounge.d })];
 	const y = Math.round((from.y + past.y) / 2);
@@ -1367,7 +1367,7 @@ test('several bent round the lounge run side by side, each its own way out from 
 });
 
 test('a lounge clear of the hull lets a run nearer its near side go round by that side', () => {
-	const made = shipWith([lounger(0)]);
+	const made = shipWith([lounger(MINUTE)]);
 	const { lounge } = made;
 
 	made.layout = { ...made.layout, building: { ...made.layout.building, bottom: made.layout.building.bottom + 5 } };
@@ -1410,7 +1410,7 @@ test('a session resting on a couch, selected, is bracketed on the couch and at t
 });
 
 test("a conduit bent round the lounge turns up its riser from the lounge's edge, not back down to where it started", () => {
-	const made = shipWith([lounger(0)]);
+	const made = shipWith([lounger(MINUTE)]);
 	const { lounge } = made;
 	const [from, past] = [made.art(lounge), made.art({ x: lounge.x + lounge.w, y: lounge.y + lounge.d })];
 	const y = Math.round((from.y + past.y) / 2);
@@ -2577,6 +2577,52 @@ test("a terminal is frosted whenever its session's cache is cold, whatever the s
 	expect(cacheCold(session({ status: 'stopped', coldAgo: 60_000 }))).toBe(true);
 	expect(cacheCold(session({ status: 'stopped' }))).toBe(true);
 	expect(cacheCold(session({ status: 'stopped', coldAgo: 0 }))).toBe(false);
+});
+
+test('one stopped while its cache still holds stands at an arcade cabinet, or round the TV where there is none, and sits down only once it has gone cold', () => {
+	const stopped = (id, coldAgo) => session({ id, status: 'stopped', tool: null, coldAgo, stoppedAgo: 5 * MINUTE });
+	const looks = (sessions, cabinets = []) => [{ ...answer('here', sessions, { projects: ['paude'] }), cabinets }];
+	const made = shipWith(looks([stopped('a', 0), stopped('b', 0), stopped('c', 10 * MINUTE)]));
+
+	run(made, 30);
+
+	const [a, b, c] = ['a', 'b', 'c'].map(id => made.workers.get(`here/${id}`));
+	const tv = { x: made.lounge.x + made.lounge.w / 2 - 0.3, y: made.lounge.y + made.lounge.d - 0.15 };
+
+	// No arcade: the two still warm stand before the TV, one to each side; only the cold one has a seat
+	expect(made.lounging).toEqual(['here/c']);
+	expect([a.standing, b.standing, c.standing]).toEqual([true, true, false]);
+	expect(made.placeOf(a).x).toBeLessThan(tv.x);
+	expect(made.placeOf(b).x).toBeGreaterThan(tv.x);
+	for (const worker of [a, b]) {
+		expect(Math.abs(made.placeOf(worker).x - tv.x)).toBeLessThan(1.5);
+		expect(tv.y - made.placeOf(worker).y).toBeLessThan(1.2);
+		// On the floor, not up on a cushion
+		expect(made.standingAt(worker).y).toBe(made.art(made.placeOf(worker)).y);
+	}
+
+	// An arcade cabinet comes: they stand at it, playing
+	const cabinet = { id: 'game', name: 'Game', watched: true, running: true };
+
+	made.update(looks([stopped('a', 0), stopped('b', 0), stopped('c', 10 * MINUTE)], [cabinet]));
+	expect(a.playing).toMatchObject({ index: 0 });
+	expect(b.playing).toMatchObject({ index: 0 });
+	expect([a.standing, b.standing]).toEqual([false, false]);
+	run(made, 30);
+	expect(made.walking(a)).toBe(false);
+
+	// One goes cold: it leaves the cabinet for a seat on the couch, the other still playing
+	const at = { ...made.placeOf(a) };
+
+	made.update(looks([stopped('a', MINUTE), stopped('b', 0), stopped('c', 10 * MINUTE)], [cabinet]));
+	expect(made.lounging).toEqual(['here/c', 'here/a']);
+	expect(a.playing).toBeNull();
+	expect(b.playing).toMatchObject({ index: 0 });
+	expect([a.x, a.y]).toEqual([at.x, at.y]);
+	expect(made.walking(a)).toBe(true);
+	run(made, 30);
+	expect(made.walking(a)).toBe(false);
+	expect(Math.hypot(a.x - made.placeOf(a).x, a.y - made.placeOf(a).y)).toBeLessThan(0.01);
 });
 
 test('a couch more needed is dropped out of the tube; one no longer needed is zapped from the ceiling, the lounge its size till its ash is sucked up', () => {

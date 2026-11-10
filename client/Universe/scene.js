@@ -61,6 +61,7 @@ import {
 	cabinetStandAt,
 	couchEndOf,
 	loungeSeatAt,
+	tvStandAt,
 	rect,
 	noise,
 	seeded,
@@ -221,9 +222,8 @@ const coldOf = session => session.coldAgo ?? session.context?.cache?.ago ?? sess
 export const cacheCold = session =>
 	session.status === 'stopped' ? (session.coldAgo ?? 1) > 0 : session.context?.warm === false;
 const HAUL_SECONDS = 6;
-// A session come to rest plays one of the mother hub's games that's on, for this long since it went cold, before its
-// couch; two to a cabinet
-const PLAY_MS = 4 * 60_000;
+// A session stopped while its cache still holds stands at one of the arcade cabinets until it goes cold, two to a
+// cabinet
 const PLAYERS_PER_CABINET = 2;
 // How fast the bay doors in the belly slide, as a part of their way a second
 const BAY_DOOR_RATE = 2.5;
@@ -1274,7 +1274,7 @@ export default class Ship {
 			// it leaves them by its couch for the tube to take
 			if (worker && !lounging) {
 				if (worker.lounging && !worker.leaving) this.leaveLitter(worker);
-				worker.cans = undefined;
+				Object.assign(worker, { cans: undefined, playing: null, standing: false, stoodAt: undefined });
 			}
 			if (worker?.seat && worker.lounging !== lounging)
 				worker.trip = {
@@ -1352,7 +1352,15 @@ export default class Ship {
 		const onCouches = [...this.workers]
 			.filter(([, worker]) => worker.lounging && (!worker.leaving || worker.opacity > 0))
 			.map(([key]) => key);
-		const lounging = this.seatLoungers(onCouches);
+		// Stopped with its cache still holding, one isn't sat down yet: it stands about the lounge, at the arcade's
+		// cabinets or round the TV, and takes a seat once it's gone cold. Once sat, it stays sat.
+		const sat = new Set(this.lounging ?? []);
+		const standing = onCouches.filter(key => {
+			const { session, leaving } = this.workers.get(key);
+
+			return !sat.has(key) && !leaving && session.status === 'stopped' && !cacheCold(session);
+		});
+		const lounging = this.seatLoungers(onCouches.filter(key => !standing.includes(key)));
 
 		// Each session watched by whoever isn't any one session's guest, once
 		const pilots = [...this.people.values()].filter(person => !this.guestOf(person));
@@ -1434,24 +1442,47 @@ export default class Ship {
 				if (worker && seat) Object.assign(worker, { seat, homeSeat: seat, bay, room: this.bridge });
 			}),
 		);
-		// A place held for one gone from it (its dust still there) seats nobody. One that has only just come to rest plays
-		// a game first, while one is on (two to a cabinet), and goes to its couch after
-		const players = this.cabinetPlayers();
-
+		// A place held for one gone from it (its dust still there) seats nobody
 		this.lounge?.sessions.forEach((key, index) => {
+			const worker = this.workers.get(key);
+
+			// Gone cold on its feet: it walks from where it stood to its couch
+			if (worker?.stoodAt && !worker.trip && !this.walking(worker))
+				worker.trip = { from: worker.stoodAt, room: this.lounge };
+			Object.assign(worker ?? {}, {
+				seat: loungeSeatAt(this.lounge, index),
+				bay: this.lounge,
+				room: this.lounge,
+				playing: null,
+				standing: false,
+				stoodAt: undefined,
+			});
+		});
+
+		// Those on their feet: at a cabinet while there's one free, the rest gathered round the TV
+		const players = this.cabinetPlayers(standing);
+		let gathered = 0;
+
+		for (const key of this.lounge ? standing : []) {
 			const worker = this.workers.get(key);
 			const playing = players.get(key) ?? null;
 			const seat = playing
 				? cabinetStandAt(this.lounge, playing.index, playing.side)
-				: loungeSeatAt(this.lounge, index);
-			const wasPlaying = worker?.playing;
+				: tvStandAt(this.lounge, gathered++);
+			const was = worker.stoodAt;
 
-			if (worker) worker.playing = playing;
-			// Done playing (or the game went off): it walks from the cabinet to its couch
-			if (worker && wasPlaying && !playing && !worker.trip && !this.walking(worker))
-				worker.trip = { from: cabinetStandAt(this.lounge, wasPlaying.index, wasPlaying.side), room: this.lounge };
-			Object.assign(worker ?? {}, { seat, bay: this.lounge, room: this.lounge });
-		});
+			// Its place changed as others came and went: it walks over rather than turning up there
+			if (was && !this.moved && !worker.trip && !this.walking(worker) && (was.x !== seat.x || was.y !== seat.y))
+				worker.trip = { from: was, room: this.lounge };
+			Object.assign(worker, {
+				seat,
+				bay: this.lounge,
+				room: this.lounge,
+				playing,
+				standing: !playing,
+				stoodAt: { x: seat.x, y: seat.y },
+			});
+		}
 		// Islands that had to move: those sat at them get up and walk to where they've gone, rather than gliding there
 		const stood = this.islandSpots ?? new Map();
 
@@ -1592,30 +1623,27 @@ export default class Ship {
 		}).slice(1);
 	}
 
-	// Who plays which cabinet now ({ index, side } by session): those most lately come to rest, while a cabinet's game is
-	// on, as many as the cabinets on hold two each; a cabinet played alone is stood before, a pair stands side by side
-	cabinetPlayers() {
+	// Who stands at which cabinet ({ index, side } by session) of those on their feet, `standing`, in their order: two
+	// to a cabinet, those whose game is on filled first; a cabinet played alone is stood before, a pair stands side by
+	// side. Anyone past what the cabinets hold has none
+	cabinetPlayers(standing) {
 		const players = new Map();
-		const on = (this.lounge?.cabinets ?? [])
+		const cabinets = (this.lounge?.cabinets ?? [])
 			.map((cabinet, index) => ({ ...cabinet, index }))
-			.filter(({ running }) => running);
+			.sort((one, other) => Boolean(other.running) - Boolean(one.running));
 
-		if (!on.length) return players;
+		if (!cabinets.length) return players;
 
-		const fresh = (this.lounge.sessions ?? [])
-			.map(key => [key, this.workers.get(key)])
-			.filter(([, worker]) => worker && !worker.leaving && coldOf(worker.session) < PLAY_MS)
-			.sort(([, one], [, other]) => coldOf(one.session) - coldOf(other.session))
-			.slice(0, on.length * PLAYERS_PER_CABINET);
-		const crowd = on.map((_, at) => fresh.filter((__, which) => which % on.length === at).length);
+		const playing = standing.slice(0, cabinets.length * PLAYERS_PER_CABINET);
+		const crowd = cabinets.map((_, at) => playing.filter((__, which) => which % cabinets.length === at).length);
 
-		fresh.forEach(([key], which) => {
-			const at = which % on.length;
+		playing.forEach((key, which) => {
+			const at = which % cabinets.length;
 			// Alone at it: before its middle; one of two: the first to its left, the second to its right
 			const pair = crowd[at] > 1 ? 1 : 0;
-			const side = which >= on.length ? pair : -pair;
+			const side = which >= cabinets.length ? pair : -pair;
 
-			players.set(key, { index: on[at].index, side });
+			players.set(key, { index: cabinets[at].index, side });
 		});
 
 		return players;
@@ -4811,6 +4839,8 @@ export default class Ship {
 		// Drawn just over the cabinet, so the hand on its stick shows
 		if (worker.playing)
 			return [{ y: cabinetAt(this.lounge, worker.playing.index).y + 0.01, draw: () => this.drawWorker(ctx, worker) }];
+		// On its feet by the TV: no couch under it either
+		if (worker.standing) return [{ y: seat.y, draw: () => this.drawWorker(ctx, worker) }];
 
 		return [
 			{ y: seat.y + 0.3, draw: () => this.drawCans(ctx, worker, Math.min(cans, CANS_DROPPED), 0) },
@@ -5399,7 +5429,8 @@ export default class Ship {
 		const walking = this.walking(worker);
 		const at = this.art(walking ? worker : this.placeOf(worker));
 		// Standing at a cabinet: on the floor, as walking; on a couch a little up; at a console up on its chair
-		if (!walking && !worker.playing && !worker.seat?.housing && !briefOf(worker)) at.y -= worker.lounging ? 4 : 10;
+		if (!walking && !worker.playing && !worker.standing && !worker.seat?.housing && !briefOf(worker))
+			at.y -= worker.lounging ? 4 : 10;
 
 		return at;
 	}

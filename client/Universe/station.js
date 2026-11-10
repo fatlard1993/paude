@@ -146,6 +146,18 @@ export const loungeSeatAt = (lounge, index) => {
 	};
 };
 
+// Where the `index`th of those on their feet stands by the TV on the near wall: before it to either side by turns,
+// further out and a little further back each pair, clear of its screen
+export const tvStandAt = (lounge, index) => {
+	const side = index % 2 ? 1 : -1;
+	const out = Math.floor(index / 2);
+
+	return {
+		x: lounge.x + lounge.w / 2 - 0.3 + side * (0.75 + out * 0.6),
+		y: lounge.y + lounge.d - 0.75 - (out % 2) * 0.3,
+	};
+};
+
 // The seat at the outer end of its row of couches nearer a seat, and which end that is, -1 the left and 1 the right:
 // where its empties go, the couches standing too close together for anything between them
 export const couchEndOf = (lounge, index) => {
