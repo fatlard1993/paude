@@ -98,6 +98,9 @@ const WALK_IN_MOST = 1.4;
 const DOORWAY_SECONDS = 0.6;
 // How fast the view's zoom eases to where it's going, as a rate
 const ZOOM_EASE = 2.6;
+// Let go of over the airlock, how long the view takes to gather speed towards where it's going next, in seconds: it
+// sets off from rest rather than at full pace
+const RELEASE_SECONDS = 0.9;
 const SHUTTLE_WAITS = 20;
 // Who a shuttle carries, and who has climbed its tube to leave: a monitor's craft, or one from before people shared
 // them, says so by its key and `climbAt` alone
@@ -1094,10 +1097,13 @@ export default class Ship {
 
 		if (!shuttle || since >= this.approachOf(shuttle) + SHUTTLE.tube + SHUTTLE.walk + JOIN.stepped) return null;
 
-		this.joinAt = undefined;
+		// The whole ship's frame, whatever the view has been asked to look at once they're aboard
+		const { looking, flyingTo } = this;
+
+		Object.assign(this, { joinAt: undefined, looking: 'all', flyingTo: null });
 		const whole = this.goal();
 
-		this.joinAt = this.time - since;
+		Object.assign(this, { joinAt: this.time - since, looking, flyingTo });
 
 		const dock = this.shuttleDock();
 		const pulled = JOIN.warp + ENTER_SECONDS;
@@ -2252,11 +2258,14 @@ export default class Ship {
 		const goal = joining ?? this.goal();
 
 		if (joining) this.flying = true;
+		else if (this.wasJoining) this.releasedAt = this.time;
+		this.wasJoining = Boolean(joining);
 		if (goal && this.flying) {
-			const ease = calm ? 1 : Math.min(1, seconds * EASE);
+			const gathering = calm ? 1 : eased((this.time - (this.releasedAt ?? -Infinity)) / RELEASE_SECONDS);
+			const ease = calm ? 1 : Math.min(1, seconds * EASE * gathering);
 
 			// Its zoom eased there too, evenly however far (by its ratio), settling exactly on it once it's near
-			const zooming = calm ? 1 : Math.min(1, seconds * ZOOM_EASE);
+			const zooming = calm ? 1 : Math.min(1, seconds * ZOOM_EASE * gathering);
 			const zoom = this.camera.zoom * (goal.zoom / this.camera.zoom) ** zooming;
 
 			this.camera.zoom = Math.abs(zoom - goal.zoom) < 0.01 ? goal.zoom : zoom;

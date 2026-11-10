@@ -1370,13 +1370,19 @@ export default class Universe extends View {
 	}
 
 	// However it was opened (from home, a session's page or a project's), it opens on the bridge, selected and framed:
-	// where the one looking has just walked to; only once the ship has come in and opened with them walked aboard, so
-	// nothing is picked or flown to under their arrival
+	// where the one looking has just walked to; selected only once the ship has come in and opened with them walked
+	// aboard, so nothing is picked under their arrival
 	focusOpened() {
-		if (this.focusedOpen || !this.aboard?.settled()) return;
+		if (this.focusedOpen) return;
+		// The view is told the bridge from the first answer, to go there the moment it's let go of over the airlock:
+		// told only once they'd walked aboard, it had set off for the whole ship meanwhile and turned
+		if (!this.bridgeLooked && this.answers) {
+			this.bridgeLooked = true;
+			this.aboard.look(BRIDGE);
+		}
+		if (!this.aboard?.settled()) return;
 		this.focusedOpen = true;
 		this.select(selectionOf({ kind: 'bridge' }, this));
-		this.aboard.look(BRIDGE);
 	}
 
 	// Everything aboard come in: the plating of the ship the viewer boards opened, and the rest's once it's done, so

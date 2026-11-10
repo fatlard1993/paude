@@ -2366,7 +2366,11 @@ test('coming aboard, the view is held on the shuttle, drawn back to the whole sh
 	run(made, 0.3);
 	expect(made.joinGoal()).not.toBeNull();
 	expect(made.camera.x).toBeCloseTo(dock.x, 0);
-	// Stepped out: flown to the bay
+	// Stepped out and let go of: the view sets off for the bay from rest, barely moved a moment later
+	run(made, 0.3);
+	expect(made.joinGoal()).toBeNull();
+	expect(Math.abs(made.camera.x - dock.x)).toBeLessThan(Math.abs(made.goal().x - dock.x) * 0.1);
+	// Flown to the bay
 	run(made, 3);
 	expect(made.joinGoal()).toBeNull();
 	expect(made.looking).toBe('paude');
