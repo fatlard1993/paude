@@ -84,13 +84,13 @@ const ABOARD_SECONDS = 6;
 // A shuttle bringing someone aboard or taking them off: how long it takes to fly in, its tube to reach the hull, them
 // to walk its length, its tube to draw back up, and it to fly off, in seconds; and how long one come to take someone
 // off waits for them before going anyway
-const SHUTTLE = { fly: 1.6, tube: 0.6, walk: 1.6, retract: 0.5 };
+const SHUTTLE = { fly: 1.6, tube: 0.4, walk: 1.3, retract: 0.5 };
 // The one opening the view comes aboard as the ship comes in: in warp, just their shuttle among the streaking stars,
 // close up (`warp`); the ship pulling in under it as the view draws back to all of it (the ship's own coming in,
 // ENTER_SECONDS); its plating shimmering as the shuttle settles on it (`settle`); then its tube and their walk, and
 // their step out of the airlock (`stepped`, after they've walked the tube), the view in close over it. How much closer
 // than the whole ship the view starts, in zoom, and how much closer it comes in over the airlock.
-const JOIN = { warp: 1.2, settle: 1.2, closer: 3, tubeCloser: 2, stepped: 1.7 };
+const JOIN = { warp: 0.7, settle: 0.8, closer: 3, tubeCloser: 1, closing: 1.8, stepped: 1 };
 // How long the view watches the one looking walk out from the airlock before what's to be focused on opening is, in
 // seconds: long enough to see them clear it, not the whole way to where they belong
 const WALK_IN_MOST = 1.4;
@@ -158,7 +158,7 @@ const LIFT_SECONDS = DRINK_LIFT * DRINK_SECONDS;
 // How long a beam off a transporter, or onto one, lasts
 export const BEAM_SECONDS = 0.9;
 // How long the ship takes coming in out of warp, opened no sooner however fast what's aboard comes in
-const ENTER_SECONDS = 3.5;
+const ENTER_SECONDS = 2.4;
 // How quickly islands and seats glide to where a changed layout puts them: the share of the way left gone each second,
 // as a rate (about a third of a second to get most of the way)
 const LAYOUT_EASE = 7;
@@ -446,6 +446,8 @@ export const appliancesOf = (tools, sessions, usage = {}, log = {}) => {
 };
 
 const mix = (a, b, amount) => a + (b - a) * amount;
+// 0 to 1, starting and ending at rest
+const eased = amount => Math.max(0, Math.min(1, amount)) ** 2 * (3 - 2 * Math.max(0, Math.min(1, amount)));
 
 // How fast fuel runs to an engine, 0 to 1, from what it burns a minute (in input-token equivalents): a trickle for a
 // quiet turn, full for several sessions at it
@@ -1102,13 +1104,25 @@ export default class Ship {
 
 		// Settled on the hull: over its tube while they walk it, and on through the airlock as its door opens on them, the
 		// plating fading round them and they step out
-		if (since >= pulled + JOIN.settle)
-			return { x: dock.x, y: dock.y + 8, zoom: Math.min(ZOOMS.most, whole.zoom + JOIN.tubeCloser) };
-		if (since >= pulled) return whole;
+		const over = { x: dock.x, y: dock.y + 8, zoom: Math.min(ZOOMS.most, whole.zoom + JOIN.tubeCloser) };
 
-		// On the shuttle's hull itself, where it's drawn, and back from it to the whole ship as that pulls in
+		if (since >= pulled + JOIN.closing) return over;
+		// From the shuttle's settling on into their walk down the tube, the view is on its way in from the whole ship,
+		// unhurried, so it never stops and starts again
+		if (since >= pulled) {
+			const closing = eased((since - pulled) / JOIN.closing);
+
+			return {
+				x: mix(whole.x, over.x, closing),
+				y: mix(whole.y, over.y, closing),
+				zoom: whole.zoom * (over.zoom / whole.zoom) ** closing,
+			};
+		}
+
+		// On the shuttle's hull itself, where it's drawn, and back from it to the whole ship as that pulls in, setting
+		// off and arriving gently
 		const at = shuttleAt(dock, this.shuttleState(shuttle).away);
-		const back = Math.max(0, Math.min(1, (since - JOIN.warp) / ENTER_SECONDS));
+		const back = eased((since - JOIN.warp) / ENTER_SECONDS);
 
 		return {
 			x: mix(at.x - 1, whole.x, back),
@@ -2360,21 +2374,24 @@ export default class Ship {
 		// Coming out of warp, the stars drawn out into streaks, shortening as it slows
 		const warp = (1 - this.entering()) ** 2 * WARP_STREAK;
 
+		// The stars on a grid of whole screen pixels, so they hold still and stay crisp while the zoom glides between steps
+		const grain = Math.max(1, Math.round(size));
+
 		for (const star of overlay ? [] : this.stars) {
 			const on = Math.sin(this.time * 1.3 + star.phase) > -0.4;
 			const x =
-				Math.round(((((star.x - this.drift * star.depth) % this.width) + this.width) % this.width) / size) * size;
-			const y = Math.round(star.y / size) * size;
+				Math.round(((((star.x - this.drift * star.depth) % this.width) + this.width) % this.width) / grain) * grain;
+			const y = Math.round(star.y / grain) * grain;
 
 			ctx.fillStyle = (!on && '#434d61') || (star.depth > 0.7 && '#c3cad6') || '#77829a';
 			if (warp >= 1) {
-				ctx.fillRect(x - Math.round(warp * star.depth), y, Math.round(warp * star.depth) + size, size);
+				ctx.fillRect(x - Math.round(warp * star.depth), y, Math.round(warp * star.depth) + grain, grain);
 				continue;
 			}
-			ctx.fillRect(x, y, size, size);
+			ctx.fillRect(x, y, grain, grain);
 			if (star.big && on) {
-				ctx.fillRect(x - size, y, size * 3, size);
-				ctx.fillRect(x, y - size, size, size * 3);
+				ctx.fillRect(x - grain, y, grain * 3, grain);
+				ctx.fillRect(x, y - grain, grain, grain * 3);
 			}
 		}
 
@@ -6522,6 +6539,11 @@ export default class Ship {
 		const age = shuttle && this.shuttleAge(shuttle);
 
 		return Boolean(shuttle) && (age === null || age < this.downAt(shuttle, walker.ride));
+	}
+
+	// Whether the view of it is on the move: the ship coming in, or the view flying somewhere
+	gliding() {
+		return (this.enteredAt !== undefined && !this.arrived()) || Boolean(this.joinGoal()) || Boolean(this.flying);
 	}
 
 	// Whether it's come in and opened with the one looking aboard: its plating gone and nobody still on their way in to

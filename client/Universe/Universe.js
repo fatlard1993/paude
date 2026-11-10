@@ -64,6 +64,9 @@ const REMOTES_RETRY_MS = 5000;
 const LONGEST_FRAME_S = 0.1;
 // The least time between frames, in ms: pixel art this size gains nothing past about thirty a second
 const FRAME_MS = 1000 / 30;
+// While the view itself is moving (the ship coming in, the view flying somewhere, ships sliding alongside) it's drawn
+// up to twice as often: a glide across the whole screen shows its steps where a figure crossing a floor doesn't
+const GLIDE_MS = 1000 / 60;
 const DRAG_PX = 5;
 const WHEEL_ZOOM = 0.0015;
 // A pinch zooms a step each time the fingers' distance grows or shrinks by this much
@@ -646,7 +649,7 @@ export default class Universe extends View {
 		let frame;
 		const tick = now => {
 			// No more often than FRAME_MS: drawn each refresh, a 120Hz screen drew it four times as often as it needs
-			if (now - last < FRAME_MS - 1) {
+			if (now - last < (this.gliding() ? GLIDE_MS : FRAME_MS) - 1) {
 				frame = requestAnimationFrame(tick);
 
 				return;
@@ -686,6 +689,13 @@ export default class Universe extends View {
 
 		frame = requestAnimationFrame(tick);
 		this.addCleanup('frames', () => cancelAnimationFrame(frame));
+	}
+
+	// Whether the view is on the move, so drawn more often: not for someone who asked for less motion, whose view jumps
+	gliding() {
+		if (this.calm.matches) return false;
+
+		return this.aboard.gliding() || [...this.fleetIn.values()].some(shown => shown > 0 && shown < 1);
 	}
 
 	// One pointer drags the view, or taps what's under it, or holds for the menu; two fingers pan together and pinch to

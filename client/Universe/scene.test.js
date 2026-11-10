@@ -2292,7 +2292,7 @@ test('the one opening the view comes aboard by shuttle once the ship is in, and 
 	made.viewer = 'me';
 	made.open();
 	// Still in warp: just their shuttle, the ship held off, the view close on it
-	run(made, 1);
+	run(made, 0.5);
 	expect(made.entering()).toBe(0);
 	expect(made.shuttles).toMatchObject([{ key: 'me', kind: 'in', join: true }]);
 	expect(made.joinGoal()).not.toBeNull();
@@ -2319,7 +2319,7 @@ test('the one opening the view comes aboard by shuttle once the ship is in, and 
 	expect(shipWith([answer('here', [session()], { projects: ['paude'] })]).settled()).toBe(true);
 });
 
-test('coming aboard, the view is held on the shuttle, drawn back to the whole ship, in over the airlock, and only then flown where it was asked', () => {
+test('coming aboard, the view is held on the shuttle, drawn back to the whole ship and on in over the airlock without stopping, and only then flown where it was asked', () => {
 	const me = { key: 'me', name: 'chase', role: 'owner', sessions: [] };
 	const made = new Ship();
 
@@ -2339,24 +2339,31 @@ test('coming aboard, the view is held on the shuttle, drawn back to the whole sh
 	made.zoom(0.5, { x: 0, y: 0 });
 	expect(made.camera.x).toBeCloseTo(far.x - 1, 0);
 	expect(made.flying).toBe(true);
-	// The ship pulled in under it, the view drawn back to all of it
-	run(made, 5.5);
+	// The ship pulled in under it, the view drawn back towards all of it: told the whole ship just as it's in, and
+	// from there in towards the airlock, never left to stop on the way
+	const close = made.camera.zoom;
+
+	run(made, 3.1);
 	const { joinAt } = made;
 
 	made.joinAt = undefined;
 	const whole = made.goal();
 
 	made.joinAt = joinAt;
-	expect(made.camera.zoom).toBe(whole.zoom);
+	expect(made.joinGoal().zoom).toBeCloseTo(whole.zoom, 1);
+	expect(made.camera.zoom).toBeLessThan(close);
+	run(made, 0.4);
+	expect(made.joinGoal().zoom).toBeGreaterThan(whole.zoom);
+	expect(made.joinGoal().zoom).toBeLessThan(whole.zoom + 1);
 	// In over the airlock as they walk the tube and step out; asked to look at the bay meanwhile, it waits
-	run(made, 2);
+	run(made, 2.6);
 	const dock = made.shuttleDock();
 
 	expect(made.camera.x).toBeCloseTo(dock.x, 0);
 	expect(made.camera.y).toBeCloseTo(dock.y + 8, 0);
 	expect(made.camera.zoom).toBeGreaterThan(whole.zoom);
 	made.look('paude');
-	run(made, 1.5);
+	run(made, 0.3);
 	expect(made.joinGoal()).not.toBeNull();
 	expect(made.camera.x).toBeCloseTo(dock.x, 0);
 	// Stepped out: flown to the bay
@@ -2436,7 +2443,7 @@ test('rooms laid out anew while the one looking comes aboard keep them at the ai
 	made.update(looks(['paude']));
 	made.viewer = 'me';
 	made.open();
-	run(made, 6);
+	run(made, 5);
 	// Another engine's projects come in: the rooms move round while they're on their way down the shuttle's tube
 	made.update(looks(['paude', 'site', 'notes']));
 	expect(made.moved).toBe(true);
