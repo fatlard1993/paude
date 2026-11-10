@@ -217,6 +217,7 @@ export default class GitPanel extends Panel {
 						? 'The file is deleted. It was never committed, so git cannot bring it back.'
 						: 'Its changes since the last commit are lost. Staged changes stay.',
 				confirmLabel: 'Discard',
+				intent: 'danger',
 			});
 
 			if (confirmed) this.act('discard', { paths: [file.path] }, { done: `Discarded ${file.path}` });
@@ -686,6 +687,7 @@ export default class GitPanel extends Panel {
 								header: `Delete ${branch.name}?`,
 								body: 'git keeps it if its commits are not merged anywhere, and says so.',
 								confirmLabel: 'Delete',
+								intent: 'danger',
 							});
 
 							if (confirmed) this.act('deleteBranch', { name: branch.name }, { done: `Deleted ${branch.name}` });
@@ -749,8 +751,14 @@ export default class GitPanel extends Panel {
 						'trash-can',
 						'Drop it',
 						async () => {
-							if (await confirmDialog({ header: 'Drop this stash?', body: stash.subject, confirmLabel: 'Drop' }))
-								this.act('dropStash', { ref: stash.ref }, { done: 'Dropped' });
+							const confirmed = await confirmDialog({
+								header: 'Drop this stash?',
+								body: stash.subject,
+								confirmLabel: 'Drop',
+								intent: 'danger',
+							});
+
+							if (confirmed) this.act('dropStash', { ref: stash.ref }, { done: 'Dropped' });
 						},
 						'danger',
 					),

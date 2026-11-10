@@ -1091,6 +1091,7 @@ export default class FilesPanel extends Panel {
 			body: `Your changes to ${this.current} haven't been saved.`,
 			cancelLabel: 'Keep editing',
 			confirmLabel: 'Discard them',
+			intent: 'danger',
 		});
 
 		if (leave) {
@@ -1861,6 +1862,7 @@ export default class FilesPanel extends Panel {
 					body: `Your changes to ${this.current} will be lost.`,
 					cancelLabel: 'Keep mine',
 					confirmLabel: 'Load theirs',
+					intent: 'danger',
 				});
 
 				if (!discard) return;

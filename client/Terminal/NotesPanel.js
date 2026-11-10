@@ -384,6 +384,7 @@ export default class NotesPanel extends Panel {
 					? `Its ${replies === 1 ? 'reply goes' : `${replies} replies go`} with it.`
 					: 'It goes for everyone.',
 				confirmLabel: 'Delete',
+				intent: 'danger',
 			});
 
 			if (confirmed) this.options.send({ type: 'delete', ...target });
