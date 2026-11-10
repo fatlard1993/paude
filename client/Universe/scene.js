@@ -2635,7 +2635,7 @@ export default class Ship {
 		(this.lounge?.cabinets ?? []).forEach((cabinet, index) => {
 			const foot = cabinetAt(this.lounge, index);
 			// As tall as it's drawn (36 art pixels up from its foot)
-			const box = { x: foot.x - CABINET_W / 2, y: foot.y - 2.6, w: CABINET_W, d: 2.6 };
+			const box = { x: foot.x - CABINET_W / 2, y: foot.y - 2, w: CABINET_W, d: 2 };
 
 			this.hits.push({
 				...this.screen({ x: foot.x, y: foot.y - 1.3 }),

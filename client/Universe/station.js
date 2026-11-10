@@ -67,14 +67,14 @@ const loungeSpan = columns => columns * COUCH_SEAT + (columns / 2 - 1) * COUCH_G
 // each player at its own end), stacked in a column on each side of the lounge, out past both ends of the couches and the
 // cans piled at them so they stand clear of the TV, its couches and its cans: half the islands up the left column from
 // the near wall, half up the right, a second column on a side only past MOST_STACKED; the lounge as deep as the tallest
-export const CABINET_W = 0.75;
-const ISLE_GAP = 1.5;
+export const CABINET_W = 0.55;
+const ISLE_GAP = 1.3;
 const CAN_ROOM = 1.2;
 const CABINET_EDGE = 0.9;
 const ISLE_W = CABINET_W * 2;
 const ISLE_STEP = ISLE_W + ISLE_GAP;
-const ISLE_ROW = 1.8;
-const MOST_STACKED = 4;
+const ISLE_ROW = 1.4;
+const MOST_STACKED = 3;
 
 // How far from the lounge's middle the islands begin: past the couches' half and the cans beyond them
 const cabinetsInner = count => loungeSpan(loungeColumns(count)) / 2 + CAN_ROOM;
@@ -126,7 +126,7 @@ export const cabinetStandAt = (lounge, index, side = 0) => {
 	const at = cabinetAt(lounge, index);
 	const out = cabinetFacing(index);
 
-	return { x: at.x + out * (CABINET_W / 2 + (side > 0 ? 0.62 : 0.32)), y: at.y - (side > 0 ? 0.6 : 0.35) };
+	return { x: at.x + out * (CABINET_W / 2 + (side > 0 ? 0.55 : 0.28)), y: at.y - (side > 0 ? 0.6 : 0.35) };
 };
 
 export const loungeSeatAt = (lounge, index) => {
