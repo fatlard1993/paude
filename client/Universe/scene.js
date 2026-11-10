@@ -311,6 +311,25 @@ const BURSTING = 5;
 const STEAM_SECONDS = 5 * 60;
 const HOT_SECONDS = 15 * 60;
 // A walk's frames by turns, as suffixes of the standing sprite's name
+// Where each part of a seat at a console is drawn among the rest: how far before the seat itself (or behind it), in
+// world units, by name, in the order they're drawn. A new part is put by what it goes before and after, not by a
+// number squeezed between two others.
+export const SEAT_LAYER = {
+	// The grey sat there, behind its console
+	sitter: -0.12,
+	// The island's base, under everything that stands on it
+	island: 0.139,
+	// A seat's desk and screen
+	console: 0.14,
+	// A small grey's terminal, on the desk beside its grey's
+	smallScreen: 0.15,
+	// What's pinned up over the desk
+	pins: 0.16,
+	// A laptop's cord, under the laptop
+	cord: 0.19,
+	// What stands on the desk before the screen: a drink, a laptop
+	onDesk: 0.2,
+};
 const STEPS = ['', 'StepLeft', '', 'StepRight'];
 // A person's stride has more to it than a grey's: each boot on its way up, high, and on its way down, one after the
 // other with no standing still between
@@ -4044,7 +4063,7 @@ export default class Ship {
 
 			return [
 				{
-					y: seat.y + 0.14,
+					y: seat.y + SEAT_LAYER.console,
 					draw: () => this.drawRisingSeat(ctx, desk, dark, seat.island?.key, this.seatRise(worker)),
 				},
 			];
@@ -4068,14 +4087,16 @@ export default class Ship {
 
 		return [
 			...walker,
-			...(!walker.length && !floor ? [{ y: seat.y - 0.12, draw: () => this.drawWorker(ctx, worker) }] : []),
+			...(!walker.length && !floor
+				? [{ y: seat.y + SEAT_LAYER.sitter, draw: () => this.drawWorker(ctx, worker) }]
+				: []),
 			// Sat cross-legged on the floor past the desk's end, its laptop between it and the desk, plugged by a cord along
 			// the floor into a socket on the desk's end; the cord under whoever sits between
 			...(floor
 				? [
-						{ y: seat.y + 0.19, draw: () => this.drawLaptopCord(ctx, worker, laptop) },
+						{ y: seat.y + SEAT_LAYER.cord, draw: () => this.drawLaptopCord(ctx, worker, laptop) },
 						{
-							y: seat.y + 0.2,
+							y: seat.y + SEAT_LAYER.onDesk,
 							draw: () => {
 								this.drawWorker(ctx, worker);
 								drawLaptop(ctx, laptop, { screen: status, time: this.time, seed: worker.seed });
@@ -4086,13 +4107,13 @@ export default class Ship {
 			...this.smallGreyParts(ctx, worker),
 			...this.watcherParts(ctx, worker),
 			...((drinkOf(session) || this.serving(worker)) && !walker.length
-				? [{ y: seat.y + 0.2, draw: () => this.drawPick(ctx, worker, at) }]
+				? [{ y: seat.y + SEAT_LAYER.onDesk, draw: () => this.drawPick(ctx, worker, at) }]
 				: []),
 			...(spentDrinkOf(session) && !this.serving(worker)
-				? [{ y: seat.y + 0.2, draw: () => this.drawSpentDrink(ctx, spentDrinkOf(session), at) }]
+				? [{ y: seat.y + SEAT_LAYER.onDesk, draw: () => this.drawSpentDrink(ctx, spentDrinkOf(session), at) }]
 				: []),
 			{
-				y: seat.y + 0.16,
+				y: seat.y + SEAT_LAYER.pins,
 				draw: () => {
 					const pins = Math.min(4, session.talk?.open ?? 0);
 
@@ -4113,7 +4134,7 @@ export default class Ship {
 				? []
 				: [
 						{
-							y: seat.y + 0.14,
+							y: seat.y + SEAT_LAYER.console,
 							draw: () => {
 								this.drawRisingSeat(
 									ctx,
@@ -4182,7 +4203,7 @@ export default class Ship {
 			? [...this.islandsShown.values()].map(({ x, y, w, rise, island }) => ({ ...island, x, y, w, rise }))
 			: (bridge.islands ?? []);
 		const islands = shownIslands.map(island => ({
-			y: island.y + 0.139,
+			y: island.y + SEAT_LAYER.island,
 			draw: () => {
 				const from = this.art({ x: island.x, y: island.y + 0.2 });
 				const to = this.art({ x: island.x + island.w, y: 0 });
@@ -4633,7 +4654,7 @@ export default class Ship {
 			const spot = this.smallGreyAt(worker, index);
 
 			const terminal = {
-				y: worker.seat.y + 0.15,
+				y: worker.seat.y + SEAT_LAYER.smallScreen,
 				draw: () => {
 					const at = this.art({ x: spot.x, y: worker.seat.y + 0.2 });
 
@@ -5128,7 +5149,7 @@ export default class Ship {
 
 		return [
 			{
-				y: homeSeat.y + 0.14,
+				y: homeSeat.y + SEAT_LAYER.console,
 				draw: () =>
 					this.drawRisingSeat(
 						ctx,
@@ -5150,7 +5171,7 @@ export default class Ship {
 					),
 			},
 			// What it finished before it left is still on its desk
-			...(finished ? [{ y: homeSeat.y + 0.2, draw: () => this.drawSpentDrink(ctx, finished, at) }] : []),
+			...(finished ? [{ y: homeSeat.y + SEAT_LAYER.onDesk, draw: () => this.drawSpentDrink(ctx, finished, at) }] : []),
 		];
 	}
 

@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 
 import Ship, {
 	BEHIND_CONSOLE,
+	SEAT_LAYER,
 	appliancesOf,
 	bendAround,
 	cacheCold,
@@ -2832,6 +2833,46 @@ test("the airlock's hatch is a person's height and wholly inside the ship: from 
 			expect(Math.max(...boxes.map(({ y, h }) => y + h))).toBe(sill + 1);
 			expect(sill).toBeGreaterThanOrEqual(26);
 		}
+});
+
+test('the parts of a seat at a console are drawn in their named order, each where it was drawn by number', () => {
+	// Named in the order they're drawn, and no two at one depth
+	const depths = Object.values(SEAT_LAYER);
+
+	expect(Object.keys(SEAT_LAYER)).toEqual(['sitter', 'island', 'console', 'smallScreen', 'pins', 'cord', 'onDesk']);
+	expect(depths).toEqual([...depths].sort((a, b) => a - b));
+	expect(new Set(depths).size).toBe(depths.length);
+	// Where each was before it had a name, so nothing has changed places
+	expect(SEAT_LAYER).toEqual({
+		sitter: -0.12,
+		island: 0.139,
+		console: 0.14,
+		smallScreen: 0.15,
+		pins: 0.16,
+		cord: 0.19,
+		onDesk: 0.2,
+	});
+
+	// A grey at work with a drink and two subagents: every part of its seat is at one of those depths from the seat
+	const made = shipWith([
+		answer('here', [session({ keeping: 'going', agents: 2, context: { warm: true } })], { projects: ['paude'] }),
+	]);
+
+	run(made, 4);
+
+	const worker = made.workers.get('here/a');
+	const ctx = new Proxy({}, { get: () => () => {} });
+	const offsets = made
+		.workerParts(ctx, worker)
+		.map(part => Math.round((part.y - worker.seat.y) * 1000) / 1000)
+		// But for what stands at a place of its own beside the seat (a small grey), drawn by where that is
+		.filter(offset => Math.abs(offset) < 0.5 && offset !== 0);
+
+	expect(offsets.length).toBeGreaterThanOrEqual(4);
+	for (const offset of offsets) expect(depths).toContain(offset);
+	// Its grey first, behind the console; what's on the desk last
+	expect(Math.min(...offsets)).toBe(SEAT_LAYER.sitter);
+	expect(Math.max(...offsets)).toBe(SEAT_LAYER.onDesk);
 });
 
 test('a couch more needed is dropped out of the tube; one no longer needed is zapped from the ceiling, the lounge its size till its ash is sucked up', () => {
