@@ -1308,6 +1308,19 @@ export default class Ship {
 		this.flying = true;
 	}
 
+	// Flown to a stretch of the stage, in art pixels, fitted in what the panel leaves of the screen: for a view of
+	// more than this ship, the others shown beside it
+	lookOver({ left, right, top, bottom }) {
+		const fit = Math.min(
+			(this.width - 32 - this.aside) / Math.max(1, right - left),
+			(this.height - 48) / Math.max(1, bottom - top),
+		);
+		const zoom = Math.max(ZOOMS.least, Math.min(ZOOMS.most, Math.floor(fit)));
+
+		this.flyingTo = { x: (left + right) / 2 + this.aside / 2 / zoom, y: (top + bottom) / 2, zoom };
+		this.flying = true;
+	}
+
 	// By hand: the view is the hand's from here, and nothing flies it until asked; not while coming aboard
 	pan(across, down) {
 		if (this.joinGoal()) return;

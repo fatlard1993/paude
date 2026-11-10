@@ -524,6 +524,8 @@ export default class Universe extends View {
 		this.updateShips();
 		this.focusPainted = null;
 		this.paintFocus();
+		// Shown: brought into view with this one, rather than left to be found below it
+		if (shown) this.frameFleet();
 	}
 
 	// What's hit at a point on the stage: on the ship aboard, or on another shown beside it ({ ...target, over: the other
@@ -1400,6 +1402,29 @@ export default class Universe extends View {
 		if (!this.aboard?.settled()) return;
 		this.focusedOpen = true;
 		this.select(selectionOf({ kind: 'bridge' }, this));
+		// Other ships were left showing beside this one: the view opens on all of them, or the choice looks forgotten,
+		// with them out of sight below the bridge
+		this.frameFleet();
+	}
+
+	// The view flown to take in this ship and every other shown beside it; left as it is when there's none
+	frameFleet() {
+		const shown = this.shipsShown().filter(({ key, ship }) => ship === this.aboard || this.fleetShown.has(key));
+
+		if (shown.length < 2) return;
+
+		const boxes = shown.map(({ ship, at }) => {
+			const { left, right, top, height } = ship.extent();
+
+			return { left: left + at.x, right: right + at.x, top: top + at.y, bottom: top + height + at.y };
+		});
+
+		this.aboard.lookOver({
+			left: Math.min(...boxes.map(({ left }) => left)),
+			right: Math.max(...boxes.map(({ right }) => right)),
+			top: Math.min(...boxes.map(({ top }) => top)),
+			bottom: Math.max(...boxes.map(({ bottom }) => bottom)),
+		});
 	}
 
 	// Everything aboard come in: the plating of the ship the viewer boards opened, and the rest's once it's done, so
