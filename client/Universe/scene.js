@@ -20,6 +20,7 @@ import { pixelText, textWidth } from './retro';
 import {
 	TANK_COLORS,
 	clipToShip,
+	drawAirlock,
 	drawBridge,
 	REACTOR_SIDE,
 	drawEngineering,
@@ -2166,6 +2167,27 @@ export default class Ship {
 		return this.arcading && this.viewer === name ? TO_ARCADE : 1;
 	}
 
+	// The airlock's hatch stands up past the top of the bridge's wall, into the hull over it, where the rooms aren't
+	// drawn: its head there, and over that whoever is stood in it, who is taller than the wall too
+	drawAirlockOver(ctx) {
+		const { airlock, bridge } = this;
+
+		if (!airlock || !bridge) return;
+		drawAirlock(ctx, point => this.art(point), bridge, {
+			x: airlock.x,
+			open: this.airlockOpen,
+			time: this.time,
+			head: true,
+		});
+		for (const walker of this.walkers.values())
+			if (
+				walker.x !== undefined &&
+				!this.boarding(walker) &&
+				Math.hypot(walker.x - airlock.x, walker.y - airlock.y) < 0.9
+			)
+				this.drawWalker(ctx, walker);
+	}
+
 	// The floor as one map of what's open and what stands where (floor.js), made again when the ship is laid again or
 	// the lounge's couches change
 	get floor() {
@@ -2969,12 +2991,15 @@ export default class Ship {
 		if (stepping?.x !== undefined && !this.boarding(stepping)) this.drawWalker(ctx, stepping);
 		if (cover >= 1) {
 			ctx.restore();
+			// Its collar stands on the hull's back sealed or not, so it doesn't appear as the plating goes
+			this.drawAirlockOver(ctx);
 			for (const shuttle of this.shuttles) this.drawShuttleOf(ctx, shuttle);
 
 			return;
 		}
 		this.drawSelection(ctx);
 		ctx.restore();
+		this.drawAirlockOver(ctx);
 		for (const hauler of this.haulers) this.drawHauler(ctx, hauler);
 		for (const refuel of this.refuels) this.drawRefuel(ctx, refuel);
 		for (const shuttle of this.shuttles) this.drawShuttleOf(ctx, shuttle);

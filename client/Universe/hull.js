@@ -20,12 +20,10 @@ import {
 	COUCH_SEAT,
 	cabinetAt,
 	cabinetFacing,
-	DOOR,
 	FACE,
 	UNIT,
 	box,
 	corners,
-	drawDoor,
 	floor,
 	loungeSeatAt,
 	pixelEllipse,
@@ -2052,6 +2050,72 @@ export const drawLounge = (ctx, art, label, lounge, { time, lifted = [], gone = 
 // The bridge: its floor and name, consoles along its back wall, one lit blue while a session plans, and in the wall at
 // its forward end the airlock, open while someone's at it (`airlockOpen`), its lamp red
 // `ship`: its name and color, which sign the bridge, since the bridge is the one room that is the ship's own
+// The airlock: how wide its hatch is, in world units, and how far it stands up past the top of the bridge's far wall
+// into the hull over it, in art pixels. A person in their suit is taller than that wall's face, so the hatch they
+// come and go by is too
+const AIRLOCK = { wide: 1.3, rise: 15 };
+
+// The airlock in the bridge's far wall, `x` its middle: a heavy hatch in a collar standing up into the hull, two
+// leaves with a port in each, parted to either side while `open`; a lamp over it, red, flashing while it's open, and
+// a hazard strip along its sill
+// `head`: only what stands up past the wall's top, for drawing over the hull there once the rooms (which are drawn
+// cut off at the hull's edge) are done
+export const drawAirlock = (ctx, art, bridge, { x, open, time, head: over = false }) => {
+	const top = art({ x: 0, y: bridge.y }).y;
+	const height = Math.round((bridge.face ?? FACE) * UNIT.y);
+	const across = Math.round(AIRLOCK.wide * UNIT.x);
+	const left = art({ x: x - AIRLOCK.wide / 2, y: bridge.y }).x;
+	const middle = left + Math.floor(across / 2);
+	const head = top - AIRLOCK.rise;
+	const tall = height + AIRLOCK.rise;
+
+	if (over) {
+		ctx.save();
+		ctx.beginPath();
+		ctx.rect(left - 6, head - 8, across + 12, top - head + 8);
+		ctx.clip();
+	}
+	// Its collar, and the dark of the lock behind the hatch
+	rect(ctx, left - 3, head - 1, across + 6, tall + 1, PALETTE.k);
+	rect(ctx, left - 2, head, across + 4, tall, PALETTE.m);
+	rect(ctx, left - 2, head, across + 4, 1, PALETTE.l);
+	rect(ctx, left - 1, head + 2, across + 2, tall - 2, PALETTE.k);
+	rect(ctx, left, head + 3, across, tall - 3, '#0e1219');
+	if (open) {
+		// Parted: a sliver of each leaf at either side, the lock lit inside
+		rect(ctx, left + 4, head + 3, across - 8, tall - 3, '#18222e');
+		for (const leaf of [left, left + across - 4]) {
+			rect(ctx, leaf, head + 3, 4, tall - 3, PALETTE.d);
+			rect(ctx, leaf, head + 3, 4, 1, PALETTE.l);
+		}
+	} else {
+		const half = Math.floor(across / 2);
+
+		for (const leaf of [left, left + half + 1]) {
+			rect(ctx, leaf, head + 3, half, tall - 3, PALETTE.d);
+			rect(ctx, leaf, head + 3, half, 1, PALETTE.l);
+			// A port in each leaf, and a brace under it
+			rect(ctx, leaf + Math.floor(half / 2) - 3, head + 8, 6, 6, PALETTE.k);
+			rect(ctx, leaf + Math.floor(half / 2) - 2, head + 9, 4, 4, '#0b1430');
+			rect(ctx, leaf + Math.floor(half / 2) - 2, head + 9, 1, 1, PALETTE.l);
+			rect(ctx, leaf + 2, head + Math.floor(tall * 0.62), half - 4, 1, PALETTE.m);
+		}
+		rect(ctx, middle, head + 3, 1, tall - 3, PALETTE.k);
+	}
+	// The lamp over it
+	const lit = !open || Math.floor(time * 4) % 2 === 0;
+
+	rect(ctx, middle - 3, head - 4, 7, 4, PALETTE.k);
+	rect(ctx, middle - 2, head - 3, 5, 2, lit ? PALETTE.r : '#4a1c1a');
+	if (over) {
+		ctx.restore();
+
+		return;
+	}
+	for (let step = 0; step < across; step++)
+		rect(ctx, left + step, top + height, 1, 1, Math.floor((step + 1) / 2) % 2 ? PALETTE.y : PALETTE.k);
+};
+
 export const drawBridge = (ctx, art, label, bridge, { time, plans, airlockOpen = false, ship = null }) => {
 	floor(ctx, art, bridge);
 
@@ -2067,7 +2131,7 @@ export const drawBridge = (ctx, art, label, bridge, { time, plans, airlockOpen =
 			draw: () => {
 				const [from, to] = [
 					art({ x: bridge.x + 0.5, y: bridge.y + 0.25 }),
-					art({ x: airlock.x - DOOR / 2 - 0.3, y: 0 }),
+					art({ x: airlock.x - AIRLOCK.wide / 2 - 0.3, y: 0 }),
 				];
 				const panels = Math.max(1, Math.floor((to.x - from.x) / 26));
 				const pitch = (to.x - from.x) / panels;
@@ -2091,7 +2155,7 @@ export const drawBridge = (ctx, art, label, bridge, { time, plans, airlockOpen =
 						);
 					rect(ctx, x + 3, from.y + 6, Math.round(pitch) - 10, 1, '#202838');
 				}
-				drawDoor(ctx, art, bridge, { x: airlock.x, open: airlockOpen, lamp: PALETTE.r }, bridge.face ?? FACE);
+				drawAirlock(ctx, art, bridge, { x: airlock.x, open: airlockOpen, time });
 			},
 		},
 	];
