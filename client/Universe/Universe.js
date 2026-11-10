@@ -581,6 +581,13 @@ export default class Universe extends View {
 
 			// What they came over to, once they've stepped out of the pad: the grey they pressed, else the bridge
 			const arrived = () => {
+				// Pressed there as it was pressed here, once the ship has been drawn as the one aboard
+				if (typeof then === 'function') {
+					requestAnimationFrame(() => requestAnimationFrame(() => this.aboard === ship && then()));
+
+					return undefined;
+				}
+
 				const worker = then && ship.workers.get(then);
 
 				if (!worker || this.aboard !== ship) return toBridge();
@@ -907,7 +914,8 @@ export default class Universe extends View {
 		// A grey or terminal on another ship shown beside this one: beam over to it, and go to it
 		if (target?.over && (target.kind === 'monitor' || target.kind === 'worker'))
 			return this.travel(target.over, { then: target.worker.session.key });
-		if (target?.over) return mouse ? undefined : this.showTip(target, point);
+		// Anything else on one: gone over to, and pressed there
+		if (target?.over) return this.travel(target.over, { then: () => this.press(point, mouse, { adding }) });
 		if (adding && (target?.kind === 'worker' || target?.kind === 'monitor')) return this.pickAlso(target.worker);
 		this.select(selectionOf(target, this));
 		// Its terminal opens it; the grey itself only says what it is
