@@ -1820,7 +1820,8 @@ const cabinetPart = (ctx, art, lounge, cabinet, index, time) => {
 			const at = art(foot);
 			// Its project's colors, as the ship has them, where it's one of this paude's projects; else the game's own
 			const tints = tintsOf(cabinet.hue);
-			const body = tints?.background ?? cabinet.background ?? '#22262e';
+			// A mid tone of it, light enough to stand off the dark floor
+			const body = cabinet.hue !== null && cabinet.hue !== undefined ? `hsl(${cabinet.hue} 30% 30%)` : '#3a404c';
 			const trim = tints?.accent ?? cabinet.color ?? 'hsl(280 60% 62%)';
 			// x across the profile, from its back (0) to its front (11), turned to face its player
 			const x = from => at.x + facing * (from - 6);
@@ -1868,7 +1869,9 @@ const cabinetPart = (ctx, art, lounge, cabinet, index, time) => {
 				const smooth = ctx.imageSmoothingEnabled;
 
 				ctx.imageSmoothingEnabled = false;
+				// A pale card in a dark frame, so a dark icon (a black logo) shows as well as a bright one
 				rect(ctx, Math.min(x(1), x(10)), top + 8, 10, 10, PALETTE.k);
+				rect(ctx, Math.min(x(2), x(9)), top + 9, 8, 8, '#d8dce4');
 				// Its own shape kept, fitted inside the frame's 8 pixels square
 				const wide = icon.naturalWidth || 1;
 				const tall = icon.naturalHeight || 1;

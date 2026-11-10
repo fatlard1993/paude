@@ -1300,7 +1300,22 @@ export default class Ship {
 		// The mother hub's games, as cabinets: one each, however many paudes told of the same hub
 		// Each in its project's color, as the project's machine and its greys are
 		this.cabinets = [
-			...new Map(answers.flatMap(({ cabinets }) => cabinets ?? []).map(cabinet => [cabinet.id, cabinet])).values(),
+			...new Map(
+				answers.flatMap(({ cabinets, remote }) =>
+					(cabinets ?? []).map(cabinet => [
+						cabinet.id,
+						// Another paude's icon address is its own: asked of it by way of this one, as a project's icon is
+						{
+							...cabinet,
+							icon:
+								cabinet.icon && remote
+									? `/api/remotes/at/${encodeURIComponent(remote.url)}${cabinet.icon}`
+									: cabinet.icon,
+							remote,
+						},
+					]),
+				),
+			).values(),
 		].map(cabinet => ({ ...cabinet, hue: this.projectHues?.get(cabinet.project) ?? null }));
 
 		const onCouches = [...this.workers]

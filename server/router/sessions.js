@@ -406,11 +406,14 @@ const sessionsRoutes = async (request, server) => {
 		return upgraded ? undefined : new Response('WebSocket upgrade failed', { status: 400 });
 	}
 
-	// A session there, or its projects, asked of as here: any of their routes, by any method, relayed on this machine's
-	// login there, so a session's panels work in the universe as this server's own sessions' do, and a folder there can
+	// A session there, or its projects, asked of as here: any of their routes, by any method (and its lounge cabinets'
+	// icons), relayed on this machine's login there, so a session's panels work in the universe as this server's own sessions' do, and a folder there can
 	// be added and watched. Never a way out of those routes: a dot segment, spelled out or escaped, is refused before the
 	// far end could resolve it.
-	const relayed = /^\/api\/remotes\/at\/([^/]+)(\/api\/(?:sessions\/[\w-]+|projects)(?:\/.*)?)$/.exec(pathname);
+	const relayed =
+		/^\/api\/remotes\/at\/([^/]+)(\/api\/(?:(?:sessions\/[\w-]+|projects)(?:\/.*)?|cabinets\/[\w-]+\/icon))$/.exec(
+			pathname,
+		);
 
 	if (relayed) {
 		const [, url, route] = relayed;
