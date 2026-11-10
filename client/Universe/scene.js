@@ -1310,26 +1310,34 @@ export default class Ship {
 		// A couch no longer needed goes before the lounge is laid again: the lounge keeps its size until the couch's ash
 		// is sucked up, so the ship isn't moved round under the zapper and the tube
 		this.tendCouches(Math.ceil(Math.max(lounging.length, 1) / 2));
-		this.layout = layOut({
-			// Each island in the row it stood in last time
-			kept:
-				this.bridge?.islands && Object.fromEntries(this.bridge.islands.map(({ key, row, at }) => [key, { row, at }])),
-			bays: this.bays.map(bay => ({ ...bay, seated: bay.sessions.length })),
-			engines: engines.filter(({ quiet }) => !quiet),
-			lounge: {
-				count: Math.max(lounging.length, this.couchesHeld() * 2 - 1),
-				sessions: lounging,
-				cabinets: this.cabinets.filter(({ watched }) => watched),
-			},
-			agents: Object.fromEntries([...this.workers].map(([key, worker]) => [key, worker.session.agents ?? 0])),
-			watched: Object.fromEntries(
-				[...this.workers].map(([key, worker]) => [key, keepingOf(worker.session) === 'fabled']),
-			),
-			brief: Object.fromEntries([...this.workers].map(([key, worker]) => [key, worker.session.lifetime === 'brief'])),
-			checkouts: this.cargo.length,
-			fleet: this.fleet.length,
-			terminals: this.unseenFleet().length,
-		});
+		// Each island in the row it stood in last time
+		const keptOf = bridge =>
+			bridge?.islands && Object.fromEntries(bridge.islands.map(({ key, row, at }) => [key, { row, at }]));
+		const first = !this.bridge;
+		const lay = kept =>
+			layOut({
+				kept,
+				bays: this.bays.map(bay => ({ ...bay, seated: bay.sessions.length })),
+				engines: engines.filter(({ quiet }) => !quiet),
+				lounge: {
+					count: Math.max(lounging.length, this.couchesHeld() * 2 - 1),
+					sessions: lounging,
+					cabinets: this.cabinets.filter(({ watched }) => watched),
+				},
+				agents: Object.fromEntries([...this.workers].map(([key, worker]) => [key, worker.session.agents ?? 0])),
+				watched: Object.fromEntries(
+					[...this.workers].map(([key, worker]) => [key, keepingOf(worker.session) === 'fabled']),
+				),
+				brief: Object.fromEntries([...this.workers].map(([key, worker]) => [key, worker.session.lifetime === 'brief'])),
+				checkouts: this.cargo.length,
+				fleet: this.fleet.length,
+				terminals: this.unseenFleet().length,
+			});
+
+		this.layout = lay(first ? undefined : keptOf(this.bridge));
+		// Laid again from where its islands stand, a ship can come out another shape than laid afresh: the first is laid
+		// twice, so it comes in the shape it keeps rather than changing under its plating at the next answer
+		if (first) this.layout = lay(keptOf(this.layout.bridge));
 		// What can't be seen into takes no room aboard; it's named off to the side
 		this.unseen = engines.filter(({ quiet }) => quiet);
 		this.bays = this.layout.bays;
