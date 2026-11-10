@@ -28,6 +28,18 @@ test('everything that stands on the floor has one footprint, inside the room it 
 	expect(kinds).toContain('television');
 	expect(kinds).toContain('cloner');
 	expect(kinds).toContain('reactor');
+	// A machine for each project's deck, the engine bay's four systems and its tank, the tug on its pad
+	expect(kinds.filter(kind => kind === 'machine')).toHaveLength(layout.bays.flatMap(({ parts }) => parts).length);
+	expect(kinds.filter(kind => kind === 'system')).toHaveLength(4);
+	expect(kinds).toContain('tank');
+	expect(kinds).toContain('tug');
+	// What's told of what isn't the layout's to know: the hold's pods, the other ships' terminals
+	expect(kinds).not.toContain('pod');
+	expect(
+		footprintsOf(layout, { pods: 2, terminals: [{ x: 1, y: 2 }] })
+			.map(({ kind }) => kind)
+			.filter(kind => ['pod', 'terminal'].includes(kind)),
+	).toEqual(['pod', 'pod', 'terminal']);
 	for (const thing of things.filter(({ kind }) => ['couch', 'cabinet', 'television'].includes(kind))) {
 		expect(thing.x).toBeGreaterThanOrEqual(layout.lounge.x);
 		expect(thing.x + thing.w).toBeLessThanOrEqual(layout.lounge.x + layout.lounge.w);
@@ -51,6 +63,15 @@ test('the floor is open in the rooms and halls, shut under what stands on it, an
 	// A bay over its hall: its wall to the hall, open at its door
 	expect(floor.kindAt({ x: bay.x + bay.w * 0.1, y: bay.y + bay.d - CELL / 2 })).toBe(WALL);
 	expect(floor.kindAt({ x: bay.door.x, y: bay.y + bay.d - CELL / 2 })).toBe(FLOOR);
+	// Under a project's machine the floor is shut; before it, open
+	const machine = footprintsOf(layout).find(({ kind }) => kind === 'machine');
+
+	expect(floor.kindAt({ x: machine.x + machine.w / 2, y: machine.y + machine.d / 2 })).toBe(SOLID);
+	// Every hall is open at both its ends, into the engine bay and onto the bridge
+	for (const each of layout.halls) {
+		expect(floor.kindAt({ x: each.x - CELL / 2, y: each.lane })).toBe(FLOOR);
+		expect(floor.kindAt({ x: each.x + each.w + CELL / 2, y: each.lane })).toBe(FLOOR);
+	}
 	// Outside the hull there's no floor
 	expect(floor.open({ x: layout.building.left - 5, y: 0 })).toBe(false);
 	// What's given no footprint leaves the floor as it was

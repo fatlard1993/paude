@@ -2113,12 +2113,16 @@ export default class Ship {
 	// The floor as one map of what's open and what stands where (floor.js), made again when the ship is laid again or
 	// the lounge's couches change
 	get floor() {
-		const made = `${this.couches ?? 0}`;
+		const terminals = this.bridge ? this.fleetSpots().map(({ x, y }) => ({ x, y })) : [];
+		const made = `${this.couches ?? 0}|${this.cargo?.length ?? 0}|${terminals.map(({ x }) => x.toFixed(2))}`;
 
 		if (this.floorFor !== this.layout || this.floorMade !== made) {
 			this.floorFor = this.layout;
 			this.floorMade = made;
-			this.floorMap = floorOf(this.layout, footprintsOf(this.layout, { couches: this.couches }));
+			this.floorMap = floorOf(
+				this.layout,
+				footprintsOf(this.layout, { couches: this.couches, pods: this.cargo?.length ?? 0, terminals }),
+			);
 		}
 
 		return this.floorMap;
@@ -2145,10 +2149,13 @@ export default class Ship {
 			const from = this.art(thing);
 			const to = this.art({ x: thing.x + thing.w, y: thing.y + thing.d });
 
-			rect(ctx, from.x, from.y, to.x - from.x, 1, '#ffd27a');
-			rect(ctx, from.x, to.y - 1, to.x - from.x, 1, '#ffd27a');
-			rect(ctx, from.x, from.y, 1, to.y - from.y, '#ffd27a');
-			rect(ctx, to.x - 1, from.y, 1, to.y - from.y, '#ffd27a');
+			// What's stood on rather than in the way, in green
+			const edge = thing.open ? '#7dffb0' : '#ffd27a';
+
+			rect(ctx, from.x, from.y, to.x - from.x, 1, edge);
+			rect(ctx, from.x, to.y - 1, to.x - from.x, 1, edge);
+			rect(ctx, from.x, from.y, 1, to.y - from.y, edge);
+			rect(ctx, to.x - 1, from.y, 1, to.y - from.y, edge);
 		}
 		for (const mover of [...this.walkers.values(), ...this.workers.values()]) {
 			if (mover.x === undefined || !mover.path?.length) continue;

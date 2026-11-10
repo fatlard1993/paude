@@ -1,5 +1,5 @@
-import { clonerAt, navAt } from './plan';
-import { CABINET_W, COUCH_SEAT, DOOR, cabinetAt, loungeSeatAt } from './station';
+import { clonerAt, holdSpotAt, navAt, padAt, systemFootOf } from './plan';
+import { CABINET_W, COUCH_SEAT, DOOR, FACE, cabinetAt, housingOf, loungeSeatAt } from './station';
 
 // The floor of a ship as one map, read by whatever needs to know what stands where: a grid of cells over the hull, each
 // open floor or not, made from the layout's rooms and halls and from a footprint for each thing that stands on the
@@ -26,6 +26,12 @@ const DEPTHS = {
 	nav: { back: 0.4, front: 0.2 },
 	reactor: { back: 0.6, front: 0.2 },
 	prop: { back: 0.25, front: 0.1 },
+	system: { back: 0.55, front: 0.15 },
+	tank: { back: 0.35, front: 0.2 },
+	pod: { back: 0.5, front: 0.15 },
+	tug: { back: 0.45, front: 0.2 },
+	terminal: { back: 0.4, front: 0.1 },
+	pad: { back: 0.3, front: 0.2 },
 };
 
 const footprint = (kind, { left, right, y }, more = {}) => ({
@@ -38,10 +44,49 @@ const footprint = (kind, { left, right, y }, more = {}) => ({
 });
 
 // Everything that stands on a laid-out ship's floor, each a box in world units: { kind, x, y, w, d }, and `key` where
-// there are several of a kind. `couches`: how many the lounge has (it keeps one when nobody's resting)
-export const footprintsOf = (layout, { couches = 0 } = {}) => {
-	const { bridge, lounge, materializer, transporter } = layout;
+// there are several of a kind; one that's stood on rather than in the way (the transporter's pad) is `open`.
+// `couches`: how many the lounge has (it keeps one when nobody's resting); `pods`: how many checkouts are docked in
+// the hold; `terminals`: where the other ships' terminals stand on the bridge ([{ x, y }])
+export const footprintsOf = (layout, { couches = 0, pods = 0, terminals = [] } = {}) => {
+	const { bridge, lounge, materializer, transporter, engineering, hold, hangar } = layout;
 	const found = [];
+
+	// Each project's machine, from its deck's ceiling down to near its front
+	for (const bay of layout.bays ?? [])
+		for (const part of bay.parts ?? []) {
+			const housing = housingOf(part);
+			const top = part.y + (part.face ?? 0);
+
+			found.push({ kind: 'machine', key: bay.name, x: housing.x, y: top, w: housing.w, d: housing.floor - top });
+		}
+	// Each engine's reading, editing, commands and web, and the fuel tank over the first reactor
+	for (const room of (layout.rooms ?? []).filter(({ kind }) => kind === 'system')) {
+		const foot = systemFootOf(room);
+
+		found.push(footprint('system', { left: foot.x - 0.5, right: foot.x + 0.5, y: foot.y }, { key: room.name }));
+	}
+	if (engineering) {
+		const x = layout.engines?.[0]?.reactor?.x ?? engineering.x + 1.5;
+
+		found.push(
+			footprint('tank', { left: x - 0.5, right: x + 0.5, y: engineering.y + (engineering.face ?? FACE) + 0.35 }),
+		);
+	}
+	// Shipping: each checkout's pod docked in the hold, and the tug on the hangar's pad
+	for (let pod = 0; hold && pod < pods; pod++) {
+		const at = holdSpotAt(hold, pod);
+
+		found.push(footprint('pod', { left: at.x - 0.6, right: at.x + 0.6, y: at.y }, { key: pod }));
+	}
+	if (hangar) {
+		const at = padAt(hangar);
+
+		found.push(footprint('tug', { left: at.x - 0.2, right: at.x + 1.1, y: at.y }));
+	}
+	// The other ships' terminals on the bridge, by the transporter
+	terminals.forEach(({ x, y }, index) =>
+		found.push(footprint('terminal', { left: x - 0.9, right: x + 0.75, y }, { key: index })),
+	);
 
 	for (const island of bridge?.islands ?? [])
 		found.push(footprint('island', { left: island.x, right: island.x + island.w, y: island.y }, { key: island.key }));
@@ -92,10 +137,15 @@ export const footprintsOf = (layout, { couches = 0 } = {}) => {
 		);
 	}
 
-	return transporter ? found.filter(thing => !inside(thing, clonerAt(transporter))) : found;
-};
+	// The transporter's pad: there to be seen on the map, but stood on, so not in anyone's way
+	if (transporter) {
+		const at = clonerAt(transporter);
 
-const inside = (box, { x, y }) => x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.d;
+		found.push(footprint('pad', { left: at.x - 0.45, right: at.x + 0.45, y: at.y }, { open: true }));
+	}
+
+	return found;
+};
 
 // The map of a laid-out ship's floor with `things` (footprintsOf) standing on it. Rooms and halls are open floor from
 // under their far wall's face to their near edge; a room with a door onto a hall is walled from it but for the
@@ -146,7 +196,12 @@ export const floorOf = (layout, things = []) => {
 			fill({ x, y: door.y - DOOR / 2, w: CELL, d: DOOR }, FLOOR);
 		}
 	}
-	for (const thing of things) fill(thing, SOLID, { only: FLOOR });
+	// A hall runs the ship's length: where it meets the engine bay and the bridge, they're open to it, whichever hall
+	// their own door is on
+	for (const hall of layout.halls ?? [])
+		for (const x of [hall.x - CELL, hall.x + hall.w])
+			fill({ x, y: hall.lane - DOOR / 2, w: CELL, d: DOOR }, FLOOR, { only: WALL });
+	for (const thing of things) if (!thing.open) fill(thing, SOLID, { only: FLOOR });
 
 	const kindAt = ({ x, y }) => (within(column(x), row(y)) ? cells[row(y) * columns + column(x)] : VOID);
 
