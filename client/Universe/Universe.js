@@ -54,6 +54,7 @@ import {
 	enginesPane,
 	foldersPane,
 	listDock,
+	projectFilesPane,
 	projectPanes,
 	projectsPane,
 	sessionsPane,
@@ -1283,13 +1284,15 @@ export default class Universe extends View {
 						{
 							label: `${PANELS.files.label}${on(local.name)}`,
 							hotkey: 'f',
-							run: () =>
-								worker
-									? this.openDock(worker, 'files')
-									: new Notify({
-											intent: 'warning',
-											content: `Files are read through a session: start one in ${bay.name} first.`,
-										}),
+							// The owner reads the project's folder itself; a guest only through a session they're in
+							run: () => {
+								if (identity()?.owner) return this.openProjectDock(bay.name, 'files');
+								if (worker) return this.openDock(worker, 'files');
+								new Notify({
+									intent: 'warning',
+									content: `Files are read through a session: start one in ${bay.name} first.`,
+								});
+							},
 						},
 						{
 							label: `${PANELS.links.label}${on(local.name)}`,
@@ -1485,6 +1488,7 @@ export default class Universe extends View {
 			about: 'every session in it, and what they brought up and made',
 			entries: [
 				sessionsPane({ project, onPick: session => this.pick(session), changed: () => this.poll() }),
+				...(identity()?.owner ? [projectFilesPane(project)] : []),
 				...projectPanes(project),
 			],
 			open,

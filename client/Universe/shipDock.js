@@ -27,6 +27,7 @@ import { bulkActions, sessionMenu } from '../sessionActions';
 import mergedPages from '../../shared/mergedPages';
 import { matchesFilter } from '../../shared/sessionSearch';
 import ArtifactsPanel from '../Terminal/ArtifactsPanel';
+import FilesPanel from '../Terminal/FilesPanel';
 import LinksPanel from '../Terminal/LinksPanel';
 import { PANELS } from '../Terminal/panels';
 import { copyWithNotice } from '../Terminal/copySelection';
@@ -76,7 +77,10 @@ export const listDock = ({ title, about, entries, open, onClose, buttons = [] })
 	};
 	card.opened = () => card.show(entries.some(({ key }) => key === open) ? open : entries[0].key);
 	card.dispose = () => {
-		for (const { elem } of panes.values()) elem.remove();
+		for (const pane of panes.values()) {
+			pane.dropEditor?.();
+			pane.elem.remove();
+		}
 	};
 
 	return card;
@@ -631,6 +635,22 @@ export const cabinetManagePane = ({ current, changed }) => ({
 
 		return { elem, refresh };
 	},
+});
+
+// A project's own folder, read without a session: only its owner reaches it. With no prompt to add a file to, what
+// would be attached is copied instead.
+export const projectFilesPane = project => ({
+	key: 'files',
+	label: PANELS.files.label,
+	make: appendTo =>
+		new FilesPanel({
+			appendTo,
+			addClass: ['docked', 'files'],
+			place: { project },
+			close: () => {},
+			setFullscreen: () => {},
+			attach: text => copyWithNotice(text, 'Copied: paste it into a prompt'),
+		}),
 });
 
 // What a project's sessions brought up and made, across all of them
