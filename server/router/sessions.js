@@ -33,7 +33,12 @@ import { meterOf } from '../cacheMeter';
 import { catchUp } from '../catchUp';
 import { sessionDecisions } from '../decisions';
 import { findHome, localCandidates } from '../promptHome';
+import { delay } from '@vanilla-bean/components/utils/data';
+
 import { askClaude, cancelAsk } from '../claudeInbox';
+
+// Given Claude Code to close a question turned away (Escape) before the words that follow it are typed in
+const DISMISS_SETTLE_MS = 500;
 import {
 	ArcadeError,
 	acceptTrust,
@@ -798,8 +803,17 @@ const sessionsRoutes = async (request, server) => {
 		if (!String(text ?? '').trim()) return new Response('Nothing to send', { status: 400 });
 		if (!(await openSession(match.id))) return new Response('Session not found', { status: 404 });
 
+		// A question for the player still open is turned away, so the words go in as the next prompt, not behind it
+		const running = runningSession(match.id);
+		const asked = running?.asking();
+		const turnedAway = Boolean(asked && running.dismiss(asked.question));
+
+		if (turnedAway) await delay(DISMISS_SETTLE_MS);
+
 		// { id } while it's still waiting to be typed in, so it can be taken back; null once it has been
-		return Response.json({ id: await askClaude(match.id, { prompt: String(text).trim(), hold: hold === true }) });
+		return Response.json({
+			id: await askClaude(match.id, { prompt: String(text).trim(), hold: hold === true && !turnedAway }),
+		});
 	}
 
 	// A prompt taken back before it was typed in: not once Claude has it

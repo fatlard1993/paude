@@ -323,6 +323,19 @@ export default class PtySession {
 		return true;
 	}
 
+	// A question for the player turned away, for words typed in instead of an answer: Escape closes it, as it would at
+	// the terminal. Only the question of the player's own (a checkbox title), and only while it is still the one asked.
+	dismiss(question) {
+		const asked = this.asking();
+
+		if (asked?.question !== question || !/^[☐☑]/.test(asked.title ?? '')) return false;
+
+		setStatus(this.id, 'working');
+		this.process.terminal.write(ESC);
+
+		return true;
+	}
+
 	resize(client, cols, rows) {
 		client.cols = clampSize(cols, SIZE_LIMITS.cols);
 		client.rows = clampSize(rows, SIZE_LIMITS.rows);
