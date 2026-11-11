@@ -66,6 +66,7 @@ import {
 	UNIT,
 	COUCH_SEAT,
 	drawIsland,
+	drawJoystick,
 	drawLaptop,
 	drawScreen,
 	drawSeat,
@@ -4290,6 +4291,8 @@ export default class Ship {
 									},
 									seat.island?.key,
 								);
+								if (session.arcade && (seat.island?.key === undefined || this.islandRise(seat.island.key) >= 2))
+									drawJoystick(ctx, at, { working, time: this.time, seed: worker.seed });
 								if (working && session.tool && worker.opacity >= 1) this.drawActivity(ctx, worker, facility, at);
 								if (worker.opacity >= 1) this.drawInstruments(ctx, worker, at);
 							},
