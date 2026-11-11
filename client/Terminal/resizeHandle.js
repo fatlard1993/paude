@@ -10,6 +10,8 @@ export const PANEL_EDGES = {
 	side: { variable: '--notes-width', key: 'paude.notesWidth', edge: 'left' },
 	files: { variable: '--files-width', key: 'paude.filesWidth', edge: 'right' },
 	shell: { variable: '--shell-height', key: 'paude.shellHeight', edge: 'top' },
+	// The arcade's chat beside its game: dragged from its inner edge, the same width kept
+	talk: { variable: '--arcade-talk-width', key: 'paude.arcadeTalkWidth', edge: 'left' },
 };
 
 // A side panel's inner edge drags its width; the side terminal's top edge drags its height

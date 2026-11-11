@@ -6,6 +6,7 @@ import { button, element } from '../dom';
 import { identity } from '../identity';
 import { updateTabTitle } from '../tabTitle';
 import ArcadePage from './Arcade.styles';
+import { PANEL_EDGES, addResizeHandle } from '../Terminal/resizeHandle';
 import ArcadeGame from './ArcadeGame';
 import ArcadeTalk from './ArcadeTalk';
 
@@ -58,6 +59,7 @@ export default class Arcade extends View {
 				this.play(false);
 			},
 		});
+		addResizeHandle(this.talk.elem, PANEL_EDGES.talk);
 		this.page.elem.append(stage);
 		// Whatever toasts the page still gets (a watched session needing the owner) go to the top: the bottom is where the
 		// player's choices and box are

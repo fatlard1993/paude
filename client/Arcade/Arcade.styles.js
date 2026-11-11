@@ -20,10 +20,21 @@ const ArcadePage = styled(
 		}
 
 		.stage > .arcade-talk {
-			flex: 1 1 40%;
-			min-width: min(360px, 100%);
-			max-width: 560px;
+			position: relative;
+			flex: 0 0 var(--arcade-talk-width, min(40%, 560px));
+			min-width: min(260px, 100%);
 			border-left: 1px solid ${colors.border};
+		}
+
+		/* Dragged wider or narrower from its inner edge (addResizeHandle) */
+		.stage > .arcade-talk .resize {
+			position: absolute;
+			top: 0;
+			bottom: 0;
+			left: 0;
+			width: 6px;
+			cursor: ew-resize;
+			z-index: 3;
 		}
 
 		/* Playing: the game alone, and one big button back to the talk */
@@ -64,10 +75,15 @@ const ArcadePage = styled(
 			}
 
 			.stage > .arcade-talk {
+				flex: 1 1 40%;
+				width: auto;
 				max-width: none;
 				min-width: 0;
 				border-left: 0;
 				border-top: 1px solid ${colors.border};
+			}
+			.stage > .arcade-talk .resize {
+				display: none;
 			}
 		}
 	`,
