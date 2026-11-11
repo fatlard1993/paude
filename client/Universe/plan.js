@@ -115,6 +115,9 @@ export const splitSeats = (keys, widthOf) => {
 // floor past the desk's end)
 // `stern`: how much of the bridge from its aft wall `from` is past, the risers' room, so where an island stood is kept
 // from the wall itself, and an island stays put as the risers' room grows unless it grows into it
+// As near as makes no difference, in room units: less than anything drawn, more than sums of widths leave over
+const NEAR = 1e-6;
+
 const islandsOf = (
 	bays,
 	{ from, top, rows, lounge, stations = 0, agents = {}, watched = {}, brief = {}, pitch = BRIDGE_ROW, kept, stern = 0 },
@@ -191,16 +194,32 @@ const islandsOf = (
 	// Laid out before (`kept`: each island's row and where along it it stood, by its project and which of its it is),
 	// each stays where it stood while it still fits there, so islands don't move as others come, go and grow; one that
 	// no longer fits, or a new one, into the first gap wide enough in its row (or the row reaching least far)
+	// Where one stood is kept as how far it stood from the aft wall, whatever its row: in a row the lounge covers its
+	// place is counted from past the lounge's room (which the row is then moved back into), in any other from the wall.
+	// A row is covered or not by how many rows there are, which can change between two layings; kept as it was counted,
+	// an island of a covered row stood the lounge's width further forward the moment its row no longer was, lengthening
+	// the bridge, which changed the rows again: the ship came out one of two shapes turn about.
+	const covered = row => row >= rows - covers;
+	const shift = lounge ? lounge.w + ISLAND_GAP : 0;
 	const keptOf = key => {
 		const entry = kept?.[key];
 
 		if (typeof entry === 'number') return { row: entry };
 
-		return entry && { ...entry, at: typeof entry.at === 'number' ? entry.at - stern : undefined };
+		if (typeof entry?.at !== 'number') return entry && { ...entry, at: undefined };
+
+		// One that stood at the row's very start comes back a hair either side of it: the start, then, not before it
+		const at = entry.at - stern + (covered(entry.row) ? shift : 0);
+
+		return { ...entry, at: at > -NEAR ? Math.max(0, at) : at };
 	};
 	const taken = Array.from({ length: rows }, (_, row) => (reach[row] ? [[0, reach[row] - ISLAND_GAP]] : []));
+	// To within what arithmetic leaves: two islands a gap apart, each kept where it stood, are a gap apart whichever
+	// is placed first. Compared exactly, the second could come out a hair short of the gap one way round and not the
+	// other, and was moved to the row's end: the order they're placed in changes with the hull's levels, so the bridge
+	// grew, the hull took a level to shorten it, the order changed back, and the ship turned between two shapes.
 	const free = (row, at, w) =>
-		taken[row].every(([start, end]) => at + w + ISLAND_GAP <= start || at >= end + ISLAND_GAP);
+		taken[row].every(([start, end]) => at + w + ISLAND_GAP <= start + NEAR || at >= end + ISLAND_GAP - NEAR);
 	const take = (row, at, w) => {
 		taken[row].push([at, at + w]);
 		taken[row].sort((a, b) => a[0] - b[0]);
@@ -210,7 +229,7 @@ const islandsOf = (
 		let at = 0;
 
 		for (const [start, end] of taken[row]) {
-			if (at + w + ISLAND_GAP <= start) return at;
+			if (at + w + ISLAND_GAP <= start + NEAR) return at;
 			at = Math.max(at, end + ISLAND_GAP);
 		}
 
@@ -262,7 +281,7 @@ const islandsOf = (
 			key,
 			row: spot.row,
 			// Where along its row it stands from the bridge's aft wall, kept to stand there again
-			at: spot.at + stern,
+			at: spot.at + stern - (covered(spot.row) ? shift : 0),
 			x,
 			y,
 			w: desk,
@@ -289,8 +308,6 @@ const islandsOf = (
 
 	// The lounge at the forward end of the rows it covers, past their islands, so every island has a clear way to the
 	// aft wall its conduit comes down: its room was kept at the start of those rows, so they move back into it
-	const covered = row => row >= rows - covers;
-	const shift = lounge ? lounge.w + ISLAND_GAP : 0;
 	const past = Math.max(0, ...reach.filter((_, row) => covered(row)).map(far => far - shift));
 
 	for (const island of islands) {

@@ -1,0 +1,309 @@
+{
+	"bays": [
+		{
+			"name": "project-axxxxxxxxxxxxxx",
+			"sessions": ["local/s0"],
+			"character": {
+				"language": "js",
+				"files": 33,
+				"folders": [
+					{ "name": "projec", "files": 19, "language": "js" },
+					{ "name": "", "files": 14, "language": "js" }
+				],
+				"since": 1794215333000,
+				"commits": 35,
+				"last": 1794297665000,
+				"week": 35,
+				"day": 18
+			},
+			"seated": 1
+		},
+		{
+			"name": "project-",
+			"character": {
+				"language": "js",
+				"files": 941,
+				"folders": [
+					{ "name": "projecte", "files": 531, "language": "js" },
+					{ "name": "projef", "files": 170, "language": "python" },
+					{ "name": "bin", "files": 119, "language": "js" },
+					{ "name": "proje", "files": 61, "language": "docs" },
+					{ "name": "project-hxxx", "files": 10, "language": null },
+					{ "name": "projej", "files": 4, "language": "data" },
+					{ "name": "", "files": 46, "language": "docs" }
+				],
+				"since": 1477090792000,
+				"commits": 1351,
+				"last": 1794213787000,
+				"week": 16,
+				"day": 0
+			}
+		},
+		{ "name": "project" },
+		{ "name": "project-kxxxxxxxx" },
+		{
+			"name": "project-lxxxxx",
+			"watching": true,
+			"character": {
+				"language": "js",
+				"files": 121,
+				"folders": [
+					{ "name": "src", "files": 70, "language": "js" },
+					{ "name": "proj", "files": 26, "language": "js" },
+					{ "name": "projep", "files": 4, "language": null },
+					{ "name": "projecq", "files": 4, "language": "js" },
+					{ "name": "project-q", "files": 1, "language": null },
+					{ "name": "", "files": 16, "language": "js" }
+				],
+				"since": 1790094419000,
+				"commits": 214,
+				"last": 1794029603000,
+				"week": 55,
+				"day": 0
+			}
+		},
+		{
+			"name": "project-rx",
+			"watching": true,
+			"character": {
+				"language": "js",
+				"files": 70,
+				"folders": [
+					{ "name": "projec", "files": 31, "language": "js" },
+					{ "name": "projet", "files": 23, "language": "js" },
+					{ "name": "projecq", "files": 1, "language": "js" },
+					{ "name": "", "files": 15, "language": "js" }
+				],
+				"since": 1784169440000,
+				"commits": 104,
+				"last": 1794353304000,
+				"week": 30,
+				"day": 5
+			}
+		},
+		{
+			"name": "project-t",
+			"character": {
+				"language": "js",
+				"files": 103,
+				"folders": [
+					{ "name": "projec", "files": 52, "language": "js" },
+					{ "name": "projet", "files": 30, "language": "js" },
+					{ "name": "img", "files": 3, "language": null },
+					{ "name": "lld", "files": 3, "language": "docs" },
+					{ "name": "projecq", "files": 1, "language": "js" },
+					{ "name": "", "files": 14, "language": "js" }
+				],
+				"since": 1533692394000,
+				"commits": 355,
+				"last": 1794353273000,
+				"week": 16,
+				"day": 2
+			}
+		},
+		{
+			"name": "projectx",
+			"character": {
+				"language": "js",
+				"files": 76,
+				"folders": [
+					{ "name": "projec", "files": 23, "language": "js" },
+					{ "name": "projy", "files": 18, "language": "data" },
+					{ "name": "projet", "files": 11, "language": "js" },
+					{ "name": "img", "files": 8, "language": null },
+					{ "name": "projz", "files": 2, "language": "js" },
+					{ "name": "", "files": 14, "language": "js" }
+				],
+				"since": 1518258886000,
+				"commits": 324,
+				"last": 1794299124000,
+				"week": 20,
+				"day": 7
+			}
+		},
+		{
+			"name": "project-zxx",
+			"character": {
+				"language": "js",
+				"files": 243,
+				"folders": [
+					{ "name": "projec", "files": 154, "language": "js" },
+					{ "name": "projet", "files": 69, "language": "js" },
+					{ "name": "prob", "files": 4, "language": null },
+					{ "name": "projecq", "files": 2, "language": "js" },
+					{ "name": "", "files": 14, "language": "js" }
+				],
+				"since": 1782711393000,
+				"commits": 134,
+				"last": 1794353749000,
+				"week": 5,
+				"day": 5
+			}
+		},
+		{
+			"name": "project-b1xxxxxxxxxxxxxxxxxxxxxxxx",
+			"character": {
+				"language": "js",
+				"files": 24,
+				"folders": [
+					{ "name": "projec", "files": 13, "language": "js" },
+					{ "name": "", "files": 11, "language": "js" }
+				],
+				"since": 1794352460000,
+				"commits": 3,
+				"last": 1794353874000,
+				"week": 3,
+				"day": 3
+			},
+			"seated": 1
+		},
+		{
+			"name": "project-c1xxxxxx",
+			"sessions": ["local/s1"],
+			"character": {
+				"language": "js",
+				"files": 26,
+				"folders": [
+					{ "name": "projec", "files": 15, "language": "js" },
+					{ "name": "", "files": 11, "language": "js" }
+				],
+				"since": 1794353419000,
+				"commits": 4,
+				"last": 1794354316000,
+				"week": 4,
+				"day": 4
+			},
+			"seated": 1
+		},
+		{
+			"name": "project-d",
+			"sessions": ["e4/s2", "e4/s3", "e4/s4", "e4/s5"],
+			"character": {
+				"language": "jvm",
+				"files": 34862,
+				"folders": [
+					{ "name": "projectf", "files": 19499, "language": "jvm" },
+					{ "name": "project-f1xxxxxxxx", "files": 3787, "language": "jvm" },
+					{ "name": "project-g1xxxxx", "files": 3370, "language": "jvm" },
+					{ "name": "project-h1", "files": 756, "language": "jvm" },
+					{ "name": "project-i1x", "files": 644, "language": "jvm" },
+					{ "name": "project-j", "files": 634, "language": "jvm" },
+					{ "name": "", "files": 6172, "language": "jvm" }
+				],
+				"since": 1577396030000,
+				"commits": 2780,
+				"last": 1794287269000,
+				"week": 148,
+				"day": 82
+			},
+			"seated": 4
+		},
+		{
+			"name": "projl",
+			"sessions": ["local/s6"],
+			"character": {
+				"language": "js",
+				"files": 468,
+				"folders": [
+					{ "name": "projet", "files": 198, "language": "js" },
+					{ "name": "projec", "files": 125, "language": "js" },
+					{ "name": "projem", "files": 70, "language": "js" },
+					{ "name": "cli", "files": 38, "language": "js" },
+					{ "name": "prob", "files": 13, "language": null },
+					{ "name": "e2e", "files": 6, "language": "js" },
+					{ "name": "", "files": 18, "language": "js" }
+				],
+				"since": 1791254210000,
+				"commits": 804,
+				"last": 1794353841000,
+				"week": 469,
+				"day": 115
+			},
+			"seated": 1
+		},
+		{ "name": "project-o1x" },
+		{ "name": "project-p1x", "seated": 1 },
+		{ "name": "project-q1xxxxxxxxxxxxx", "sessions": ["local/s7"], "seated": 1 }
+	],
+	"engines": [],
+	"lounge": {
+		"count": 7,
+		"cabinets": [
+			{
+				"id": "a-space-shooter-pve-pvp",
+				"project": "a-space-shooter-pve-pvp",
+				"port": 4100,
+				"running": true,
+				"state": "up",
+				"doing": null,
+				"players": 0,
+				"watched": true,
+				"hue": 88
+			},
+			{
+				"id": "lets-build-a-pictionary-skribbleio",
+				"project": "lets-build-a-pictionary-skribbleio",
+				"port": 4101,
+				"running": true,
+				"state": "up",
+				"doing": null,
+				"players": 0,
+				"watched": true,
+				"hue": 129
+			},
+			{
+				"id": "lets-build-a-rap",
+				"project": "lets-build-a-rap",
+				"port": 4102,
+				"running": true,
+				"state": "up",
+				"doing": null,
+				"players": 0,
+				"watched": true,
+				"hue": 145
+			},
+			{
+				"id": "game-night",
+				"project": "game-night",
+				"port": 8034,
+				"running": true,
+				"state": "up",
+				"doing": null,
+				"players": 0,
+				"watched": true,
+				"remote": { "name": "pros" },
+				"hue": 273
+			},
+			{
+				"id": "humanity",
+				"project": "humanity",
+				"port": 8032,
+				"running": true,
+				"state": "up",
+				"doing": null,
+				"players": 0,
+				"watched": true,
+				"remote": { "name": "pros" },
+				"hue": "light"
+			}
+		]
+	},
+	"agents": {},
+	"watched": {
+		"local/s6": true,
+		"local/s8": false,
+		"local/s1": false,
+		"local/s9": false,
+		"local/s7": false,
+		"local/s0": false,
+		"e4/s2": false,
+		"e4/s3": false,
+		"e4/s4": false,
+		"e4/s5": false,
+		"e4/s10": false
+	},
+	"brief": {},
+	"checkouts": 4,
+	"fleet": 0,
+	"terminals": 0
+}
