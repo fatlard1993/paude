@@ -6,6 +6,7 @@ import { requestMatch } from '@vanilla-bean/components/app';
 import { credentialOf, identityOf } from '../auth';
 import { isSecret } from '../files';
 import { may, ownsSession } from '../permissions';
+import { newVersionReady } from '../preview';
 import { previewOrigin as previewOriginOf } from '../publicOrigin';
 import { serverSettings } from '../serverSettings';
 import { sessionRecord } from '../sessions/record';
@@ -22,7 +23,12 @@ const previewOrigin = async request =>
 	previewOriginOf(request, { listenerPort: previewPort, settings: await serverSettings() });
 
 const withLinks = (shares, origin) =>
-	shares.map(share => ({ ...share, url: `${origin}/s/${encodeURIComponent(share.name)}/` }));
+	shares.map(share => ({
+		...share,
+		url: `${origin}/s/${encodeURIComponent(share.name)}/`,
+		// A newer version of its app is ready, not yet loaded (the preview holds an arcade game's reloads for that)
+		newVersion: newVersionReady(share.name),
+	}));
 
 // A path in the session's folder, the kind of thing the share is: a file, or a folder (to zip or serve)
 const checkedPath = async (cwd, kind, wanted) => {

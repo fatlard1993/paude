@@ -5,6 +5,7 @@ import path from 'path';
 import { credentialOf, identityOf } from './auth';
 import { isSecret } from './files';
 import { sessionRecord } from './sessions/record';
+import { isArcadeSession } from './arcade';
 import { cabinetShare } from './cabinets';
 import { shareNamed } from './shares';
 import { zipStream } from './zip';
@@ -86,6 +87,22 @@ const relocated = (location, name, { host, port }) => {
 	const pathPart = own ? location.slice(own.length) || '/' : location;
 
 	return pathPart.startsWith('/') && !pathPart.startsWith('//') ? `/s/${name}${pathPart}` : location;
+};
+
+// Shares whose app has a newer version ready that its page hasn't loaded yet. An arcade game's app doesn't reload itself
+// for one (a rebuild, a restarted server): the arcade page says so, and its player loads it when they're ready. The
+// page's own load of the app clears it.
+const newer = new Set();
+
+export const newVersionReady = name => newer.has(name);
+
+// Only an arcade game's app holds its reloads: a session's own preview (a dev server's live reload) goes on as it does
+const holdsReload = async share => {
+	if (!share.sessionId) return false;
+
+	const record = await sessionRecord(share.sessionId);
+
+	return isArcadeSession(share.sessionId, record?.cwd);
 };
 
 const proxy = async (request, share, target) => {
@@ -220,6 +237,8 @@ export const previewFetch = async (request, server) => {
 			const upgraded = server.upgrade(request, {
 				data: {
 					route: 'preview',
+					name: share.name,
+					hold: await holdsReload(share),
 					target: `ws://${share.host}:${share.port}${target}`,
 					protocols: protocols ? protocols.split(',').map(protocol => protocol.trim()) : [],
 					headers: Object.fromEntries(forwardedHeaders(request, share)),
@@ -229,6 +248,10 @@ export const previewFetch = async (request, server) => {
 
 			return upgraded ? undefined : new Response('Upgrade failed', { status: 400 });
 		}
+
+		// The app's page loaded (the frame, or the tab): whatever version it has now is the one shown
+		if (request.method === 'GET' && ['iframe', 'document'].includes(request.headers.get('sec-fetch-dest')))
+			newer.delete(share.name);
 
 		return remember(await proxy(request, share, target), request, share.name);
 	}
@@ -249,14 +272,57 @@ export const previewFetch = async (request, server) => {
 
 // A WebSocket through to the app (Vite's live reload, say): what each side says goes to the other, and when one
 // closes so does the other
-export const previewSocket = {
-	open(socket) {
-		const { target, protocols, headers } = socket.data;
+// A held app (an arcade game): its live reload is kept from the page, and the page stays up while the app's server
+// restarts, reconnecting to it as it comes back. What it had changed is then shown as ready, not loaded.
+const RECONNECT_MS = 1000;
+const RECONNECT_MAX_MS = 5000;
+
+const holdOpen = (socket, { name, target, protocols, headers }) => {
+	let wait = RECONNECT_MS;
+	let reconnecting = false;
+
+	const connect = reopened => {
 		const upstream = new WebSocket(target, { protocols, headers });
-		const pending = [];
 
 		socket.data.upstream = upstream;
-		socket.data.pending = pending;
+		upstream.binaryType = 'arraybuffer';
+		upstream.addEventListener('open', () => {
+			wait = RECONNECT_MS;
+			reconnecting = false;
+			// Back after its server restarted: the code it runs now is newer than the page's
+			if (reopened) newer.add(name);
+			for (const message of socket.data.pending.splice(0)) upstream.send(message);
+		});
+		upstream.addEventListener('message', event => {
+			if (event.data === 'hotReload') return newer.add(name);
+			socket.send(event.data);
+		});
+		const lost = () => {
+			if (socket.data.closed || reconnecting) return;
+			reconnecting = true;
+			setTimeout(() => connect(true), wait);
+			wait = Math.min(wait * 2, RECONNECT_MAX_MS);
+		};
+
+		upstream.addEventListener('close', lost);
+		upstream.addEventListener('error', () => {});
+	};
+
+	connect(false);
+};
+
+export const previewSocket = {
+	open(socket) {
+		const { target, protocols, headers, hold, name } = socket.data;
+
+		socket.data.pending = [];
+		socket.data.closed = false;
+		if (hold) return holdOpen(socket, { name, target, protocols, headers });
+
+		const upstream = new WebSocket(target, { protocols, headers });
+		const pending = socket.data.pending;
+
+		socket.data.upstream = upstream;
 		upstream.binaryType = 'arraybuffer';
 		upstream.addEventListener('open', () => {
 			for (const message of pending.splice(0)) upstream.send(message);
@@ -271,10 +337,11 @@ export const previewSocket = {
 	message(socket, message) {
 		const { upstream, pending } = socket.data;
 
-		if (upstream.readyState === WebSocket.OPEN) upstream.send(message);
+		if (upstream?.readyState === WebSocket.OPEN) upstream.send(message);
 		else pending.push(message);
 	},
 	close(socket) {
+		socket.data.closed = true;
 		socket.data.upstream?.close();
 	},
 };

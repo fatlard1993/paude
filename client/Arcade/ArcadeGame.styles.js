@@ -20,6 +20,15 @@ const GameFrame = styled(
 			background: ${colors.black};
 		}
 
+		.new-version {
+			position: absolute;
+			top: ${space.md};
+			left: 50%;
+			transform: translateX(-50%);
+			z-index: 2;
+			box-shadow: 0 4px 16px ${colors.alpha(colors.vantablack, 0.45)};
+		}
+
 		.waiting-room {
 			display: flex;
 			flex-direction: column;

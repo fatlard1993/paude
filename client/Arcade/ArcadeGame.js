@@ -122,11 +122,13 @@ export default class ArcadeGame extends GameFrame {
 				if (this.remote && !this.loggedInThere) return this.loginRoom();
 				this.showFrame();
 			}
+			this.setNewVersion(Boolean(port.newVersion));
 
 			return;
 		}
 
 		this.url = null;
+		this.setNewVersion(false);
 		this.frame = null;
 		if (!identity()?.owner) return this.waitingRoom('Getting it ready…');
 
@@ -181,6 +183,23 @@ export default class ArcadeGame extends GameFrame {
 	show(what) {
 		this.elem.replaceChildren(what);
 		if (what === this.frame && this.elem.classList.contains('built')) this.elem.append(this.curtain);
+		if (what === this.frame && this.newVersion) this.elem.append(this.banner);
+	}
+
+	// A newer version of the game is ready (its app rebuilt or restarted). It's offered, not loaded under its player:
+	// the button loads it when they say so
+	setNewVersion(on) {
+		this.newVersion = on;
+		this.banner ??= button(
+			'A new version is ready · Reload',
+			() => {
+				this.setNewVersion(false);
+				this.reload();
+			},
+			{ icon: 'rotate-right', className: 'new-version variant-flat' },
+		);
+		this.banner.remove();
+		if (on && this.frame && this.elem.contains(this.frame)) this.elem.append(this.banner);
 	}
 
 	// A game on another paude shows from there, and that paude knows this browser only once it has logged in there:
