@@ -38,6 +38,7 @@ const Talk = styled(
 		}
 
 		.lamp .put-back,
+		.lamp .broken,
 		.lamp .control {
 			flex-shrink: 0;
 			font-size: 0.8em;
@@ -219,7 +220,8 @@ const Talk = styled(
 			height: 2.2em;
 		}
 
-		.card.chosen .pick-again {
+		.card.chosen .pick-again,
+		.card.you .cancel-queued {
 			margin-left: ${space.md};
 			font-size: 0.8em;
 			color: ${colors.alpha(colors.white, 0.75)};

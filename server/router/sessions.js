@@ -33,7 +33,7 @@ import { meterOf } from '../cacheMeter';
 import { catchUp } from '../catchUp';
 import { sessionDecisions } from '../decisions';
 import { findHome, localCandidates } from '../promptHome';
-import { askClaude } from '../claudeInbox';
+import { askClaude, cancelAsk } from '../claudeInbox';
 import {
 	ArcadeError,
 	acceptTrust,
@@ -790,12 +790,22 @@ const sessionsRoutes = async (request, server) => {
 		if (!may(identity, 'type', match.id))
 			return new Response('Sending to Claude takes the drive role', { status: 403 });
 
-		const { text } = await request.json();
+		const { text, hold } = await request.json();
 
 		if (!String(text ?? '').trim()) return new Response('Nothing to send', { status: 400 });
 		if (!(await openSession(match.id))) return new Response('Session not found', { status: 404 });
 
-		askClaude(match.id, { prompt: String(text).trim() });
+		// { id } while it's still waiting to be typed in, so it can be taken back; null once it has been
+		return Response.json({ id: await askClaude(match.id, { prompt: String(text).trim(), hold: hold === true }) });
+	}
+
+	// A prompt taken back before it was typed in: not once Claude has it
+	match = requestMatch('DELETE', '/api/sessions/:id/prompt/:message', request);
+	if (match) {
+		if (!may(identity, 'type', match.id))
+			return new Response('Sending to Claude takes the drive role', { status: 403 });
+
+		if (!(await cancelAsk(match.id, match.message))) return new Response('Claude has it already', { status: 409 });
 
 		return new Response(null, { status: 204 });
 	}

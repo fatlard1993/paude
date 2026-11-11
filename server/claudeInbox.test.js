@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { expect, test } from 'bun:test';
 
-import { answerTo, askClaude, initClaudeInbox } from './claudeInbox';
+import { answerTo, askClaude, cancelAsk, initClaudeInbox } from './claudeInbox';
 
 const prompt = text => ({ type: 'user', message: { role: 'user', content: text } });
 const said = text => ({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
@@ -76,7 +76,47 @@ test("a message sent while Claude asks a question that takes words answers it th
 	delete asking.typing;
 	await askClaude('asked', { prompt: 'and bigger' });
 	expect(answers).toHaveLength(1);
-	expect((await inboxFile(dir)).asked.queue).toEqual([{ prompt: 'and bigger' }]);
+	expect((await inboxFile(dir)).asked.queue.map(({ prompt }) => prompt)).toEqual(['and bigger']);
+	await initClaudeInbox(dir, () => undefined);
+});
+
+test('a message held while Claude works waits its turn, and can be taken back until it is typed in', async () => {
+	const { initActivity, setStatus } = await import('./activity');
+	const dir = mkdtempSync(path.join(os.tmpdir(), 'inbox-'));
+
+	await initActivity(dir);
+	const typed = [];
+	// The paste; the Enter that follows it a moment later is left out
+	const session = {
+		promptDraft: () => '',
+		typeIn: data => data !== '\r' && typed.push(data),
+		asking: () => null,
+		answer: () => false,
+	};
+
+	await setStatus('busy', 'working');
+	await initClaudeInbox(dir, id => (id === 'busy' ? session : undefined));
+
+	const held = await askClaude('busy', { prompt: 'make it faster', hold: true });
+
+	expect(held).toEqual(expect.any(String));
+	expect(typed).toEqual([]);
+	expect(await cancelAsk('busy', held)).toBe(true);
+	expect(await cancelAsk('busy', held)).toBe(false);
+	expect((await inboxFile(dir)).busy.queue).toEqual([]);
+
+	// Not held: typed in as it always was, straight away, so there is nothing to take back
+	expect(await askClaude('busy', { prompt: 'and louder' })).toBeNull();
+	expect(typed.join('')).toContain('and louder');
+
+	// Held again, then Claude is ready: typed in on its own, and no longer takeable
+	const again = await askClaude('busy', { prompt: 'and brighter', hold: true });
+
+	expect(typed).toHaveLength(1);
+	await setStatus('busy', 'ready');
+	await new Promise(resolve => setTimeout(resolve, 1100));
+	expect(typed.join('')).toContain('and brighter');
+	expect(await cancelAsk('busy', again)).toBe(false);
 	await initClaudeInbox(dir, () => undefined);
 });
 
@@ -90,7 +130,7 @@ test("a message waiting for Claude's prompt box is handed on to the next server,
 	await initClaudeInbox(dir, id => (id === 'held' ? noBox : undefined));
 	await askClaude('held', { prompt: 'carry on', to: { commentId: 'c1' } });
 	expect(await inboxFile(dir)).toEqual({
-		held: { queue: [{ prompt: 'carry on', to: { commentId: 'c1' } }], asked: [] },
+		held: { queue: [{ id: expect.any(String), prompt: 'carry on', to: { commentId: 'c1' } }], asked: [] },
 	});
 
 	await initClaudeInbox(dir, id => (id === 'held' ? box : undefined));

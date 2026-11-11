@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import path from 'path';
 import { delay } from '@vanilla-bean/components/utils/data';
 
@@ -15,9 +16,10 @@ const ENTER_AFTER_MS = 300;
 const GIVE_UP_MS = 60 * 60 * 1000;
 
 // Per session: messages from chat, comments and prompts waiting to be typed into Claude, and those typed in, waiting
-// for their turn to end. Each is { prompt, to }, `to` where Claude's answer goes (as the answersGo handler takes it),
-// or nothing for one nobody reads back. Saved to a file as they change: a server restart (every save, in dev mode)
-// hands them on to the next server instead of dropping what was already accepted.
+// for their turn to end. Each is { id, prompt, to, hold }: `to` where Claude's answer goes (as the answersGo handler
+// takes it), or nothing for one nobody reads back; `hold` for one that waits out a turn in progress, so it can still
+// be taken back (cancelAsk) until Claude is ready for it. Saved to a file as they change: a server restart (every save,
+// in dev mode) hands them on to the next server instead of dropping what was already accepted.
 const inboxes = new Map();
 let file = null;
 let sessionOf = runningSession;
@@ -58,7 +60,9 @@ const deliver = id => {
 
 		return save();
 	}
-	if (statusOf(id) === 'waiting' || session.promptDraft() !== '') {
+	const turnGoing = inbox.queue[0].hold && statusOf(id) === 'working';
+
+	if (statusOf(id) === 'waiting' || session.promptDraft() !== '' || turnGoing) {
 		inbox.timer = setTimeout(() => deliver(id), RETRY_MS);
 
 		return;
@@ -94,12 +98,30 @@ export const answersGo = answer => (sendAnswer = answer);
 // Someone's message waits to be typed into Claude
 export const waitingToAsk = id => Boolean(inboxes.get(id)?.queue.length);
 
-// Resolves once it's saved, typed in or waiting
-export const askClaude = (id, { prompt, to }) => {
-	inboxOf(id).queue.push({ prompt, ...(to && { to }) });
+// Resolves to the message's id once it's saved, if it's still waiting to be typed in (null once it's typed in)
+export const askClaude = async (id, { prompt, to, hold = false }) => {
+	const message = { id: randomUUID(), prompt, ...(to && { to }), ...(hold && { hold: true }) };
+
+	inboxOf(id).queue.push(message);
 	deliver(id);
 
-	return save();
+	const waiting = inboxes.get(id)?.queue.includes(message) ?? false;
+
+	await save();
+
+	return waiting ? message.id : null;
+};
+
+// Takes back a message still waiting to be typed in: false once it has been (or was never there)
+export const cancelAsk = async (id, messageId) => {
+	const queue = inboxes.get(id)?.queue ?? [];
+	const at = queue.findIndex(message => message.id === messageId);
+
+	if (at === -1) return false;
+	queue.splice(at, 1);
+	await save();
+
+	return true;
 };
 
 const textOf = line =>

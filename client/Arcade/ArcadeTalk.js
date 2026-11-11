@@ -1,5 +1,6 @@
 import {
 	answerAsking,
+	cancelPrompt,
 	getArcade,
 	getAsking,
 	getFeed,
@@ -60,7 +61,7 @@ const STUCK_MS = 4 * 60_000;
 const LAMP_TICK_MS = 1000;
 // With nothing read aloud, a question for the player counts as taken in after this long
 const UNSPOKEN_REST_MS = 6000;
-// Words sent while Claude works go into its box, and Claude takes them up when the turn ends: a question that turn
+// Words sent while Claude works wait their turn, and Claude takes them up when the turn ends: a question that turn
 // ends with is about to be interrupted by them, so it's not shown or read, for this long at most
 const PENDING_MS = 30_000;
 // How many things sent from here are remembered while their record in the transcript is awaited
@@ -76,6 +77,14 @@ const MORE_IDEAS = 'None of these. Ask the same question again with different id
 // What Claude is told when the player picks again, after the game is put back
 const PICK_AGAIN_PROMPT =
 	'They want to choose differently: the game is back to how it was before. Ask your last question again, with the same choices.';
+// "Something's broken": what the player can say is wrong, and how it is put to Claude (null: their own words)
+const BROKEN = [
+	{ label: "🚫 It won't start, or the screen stays blank", says: "the game won't start, or the screen stays blank" },
+	{ label: "🎮 The controls don't do anything", says: "the controls don't respond" },
+	{ label: '🧩 Something is missing or in the wrong place', says: 'something is missing or in the wrong place' },
+	{ label: '🐛 It does something it should not', says: 'it does something it should not' },
+	{ label: '💬 Something else', says: null },
+];
 const EMOJI_FIRST = /^(\p{Extended_Pictographic}[\u{FE0F}\u{200D}\p{Extended_Pictographic}]*)\s*(.*)$/su;
 // A question put to the player with AskUserQuestion shows its header as a checkbox; a permission prompt is titled
 // by its tool and asks whether to proceed
@@ -117,6 +126,8 @@ export default class ArcadeTalk extends Talk {
 		this.fresh = true;
 		// { text, until }: words sent while Claude worked, not yet taken up
 		this.pending = null;
+		// { id, text, card, cancel }: words sent that Claude hasn't taken up, which can be taken back
+		this.queued = [];
 		// What arcade this is ({ title, player, reading, hosted? }), once asked; null for an ordinary session
 		this.arcade = null;
 		this.reading = 'reading';
@@ -180,8 +191,13 @@ export default class ArcadeTalk extends Talk {
 		});
 		// Not the hidden attribute: the button's own display rule outranks it
 		this.putBack.style.display = 'none';
+		this.broken = button("Something's broken", () => this.askWhatsBroken(), {
+			icon: 'bug',
+			className: 'broken variant-flat',
+			title: "Ask what's broken with the game",
+		});
 		// The talk's own controls, in the status row, so they're the same wherever the talk is
-		this.controls = [this.putBack];
+		this.controls = [...(canType() ? [this.broken] : []), this.putBack];
 		if (canSpeak()) {
 			this.speakButton = button('', () => this.setSpeak(!this.prefs.speak), {
 				icon: this.prefs.speak ? 'volume-high' : 'volume-xmark',
@@ -410,6 +426,7 @@ export default class ArcadeTalk extends Talk {
 				const index = this.sent.indexOf(entry.text);
 
 				if (this.pending?.text === entry.text) this.pending = null;
+				this.takenUp(entry.text);
 				if (index !== -1) {
 					this.sent.splice(index, 1);
 					continue;
@@ -873,11 +890,11 @@ export default class ArcadeTalk extends Talk {
 		const asking = this.asking;
 		let { response, body } = asking?.typing
 			? await answerAsking(this.id, asking.question, asking.typing, typed)
-			: await sendPrompt(this.id, typed);
+			: await sendPrompt(this.id, typed, { hold: true });
 
 		// The question went away meanwhile: the words go as a prompt instead
 		if (!response?.ok && asking?.typing && response?.status === 409)
-			({ response, body } = await sendPrompt(this.id, typed));
+			({ response, body } = await sendPrompt(this.id, typed, { hold: true }));
 		if (!response?.ok) {
 			this.notice(typeof body === 'string' && body ? body : 'Could not send that', 'danger');
 
@@ -885,7 +902,11 @@ export default class ArcadeTalk extends Talk {
 		}
 		this.input.placeholder = 'Tell Claude what to do';
 		this.noteSent(typed);
-		this.feed.append(element('div', 'card you', typed));
+		const card = element('div', 'card you', typed);
+
+		this.feed.append(card);
+		// Still waiting to be typed in (an id is given only then): it can be taken back
+		if (body?.id) this.queueCard(card, typed, body.id);
 		// Sent while Claude works, the words wait their turn: what comes next is the end of what it was doing, and a
 		// question it ends with is kept from the player, since the words are about to interrupt it
 		if (this.status === 'working' && !asking?.typing) {
@@ -896,6 +917,75 @@ export default class ArcadeTalk extends Talk {
 		this.feed.scrollTop = this.feed.scrollHeight;
 		this.clearAsking();
 		if (this.status !== 'working') this.showStatus({ status: 'working' });
+	}
+
+	// Words Claude hasn't taken up yet: a button takes them back into the box, so nothing typed is lost
+	queueCard(card, text, id) {
+		const item = { id, text, card };
+
+		item.cancel = button('Take back', () => this.cancelQueued(item), {
+			icon: 'rotate-left',
+			className: 'cancel-queued variant-flat',
+			title: 'Take it back: it is not sent to Claude, and goes back in the box',
+		});
+		card.append(item.cancel);
+		this.queued.push(item);
+	}
+
+	// Claude has taken up the words from here: they can no longer be taken back
+	takenUp(text) {
+		const item = this.queued.find(queued => queued.text === text);
+
+		if (item) this.dropQueued(item);
+	}
+
+	dropQueued(item) {
+		const at = this.queued.indexOf(item);
+
+		if (at === -1) return;
+		this.queued.splice(at, 1);
+		item.cancel.remove();
+	}
+
+	async cancelQueued(item) {
+		const { response } = await cancelPrompt(this.id, item.id);
+
+		if (response?.status === 409) {
+			this.dropQueued(item);
+
+			return this.notice('Claude has already taken that up', 'info');
+		}
+		if (!response?.ok) return this.notice('Could not take that back. Try again', 'warning');
+
+		this.dropQueued(item);
+		item.card.remove();
+		const at = this.sent.indexOf(item.text);
+
+		if (at !== -1) this.sent.splice(at, 1);
+		if (this.pending?.text === item.text) this.pending = null;
+		this.input.value = [item.text, this.input.value].filter(Boolean).join(' ');
+		this.input.focus();
+		this.notice('Taken back. Nothing was sent', 'info');
+	}
+
+	// "Something's broken": what kind, from a menu, is sent to Claude to find and fix. Something else puts the box up
+	// for the player's own words
+	askWhatsBroken() {
+		openMenu(this.broken, [
+			{ heading: "What's broken?" },
+			...BROKEN.map(({ label, says }) => ({
+				label,
+				onPress: () => {
+					if (!says) {
+						this.input.placeholder = "Tell Claude what's wrong";
+						this.input.focus();
+
+						return;
+					}
+					this.send(`It's broken: ${says}. Find out what's wrong and fix it, then say in one short line what it was.`);
+				},
+			})),
+		]);
 	}
 
 	toggleEar() {

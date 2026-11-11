@@ -370,8 +370,12 @@ export const findToOpen = async (sessionId, { ask, viewing, screen }) =>
 export const findPromptHome = async (prompt, project) => await POST('/api/prompt-home', { body: { prompt, project } });
 
 // A prompt typed into a session once its prompt box is free (taken back up first if it isn't running)
-export const sendPrompt = async (sessionId, text) =>
-	await POST('/api/sessions/:id/prompt', { urlParameters: { id: sessionId }, body: { text } });
+// hold: one sent while Claude works waits its turn, so it can be taken back (cancelPrompt) until Claude has it
+export const sendPrompt = async (sessionId, text, { hold = false } = {}) =>
+	await POST('/api/sessions/:id/prompt', { urlParameters: { id: sessionId }, body: { text, hold } });
+
+export const cancelPrompt = async (sessionId, messageId) =>
+	await DELETE('/api/sessions/:id/prompt/:message', { urlParameters: { id: sessionId, message: messageId } });
 
 export const sendRemotePrompt = async (url, sessionId, text) =>
 	await POST('/api/remotes/prompt', { body: { url, sessionId, text } });
