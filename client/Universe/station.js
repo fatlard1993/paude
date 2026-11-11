@@ -522,18 +522,18 @@ export const drawSeat = (ctx, at, { screen, engineColor, time, seed, todos = [],
 	if (frost) drawFrost(ctx, { x: x - 17, y: y - 31, w: 19, h: 15 });
 };
 
-// An arcade session's joystick at its console's front left, `at` the seat's foot: a dark base, its stick and a red
+// An arcade session's joystick on its console between the screen's stand and the keyboard, `at` the seat's foot: a dark base, its stick and a red
 // ball on top, rocked side to side while the session works
 export const drawJoystick = (ctx, at, { working, time, seed }) => {
 	const { x, y } = at;
 	const lean = working ? [0, -1, 0, 1][Math.floor(time * 5 + seed * 4) % 4] : 0;
 
-	rect(ctx, x - 15, y - 10, 6, 3, PALETTE.k);
-	rect(ctx, x - 14, y - 10, 4, 1, PALETTE.m);
-	rect(ctx, x - 12 + lean, y - 12, 1, 2, PALETTE.m);
-	rect(ctx, x - 13 + lean, y - 15, 3, 3, PALETTE.k);
-	rect(ctx, x - 12 + lean, y - 14, 1, 1, PALETTE.r);
-	rect(ctx, x - 13 + lean, y - 15, 2, 1, PALETTE.r);
+	rect(ctx, x - 8, y - 11, 6, 3, PALETTE.k);
+	rect(ctx, x - 7, y - 11, 4, 1, PALETTE.m);
+	rect(ctx, x - 5 + lean, y - 13, 1, 2, PALETTE.m);
+	rect(ctx, x - 6 + lean, y - 16, 3, 3, PALETTE.k);
+	rect(ctx, x - 5 + lean, y - 15, 1, 1, PALETTE.r);
+	rect(ctx, x - 6 + lean, y - 16, 2, 1, PALETTE.r);
 };
 
 // A laptop open on the floor, `at` its front middle: its screen showing what the session's at, as a monitor's does, and
