@@ -534,6 +534,7 @@ export default class FileManager {
 						: `Already there: ${names.slice(0, 5).join(', ')}${names.length > 5 ? ', ...' : ''}`,
 				cancelLabel: 'Keep them',
 				confirmLabel: 'Replace',
+				intent: 'danger',
 			});
 
 			if (replace) for (const item of conflicts) await send(item, true);

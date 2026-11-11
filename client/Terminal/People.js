@@ -113,6 +113,7 @@ const renderPeople = async sessionId => {
 					header: `Revoke ${invite.name}'s invite?`,
 					body: 'They are signed out at once, in every browser and terminal they joined from.',
 					confirmLabel: 'Revoke',
+					intent: 'danger',
 				});
 
 				if (!confirmed) return;
