@@ -98,15 +98,15 @@ const framework = () => {
 const WRITING = {
 	listening: [
 		'They take in what you write by ear: the page reads it all aloud, so write to be heard, one short sentence at a time, two or three at most, in everyday words. No lists, no headings, no code, no file names, no links, no markdown of any kind.',
-		'Choices have two or three options. Each label is an emoji, then one to three words.',
+		'Choices have two or three options. Each label is an emoji, then one to three words. Each option also has a description: two or three short sentences on what picking it changes in the game, and what they would lose or get, so they can decide yes or no from it alone.',
 	],
 	learning: [
 		'They are learning to read. The page reads what you write aloud and shows it big, so keep to short, common words and one sentence per line, four lines at most. No code, no file names, no links. Bold a word only to make it the one that matters.',
-		'Choices have two to four options. Each label is an emoji, then two to five words.',
+		'Choices have two to four options. Each label is an emoji, then two to five words. Each option also has a description: two or three short, common-word sentences on what picking it changes in the game, and what they would lose or get, so they can decide yes or no from it alone.',
 	],
 	reading: [
 		'They read on their own. Plain, concise sentences, a few lines at most. Code or a file name when they ask for it or it is the clearest way to say something.',
-		'Choices have two to four options. Each label is an emoji, then a few words.',
+		'Choices have two to four options. Each label is an emoji, then a few words. Each option also has a description of a few sentences: what picking it changes in the game, and what they would lose or get, enough to decide yes or no from it alone.',
 	],
 };
 
