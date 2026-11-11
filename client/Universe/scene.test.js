@@ -2757,6 +2757,60 @@ test('one gone cold with a question open or a reply unread stands about the loun
 	expect(made.drawMarker).toBeUndefined();
 });
 
+test('given the same answers again and again, the ship keeps its shape: it never rearranges with nothing aboard changed', () => {
+	// As many sessions over several projects and engines as crowd a bridge, with another ship heard from: the kind of
+	// ship whose islands, laid again from where they stood, came out one of two shapes turn about
+	const sessions = engine =>
+		Array.from({ length: 4 }, (_, index) =>
+			session({
+				id: `${engine}-${index}`,
+				project: ['paude', 'site', 'game', 'tools'][index],
+				age: 1000 * (index + 1),
+			}),
+		);
+	const answers = () => [
+		answer('here', [...sessions('here'), session({ id: 'five', project: 'paude', agents: 2 })], {
+			projects: ['paude', 'site', 'game', 'tools'],
+		}),
+		answer('vps', sessions('vps'), { projects: ['paude', 'site'] }),
+		answer('htpc', sessions('htpc').slice(0, 2), { projects: ['game'] }),
+	];
+	const shape = made =>
+		JSON.stringify([
+			Object.values(made.layout.building).map(value => value.toFixed(2)),
+			made.bridge.islands.map(({ x, y, seats }) => [x.toFixed(2), y.toFixed(2), seats.map(({ key }) => key)]),
+		]);
+
+	for (const fleet of [[], [{ key: 'account:other', name: 'other', needs: 0, news: 0, working: 0, hue: 30 }]]) {
+		const made = new Ship();
+
+		made.resize(1600, 950);
+		made.fleet = fleet;
+		made.seen = new Set();
+		made.update(answers());
+		run(made, 2);
+
+		const shapes = [];
+
+		for (let poll = 0; poll < 6; poll++) {
+			made.fleet = fleet;
+			made.update(answers());
+			run(made, 1);
+			shapes.push(shape(made));
+		}
+		expect(new Set(shapes).size).toBe(1);
+		// And what's laid is still fresh: a session gone is gone from its island, once its dust has settled
+		const without = () =>
+			answers().map(each => ({ ...each, sessions: each.sessions.filter(({ id }) => id !== 'five') }));
+
+		made.update(without());
+		run(made, 12);
+		made.update(without());
+		run(made, 1);
+		expect(made.bridge.islands.flatMap(({ seats }) => seats.map(({ key }) => key))).not.toContain('here/five');
+	}
+});
+
 test("looking over the projects' bays flies to all of them at once, and nowhere with none aboard", () => {
 	const made = shipWith([
 		answer('here', [session(), session({ id: 'other', project: 'other' })], { projects: ['paude', 'other'] }),

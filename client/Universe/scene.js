@@ -1055,6 +1055,20 @@ const wireColor = (hue, manned) => {
 	return hue === null || hue === undefined ? PALETTE.l : hsl(hue, 60, 52);
 };
 
+// A layout's shape, to tell two apart by: where its hull, rooms, islands and seats are, to a thousandth, which is
+// finer than anything drawn and coarser than what arithmetic leaves different between two layings of one shape
+const shapeOf = ({ building, rooms, bridge }) => {
+	const near = value => (typeof value === 'number' ? Math.round(value * 1000) / 1000 : value);
+
+	return JSON.stringify([
+		building && Object.values(building).map(near),
+		rooms.map(({ kind, name, x, y, w, d }) => [kind, name, x, y, w, d].map(near)),
+		(bridge?.islands ?? []).map(({ key, x, y, w, seats }) =>
+			[key, x, y, w, ...seats.flatMap(seat => [seat.key, seat.x, seat.y])].map(near),
+		),
+	]);
+};
+
 export const sessionKey = (engineKey, id) => `${engineKey}/${id}`;
 
 // What needs this person, most pressing first: those asking something, then those with something new for them
@@ -1556,10 +1570,22 @@ export default class Ship {
 				terminals: this.unseenFleet().length,
 			});
 
-		this.layout = lay(first ? undefined : keptOf(this.bridge));
+		let laid = lay(first ? undefined : keptOf(this.bridge));
+
 		// Laid again from where its islands stand, a ship can come out another shape than laid afresh: the first is laid
 		// twice, so it comes in the shape it keeps rather than changing under its plating at the next answer
-		if (first) this.layout = lay(keptOf(this.layout.bridge));
+		if (first) laid = lay(keptOf(laid.bridge));
+		// And it can come out one of two shapes turn about, each laid from the other, with nothing aboard changed: the
+		// ship then rearranged itself at every answer. So a shape that's new is laid once more from itself, and where
+		// that gives back the shape it has now, that's the laying kept (it's as fresh as the other, and nothing moves):
+		// the ship changes shape when something aboard does, not by turns.
+		else if (shapeOf(laid) !== this.laidShape) {
+			const again = lay(keptOf(laid.bridge));
+
+			if (shapeOf(again) === this.laidShape) laid = again;
+		}
+		this.layout = laid;
+		this.laidShape = shapeOf(laid);
 		// What can't be seen into takes no room aboard; it's named off to the side
 		this.unseen = engines.filter(({ quiet }) => quiet);
 		this.bays = this.layout.bays;
