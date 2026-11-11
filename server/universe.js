@@ -8,7 +8,7 @@ import { roleAllows } from '../shared/roles';
 import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
 import { isArcadeSession } from './arcade';
-import { allCabinets } from './cabinets';
+import { allCabinets, guestCabinets } from './cabinets';
 
 import { activitySummary, identityKey, watchedBy, watchesProject } from './activity';
 import { isArchived } from './archive';
@@ -688,8 +688,9 @@ export const universe = async identity => {
 		log: scope ? undefined : logOf(),
 		fuel: scope ? null : await fuelOf(),
 		crew: scope ? undefined : crewOf(),
-		// The mother hub's games as arcade cabinets in the lounge, each saying whether it's watched (the owner's)
-		cabinets: scope ? undefined : await allCabinets(),
+		// The mother hub's games as arcade cabinets in the lounge, each saying whether it's watched: all of them for the
+		// owner; a guest sees the watched ones, without where they're reached
+		cabinets: scope ? await guestCabinets() : await allCabinets(),
 		journey: scope ? undefined : journeyOf(),
 		projects: await Promise.all(
 			(await listProjects())

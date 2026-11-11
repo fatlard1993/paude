@@ -26,7 +26,7 @@ import { LIFETIMES, WARM_LIFETIMES, lastSwitch, lifetimeOf, setLifetime, switchL
 import { MODEL_NAMES } from '../../shared/models';
 import { setModel } from '../sessionModels';
 import { setArcadeMode } from '../arcadeMode';
-import { CABINET_ACTIONS, cabinetIcon, manageCabinet, watchCabinet } from '../cabinets';
+import { CABINET_ACTIONS, cabinetIcon, manageCabinet, watchCabinet, watchedCabinets } from '../cabinets';
 import { READING } from '../../shared/arcade';
 import removeSession from '../removeSession';
 import { meterOf } from '../cacheMeter';
@@ -567,10 +567,13 @@ const sessionsRoutes = async (request, server) => {
 		});
 	}
 
-	// A cabinet's game icon, from paude's own origin for the universe to draw: the owner's, as the cabinets are
+	// A cabinet's game icon, from paude's own origin for the universe to draw: the owner's, or a guest's for a game in
+	// the lounge
 	match = requestMatch('GET', '/api/cabinets/:id/icon', request);
 	if (match) {
-		if (!identity.owner) return new Response("The lounge's cabinets are the owner's", { status: 403 });
+		const inLounge = (await watchedCabinets()).some(({ id }) => id === match.id);
+
+		if (!identity.owner && !inLounge) return new Response('No icon', { status: 404 });
 
 		const icon = await cabinetIcon(match.id);
 

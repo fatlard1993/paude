@@ -3,7 +3,15 @@ import { relativeTime } from '@vanilla-bean/components/utils/date';
 import { facilitiesFor, facilityOf } from '../../shared/facilities';
 import { LIFETIMES } from '../../shared/lifetimes';
 import tokenCount from '../../shared/tokenCount';
+import { identity } from '../identity';
 import { BRIDGE, LOUNGE } from './scene';
+
+// A guest sees how a cabinet's game is doing; where it's played is the owner's
+const cabinetHint = cabinet => {
+	if (!identity()?.owner) return 'Press to see how it is doing';
+
+	return cabinet.url ? 'Press to play it' : 'Not reachable from here yet';
+};
 
 export const STATUS = { working: 'working', waiting: 'needs you', ready: 'ready for a prompt', stopped: 'stopped' };
 
@@ -467,7 +475,7 @@ const FLYOUTS = {
 				(!cabinet.running && 'off') || (cabinet.players && `on, ${plural(cabinet.players, 'player')} in it`) || 'on',
 			],
 		],
-		hint: cabinet.url ? 'Press to play it' : 'Not reachable from here yet',
+		hint: cabinetHint(cabinet),
 	}),
 	lounge: (target, ship) => ({
 		title: 'Resting',

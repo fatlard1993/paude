@@ -537,6 +537,39 @@ const LOOPBACK = /^(127\.0\.0\.1|localhost|\[::1\])$/;
 // update it; the rest (its logs, resetting it, opening it to the internet) on the hub's own page, linked where this
 // browser can reach it (a hub on paude's own machine isn't reached from another). `current` answers the cabinet as
 // it is now, `changed` is called once the hub has been told something.
+// A guest's view of a cabinet in the lounge: how it's doing, and nothing of where it's reached
+export const cabinetInfoPane = ({ current }) => ({
+	key: 'info',
+	label: 'About',
+	make: appendTo => {
+		const elem = element('div', 'pane cabinet-info');
+		const refresh = () => {
+			const cabinet = current();
+
+			if (!cabinet) return;
+			elem.replaceChildren(
+				element(
+					'p',
+					'about',
+					[
+						cabinet.doing
+							? `${cabinet.doing}…`
+							: (CABINET_STATES[cabinet.state] ?? (cabinet.running ? 'running' : 'off')),
+						cabinet.players && `${cabinet.players} playing`,
+					]
+						.filter(Boolean)
+						.join(' · '),
+				),
+			);
+		};
+
+		refresh();
+		appendTo.append(elem);
+
+		return { elem, refresh };
+	},
+});
+
 export const cabinetManagePane = ({ current, changed }) => ({
 	key: 'manage',
 	label: 'Manage',

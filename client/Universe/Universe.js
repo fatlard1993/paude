@@ -47,6 +47,7 @@ import {
 } from './flyout';
 import {
 	cabinetAddress,
+	cabinetInfoPane,
 	cabinetManagePane,
 	cabinetPane,
 	cabinetSharePane,
@@ -1500,18 +1501,25 @@ export default class Universe extends View {
 	}
 
 	openCabinetDock(cabinet, open) {
+		const current = () => (this.aboard.cabinets ?? []).find(({ id }) => id === cabinet.id) ?? cabinet;
+
+		// A guest of the lounge sees how the game is doing; playing it, its addresses and managing it are the owner's
+		if (!identity()?.owner)
+			return this.openListDock(`cabinet:${cabinet.id}`, {
+				title: cabinet.title,
+				about: 'a game on the mother hub',
+				entries: [cabinetInfoPane({ current })],
+				open,
+				buttons: [],
+			});
+
 		return this.openListDock(`cabinet:${cabinet.id}`, {
 			title: cabinet.title,
 			about: 'a game on the mother hub',
 			entries: [
 				cabinetPane({ cabinet }),
 				cabinetSharePane({ cabinet }),
-				...owned(
-					cabinetManagePane({
-						current: () => (this.aboard.cabinets ?? []).find(({ id }) => id === cabinet.id) ?? cabinet,
-						changed: () => this.poll(),
-					}),
-				),
+				cabinetManagePane({ current, changed: () => this.poll() }),
 			],
 			open,
 			// Where a session's dock has its button to open the session, and the same mark

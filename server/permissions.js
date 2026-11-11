@@ -89,6 +89,8 @@ const sessionGuestMayRequest = (identity, method, pathname) => {
 		(method === 'GET' && pathname === '/api/watching') ||
 		// The universe, scoped to their session and its project there; the icon route checks the project is theirs
 		(method === 'GET' && (pathname === '/api/universe' || /^\/api\/projects\/[^/]+\/icon$/.test(pathname))) ||
+		// A lounge game's icon; the route checks the game is in the lounge
+		(method === 'GET' && /^\/api\/cabinets\/[^/]+\/icon$/.test(pathname)) ||
 		(method === 'POST' && pathname === '/api/handoff') ||
 		(method === 'POST' && pathname === `${own}/replace`) ||
 		// Making, moving and deleting files; the route checks the role may edit

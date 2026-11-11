@@ -9,6 +9,7 @@ import {
 	cabinetOf,
 	cabinetShare,
 	forgetCabinets,
+	guestView,
 	initCabinets,
 	manageCabinet,
 	watchCabinet,
@@ -151,4 +152,26 @@ test("a cabinet's game is a port share on the preview listener, at the game's ow
 	});
 	expect(cabinetShare('game-sand-sorter')).toBeNull();
 	expect(cabinetShare('humanity')).toBeNull();
+});
+
+test('a guest of the lounge is shown a cabinet without where its game is reached', () => {
+	const cabinet = cabinetOf(
+		{
+			id: 'humanity',
+			port: 4123,
+			look: { title: 'Humanity' },
+			unit: { active: true },
+			health: { ok: true },
+			report: { connections: 2 },
+			publicUrl: 'https://game.example.com',
+			lanUrl: 'http://192.168.1.20:4123',
+		},
+		'http://hub.local:8080',
+	);
+
+	const seen = guestView(cabinet);
+
+	expect(seen).toMatchObject({ id: 'humanity', title: 'Humanity', running: true, players: 2, state: 'up' });
+	for (const hidden of ['url', 'publicUrl', 'lanUrl', 'hub', 'hubIcon', 'port'])
+		expect(seen).not.toHaveProperty(hidden);
 });
