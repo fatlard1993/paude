@@ -201,6 +201,11 @@ export const stopProcess = async (place, pid) =>
 export const getShares = async sessionId =>
 	await GET('/api/sessions/:id/shares', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 
+// A share's address with a one-use ticket on it, for a frame on this page when the share is on another paude, which
+// this page's frame brings no cookies to: { url }
+export const frameShare = async (sessionId, share) =>
+	await POST('/api/sessions/:id/shares/:share/frame', { urlParameters: { id: sessionId, share } });
+
 // `share` is { kind: 'port', port } or { kind: 'download' | 'site', path }
 export const addShare = async (sessionId, share) =>
 	await POST('/api/sessions/:id/shares', { urlParameters: { id: sessionId }, body: share });

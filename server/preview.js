@@ -7,6 +7,7 @@ import { isSecret } from './files';
 import { sessionRecord } from './sessions/record';
 import { isArcadeSession } from './arcade';
 import { cabinetShare } from './cabinets';
+import { FRAME_TICKET, frameCookieName, frameGrant, redeemFrameTicket } from './frameTickets';
 import { shareNamed } from './shares';
 import { zipStream } from './zip';
 
@@ -16,6 +17,10 @@ import { zipStream } from './zip';
 //
 // Each share is at /s/<name>/. An app that asks for an absolute path (/assets/app.js, /@vite/client) is routed by
 // the page asking (its Referer), or failing that by a cookie naming the share last opened.
+//
+// A frame on another paude's page is another site, and brings none of those cookies: it opens its share with a ticket,
+// traded here for a cookie of its own that a frame may send (frameTickets). That cookie lets it in, and routes what it
+// asks for that names no share (its socket, say), as the share cookie would.
 const PREFIX = /^\/s\/([^/]+)(\/.*)?$/;
 const SHARE_COOKIE = 'paude-share';
 const LOGIN_COOKIE = 'paude_login';
@@ -47,7 +52,58 @@ const routeOf = request => {
 	const from = request.headers.get('referer');
 	const referred = from && PREFIX.exec(new URL(from).pathname);
 
-	return { name: referred ? decodeURIComponent(referred[1]) : cookies(request)[SHARE_COOKIE], rest: url.pathname };
+	return {
+		name: referred ? decodeURIComponent(referred[1]) : (cookies(request)[SHARE_COOKIE] ?? framedShare(request)),
+		rest: url.pathname,
+	};
+};
+
+// The share a framed page was let into most recently, from its frame cookies: for what it asks that names no share
+const framedShare = request => {
+	let newest = null;
+
+	for (const [name, value] of Object.entries(cookies(request))) {
+		if (!name.startsWith(frameCookieName(''))) continue;
+
+		const grant = frameGrant(decodeURIComponent(value));
+
+		if (grant && grant.shareName === name.slice(frameCookieName('').length) && (!newest || grant.at > newest.at))
+			newest = grant;
+	}
+
+	return newest?.shareName;
+};
+
+// A framed page's grant for this share, and whether it still lets them in
+const framedIn = (request, share) => {
+	const value = cookies(request)[frameCookieName(share.name)];
+	const grant = value && frameGrant(decodeURIComponent(value));
+
+	return Boolean(grant && grant.shareName === share.name && ownsSession(identityOf(grant.credential), share.sessionId));
+};
+
+// A ticket brought by a frame, traded for its cookie, and the frame sent on to the same address without it. Null when
+// the request brings none.
+const redeemed = (request, share) => {
+	const url = new URL(request.url);
+	const ticket = url.searchParams.get(FRAME_TICKET);
+
+	if (ticket === null) return null;
+
+	const granted = redeemFrameTicket(ticket, share.name);
+
+	if (!granted) return page(401, 'Open it from paude again', 'This link has been used, or is too old. Open it from paude again.');
+	url.searchParams.delete(FRAME_TICKET);
+
+	return new Response(null, {
+		status: 302,
+		headers: {
+			location: `${url.pathname}${url.search}`,
+			'cache-control': 'no-store',
+			// Partitioned: kept for the page framing it, so it lets this share in there and nowhere else
+			'set-cookie': `${frameCookieName(share.name)}=${encodeURIComponent(granted.grant)}; Path=/; Max-Age=${granted.seconds}; HttpOnly; Secure; SameSite=None; Partitioned`,
+		},
+	});
 };
 
 const secure = request =>
@@ -65,7 +121,10 @@ const remember = (response, request, name) => {
 // The app sees an ordinary request for itself: its own host, none of paude's cookies
 const forwardedHeaders = (request, { port }) => {
 	const headers = new Headers(request.headers);
-	const kept = Object.entries(cookies(request)).filter(([name]) => ![LOGIN_COOKIE, SHARE_COOKIE].includes(name));
+	// paude's own cookies never reach the app: the login, the share last opened, and a frame's grants
+	const kept = Object.entries(cookies(request)).filter(
+		([name]) => ![LOGIN_COOKIE, SHARE_COOKIE].includes(name) && !name.startsWith(frameCookieName('')),
+	);
 
 	headers.set('host', `localhost:${port}`);
 	if (headers.has('origin')) headers.set('origin', `http://localhost:${port}`);
@@ -214,7 +273,7 @@ const allowedTo = (request, share) => {
 	// A mother-hub game from the lounge's cabinets: the owner's, as the cabinets are
 	if (share.cabinet) return Boolean(identity?.owner);
 
-	return ownsSession(identity, share.sessionId);
+	return ownsSession(identity, share.sessionId) || framedIn(request, share);
 };
 
 export const previewFetch = async (request, server) => {
@@ -222,6 +281,10 @@ export const previewFetch = async (request, server) => {
 	const share = name && (shareNamed(name) ?? cabinetShare(name));
 
 	if (!share) return page(404, 'Not shared', 'Nothing is shared at this address (any more).');
+
+	const framing = !share.cabinet && redeemed(request, share);
+
+	if (framing) return framing;
 	if (!allowedTo(request, share))
 		return page(401, 'Log in to paude first', 'Open paude in this browser and log in, then come back to this page.');
 

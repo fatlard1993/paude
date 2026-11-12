@@ -12,6 +12,7 @@ import { serverSettings } from '../serverSettings';
 import { sessionRecord } from '../sessions/record';
 import { ShareError, addShare, removeShare, renameShare, sharesOf } from '../shares';
 import { allCabinets, cabinetShare } from '../cabinets';
+import { FRAME_TICKET, issueFrameTicket } from '../frameTickets';
 
 let previewPort;
 
@@ -70,6 +71,27 @@ const sharesRoutes = async request => {
 		if (!share) return new Response('That game has no port this paude can reach', { status: 404 });
 
 		return Response.json({ url: `${await previewOrigin(request)}/s/${encodeURIComponent(share.name)}/` });
+	}
+
+	// A share opened in a frame on another paude's page, which brings none of this paude's cookies: its address with a
+	// ticket for one use, asked for by someone who can see the session (that paude, on its login here). See frameTickets.
+	const framing = requestMatch('POST', '/api/sessions/:id/shares/:share/frame', request);
+
+	if (framing) {
+		const credential = credentialOf(request);
+
+		if (!ownsSession(identityOf(credential), framing.id)) return new Response('Not part of your invite', { status: 403 });
+
+		const share = sharesOf(framing.id).find(
+			found => found.name === framing.share && (found.kind === 'port' || found.kind === 'site'),
+		);
+
+		if (!share) return new Response('No such share', { status: 404 });
+
+		const ticket = issueFrameTicket(share.name, credential);
+		const [shown] = withLinks([share], await previewOrigin(request));
+
+		return Response.json({ url: `${shown.url}?${FRAME_TICKET}=${encodeURIComponent(ticket)}` });
 	}
 
 	const listing = requestMatch('GET', '/api/sessions/:id/shares', request);

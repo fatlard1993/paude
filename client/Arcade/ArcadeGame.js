@@ -1,4 +1,4 @@
-import { getShares, getTasks, openRemote, runTask, sessionRemote } from '../api';
+import { frameShare, getShares, getTasks, openRemote, runTask, sessionRemote } from '../api';
 import { button, element, icon } from '../dom';
 import { identity } from '../identity';
 import FilesPanel from '../Terminal/FilesPanel';
@@ -56,7 +56,8 @@ export default class ArcadeGame extends GameFrame {
 		if (port) {
 			if (this.url !== port.url) {
 				this.url = port.url;
-				if (this.remote && !this.loggedInThere) return this.loginRoom();
+				this.share = port.name;
+				if (this.remote) return this.showRemoteFrame();
 				this.showFrame();
 			}
 			this.setNewVersion(Boolean(port.newVersion));
@@ -105,9 +106,9 @@ export default class ArcadeGame extends GameFrame {
 		this.changes.setMode('changes');
 	}
 
-	showFrame() {
+	showFrame(src = this.url) {
 		this.frame = element('iframe');
-		this.frame.src = this.url;
+		this.frame.src = src;
 		this.frame.allow = 'autoplay; fullscreen';
 		this.show(this.frame);
 	}
@@ -132,6 +133,19 @@ export default class ArcadeGame extends GameFrame {
 		);
 		this.banner.remove();
 		if (on && this.frame && this.elem.contains(this.frame)) this.elem.append(this.banner);
+	}
+
+	// A game on another paude shows from there, in a frame that brings that paude none of this browser's cookies (this
+	// page is another site): it opens with a ticket, asked for there on this paude's login, fresh for each load. A paude
+	// too old to give one is logged into instead.
+	async showRemoteFrame() {
+		const asked = this.url;
+		const { body, response } = await frameShare(this.sessionId, this.share).catch(() => ({}));
+
+		if (this.left || this.url !== asked) return;
+		if (response?.ok && body?.url) return this.showFrame(body.url);
+		if (!this.loggedInThere) return this.loginRoom();
+		this.showFrame();
 	}
 
 	// A game on another paude shows from there, and that paude knows this browser only once it has logged in there:
@@ -173,8 +187,8 @@ export default class ArcadeGame extends GameFrame {
 	}
 
 	reload() {
-		if (this.frame) this.frame.src = this.url;
-		else if (this.url && this.remote) this.showFrame();
+		if (this.url && this.remote) this.showRemoteFrame();
+		else if (this.frame) this.frame.src = this.url;
 		else this.find();
 	}
 }
