@@ -436,19 +436,8 @@ export default class FileManager {
 		return cut ? this.move(pairs) : this.copy(pairs);
 	}
 
+	// Not asked first: it goes to the trash whole, folders and all, and the toast's Undo brings it back
 	async delete(paths) {
-		const folders = paths.filter(path => this.isFolder(path));
-
-		if (folders.length || paths.length > 1) {
-			const sure = await confirmDialog({
-				header: `Delete ${named(paths)}?`,
-				body: `${folders.length ? 'Everything inside goes with it. ' : ''}You can undo it for a moment after.`,
-				confirmLabel: 'Delete',
-			});
-
-			if (!sure) return;
-		}
-
 		const { current } = this.panel;
 
 		if (current && paths.some(path => inside(current, path)) && !(await this.panel.leaveEditing())) return;
