@@ -62,6 +62,7 @@ import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from './xtermOpti
 import FilesPanel, { quickOpenMode } from './FilesPanel';
 import GitPanel from './GitPanel';
 import SharesPanel from './SharesPanel';
+import OutputPanel from './OutputPanel';
 import ActivityPanel from './ActivityPanel';
 import TasksPanel from './TasksPanel';
 import LinksPanel from './LinksPanel';
@@ -236,6 +237,12 @@ export default class TerminalView extends View {
 				onPress: () => this.toggleGit(),
 			});
 		}
+		this.outputButton = ghostButton(header, {
+			icon: PANELS.game.icon,
+			title: panelTitle('game'),
+			className: 'tool',
+			onPress: () => this.toggleOutput(),
+		});
 		if (canType()) {
 			this.shellButton = ghostButton(header, {
 				icon: PANELS.shell.icon,
@@ -473,6 +480,14 @@ export default class TerminalView extends View {
 			});
 			addResizeHandle(this.decisions.elem, PANEL_EDGES.side);
 		}
+		this.output = new OutputPanel({
+			appendTo: body,
+			addClass: ['links', 'output'],
+			sessionId: this.options.id,
+			keepRunning: () => Boolean(this.inArcade),
+			close: () => this.toggleOutput(false),
+		});
+		addResizeHandle(this.output.elem, PANEL_EDGES.side);
 		this.shares = new SharesPanel({
 			appendTo: body,
 			addClass: 'shares',
@@ -927,6 +942,15 @@ export default class TerminalView extends View {
 		if (keep !== 'links' && this.links?.elem.classList.contains('open')) this.toggleLinks(false);
 		if (keep !== 'artifacts' && this.artifacts?.elem.classList.contains('open')) this.toggleArtifacts(false);
 		if (keep !== 'decisions' && this.decisions?.elem.classList.contains('open')) this.toggleDecisions(false);
+		if (keep !== 'output' && this.output.elem.classList.contains('open')) this.toggleOutput(false);
+	}
+
+	toggleOutput(open = !this.output.elem.classList.contains('open')) {
+		if (open) this.closeOthersOnTheRight('output');
+		this.output.elem.classList.toggle('open', open);
+		this.outputButton?.classList.toggle('active', open);
+		if (open) this.output.refresh();
+		this.focusPanel(this.output.elem, open);
 	}
 
 	toggleDecisions(open = !this.decisions.elem.classList.contains('open')) {

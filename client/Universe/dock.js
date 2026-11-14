@@ -52,15 +52,17 @@ export const VERBS = [
 // The arcade's panels, for a session that is one (a game built by tapping and talking)
 export const ARCADE_VERBS = ['arcade', 'game'];
 
-// The verbs for `session` as the viewer may have them: the arcade's only for a session that is one, and for a guest
-// invited to the arcade those alone, since the rest is the owner's; the terminal only while the session's live
+// The verbs for `session` as the viewer may have them: the arcade's talk only for a session that is one, its Output for
+// any, and for a guest invited to the arcade the arcade's alone, since the rest is the owner's; the terminal only while
+// the session's live
+const offered = (key, session) => {
+	if (identity()?.view === 'arcade') return ARCADE_VERBS.includes(key) && Boolean(session.arcade);
+
+	return key !== 'arcade' || Boolean(session.arcade);
+};
+
 export const verbsFor = (session, { live = false } = {}) =>
-	VERBS.filter(
-		({ key, allowed }) =>
-			allowed() &&
-			(key !== 'terminal' || live) &&
-			(ARCADE_VERBS.includes(key) ? session.arcade : identity()?.view !== 'arcade'),
-	);
+	VERBS.filter(({ key, allowed }) => allowed() && (key !== 'terminal' || live) && offered(key, session));
 
 // A session's panels docked beside the universe, one showing at a time, each built when first wanted and wired to the
 // others as on the session page; the chat on a connection of its own
@@ -211,7 +213,7 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose,
 			}),
 		shares: () => new SharesPanel({ ...common('shares') }),
 		arcade: () => new ArcadeTalk({ ...common('arcade') }),
-		game: () => new ArcadeGame({ ...common('game') }),
+		game: () => new ArcadeGame({ ...common('game'), keepRunning: Boolean(session.arcade) }),
 		shell: () =>
 			new SideShell({
 				...common('shell'),

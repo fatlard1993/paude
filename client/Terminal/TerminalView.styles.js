@@ -155,6 +155,20 @@ export const Body = styled.Component`
 		transform: translateX(12px);
 	}
 
+	/* A page wants room: half the view until the side panels are dragged to a width of their own */
+	.links.output {
+		width: min(var(--notes-width, 50%), calc(100% - 16px));
+	}
+
+	.output .output-body {
+		padding: 0;
+		overflow: hidden;
+	}
+
+	.output .output-body > * {
+		flex: 1;
+	}
+
 	.files {
 		left: 8px;
 		width: min(var(--files-width, 62%), calc(100% - 16px));

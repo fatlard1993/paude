@@ -6,7 +6,8 @@ import GameFrame from './ArcadeGame.styles';
 
 // A session's output, live: the page its server runs (the project's dev task, found and shared by paude) in a frame.
 // Its newer versions are offered for its player to load (setNewVersion), not loaded under them. Until it's up, a room
-// that says so; the owner's page starts a dead server again by itself. The same frame on the arcade page and in the universe's dock.
+// that says so; in an arcade (`keepRunning`), the owner's page starts a dead server again by itself, and elsewhere it
+// offers to. The same frame on the arcade page, in the universe's dock and in a session page's Output panel.
 const FIND_MS = 3000;
 const CHECK_MS = 15_000;
 const DEV_TASK = 'package.json:dev';
@@ -14,7 +15,7 @@ const DEV_TASK = 'package.json:dev';
 const RESTART_EVERY_MS = 60_000;
 
 export default class ArcadeGame extends GameFrame {
-	static schema = { sessionId: {} };
+	static schema = { sessionId: {}, keepRunning: { default: true } };
 
 	build() {
 		this.sessionId = this.options.sessionId;
@@ -78,7 +79,7 @@ export default class ArcadeGame extends GameFrame {
 		const running = tasks.body?.runs?.some(run => run.taskId === DEV_TASK && run.code === undefined);
 
 		// Down (it crashed, or the session slept and woke): started again by itself, with the button for a stubborn one
-		if (!running && Date.now() - (this.restartedAt ?? 0) > RESTART_EVERY_MS) {
+		if (this.options.keepRunning && !running && Date.now() - (this.restartedAt ?? 0) > RESTART_EVERY_MS) {
 			this.restartedAt = Date.now();
 			this.waitingRoom('Starting…');
 			await runTask(this.sessionId, DEV_TASK).catch(() => {});
