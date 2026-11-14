@@ -5,6 +5,7 @@ import {
 	MAX_HOURS,
 	PING,
 	PING_AFTER_MS,
+	QUESTION_PING,
 	boostOf,
 	noteAsking,
 	readingOf,
@@ -303,4 +304,19 @@ test('a session kept until its time ran out is remembered as spent, until it is 
 	await keepWarm('stopped', 1, 0);
 	await checkWarm(only('other', session), 10);
 	expect(spentOf('stopped')).toBeNull();
+});
+
+test('a session left on a question is pinged through its field for words, to ask the same question again', async () => {
+	const session = fakeSession();
+	const answered = [];
+
+	session.draft = null;
+	session.asking = () => ({ question: 'What next?', typing: '4', options: [] });
+	session.answer = (...args) => answered.push(args) > 0;
+	await keepWarm('asking', 12, 0);
+
+	expect(await checkWarm(only('asking', session), PING_AFTER_MS)).toEqual(['asking']);
+	expect(session.typed).toEqual([]);
+	expect(answered).toEqual([['What next?', '4', QUESTION_PING]]);
+	expect(boostOf('asking', PING_AFTER_MS)?.kind).toBe('warm');
 });

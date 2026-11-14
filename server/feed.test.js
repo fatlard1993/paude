@@ -58,6 +58,19 @@ test("Claude Code's stand-in reply on taking a conversation up again is no one's
 	]);
 });
 
+test("a keep-warm ping given as a question's answer is nobody's words", () => {
+	const answered = text => ({
+		type: 'user',
+		timestamp: at,
+		message: { content: [] },
+		toolUseResult: { answers: { 'What next?': text } },
+	});
+
+	expect(feedFrom([answered('keep-warm ping from paude, not an answer'), answered('🐸 A frog')], '/repo')).toEqual([
+		{ kind: 'answer', at, question: 'What next?', text: '🐸 A frog' },
+	]);
+});
+
 test('a cursor picks up where the last read stopped, and a half-written line waits', async () => {
 	const home = await mkdtemp(path.join(os.tmpdir(), 'paude-feed-'));
 	const cwd = '/work/app';

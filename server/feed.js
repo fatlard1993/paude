@@ -7,6 +7,8 @@ import { describeTool } from './timeline';
 // keeps it picks up exactly where it left off, through restarts on either side.
 const MAX_BYTES = 4 * 1024 * 1024;
 
+const KEEP_WARM = /^keep-?warm ping/i;
+
 // Claude Code's own stand-in reply when a conversation is taken up again with nothing to answer, often while a
 // question was still waiting: no one wrote it, and the arcade would read it aloud
 const isFiller = line =>
@@ -26,9 +28,12 @@ export const feedFrom = (lines, cwd) =>
 			const answers = line.toolUseResult?.answers;
 
 			if (answers && typeof answers === 'object' && !Array.isArray(answers))
-				return Object.entries(answers)
-					.filter(([, text]) => typeof text === 'string' && text.trim())
-					.map(([question, text]) => ({ kind: 'answer', at, question, text: text.trim() }));
+				return (
+					Object.entries(answers)
+						// A keep-warm ping given as an answer is nobody's words, only a question asked again
+						.filter(([, text]) => typeof text === 'string' && text.trim() && !KEEP_WARM.test(text))
+						.map(([question, text]) => ({ kind: 'answer', at, question, text: text.trim() }))
+				);
 
 			const prompt = promptText(line);
 

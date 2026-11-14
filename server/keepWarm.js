@@ -273,9 +273,29 @@ const stashThenPing = async (id, session, now, pause) => {
 	return typeWhenIdle(id, session, PING, now);
 };
 
+// The ping for a session that ended its turn on a question for the person (as every arcade turn does): no prompt box
+// to type it into, so it goes into the question's own field for words, and the question is asked again unchanged
+export const QUESTION_PING =
+	'keep-warm ping from paude, not an answer from anyone: ask the very same question again, word for word with the same choices, and do nothing else';
+
+const pingAtQuestion = (id, session, now) => {
+	// Only while it waits on the question, with no prompt box drawn: what asking() reads
+	const asked = session.asking?.();
+
+	if (!asked?.typing || !session.answer(asked.question, asked.typing, QUESTION_PING)) return false;
+	boosts.set(id, { kind: 'warm', at: now });
+
+	return true;
+};
+
 // Not typed now: tried again next check
 const ping = async (id, session, now, pause) => {
-	if (!typeWhenIdle(id, session, PING, now) && !(await stashThenPing(id, session, now, pause))) return false;
+	if (
+		!typeWhenIdle(id, session, PING, now) &&
+		!pingAtQuestion(id, session, now) &&
+		!(await stashThenPing(id, session, now, pause))
+	)
+		return false;
 
 	noteCrew('keeping a session warm');
 	lastTurnAt.set(id, now);
