@@ -13,6 +13,7 @@ import {
 	arcadeLaunch,
 	isArcadeSession,
 	acceptTrust,
+	adoptedInstructions,
 	arcadeInstructions,
 	arcadeOf,
 	claudeSettings,
@@ -188,6 +189,29 @@ describe('arcadeInstructions', () => {
 		expect(voiced).toContain('[laughs]');
 		expect(voiced).toContain('the same one in every game');
 		expect(voiced).not.toContain('"character"');
+	});
+
+	test('says to look at the page before calling it working, leave the house copy be, and offer what they asked for', () => {
+		const text = arcadeInstructions({ title: 'X', player: 'Ada', reading: 'reading' });
+
+		expect(text).toContain('"$PAUDE_LOOK"');
+		expect(text).toContain('4100');
+		expect(text).toContain("don't run `bun run build`");
+		expect(text).toContain("Drop a choice they've passed over twice");
+		expect(text).toContain('Never take it for a glitch');
+		expect(text).toContain('Every turn ends with that question');
+		expect(text).toContain('`pkill -f`');
+	});
+
+	test('a project brought in is spoken of as a project, its voice without game noises, and an empty one is begun', () => {
+		const text = adoptedInstructions({ title: 'B', player: 'Ada', reading: 'reading', performs: true, empty: true });
+
+		expect(text).toContain('## A new project');
+		expect(text).not.toContain('## An existing project');
+		expect(text).not.toContain('[laser zap]');
+		expect(text).not.toMatch(/changes in the game/);
+		expect(text).toContain('"$PAUDE_LOOK"');
+		expect(adoptedInstructions({ title: 'B', player: 'Ada', reading: 'reading' })).toContain('## An existing project');
 	});
 
 	test('with an ElevenLabs key, Claude can have paude make real sounds for the game', () => {
