@@ -5,10 +5,10 @@ import attachSocket from './sessions/attachSocket';
 import remoteAttach from './sessions/remoteAttach';
 import sideShell from './sessions/sideShell';
 
-// How long the client's files are left quiet before it's built again and its pages reloaded, in development. A change
-// is rarely one write (a save then a format, a session's run of edits), and each build reloads every open page, which
-// the universe, slow to draw, stutters through. The library's own wait, said here so it's paude's to change.
-export const RELOAD_QUIET_MS = 30_000;
+// How long the client's files are left quiet before it's built again, in development. A change is rarely one write (a
+// save then a format, a session's run of edits); each build offers its open pages the new version (client/newVersion.js),
+// which they load when they choose. The library's own wait, said here so it's paude's to change.
+export const RELOAD_QUIET_MS = 3000;
 
 export default {
 	init: ({ host, port }) =>

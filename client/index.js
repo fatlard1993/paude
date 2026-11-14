@@ -14,8 +14,10 @@ import MakerHome from './Arcade/MakerHome';
 import Universe from './Universe/Universe';
 import { updateTabTitle } from './tabTitle';
 import { startWatchAlerts } from './watchAlerts';
+import { offerNewVersions } from './newVersion';
 
-import '@vanilla-bean/components/app/reloadOnBuild';
+// A development build is offered to the page, not loaded under it
+if (process.env.NODE_ENV === 'development') offerNewVersions();
 
 // A login that expires mid-visit (30 days, a sign-out elsewhere, a new password) sends every API call a 401;
 // reloading lands on the login page instead of a screen that looks empty
