@@ -26,7 +26,16 @@ const GameFrame = styled(
 			left: 50%;
 			transform: translateX(-50%);
 			z-index: 2;
+			/* Its own surface: it sits over whatever the game draws, light or dark */
+			background: ${colors.surface};
+			color: ${colors.white};
+			border: 1px solid ${colors.edge};
 			box-shadow: 0 4px 16px ${colors.alpha(colors.vantablack, 0.45)};
+
+			&:hover,
+			&:focus-visible {
+				background: ${colors.light(colors.surface)};
+			}
 		}
 
 		.waiting-room {
