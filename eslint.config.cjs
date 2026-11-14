@@ -35,4 +35,5 @@ module.exports = [
 			'no-console': 'off',
 		},
 	},
+	...require('@vanilla-bean/components/eslint.usage.config.cjs'),
 ];
