@@ -22,6 +22,7 @@ import { runningSession } from '../sessions/running';
 import { noteHook, notePrompt, noteTool, noteTurnDone, peopleOf } from '../universe';
 import { isArcadeSession, noteTurnEnd, snapshotTurn } from '../arcade';
 import { forgetPresence, presenceNote } from '../arcadePresence';
+import { keepArcadeGoing, noteArcadeAnswer } from '../arcadeGoing';
 
 // The checks a project runs after each of Claude's turns, when the turn edited something: the problems they find
 // are then about what Claude just did
@@ -145,10 +146,14 @@ const hooksRoutes = async request => {
 			await noteTurnEnd(id, cwd).catch(() => {});
 			await recordChange(id);
 			keepServing(id, cwd).catch(error => console.error("The arcade's server could not be started:", error));
+			// Its keep-going: the question is this turn's end, answered for them if it waits while they're away
+			keepArcadeGoing(id, payload.tool_input).catch(error => console.error('Keeping the arcade going failed:', error));
 		}
 
 		return new Response(null, { status: 204 });
 	}
+	if (payload.hook_event_name === 'PostToolUse' && payload.tool_name === 'AskUserQuestion')
+		noteArcadeAnswer(id, payload.tool_response);
 	if (payload.hook_event_name === 'Stop') {
 		const sentBack = await endsWithQuestion(id, payload);
 
