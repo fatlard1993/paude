@@ -288,6 +288,23 @@ const pingAtQuestion = (id, session, now) => {
 	return true;
 };
 
+// A fabled session's steward (steward.js), registered rather than imported since it runs Claude: given its turn once
+// the session has been quiet a while since anything happened in it, a keep-warm ping not counting
+let steward = null;
+const stewarded = new Map();
+export const STEWARD_QUIET_MS = 3 * 60_000;
+
+export const stewardWith = run => {
+	steward = run;
+};
+
+const stewardDue = (id, now) => {
+	const last = lastTurnAt.get(id) ?? now;
+	const pinged = boosts.get(id)?.kind === 'warm' && boosts.get(id).at >= last - 60_000;
+
+	return Boolean(steward) && !pinged && now - last >= STEWARD_QUIET_MS && !(stewarded.get(id) >= last);
+};
+
 // Not typed now: tried again next check
 const ping = async (id, session, now, pause) => {
 	if (
@@ -325,6 +342,10 @@ export const checkWarm = async (sessionOf, now = Date.now(), { pause = () => Bun
 			changed = true;
 		} else {
 			if (now - lastTurnAt.get(id) >= PING_AFTER_MS && (await ping(id, session, now, pause))) pings.push(id);
+			if (fabledOn(id, now) && stewardDue(id, now)) {
+				stewarded.set(id, now);
+				steward(id, session).catch(error => console.error(`${id}'s steward failed:`, error));
+			}
 			// Its monitor on its own clock: pinged once it has been quiet this long, whether or not the session could be, since
 			// a session busy, asking or being typed into isn't pinged and its monitor's cache runs out regardless
 			if (fabledOn(id, now) && warm[id].monitor) {

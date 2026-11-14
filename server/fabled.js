@@ -147,7 +147,10 @@ export const rulesFor = cwd =>
 // How the monitor runs: on Fable, carrying its conversation on (started with `first`), none of the owner's settings
 // (their hooks, permissions, MCP servers), reading the project and nothing more (no shell: a git read's flags can write
 // files, so the checkout's state is given to it instead), within MOST_TURNS rounds of tool calls per verdict
-export const monitorCommand = (id, cwd, { first, turns = MOST_TURNS }) => [
+// `writes`, for an ask that may change things ({ rules, paths, commands }): Edit and Write allowed on those absolute
+// paths alone and Bash on those commands alone, everything else refused (a print-mode run asks no one), under rules of
+// that ask's own
+export const monitorCommand = (id, cwd, { first, turns = MOST_TURNS, writes = null }) => [
 	claudeCommand(),
 	'-p',
 	'--model',
@@ -157,13 +160,20 @@ export const monitorCommand = (id, cwd, { first, turns = MOST_TURNS }) => [
 	'--setting-sources',
 	'',
 	'--tools',
-	'Read,Grep,Glob',
+	writes ? 'Read,Grep,Glob,Edit,Write,Bash' : 'Read,Grep,Glob',
+	...(writes
+		? [
+				'--allowedTools',
+				...writes.paths.flatMap(file => [`Edit(/${file})`, `Write(/${file})`]),
+				...writes.commands.map(command => `Bash(${command}:*)`),
+			]
+		: []),
 	'--add-dir',
 	cwd,
 	'--max-turns',
 	String(turns),
 	'--append-system-prompt',
-	rulesFor(cwd),
+	writes?.rules ?? rulesFor(cwd),
 	...(first ? ['--session-id', id] : ['--resume', id]),
 ];
 
@@ -233,8 +243,12 @@ export const outcomeOf = ({ exitCode, out, err, first, killed = false }) => {
 };
 
 // The monitor asked `prompt`, as outcomeOf says. Counted as the crew doing `job`.
-export const askMonitor = (id, cwd, prompt, { first = false, turns = MOST_TURNS, job = 'watching a session' } = {}) =>
-	crewJob(job, () => ask(id, cwd, prompt, { first, turns }));
+export const askMonitor = (
+	id,
+	cwd,
+	prompt,
+	{ first = false, turns = MOST_TURNS, job = 'watching a session', writes = null } = {},
+) => crewJob(job, () => ask(id, cwd, prompt, { first, turns, writes }));
 
 // Each monitor's asks one at a time: two resumes of one conversation at once would each carry it on from the same
 // point, and one would lose what the other added. A verdict, a keep-warm ping and a handover can all fall together.
@@ -250,11 +264,11 @@ const ask = (id, cwd, prompt, options) => {
 	return after;
 };
 
-const askNow = async (id, cwd, prompt, { first, turns = MOST_TURNS }) => {
+const askNow = async (id, cwd, prompt, { first, turns = MOST_TURNS, writes = null }) => {
 	if (!folder) return outcomeOf({ exitCode: 1, out: '', err: 'the monitors folder is not set up', first });
 	await mkdir(monitorHome(id), { recursive: true });
 
-	const child = Bun.spawn(monitorCommand(id, cwd, { first, turns }), {
+	const child = Bun.spawn(monitorCommand(id, cwd, { first, turns, writes }), {
 		cwd: monitorHome(id),
 		env: sessionEnvironment(),
 		stdin: new TextEncoder().encode(prompt),

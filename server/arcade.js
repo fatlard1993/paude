@@ -931,6 +931,19 @@ const gitOut = async (folder, args) => {
 
 const asPaude = ['-c', 'user.name=paude', '-c', 'user.email=paude@localhost'];
 
+// What the steward changed in the files it keeps, committed on its own, as paude: only those paths, whatever else
+// is half done beside them. Whether anything was committed.
+export const commitOwned = async (cwd, paths, message) => {
+	const there = [];
+
+	for (const owned of paths) if (await exists(join(cwd, owned))) there.push(owned);
+	if (!there.length) return false;
+	await gitOut(cwd, ['add', '--', ...there]);
+	if ((await gitOut(cwd, ['diff', '--cached', '--quiet', '--', ...there])).ok) return false;
+
+	return (await gitOut(cwd, [...asPaude, 'commit', '-q', '-m', message, '--', ...there])).ok;
+};
+
 // Put it back needs history to put back to: a folder in no repository is made one when it comes into the arcade, its
 // files as they were then its first commit (dependencies and secrets ignored when it says nothing of its own). One
 // inside a repository already is left as it is. Whether one was begun.

@@ -23,6 +23,7 @@ import { noteHook, notePrompt, noteTool, noteTurnDone, peopleOf } from '../unive
 import { isArcadeSession, noteTurnEnd, snapshotTurn } from '../arcade';
 import { forgetPresence, presenceNote } from '../arcadePresence';
 import { keepArcadeGoing, noteArcadeAnswer } from '../arcadeGoing';
+import { forgetStewardNote, stewardNote } from '../steward';
 
 // The checks a project runs after each of Claude's turns, when the turn edited something: the problems they find
 // are then about what Claude just did
@@ -133,6 +134,7 @@ const hooksRoutes = async request => {
 	}
 	if (payload.hook_event_name === 'SessionStart') {
 		forgetPresence(id);
+		forgetStewardNote(id);
 
 		return afterCompact(id, payload);
 	}
@@ -234,9 +236,10 @@ const toldWhoIsHere = async (id, payload) => {
 		return null;
 	if (!session || !(await isArcadeSession(id, session.cwd))) return null;
 
-	const note = presenceNote(id, peopleOf([session]));
+	// Who is here, and what a fabled arcade's steward has to say: that it keeps some files, and what it found
+	const note = [presenceNote(id, peopleOf([session])), stewardNote(id)].filter(Boolean).join('\n\n');
 
-	return note && Response.json({ hookSpecificOutput: { hookEventName: event, additionalContext: note } });
+	return note ? Response.json({ hookSpecificOutput: { hookEventName: event, additionalContext: note } }) : null;
 };
 
 export default hooksRoutes;
