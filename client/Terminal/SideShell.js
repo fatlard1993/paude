@@ -42,7 +42,8 @@ export default class SideShell extends Panel {
 		bar.append(
 			label,
 			this.copyButton,
-			this.attachButton,
+			// Nothing to attach to beside a machine's own shell: no Claude there
+			...(this.options.attach ? [this.attachButton] : []),
 			button('', () => this.options.close(), { icon: 'xmark', title: 'End it', className: 'icon-only' }),
 		);
 
@@ -55,7 +56,7 @@ export default class SideShell extends Panel {
 			appendTo: this,
 			sendKey: data => this.send({ type: 'input', data }),
 			selectLines: () => this.startLineSelect(),
-			selectTitle: 'Attach lines: tap the first, then the last',
+			selectTitle: `${this.options.attach ? 'Attach' : 'Select'} lines: tap the first, then the last`,
 		});
 	}
 
@@ -209,7 +210,7 @@ export default class SideShell extends Panel {
 	attachSelection() {
 		const selected = this.terminal?.getSelection();
 
-		if (!selected?.trim()) return;
+		if (!selected?.trim() || !this.options.attach) return;
 
 		if (this.options.attach(attachOutputText(selected))) this.terminal.clearSelection();
 	}
@@ -225,7 +226,7 @@ export default class SideShell extends Panel {
 				this.hint.textContent = text ?? '';
 				this.hint.style.display = text ? '' : 'none';
 			},
-			purpose: 'attach',
+			purpose: this.options.attach ? 'attach' : 'copy',
 			onEnd: () => {
 				this.endLineSelect = null;
 			},

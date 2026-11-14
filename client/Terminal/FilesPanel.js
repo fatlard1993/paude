@@ -1360,9 +1360,9 @@ export default class FilesPanel extends Panel {
 		if (canType()) {
 			if (this.lines && this.showingSource && !this.outside)
 				head.append(button('Edit', () => this.startEditing(), { icon: 'pen' }));
-			head.append(button('Attach file', () => this.attachFile()));
+			if (this.options.attach) head.append(button('Attach file', () => this.attachFile()));
 
-			if (this.selection && this.lines && this.showingSource) {
+			if (this.options.attach && this.selection && this.lines && this.showingSource) {
 				const { from, to } = this.selection;
 
 				head.append(
@@ -1458,7 +1458,7 @@ export default class FilesPanel extends Panel {
 		if (canNote() && this.options.comment && this.diffSelection)
 			head.append(button('Comment', () => this.commentOnPickedLines(), { icon: 'comment' }));
 
-		if (canType() && set?.files.length) {
+		if (canType() && this.options.attach && set?.files.length) {
 			head.append(button('Attach all', () => this.attachDiffSet()));
 
 			if (this.diffSelection) {
@@ -1542,7 +1542,7 @@ export default class FilesPanel extends Panel {
 				this.diffSelection = { file, anchor, from: Math.min(anchor, index), to: Math.max(anchor, index) };
 				this.renderViewer();
 			},
-			onAttachLines: canType() ? (file, lines) => this.attachDiffLines(this.diffFiles[file].path, lines) : null,
+			onAttachLines: canType() && this.options.attach ? (file, lines) => this.attachDiffLines(this.diffFiles[file].path, lines) : null,
 			commentsAt: (path, side, number) => this.diffCommentsAt(path, side, number),
 			onComment: commentId => this.options.showComment(commentId),
 		});

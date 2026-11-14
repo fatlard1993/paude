@@ -673,6 +673,26 @@ test("a project's page reads and writes its own folder, for the owner alone; a s
 	expect((await call('/api/projects/nowhere/files', { token: tokens.owner })).status).toBe(404);
 });
 
+test("the machine's home folder reads like a project's, for the owner alone; a query can't make it a session", async () => {
+	const home = path.join(base, 'home');
+	const was = process.env.HOME;
+
+	await mkdir(home, { recursive: true });
+	await writeFile(path.join(home, 'notes.txt'), 'kept at home');
+	process.env.HOME = home;
+
+	try {
+		expect((await call('/api/machine/files', { token: tokens.comment })).status).toBe(403);
+		expect(await (await call('/api/machine/files', { token: tokens.owner })).json()).toContain('notes.txt');
+		expect(await (await call('/api/machine/file?path=notes.txt', { token: tokens.owner })).text()).toContain(
+			'kept at home',
+		);
+		expect(await (await call('/api/machine/files?id=nowhere', { token: tokens.owner })).json()).toContain('notes.txt');
+	} finally {
+		process.env.HOME = was;
+	}
+});
+
 test('sessions page and search: every word has to match, and the header says how many do in all', async () => {
 	const page = async query => {
 		const response = await call(`/api/sessions?${query}`, { token: tokens.owner });

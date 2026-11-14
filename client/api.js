@@ -27,9 +27,19 @@ const routed =
 		);
 const [GET, POST, PUT, PATCH, DELETE] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map(name => routed(requests[name]));
 
-// Where the files, Git and Tasks panels and the side terminal work: a session, by its id, or a project's page, as
-// { project, checkout } (a worktree's path, or none for the project folder). Answers a request's url and options.
+// The machine a place is on, by its relay: this paude's (''), or another's through this one
+const machineBase = remote => (remote ? `/api/remotes/at/${encodeURIComponent(remote)}` : '');
+
+// Where the files, Git and Tasks panels and the side terminal work: a session, by its id, a project's page, as
+// { project, checkout } (a worktree's path, or none for the project folder), or a machine's home folder, as
+// { machine: true, remote } (another paude's address, or none for this one). Answers a request's url and options.
 const placed = (place, rest, { urlParameters, searchParameters: search, ...options } = {}) => {
+	if (place?.machine)
+		return [
+			`${machineBase(place.remote)}/api/machine${rest}`,
+			{ ...options, urlParameters, ...(search && Object.keys(search).length && { searchParameters: search }) },
+		];
+
 	const project = typeof place === 'object';
 	const query = { ...search, ...(project && place.checkout && { checkout: place.checkout }) };
 
@@ -47,12 +57,13 @@ const placed = (place, rest, { urlParameters, searchParameters: search, ...optio
 export const sessionOf = place => (typeof place === 'string' ? place : undefined);
 
 // A place as a word, to keep things under: a session's id as it is
-export const placeKey = place => sessionOf(place) ?? `${place.project}:${place.checkout ?? ''}`;
+export const placeKey = place =>
+	sessionOf(place) ?? (place.machine ? `machine:${place.remote ?? ''}` : `${place.project}:${place.checkout ?? ''}`);
 
 // The same, as an address to open or fetch directly
 export const placeUrl = (place, rest, search) => {
 	const [url, { urlParameters, searchParameters: query }] = placed(place, rest, { searchParameters: search });
-	const path = url.replace(/:(\w+)/g, (_, name) => encodeURIComponent(urlParameters[name]));
+	const path = url.replace(/:(\w+)/g, (_, name) => encodeURIComponent(urlParameters?.[name]));
 
 	const base = sessionOf(place) ? sessionBase(place) : '';
 

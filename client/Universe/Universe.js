@@ -32,6 +32,7 @@ import { ink, isHue } from '../../shared/hues';
 import { LOCAL, fleetBox, panelLeft, placeShips, shipsOf } from './shown';
 import olderPaude from './olderPaude';
 import { dockCard, verbsFor } from './dock';
+import { machineDock } from './machineDock';
 import {
 	ROOMS,
 	STATUS,
@@ -1358,6 +1359,10 @@ export default class Universe extends View {
 
 		return [
 			{ label: 'Look closer', hotkey: 'z', run: () => this.aboard.look(engine.key) },
+			...owned(
+				{ label: 'Files', hotkey: 'f', run: () => this.openMachineDock(engine, 'files') },
+				{ label: 'Shell', hotkey: 's', run: () => this.openMachineDock(engine, 'shell') },
+			),
 			...(remote
 				? [
 						{ label: 'Sessions', hotkey: 'h', run: () => this.openShipDock('sessions', [remote], engine.name) },
@@ -1710,7 +1715,31 @@ export default class Universe extends View {
 		return this.dock.card.show(key);
 	}
 
-	// Woken in its side panel, on its terminal: attaching it wakes it, here or on another paude
+	// A machine's own Files and Shell docked at the side, in its home folder, opened on `key`; the same machine's dock
+	// switches to it
+	openMachineDock(engine, key) {
+		if (this.dock?.key !== `machine:${engine.key}`) {
+			this.closeDock();
+			this.closeCard();
+
+			const card = machineDock({
+				engine,
+				remote: this.remotes.find(({ url }) => url === engine.key)?.url,
+				open: key,
+				onClose: () => this.closeDock(),
+			});
+
+			resizable(card);
+			this.dock = { card, key: `machine:${engine.key}` };
+			this.house(card);
+
+			return card.opened();
+		}
+
+		return this.dock.card.show(key);
+	}
+
+		// Woken in its side panel, on its terminal: attaching it wakes it, here or on another paude
 	wake(worker) {
 		this.select(selectionOf({ kind: 'worker', worker }, this));
 		this.seen(worker.session);
