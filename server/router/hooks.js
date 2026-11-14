@@ -10,7 +10,7 @@ import { afterTurnTasks, runTask } from '../tasks';
 import { sessionTimeline, sessionTurns } from '../timeline';
 import { turnEnded as noteTurnCommits, turnStarted } from '../turnCommits';
 import { HANDOVER_WAIT_SECONDS, HOOK_EVENTS, hookSecret } from '../hookSettings';
-import { claudeActive } from '../keepWarm';
+import { claudeActive, pingTurn } from '../keepWarm';
 import { commandEnded, commandStarting, commandsSettled, noteChanged } from '../commandEdits';
 import { beginHandover, summaryNotes, takeHandover } from '../compaction';
 import { keepGoing } from '../keepGoing';
@@ -85,6 +85,19 @@ const afterCompact = async (id, { source }) => {
 	});
 };
 
+export const ASK_BEFORE_STOPPING =
+	"paude: an arcade's turn ends with one question, asked with the AskUserQuestion tool: say in a line what changed, then ask what should happen next with two to four real choices, as your rules say. A question set aside before (words typed in place of a tap) only means they had something to say: it isn't a sign they want no more questions.";
+
+// An arcade's turn ends at its question, so a Stop there is a turn that ended without one: sent back once to ask it,
+// rather than leaving the player with nothing to tap and the turn with no snapshot for Put it back. Not again when a
+// Stop hook already sent this turn back, Claude's answer to it standing, and never for a keep-warm ping's turn.
+export const endsWithQuestion = async (id, payload, { arcade = isArcadeSession } = {}) => {
+	if (payload.stop_hook_active || pingTurn(id)) return null;
+	if (!(await arcade(id, runningSession(id)?.cwd))) return null;
+
+	return Response.json({ decision: 'block', reason: ASK_BEFORE_STOPPING });
+};
+
 // Where the hooks in hookSettings report; authenticated by the secret in the address rather than a login
 const hooksRoutes = async request => {
 	const match =
@@ -133,6 +146,11 @@ const hooksRoutes = async request => {
 		}
 
 		return new Response(null, { status: 204 });
+	}
+	if (payload.hook_event_name === 'Stop') {
+		const sentBack = await endsWithQuestion(id, payload);
+
+		if (sentBack) return sentBack;
 	}
 	// What the command changed, before anything reads the turn: a command editing files is an edit
 	const edited =

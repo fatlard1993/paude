@@ -198,6 +198,9 @@ export const stopKeepingWarm = async id => {
 
 // A hook from the session: Claude is doing something, which reads the cache anyway. A real prompt (not a ping) starts
 // the hours it's kept warm over; a nudge to keep going is paude's, and doesn't. Returns whether the turn this ends was a ping, for the Stop that ends it.
+// Whether the turn under way is a keep-warm ping's, without counting as Claude's activity
+export const pingTurn = id => pinged.has(id);
+
 export const claudeActive = (id, { hook_event_name: event, prompt } = {}, now = Date.now()) => {
 	lastTurnAt.set(id, now);
 	if (event === 'UserPromptSubmit') {
