@@ -46,6 +46,9 @@ export const claudeSettings = {
 			'Bash(ss *)',
 			'Bash(curl *)',
 			'Bash(bun *)',
+			// A look at the game as a player sees it, in a headless Chrome
+			'Bash(bun "$PAUDE_LOOK" *)',
+			'Bash(bun $PAUDE_LOOK *)',
 			'Bash(git *)',
 		],
 		deny: ['Bash(sudo *)', 'Bash(git push*)', 'Bash(git reset --hard*)', 'Bash(rm -rf /*)', 'Bash(rm -rf ~*)'],

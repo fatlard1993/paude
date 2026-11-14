@@ -1,3 +1,5 @@
+import path from 'path';
+
 import xtermHeadless from '@xterm/headless';
 import serializeAddon from '@xterm/addon-serialize';
 
@@ -58,6 +60,8 @@ const clampSize = (value, [min, max]) => {
 
 	return Number.isFinite(number) ? Math.min(Math.max(number, min), max) : null;
 };
+
+const LOOK = path.join(import.meta.dir, '..', '..', 'bin', 'look.js');
 
 const canDrive = client => client.role === 'owner' || client.role === 'drive';
 
@@ -127,6 +131,8 @@ export default class PtySession {
 			PAUDE_SESSION: id,
 			// Where an arcade's Claude asks for a game sound (refused for any other session)
 			...(sounds && { PAUDE_SOUNDS: sounds }),
+			// A look at a page as a player sees it: screenshots at a phone's size and a computer's, and what went wrong
+			PAUDE_LOOK: LOOK,
 		};
 		const command = heldCommand({ id, cwd, env, command: [claudePath, ...args] }) ?? [claudePath, ...args];
 

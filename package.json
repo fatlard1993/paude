@@ -50,6 +50,7 @@
 		"dompurify": "^3.4.16",
 		"highlight.js": "^11.12.0",
 		"marked": "^18.1.0",
+		"puppeteer-core": "^25.12.0",
 		"web-game-mother-hub": "github:fatlard1993/web-game-mother-hub#928e4ab"
 	},
 	"devDependencies": {
@@ -64,7 +65,6 @@
 		"eslint-plugin-testing-library": "^7.16.2",
 		"eslint-plugin-write-good-comments": "^0.2.0",
 		"globals": "^17.13.0",
-		"prettier": "^3.9.9",
-		"puppeteer-core": "^25.12.0"
+		"prettier": "^3.9.9"
 	}
 }
