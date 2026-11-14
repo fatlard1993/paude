@@ -342,6 +342,11 @@ const Talk = styled(
 			font-size: 1.15em;
 		}
 
+		.choices .yes-and {
+			align-self: center;
+			margin-top: ${space.sm};
+		}
+
 		.choices button.yes {
 			background: ${colors.alpha(colors.green, 0.55)};
 		}

@@ -766,6 +766,15 @@ export default class ArcadeTalk extends Talk {
 
 		yesNo.append(yes, no);
 		card.append(head, detail, yesNo);
+		// Yes, with something of their own added: the box opens for it, and the two go in together as the answer
+		if (this.shown.asking.typing) {
+			const yesAnd = button('Yes, and…', () => this.addToChoice(option), {
+				icon: 'pen',
+				className: 'yes-and variant-flat',
+			});
+
+			card.append(yesAnd);
+		}
 		this.choices.replaceChildren(card);
 		this.feed.scrollTop = this.feed.scrollHeight;
 		if (!this.prefs.speak) return;
@@ -786,6 +795,17 @@ export default class ArcadeTalk extends Talk {
 		};
 
 		this.voice.sayNow(parts.filter(Boolean).join(' '), { lightWord: light });
+	}
+
+	// A choice taken with words of their own to go with it: whatever they say or type next is added to it
+	addToChoice(option) {
+		stopSpeaking();
+		this.voice.clear();
+		this.adding = option;
+		this.input.placeholder = `Add to "${splitEmoji(option.label).words}"`;
+		if (this.mic && !this.ear) this.toggleEar();
+		else this.input.focus();
+		if (this.prefs.speak) this.enqueue('What should go with it?');
 	}
 
 	async choose(option) {
@@ -857,6 +877,7 @@ export default class ArcadeTalk extends Talk {
 	}
 
 	clearAsking() {
+		this.adding = null;
 		this.asking = null;
 		this.shown = null;
 		this.restArmed = false;
@@ -886,23 +907,26 @@ export default class ArcadeTalk extends Talk {
 		stopSpeaking();
 		this.voice.clear();
 
-		// Words while a question with a typing option is up answer that question; otherwise they're the next prompt
+		// Words while a question with a typing option is up answer that question; otherwise they're the next prompt. Added
+		// to a choice taken with Yes, and…, they go in with it.
 		const asking = this.asking;
+		const answer = this.adding ? `${this.adding.label}, and: ${typed}` : typed;
 		let { response, body } = asking?.typing
-			? await answerAsking(this.id, asking.question, asking.typing, typed)
+			? await answerAsking(this.id, asking.question, asking.typing, answer)
 			: await sendPrompt(this.id, typed, { hold: true });
 
 		// The question went away meanwhile: the words go as a prompt instead
 		if (!response?.ok && asking?.typing && response?.status === 409)
-			({ response, body } = await sendPrompt(this.id, typed, { hold: true }));
+			({ response, body } = await sendPrompt(this.id, answer, { hold: true }));
 		if (!response?.ok) {
 			this.notice(typeof body === 'string' && body ? body : 'Could not send that', 'danger');
 
 			return;
 		}
+		this.adding = null;
 		this.input.placeholder = 'Tell Claude what to do';
-		this.noteSent(typed);
-		const card = element('div', 'card you', typed);
+		this.noteSent(answer);
+		const card = element('div', 'card you', answer);
 
 		this.feed.append(card);
 		// Still waiting to be typed in (an id is given only then): it can be taken back
