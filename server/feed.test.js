@@ -46,6 +46,18 @@ test('prompts, what Claude wrote and the tools it used, in order; results, marku
 	]);
 });
 
+test("Claude Code's stand-in reply on taking a conversation up again is no one's words; its other notices stay", () => {
+	const synthetic = text => ({
+		type: 'assistant',
+		timestamp: at,
+		message: { model: '<synthetic>', content: [{ type: 'text', text }] },
+	});
+
+	expect(feedFrom([synthetic('No response requested.'), synthetic("You've hit your limit")], '/repo')).toEqual([
+		{ kind: 'text', at, text: "You've hit your limit" },
+	]);
+});
+
 test('a cursor picks up where the last read stopped, and a half-written line waits', async () => {
 	const home = await mkdtemp(path.join(os.tmpdir(), 'paude-feed-'));
 	const cwd = '/work/app';

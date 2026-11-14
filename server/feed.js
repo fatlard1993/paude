@@ -7,6 +7,12 @@ import { describeTool } from './timeline';
 // keeps it picks up exactly where it left off, through restarts on either side.
 const MAX_BYTES = 4 * 1024 * 1024;
 
+// Claude Code's own stand-in reply when a conversation is taken up again with nothing to answer, often while a
+// question was still waiting: no one wrote it, and the arcade would read it aloud
+const isFiller = line =>
+	line.message?.model === '<synthetic>' &&
+	(line.message.content ?? []).every(block => block.type === 'text' && block.text?.trim() === 'No response requested.');
+
 // Each line in order as entries: a prompt someone sent, an answer someone gave to a question Claude asked (the
 // AskUserQuestion tool's result, as Claude Code records it: a choice's label, or words typed), something Claude
 // wrote, or a tool Claude used. A subagent's own work stays out; its call shows as the tool it is.
@@ -29,7 +35,7 @@ export const feedFrom = (lines, cwd) =>
 			return prompt === null ? [] : [{ kind: 'prompt', at, text: prompt }];
 		}
 
-		if (line.type !== 'assistant') return [];
+		if (line.type !== 'assistant' || isFiller(line)) return [];
 
 		return (line.message?.content ?? []).flatMap(block => {
 			if (block.type === 'text' && block.text?.trim()) return [{ kind: 'text', at, text: block.text.trim() }];
