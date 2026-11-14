@@ -14,6 +14,7 @@ import {
 	stopRun,
 	stopTasksOf,
 	testCounts,
+	workingBuild,
 	workingSaves,
 } from './tasks';
 
@@ -149,7 +150,7 @@ test("a run left by a paude that's gone is stopped; one this paude started, or a
 	ours.kill();
 });
 
-test("an arcade game's server, as it's built, keeps one port and saves apart from the house's live copy", async () => {
+test("an arcade game's server, as it's built, keeps one port, and saves and builds its page apart from the house's live copy", async () => {
 	const data = await mkdtemp(path.join(os.tmpdir(), 'paude-data-'));
 	const game = await mkdtemp(path.join(os.tmpdir(), 'paude-game-'));
 
@@ -157,7 +158,7 @@ test("an arcade game's server, as it's built, keeps one port and saves apart fro
 	await writeFile(path.join(game, '.paude-arcade.json'), '{}');
 	await writeFile(
 		path.join(game, 'package.json'),
-		JSON.stringify({ scripts: { dev: 'echo "port=$PORT saves=$GAME_DATABASE"' } }),
+		JSON.stringify({ scripts: { dev: 'echo "port=$PORT saves=$GAME_DATABASE page=$GAME_BUILD"' } }),
 	);
 
 	const run = await runTask('session-arcade', game, 'package.json:dev');
@@ -169,6 +170,8 @@ test("an arcade game's server, as it's built, keeps one port and saves apart fro
 	expect(printed).toMatch(/port=41\d\d\d/);
 	expect(printed).toContain(`saves=${workingSaves(game)}`);
 	expect(workingSaves(game).startsWith(path.join(data, 'arcade-saves'))).toBe(true);
+	expect(printed).toContain(`page=${workingBuild(game)}`);
+	expect(workingBuild(game).startsWith(path.join(data, 'arcade-builds'))).toBe(true);
 	await rm(data, { recursive: true, force: true });
 	await rm(game, { recursive: true, force: true });
 });

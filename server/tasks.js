@@ -272,15 +272,18 @@ export const runTask = async (sessionId, cwd, taskId) => {
 	// An arcade game's server keeps one port, so starting over on a save doesn't move the game out from under its page
 	const arcadeGame = taskId === GAME_SERVER && (await stat(path.join(cwd, ARCADE_MARKER)).catch(() => null));
 	const port = arcadeGame ? gamePort(cwd) : null;
-	// Its saves its own, as it's built, apart from the live copy the house runs of the same folder (a game on the mother
-	// hub): the two writing one file each overwrite the other's games
+	// Its saves and its page its own, as it's built, apart from the live copy the house runs of the same folder (a game
+	// on the mother hub): the two writing one file each overwrite the other's games, and the live copy serving the
+	// working copy's newest page pairs it with an older server
 	const saves = arcadeGame && dataDir ? workingSaves(cwd) : null;
+	const page = arcadeGame && dataDir ? workingBuild(cwd) : null;
 	const child = Bun.spawn(found.command, {
 		cwd,
 		env: {
 			...sessionEnvironment(),
 			...(port ? { PORT: String(port) } : {}),
 			...(saves ? { GAME_DATABASE: saves } : {}),
+			...(page ? { GAME_BUILD: page } : {}),
 			PAUDE_SESSION: sessionId,
 			PAUDE_TASK: id,
 			NO_COLOR: '1',
@@ -408,12 +411,12 @@ let afterTurn = {};
 let dataDir;
 
 // Where an arcade game's working copy keeps its saves: in paude's data, one file per folder
-export const workingSaves = cwd =>
-	path.join(
-		dataDir,
-		'arcade-saves',
-		`${path.basename(cwd)}-${createHash('sha256').update(cwd).digest('hex').slice(0, 8)}.json`,
-	);
+const workingName = cwd => `${path.basename(cwd)}-${createHash('sha256').update(cwd).digest('hex').slice(0, 8)}`;
+
+export const workingSaves = cwd => path.join(dataDir, 'arcade-saves', `${workingName(cwd)}.json`);
+
+// The working copy's built page (GAME_BUILD), outside the game's folder so it's never committed or hosted
+export const workingBuild = cwd => path.join(dataDir, 'arcade-builds', workingName(cwd));
 
 export const initTasks = async folder => {
 	dataDir = folder;
