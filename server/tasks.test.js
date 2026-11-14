@@ -14,6 +14,7 @@ import {
 	stopRun,
 	stopTasksOf,
 	testCounts,
+	keepServing,
 	workingBuild,
 	workingSaves,
 } from './tasks';
@@ -173,5 +174,17 @@ test("an arcade game's server, as it's built, keeps one port, and saves and buil
 	expect(printed).toContain(`page=${workingBuild(game)}`);
 	expect(workingBuild(game).startsWith(path.join(data, 'arcade-builds'))).toBe(true);
 	await rm(data, { recursive: true, force: true });
+	await rm(game, { recursive: true, force: true });
+});
+
+test("an arcade's dev server is started when it isn't running and the project has one", async () => {
+	const game = await mkdtemp(path.join(os.tmpdir(), 'paude-serving-'));
+	const started = [];
+	const start = async (...args) => started.push(args);
+
+	expect(await keepServing('no-dev', game, { start })).toBe(false);
+	await writeFile(path.join(game, 'package.json'), JSON.stringify({ scripts: { dev: 'true' } }));
+	expect(await keepServing('no-dev', game, { start })).toBe(true);
+	expect(started).toEqual([['no-dev', game, 'package.json:dev']]);
 	await rm(game, { recursive: true, force: true });
 });

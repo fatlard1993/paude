@@ -6,7 +6,7 @@ import { recordChange, setStatus } from '../activity';
 import { turnEnded } from '../claudeInbox';
 import { fileBeforePush, followDecisions, pushEnded, pushStarted } from '../decisions';
 import { projectOf } from '../projects';
-import { afterTurnTasks, runTask } from '../tasks';
+import { afterTurnTasks, keepServing, runTask } from '../tasks';
 import { sessionTimeline, sessionTurns } from '../timeline';
 import { turnEnded as noteTurnCommits, turnStarted } from '../turnCommits';
 import { HANDOVER_WAIT_SECONDS, HOOK_EVENTS, hookSecret } from '../hookSettings';
@@ -143,6 +143,7 @@ const hooksRoutes = async request => {
 		if (await isArcadeSession(id, cwd)) {
 			await snapshotTurn(id, cwd).catch(error => console.error('The arcade snapshot failed:', error));
 			await recordChange(id);
+			keepServing(id, cwd).catch(error => console.error("The arcade's server could not be started:", error));
 		}
 
 		return new Response(null, { status: 204 });
@@ -192,6 +193,8 @@ const hooksRoutes = async request => {
 
 	// Where each turn starts, so its end can note the commits it made with it
 	if (payload.hook_event_name === 'UserPromptSubmit') await turnStarted(id, cwd);
+	if (payload.hook_event_name === 'UserPromptSubmit' && (await isArcadeSession(id, cwd)))
+		keepServing(id, cwd).catch(error => console.error("The arcade's server could not be started:", error));
 	// The prompt settles the turn before it, and the turn's end lets what it settled be filed: after its commits are
 	// noted, so a decision finds the commit its turn made
 	const ended = ['Stop', 'StopFailure'].includes(payload.hook_event_name);

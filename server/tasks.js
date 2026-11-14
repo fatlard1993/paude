@@ -251,6 +251,21 @@ const drain = async (stream, run) => {
 const GAME_SERVER = 'package.json:dev';
 const ARCADE_MARKER = '.paude-arcade.json';
 
+// An arcade's dev server, running whenever its Claude works: started at each prompt and each question when it isn't
+// (it died, or the project has only now been given a dev script), rather than only when someone opens the arcade's
+// page, so Claude never builds for long against a server that's down. One someone stopped stays stopped. Whether it
+// was started.
+export const keepServing = async (sessionId, cwd, { start = runTask } = {}) => {
+	const latest = (runs.get(sessionId) ?? []).findLast(run => run.taskId === GAME_SERVER);
+
+	if (latest && (latest.code === undefined || latest.stopped)) return false;
+	if (!(await readJsonFile(path.join(cwd, 'package.json'), null).catch(() => null))?.scripts?.dev) return false;
+
+	await start(sessionId, cwd, GAME_SERVER);
+
+	return true;
+};
+
 export const runTask = async (sessionId, cwd, taskId) => {
 	const found = (await discoverTasks(cwd)).find(each => each.id === taskId);
 
