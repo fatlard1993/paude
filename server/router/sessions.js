@@ -803,10 +803,13 @@ const sessionsRoutes = async (request, server) => {
 		if (!String(text ?? '').trim()) return new Response('Nothing to send', { status: 400 });
 		if (!(await openSession(match.id))) return new Response('Session not found', { status: 404 });
 
-		// A question for the player still open is turned away, so the words go in as the next prompt, not behind it
+		// A question for the player still open with a field for words takes them as its answer (the inbox types them
+		// there), so Claude reads them as what was said to what it asked rather than as a question refused, and learns
+		// nothing from it about asking. One with no such field is turned away, so the words go in as the next prompt
+		// rather than waiting behind it.
 		const running = runningSession(match.id);
 		const asked = running?.asking();
-		const turnedAway = Boolean(asked && running.dismiss(asked.question));
+		const turnedAway = Boolean(asked && !asked.typing && running.dismiss(asked.question));
 
 		if (turnedAway) await delay(DISMISS_SETTLE_MS);
 
