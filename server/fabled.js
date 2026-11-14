@@ -85,7 +85,7 @@ const REPO_CHARACTERS = 3000;
 const SUBJECT_CHARACTERS = 120;
 const GIT_TIMEOUT_MS = 10_000;
 
-const git = async (cwd, args) => {
+export const readGit = async (cwd, args) => {
 	try {
 		const child = Bun.spawn(['git', '-C', cwd, ...args], { stdout: 'pipe', stderr: 'ignore', timeout: GIT_TIMEOUT_MS });
 		const out = await new Response(child.stdout).text();
@@ -100,11 +100,11 @@ const git = async (cwd, args) => {
 // Given rather than fetched: the monitor runs no commands, so there's nothing it can write through. '' outside a
 // repository.
 export const repoStateOf = async cwd => {
-	const log = await git(cwd, ['log', '--oneline', `-${COMMITS_SHOWN}`]);
+	const log = await readGit(cwd, ['log', '--oneline', `-${COMMITS_SHOWN}`]);
 
 	if (!log) return '';
 
-	const [status, stat] = await Promise.all([git(cwd, ['status', '--short']), git(cwd, ['diff', '--stat'])]);
+	const [status, stat] = await Promise.all([readGit(cwd, ['status', '--short']), readGit(cwd, ['diff', '--stat'])]);
 
 	const commits = log
 		.split('\n')
@@ -147,10 +147,10 @@ export const rulesFor = cwd =>
 // How the monitor runs: on Fable, carrying its conversation on (started with `first`), none of the owner's settings
 // (their hooks, permissions, MCP servers), reading the project and nothing more (no shell: a git read's flags can write
 // files, so the checkout's state is given to it instead), within MOST_TURNS rounds of tool calls per verdict
-// `writes`, for an ask that may change things ({ rules, paths, commands }): Edit and Write allowed on those absolute
-// paths alone and Bash on those commands alone, everything else refused (a print-mode run asks no one), under rules of
-// that ask's own
-export const monitorCommand = (id, cwd, { first, turns = MOST_TURNS, writes = null }) => [
+// `rules`, an ask's own in place of the verdict's (a steward's turn); `writes`, for an ask that may change things
+// ({ paths, commands }): Edit and Write allowed on those absolute paths alone and Bash on those commands alone,
+// everything else refused (a print-mode run asks no one)
+export const monitorCommand = (id, cwd, { first, turns = MOST_TURNS, writes = null, rules = null }) => [
 	claudeCommand(),
 	'-p',
 	'--model',
@@ -173,7 +173,7 @@ export const monitorCommand = (id, cwd, { first, turns = MOST_TURNS, writes = nu
 	'--max-turns',
 	String(turns),
 	'--append-system-prompt',
-	writes?.rules ?? rulesFor(cwd),
+	rules ?? rulesFor(cwd),
 	...(first ? ['--session-id', id] : ['--resume', id]),
 ];
 
@@ -247,8 +247,8 @@ export const askMonitor = (
 	id,
 	cwd,
 	prompt,
-	{ first = false, turns = MOST_TURNS, job = 'watching a session', writes = null } = {},
-) => crewJob(job, () => ask(id, cwd, prompt, { first, turns, writes }));
+	{ first = false, turns = MOST_TURNS, job = 'watching a session', writes = null, rules = null } = {},
+) => crewJob(job, () => ask(id, cwd, prompt, { first, turns, writes, rules }));
 
 // Each monitor's asks one at a time: two resumes of one conversation at once would each carry it on from the same
 // point, and one would lose what the other added. A verdict, a keep-warm ping and a handover can all fall together.
@@ -264,11 +264,11 @@ const ask = (id, cwd, prompt, options) => {
 	return after;
 };
 
-const askNow = async (id, cwd, prompt, { first, turns = MOST_TURNS, writes = null }) => {
+const askNow = async (id, cwd, prompt, { first, turns = MOST_TURNS, writes = null, rules = null }) => {
 	if (!folder) return outcomeOf({ exitCode: 1, out: '', err: 'the monitors folder is not set up', first });
 	await mkdir(monitorHome(id), { recursive: true });
 
-	const child = Bun.spawn(monitorCommand(id, cwd, { first, turns, writes }), {
+	const child = Bun.spawn(monitorCommand(id, cwd, { first, turns, writes, rules }), {
 		cwd: monitorHome(id),
 		env: sessionEnvironment(),
 		stdin: new TextEncoder().encode(prompt),

@@ -22,10 +22,10 @@ beforeAll(async () => {
 afterAll(() => rm(game, { recursive: true, force: true }));
 
 test('the building Claude is told once that the steward keeps its files, and hears what it found when it has', async () => {
-	expect(stewardNote('plain')).toBeNull();
+	expect(await stewardNote('plain', game)).toBeNull();
 	await keepWarm('steward-told', 24, Date.now(), { fabled: true });
-	expect(stewardNote('steward-told')).toBe(OWNERSHIP_NOTE);
-	expect(stewardNote('steward-told')).toBeNull();
+	expect(await stewardNote('steward-told', game)).toBe(OWNERSHIP_NOTE);
+	expect(await stewardNote('steward-told', game)).toBeNull();
 	await stopKeepingWarm('steward-told');
 });
 
@@ -59,7 +59,7 @@ test("a quiet fabled arcade's steward takes a turn with its writes scoped, and l
 
 	await keepWarm('steward-quiet', 24, Date.now(), { fabled: true });
 	await noteMonitor('steward-quiet', { monitor: '11111111-1111-4111-8111-111111111111', seen: 't1' });
-	stewardNote('steward-quiet');
+	await stewardNote('steward-quiet', game);
 
 	const verdict = await stewardPass('steward-quiet', session, {
 		askMonitor,
@@ -71,7 +71,7 @@ test("a quiet fabled arcade's steward takes a turn with its writes scoped, and l
 	expect(verdict.forClaude).toContain('second player');
 	expect(asks[0].options.writes.paths).toEqual(ownedPaths(game));
 	expect(asks[0].options.writes.commands[0]).toBe(`bun --cwd ${game} test`);
-	expect(stewardNote('steward-quiet')).toContain('The start screen never says it waits');
+	expect(await stewardNote('steward-quiet', game)).toContain('The start screen never says it waits');
 	await stopKeepingWarm('steward-quiet');
 });
 
@@ -93,4 +93,55 @@ test('keep-warm gives a fabled session its steward once it has gone quiet, and n
 	expect(given).toEqual(['steward-stilled']);
 	stewardWith(null);
 	await stopKeepingWarm('steward-stilled');
+});
+
+test("a quiet session's steward drafts what it waits on for the chat and reviews the open stack as line comments, once each", async () => {
+	const { initNotes, getNotes } = await import('./notes');
+
+	await initNotes(join(game, '.notes'));
+	await keepWarm('steward-away', 24, Date.now(), { fabled: true });
+	await noteMonitor('steward-away', { monitor: '22222222-2222-4222-8222-222222222222', seen: 't1' });
+
+	const project = await mkdtemp(join(tmpdir(), 'steward-project-'));
+
+	await writeFile(join(project, 'auth.js'), 'export const lock = () => {\n\treturn false;\n};\n');
+
+	const asked = [];
+	const askMonitor = async (monitor, cwd, prompt, options) => {
+		asked.push({ prompt, options });
+
+		return {
+			answer: JSON.stringify({
+				draft: 'Lock per user or per session? Per user: a new session per guess would reset the count.',
+				comments: [
+					{ path: 'auth.js', from: 2, to: 2, text: 'This never locks: return whether the count passed the limit.' },
+				],
+			}),
+			delivered: true,
+			usage: { turns: 2, cacheRead: 0, cacheWrite: 0, input: 0, output: 0, cost: 0.05, ms: 1000 },
+		};
+	};
+	const options = {
+		askMonitor,
+		stackOf: async () => ({ head: 'a'.repeat(40), log: 'abc auth: lock accounts', diff: '+return false;' }),
+		waitsOf: () => 'it needs their call on per-user or per-session locking',
+		changed: async () => {},
+	};
+
+	expect((await stewardPass('steward-away', { cwd: project, busy: false }, options)).posted).toBe(2);
+	expect(asked[0].options.writes).toBeUndefined();
+	expect(asked[0].prompt).toContain('per-user or per-session');
+	expect(asked[0].prompt).toContain('abc auth: lock accounts');
+
+	const notes = await getNotes('steward-away');
+
+	expect(notes.chat.at(-1)).toMatchObject({ author: 'Steward', text: expect.stringContaining('Per user') });
+	expect(notes.comments.at(-1)).toMatchObject({ author: 'Steward', quote: 'return false;' });
+	expect(notes.comments.at(-1).anchor).toMatchObject({ path: 'auth.js', from: 2, to: 2 });
+
+	// Nothing new since: no second turn
+	expect(await stewardPass('steward-away', { cwd: project, busy: false }, options)).toBeNull();
+	expect(asked).toHaveLength(1);
+	await stopKeepingWarm('steward-away');
+	await rm(project, { recursive: true, force: true });
 });

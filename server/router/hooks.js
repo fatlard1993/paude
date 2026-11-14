@@ -237,7 +237,7 @@ const toldWhoIsHere = async (id, payload) => {
 	if (!session || !(await isArcadeSession(id, session.cwd))) return null;
 
 	// Who is here, and what a fabled arcade's steward has to say: that it keeps some files, and what it found
-	const note = [presenceNote(id, peopleOf([session])), stewardNote(id)].filter(Boolean).join('\n\n');
+	const note = [presenceNote(id, peopleOf([session])), await stewardNote(id, session.cwd)].filter(Boolean).join('\n\n');
 
 	return note ? Response.json({ hookSpecificOutput: { hookEventName: event, additionalContext: note } }) : null;
 };

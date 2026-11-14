@@ -258,6 +258,11 @@ export const fabledVerdict = async (
 	return jsonIn(await askFabled(id, session, reply, turns, settled, askMonitor, repoOf, forget));
 };
 
+// Why each session's keep-going last decided to wait for the person, until it next decides to go on
+const waiting = new Map();
+
+export const waitingOn = id => waiting.get(id) ?? null;
+
 // The latest turn end each session's keep-going is answering
 const turnEnds = new Map();
 
@@ -361,9 +366,11 @@ const answerTurnEnd = async (
 
 	if (verdict?.go === false) {
 		console.log(`Keep ${kept} ${id}: waiting (${why})`);
+		waiting.set(id, why);
 
 		return false;
 	}
+	waiting.delete(id);
 
 	const next = typeof verdict?.next === 'string' ? verdict.next : '';
 	// Asking takes seconds: answered by a later turn end, switched off, ended, or taken up by someone meanwhile
