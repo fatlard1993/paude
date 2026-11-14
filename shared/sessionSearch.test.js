@@ -19,19 +19,31 @@ test('every word has to be somewhere the session is known by, in any order and a
 	expect(matchesQuery(session, 'login minecraft')).toBe(false);
 });
 
-test('with no filter archived sessions are left out, unless searching; a filter picks running, watched or archived', () => {
+test('with no filter archived sessions are left out, unless searching; a filter picks running, watched, hidden or archived', () => {
 	const sessions = [
 		{ id: 'live', live: true },
 		{ id: 'watched', watching: true },
 		{ id: 'put-away', archived: true },
 		{ id: 'plain' },
+		{ id: 'live-unwatched', live: true, watching: false },
+		{ id: 'by-project', watching: true, watchedByHand: false },
+		{ id: 'by-hand', watching: true, watchedByHand: true },
 	];
 	const shown = (filter, query) =>
 		sessions.filter(session => matchesFilter(session, filter, query)).map(({ id }) => id);
 
-	expect(shown()).toEqual(['live', 'watched', 'plain']);
-	expect(shown(undefined, 'away')).toEqual(['live', 'watched', 'put-away', 'plain']);
-	expect(shown('running')).toEqual(['live']);
-	expect(shown('watching')).toEqual(['watched']);
+	expect(shown()).toEqual(['live', 'watched', 'plain', 'live-unwatched', 'by-project', 'by-hand']);
+	expect(shown(undefined, 'away')).toEqual([
+		'live',
+		'watched',
+		'put-away',
+		'plain',
+		'live-unwatched',
+		'by-project',
+		'by-hand',
+	]);
+	expect(shown('running')).toEqual(['live', 'live-unwatched']);
+	expect(shown('watching')).toEqual(['watched', 'by-project', 'by-hand']);
+	expect(shown('hidden')).toEqual(['plain', 'by-project']);
 	expect(shown('archived')).toEqual(['put-away']);
 });

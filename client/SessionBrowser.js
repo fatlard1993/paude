@@ -15,6 +15,7 @@ const FILTERS = [
 	{ name: '', label: 'All' },
 	{ name: 'running', label: 'Running', title: 'Claude is running in them now' },
 	{ name: 'watching', label: 'Watching', title: 'The ones you watch, or whose project you watch' },
+	{ name: 'hidden', label: 'Hidden', title: 'Stopped and not watched for themselves: off the ship, still kept' },
 	{ name: 'archived', label: 'Archived', title: 'Put away: out of the other lists, still found by a search' },
 ];
 

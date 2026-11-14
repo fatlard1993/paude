@@ -78,6 +78,9 @@ test('a watched project watches each session it has and gains; one turned off by
 	await recordChange('new');
 	expect(activitySummary(owner, 'new', { ...running, project: 'app' })).toMatchObject({ watching: true, unseen: 1 });
 	expect(activitySummary(owner, 'new', { ...running, project: 'other' }).watching).toBe(false);
+	expect(activitySummary(owner, 'new', { ...running, project: 'app' }).watchedByHand).toBe(false);
+	await setWatching(owner, 'new', true);
+	expect(activitySummary(owner, 'new', { ...running, project: 'app' }).watchedByHand).toBe(true);
 
 	await markSeen(owner, 'new');
 	expect(activitySummary(owner, 'new', { ...running, project: 'app' }).unseen).toBe(0);
