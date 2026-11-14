@@ -238,6 +238,26 @@ const askFabled = async (id, session, reply, turns, settled, askMonitor, repoOf,
 	return answer;
 };
 
+// A fabled session's monitor asked about a turn end keep-going doesn't see, as an arcade's question is (it never
+// reaches Claude Code's Stop): `reply` what Claude ended on. Its verdict, { go, next, why }, or null for none.
+export const fabledVerdict = async (
+	id,
+	session,
+	reply,
+	{
+		turnsOf = (sessionId, cwd) => sessionTurns(sessionId, cwd, { whole: true }),
+		decisionsOf = (sessionId, cwd) => sessionDecisions(sessionId, cwd, { onlyRead: true, whole: true }),
+		askMonitor = askFabledMonitor,
+		repoOf = repoStateOf,
+		forget = forgetMonitor,
+	} = {},
+) => {
+	const turns = await turnsOf(id, session.cwd);
+	const settled = await settledIn(id, session.cwd, turns, decisionsOf);
+
+	return jsonIn(await askFabled(id, session, reply, turns, settled, askMonitor, repoOf, forget));
+};
+
 // The latest turn end each session's keep-going is answering
 const turnEnds = new Map();
 

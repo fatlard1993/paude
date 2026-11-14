@@ -1,8 +1,8 @@
 import askHaiku, { jsonIn } from './haiku';
 import { waitingToAsk } from './claudeInbox';
 import { noteCrew } from './crew';
-import { goingOn } from './keepWarm';
-import { MOST_NUDGES } from './keepGoing';
+import { fabledOn, goingOn } from './keepWarm';
+import { MOST_NUDGES, fabledVerdict } from './keepGoing';
 import { runningSession } from './sessions/running';
 
 // Keeping an arcade going while its people are away. An arcade's turn ends at the question Claude asks, never at an
@@ -43,6 +43,29 @@ export const pickPrompt = ({ question, options }) =>
 		'Reply with only a JSON object: {"pick": the number of the choice, or 0 when none should be picked for them, "why": "one plain sentence"}.',
 	].join('\n');
 
+// The question as a fabled session's monitor is asked it: the turn's end, to answer as the player would. It knows the
+// whole run (what they loved, typed past and complained of), so it may answer none of the choices.
+export const questionForMonitor = ({ question, options }) =>
+	[
+		`Claude ended its turn in the arcade asking the player: ${question}`,
+		...options.map(
+			(option, index) =>
+				`${index + 1}. ${option.label}${option.description ? `: ${option.description.slice(0, DESCRIPTION_CHARACTERS)}` : ''}`,
+		),
+		'',
+		'The player is away and wants the building to carry on. Answer for them as they would, with the words to answer in "next": one of the choices by its label, or, when none is what they\'d want (a complaint of theirs still standing, a choice passed over again and again, work you found unchecked or half done), what to do instead. Say go false when only they can answer (a name, a big change of direction, anything that spends money).',
+	].join('\n');
+
+// A fabled session's answer: its monitor's, or null when it says to wait for them or gives no verdict
+const monitorAnswer = async (id, session, asked, verdictOf) => {
+	const verdict = await verdictOf(id, session, questionForMonitor(asked)).catch(() => null);
+	const next = typeof verdict?.next === 'string' ? verdict.next.trim() : '';
+
+	if (!verdict || verdict.go === false || !next) return null;
+
+	return { words: `${PICKED_MARK}, by its steward: ${next} ${KEEP_HOUSE}`, why: verdict.why ?? 'the monitor said so' };
+};
+
 // What to answer: a housekeeping pass when it's due, else the choice Haiku picks (the first when it can't say), or null
 // when none should be picked for them
 export const answerFor = async (asked, run, ask = prompt => askHaiku(prompt, 'keeping an arcade going')) => {
@@ -74,7 +97,13 @@ const askedOf = input => {
 export const keepArcadeGoing = async (
 	id,
 	input,
-	{ sessionOf = runningSession, ask, pause = () => Bun.sleep(LOOK_EVERY_MS), waitMs = ANSWER_AFTER_MS } = {},
+	{
+		sessionOf = runningSession,
+		ask,
+		verdictOf = fabledVerdict,
+		pause = () => Bun.sleep(LOOK_EVERY_MS),
+		waitMs = ANSWER_AFTER_MS,
+	} = {},
 ) => {
 	const asked = askedOf(input);
 
@@ -97,7 +126,8 @@ export const keepArcadeGoing = async (
 	for (waited = 0; showing() && waited < waitMs; waited += LOOK_EVERY_MS) await pause();
 	if (!goingOn(id) || !showing() || waitingToAsk(id)) return false;
 
-	const answer = await answerFor(asked, run, ask);
+	// Fabled, its monitor answers, and keeps house in the quiet itself (steward.js) rather than every few answers
+	const answer = fabledOn(id) ? await monitorAnswer(id, session, asked, verdictOf) : await answerFor(asked, run, ask);
 
 	if (!answer) {
 		console.log(`Keep going ${id}: none of the arcade's choices is one to pick for them`);
