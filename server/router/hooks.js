@@ -20,7 +20,7 @@ import { noteEmpty } from '../fuel';
 import { PROPOSING_TOOLS, trackProposals } from '../sessions/proposals';
 import { runningSession } from '../sessions/running';
 import { noteHook, notePrompt, noteTool, noteTurnDone, peopleOf } from '../universe';
-import { isArcadeSession, snapshotTurn } from '../arcade';
+import { isArcadeSession, noteTurnEnd, snapshotTurn } from '../arcade';
 import { forgetPresence, presenceNote } from '../arcadePresence';
 
 // The checks a project runs after each of Claude's turns, when the turn edited something: the problems they find
@@ -142,6 +142,7 @@ const hooksRoutes = async request => {
 
 		if (await isArcadeSession(id, cwd)) {
 			await snapshotTurn(id, cwd).catch(error => console.error('The arcade snapshot failed:', error));
+			await noteTurnEnd(id, cwd).catch(() => {});
 			await recordChange(id);
 			keepServing(id, cwd).catch(error => console.error("The arcade's server could not be started:", error));
 		}

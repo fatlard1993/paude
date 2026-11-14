@@ -12,6 +12,8 @@ import {
 	arcadeFor,
 	arcadeLaunch,
 	isArcadeSession,
+	beginRepository,
+	noteTurnEnd,
 	acceptTrust,
 	adoptedInstructions,
 	arcadeInstructions,
@@ -385,7 +387,23 @@ describe('snapshotTurn and undoLastTurn', () => {
 
 		expect(await undoLastTurn('s1', game)).toEqual({ undone: 'a change' });
 		expect(sh(game, 'cat Game.js')).toBe('export default 1;');
-		expect(sh(game, 'git log --format=%s -1')).toMatch(/^Revert "turn: a change"/);
+		expect(sh(game, 'git log --format=%s -1')).toBe('Put back: a change');
+	});
+
+	test('a turn Claude committed itself is put back whole, all its commits in one', async () => {
+		await noteTurnEnd('s2', game);
+		await writeFile(join(game, 'Game.js'), 'export default 3;\n');
+		sh(game, 'git -c user.name=c -c user.email=c@x commit -qam "game: three"');
+		await writeFile(join(game, 'More.js'), 'export default 4;\n');
+		sh(game, 'git add -A && git -c user.name=c -c user.email=c@x commit -qm "game: more"');
+		expect(await snapshotTurn('s2', game)).toBeNull();
+		await noteTurnEnd('s2', game);
+
+		expect(await undoLastTurn('s2', game)).toEqual({ undone: 'game: three' });
+		expect(sh(game, 'cat Game.js')).toBe('export default 1;');
+		expect(sh(game, 'ls')).not.toContain('More.js');
+		expect(sh(game, 'git log --format=%s -1')).toBe('Put back: game: three');
+		await expect(undoLastTurn('s2', game)).rejects.toThrow('nothing');
 	});
 
 	test('nothing to put back when the newest commit is not a snapshot', async () => {
@@ -542,5 +560,18 @@ describe('icons', () => {
 		expect(rules(false)).toContain('16 by 16');
 		expect(rules(true)).toContain('draw it again to match');
 		expect(rules(null)).not.toContain('## Its icon');
+	});
+});
+
+describe('beginRepository', () => {
+	test('a folder in no repository becomes one, its files its first commit and its dependencies ignored; one in a repository is left be', async () => {
+		const folder = await mkdtemp(join(tmpdir(), 'unrepo-'));
+
+		await writeFile(join(folder, 'notes.md'), 'hi\n');
+		expect(await beginRepository(folder)).toBe(true);
+		expect(sh(folder, 'git log --format=%s')).toBe('As it was when it came into the arcade');
+		expect(sh(folder, 'git ls-files')).toBe('.gitignore\nnotes.md');
+		expect(await beginRepository(folder)).toBe(false);
+		await rm(folder, { recursive: true, force: true });
 	});
 });

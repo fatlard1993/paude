@@ -640,6 +640,8 @@ export const arcadeLaunch = async (id, cwd) => {
 	if (marker) return marker.adopted ? { settings: claudeSettings } : {};
 	if (!mode?.on) return null;
 
+	await beginRepository(cwd).catch(error => console.error('A repository could not be begun:', error));
+
 	const devServer = Boolean((await readJsonFile(join(cwd, 'package.json'), null).catch(() => null))?.scripts?.dev);
 	// Nothing but dotfiles: a project begun from nothing, not one to read before changing
 	const empty = !(await readdir(cwd).catch(() => [])).some(name => !name.startsWith('.'));
@@ -844,6 +846,7 @@ export const adoptArcade = async (cwd, { player, reading }) => {
 		made: new Date().toISOString(),
 	};
 
+	await beginRepository(cwd);
 	await excludeOurs(cwd);
 	await writeJsonFile(join(cwd, MARKER), () => marker);
 	arcadeKnown.delete(cwd);
@@ -905,6 +908,21 @@ const gitOut = async (folder, args) => {
 
 const asPaude = ['-c', 'user.name=paude', '-c', 'user.email=paude@localhost'];
 
+// Put it back needs history to put back to: a folder in no repository is made one when it comes into the arcade, its
+// files as they were then its first commit (dependencies and secrets ignored when it says nothing of its own). One
+// inside a repository already is left as it is. Whether one was begun.
+const STARTING_IGNORES = 'node_modules/\n.env\n.env.*\n';
+
+export const beginRepository = async cwd => {
+	if ((await gitOut(cwd, ['rev-parse', '--git-dir'])).ok) return false;
+	if (!(await gitOut(cwd, ['init', '-q'])).ok) return false;
+	if (!(await exists(join(cwd, '.gitignore')))) await writeFile(join(cwd, '.gitignore'), STARTING_IGNORES);
+	await gitOut(cwd, ['add', '-A']);
+	await gitOut(cwd, [...asPaude, 'commit', '-q', '--allow-empty', '-m', 'As it was when it came into the arcade']);
+
+	return true;
+};
+
 // After each of Claude's turns in an arcade, what the turn left in the game is committed as one snapshot named for
 // what was asked, so "put it back" has something to put back and the game's history reads as what was
 // asked for. A turn Claude committed itself, or that changed nothing, leaves no snapshot. Resolves to the subject,
@@ -930,27 +948,66 @@ export const snapshotTurn = async (sessionId, cwd) => {
 	return committed.ok ? subject : null;
 };
 
-// The last snapshot undone: the game goes back to how it was before that turn, as a new commit, so nothing is lost
-// and it can be put forward again by hand. Refused while Claude is working (its edits would land on the revert) and
-// when the newest commit isn't a snapshot (Claude's own commit, or the scaffold's first). { undone } or throws.
+// Where each arcade turn left the repository, per session: the commit before the last turn and the one it ended on,
+// so Put it back undoes the whole turn, a snapshot of paude's or commits Claude made itself (a person's own rules
+// may have it commit every turn). Kept across hot reloads; a server restarted falls back to the newest snapshot alone.
+const turnEnds = (globalThis.paudeArcadeTurnEnds ??= new Map());
+
+export const noteTurnEnd = async (sessionId, cwd) => {
+	const head = await gitOut(cwd, ['rev-parse', 'HEAD']);
+
+	if (!head.ok) return;
+
+	const ends = turnEnds.get(sessionId);
+
+	if (ends?.at(-1) !== head.out) turnEnds.set(sessionId, [ends?.at(-1) ?? null, head.out]);
+};
+
+// What Put it back would undo: { from, to, name } for the last turn's commits (from exclusive), or null
+const lastTurn = async (sessionId, cwd) => {
+	const head = await gitOut(cwd, ['rev-parse', 'HEAD']);
+	const [from, to] = turnEnds.get(sessionId) ?? [];
+
+	if (head.ok && from && to === head.out) {
+		const subjects = (await gitOut(cwd, ['log', '--format=%s', `${from}..${to}`])).out.split('\n').filter(Boolean);
+		const snapshot = subjects.find(subject => subject.startsWith(SNAPSHOT));
+
+		if (subjects.length) return { from, to, name: snapshot ? snapshot.slice(SNAPSHOT.length) : subjects.at(-1) };
+	}
+
+	const newest = await gitOut(cwd, ['log', '-1', '--format=%s']);
+
+	return newest.ok && newest.out.startsWith(SNAPSHOT)
+		? { from: 'HEAD~1', to: 'HEAD', name: newest.out.slice(SNAPSHOT.length) }
+		: null;
+};
+
+// The last turn undone: the game goes back to how it was before that turn, as one new commit, so nothing is lost and
+// it can be put forward again by hand. Refused while Claude is working (its edits would land on the revert) and when
+// there's no turn to undo (the scaffold's first commit, or a turn already put back). { undone } or throws.
 export const undoLastTurn = async (sessionId, cwd) => {
 	if (!(await isArcadeSession(sessionId, cwd))) throw new ArcadeError('This session is not in the arcade.');
 	if (statusOf(sessionId) === 'working') throw new ArcadeError('Claude is still working. Wait for it to finish.');
 
-	const head = await gitOut(cwd, ['log', '-1', '--format=%s']);
+	const turn = await lastTurn(sessionId, cwd);
 
-	if (!head.ok || !head.out.startsWith(SNAPSHOT)) throw new ArcadeError("There is nothing of Claude's to put back.");
+	if (!turn) throw new ArcadeError("There is nothing of Claude's to put back.");
 	if ((await gitOut(cwd, ['status', '--porcelain'])).out)
 		throw new ArcadeError('Something is half changed. Try again in a moment.');
 
-	const reverted = await gitOut(cwd, [...asPaude, 'revert', '--no-edit', 'HEAD']);
+	const reverted = await gitOut(cwd, ['revert', '--no-commit', `${turn.from}..${turn.to}`]);
+	const committed =
+		reverted.ok && (await gitOut(cwd, [...asPaude, 'commit', '-q', '--allow-empty', '-m', `Put back: ${turn.name}`]));
 
-	if (!reverted.ok) {
+	if (!committed?.ok) {
 		await gitOut(cwd, ['revert', '--abort']);
 		throw new ArcadeError('It could not be put back cleanly.');
 	}
 
-	const undone = head.out.slice(SNAPSHOT.length);
+	const undone = turn.name;
+
+	// Put back once: pressed again, there's no turn before it to undo
+	turnEnds.delete(sessionId);
 
 	// What was put back is put back in the house's copy too
 	keepHosted(cwd);

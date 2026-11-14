@@ -91,9 +91,7 @@ test(
 			await page.click('.change-button');
 			await page.click('.feed .card.you.chosen button');
 			await pressChoice('Yes, pick again');
-			await eventually(async () =>
-				expect(sh(server.project, 'git log --format=%s -1')).toMatch(/^Revert "turn: 🐸 A frog"/),
-			);
+			await eventually(async () => expect(sh(server.project, 'git log --format=%s -1')).toBe('Put back: 🐸 A frog'));
 			expect(sh(server.project, 'git show HEAD:Game.js').trim()).toBe('export default 1;');
 			await eventually(async () =>
 				expect(
