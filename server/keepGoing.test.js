@@ -39,6 +39,7 @@ const ids = [
 	'room',
 	'resumed',
 	'resumed-fabled',
+	'decides',
 ];
 
 afterAll(() => Promise.all(ids.map(id => keepWarm(id, 0))));
@@ -690,4 +691,40 @@ test("a compaction's summary reaches the monitor as a compaction, with what Clau
 	);
 	expect(prompts[0]).not.toContain('keep-warm');
 	await keepWarm('summarized', 0);
+});
+
+test("a fabled session's monitor decides a question that's no real choice: Claude is told to go ahead with it, and the person sees it in the chat", async () => {
+	const { mkdtemp, rm } = await import('fs/promises');
+	const { tmpdir } = await import('os');
+	const { join } = await import('path');
+	const { initNotes, getNotes } = await import('./notes');
+	const data = await mkdtemp(join(tmpdir(), 'decides-'));
+	const session = { ...fakeSession(), broadcast: () => {} };
+	const askMonitor = async () =>
+		verdict(
+			'{"go": true, "next": "Lock per user.", "decided": "Per user over per session: a new session per guess would reset a per-session count."}',
+		);
+
+	await initNotes(data);
+	await keepWarm('decides', 24, Date.now(), { fabled: true });
+	expect(
+		await keepGoing('decides', 'Per user or per session?', {
+			...going(session, [{ ...turn('lock accounts'), id: 't1' }]),
+			askMonitor,
+			ask: says(''),
+		}),
+	).toBe(true);
+	expect(session.typed[0]).toContain(
+		'found the question you left for them no real choice and decided it: Per user over per session',
+	);
+	expect((await getNotes('decides')).chat.at(-1)).toMatchObject({
+		author: 'Steward',
+		text: expect.stringContaining('Decided while you were away: Per user over per session'),
+	});
+	await rm(data, { recursive: true, force: true });
+});
+
+test("Haiku decides nothing for the person: only a fabled session's monitor holds the vision to", () => {
+	expect(nudgeWith('Lock per user.', { decided: 'Per user.' })).not.toContain('decided it');
+	expect(nudgeWith('Lock per user.', { fabled: true, decided: 'Per user.' })).toContain('decided it: Per user.');
 });

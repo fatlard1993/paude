@@ -25,10 +25,14 @@ const NUDGE_MARK = 'keep-going nudge from paude, not the person:';
 // A suggestion is a sentence or two; one that runs on is cut, since it's typed into Claude's prompt
 const NEXT_CHARACTERS = 800;
 
-export const nudgeWith = (next, { fabled = false } = {}) =>
+// `decided`, a fabled session's: a question left for the person that its monitor found no real choice and decided
+export const nudgeWith = (next, { fabled = false, decided = '' } = {}) =>
 	[
 		NUDGE_MARK,
 		'carry on toward what the person asked for.',
+		fabled &&
+			decided?.trim() &&
+			`Your monitor, which holds the vision of this work, found the question you left for them no real choice and decided it: ${decided.trim().slice(0, NEXT_CHARACTERS)} Go ahead with that; it's recorded for them to see, and they can turn it around when they're back.`,
 		next?.trim() &&
 			(fabled
 				? `A suggestion from a monitor that has followed this run and read the repository; weigh it against what you know before following it: ${next.trim().slice(0, NEXT_CHARACTERS)}`

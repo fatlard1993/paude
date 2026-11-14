@@ -24,6 +24,7 @@ import {
 	nudgeWith,
 	typeWhenIdle,
 } from './keepWarm';
+import { addChat } from './notes';
 import { runningSession } from './sessions/running';
 import { sessionTurns, startAndEnd } from './timeline';
 
@@ -258,6 +259,16 @@ export const fabledVerdict = async (
 	return jsonIn(await askFabled(id, session, reply, turns, settled, askMonitor, repoOf, forget));
 };
 
+// What a fabled session's monitor decided for the person, said in the session's chat as the Steward's so they see it
+// when they're back, and can turn it around
+const tellDecided = async (id, decided) => {
+	const update = await addChat(id, 'Steward', `Decided while you were away: ${decided}`, { authorId: 'steward' }).catch(
+		() => null,
+	);
+
+	if (update) runningSession(id)?.broadcast(update);
+};
+
 // Why each session's keep-going last decided to wait for the person, until it next decides to go on
 const waiting = new Map();
 
@@ -382,11 +393,14 @@ const answerTurnEnd = async (
 		out = look();
 	}
 	if (out === FINISHING) out = `Claude hadn't finished its turn after ${IDLE_WAIT_MS / 60_000} minutes`;
-	if (!out && !typeWhenIdle(id, session, nudgeWith(next, { fabled })))
+	const decided = fabled && typeof verdict?.decided === 'string' ? verdict.decided.trim() : '';
+
+	if (!out && !typeWhenIdle(id, session, nudgeWith(next, { fabled, decided })))
 		out = 'Claude is busy, asking, or someone is typing';
 
 	console.log(`Keep ${kept} ${id}: ${out ? `not sent, ${out}:` : 'on,'} ${next || 'toward the goal'} (${why})`);
 	if (out) return false;
+	if (decided) await tellDecided(id, decided);
 	noteCrew('keeping a session going');
 
 	return true;
