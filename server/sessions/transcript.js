@@ -38,21 +38,25 @@ const continuedIn = async (id, file) => {
 
 	if (known?.next || known?.size === file.size) return known.next;
 
-	const tail = await file.slice(Math.max(0, file.size - CONTINUED_TAIL_BYTES)).text();
-	const next =
-		parsed(tail).findLast(line => line.type === 'continued-in' && line.sessionId === id)?.continuedInSessionId ?? null;
+	const lines = parsed(await file.slice(Math.max(0, file.size - CONTINUED_TAIL_BYTES)).text());
+	const moved = lines.findLastIndex(line => line.type === 'continued-in' && line.sessionId === id);
+	// Only where it ended: a conversation taken up again under its old id afterwards went on here, not there
+	const wentOnHere = lines.slice(moved + 1).some(line => ['user', 'assistant'].includes(line.type));
+	const next = moved !== -1 && !wentOnHere ? lines[moved].continuedInSessionId : null;
 
 	continuations.set(id, { size: file.size, next });
 
 	return next;
 };
 
-// A session's transcript, wherever Claude has carried it on to since: paude keeps the id it started the session as
-export const transcriptFile = async (id, cwd) => {
+// Where a session is now: the id Claude has carried it on under and that transcript, following each move on from the
+// id paude started it as. { id, file }, file null when there's no transcript yet.
+const latest = async (id, cwd) => {
 	const seen = new Set([id]);
 	let file = await ownFile(id, cwd);
+	let at = id;
 
-	for (let at = id; file;) {
+	while (file) {
 		const next = await continuedIn(at, file);
 		const onward = next && !seen.has(next) && (await ownFile(next, cwd));
 
@@ -62,8 +66,14 @@ export const transcriptFile = async (id, cwd) => {
 		[at, file] = [next, onward];
 	}
 
-	return file;
+	return { id: at, file };
 };
+
+// A session's transcript, wherever Claude has carried it on to since: paude keeps the id it started the session as
+export const transcriptFile = async (id, cwd) => (await latest(id, cwd)).file;
+
+// The id to take a session back up under: the one Claude last carried it on in, so a resume has every turn since
+export const resumeId = async (id, cwd) => (await latest(id, cwd)).id;
 
 // The session a transcript carries on, of those whose transcripts have been read; undefined for none
 export const carriesOn = id => continuedFrom.get(id);

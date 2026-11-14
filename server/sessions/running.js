@@ -9,7 +9,7 @@ import { modelOf } from '../sessionModels';
 import { forgetLimit } from '../usageLimit';
 import { heldSessions, isHeld } from './holder';
 import PtySession from './PtySession';
-import { folderOf } from './transcript';
+import { folderOf, resumeId } from './transcript';
 import { forgetProposals } from './proposals';
 
 const running = new Map();
@@ -130,6 +130,9 @@ export const openSession = async id => {
 		? null
 		: await import('../arcade').then(({ arcadeLaunch }) => arcadeLaunch(id, cwd)).catch(() => null);
 
+	// Under the id Claude last carried it on in: moved to the background, a conversation goes on under a new one
+	const resume = isHeld(id) ? false : await resumeId(id, cwd);
+
 	try {
 		// A concurrent attach may have started it while this one awaited
 		const session =
@@ -137,7 +140,7 @@ export const openSession = async id => {
 			launch({
 				id,
 				cwd,
-				resume: !isHeld(id),
+				resume,
 				adopt: isHeld(id),
 				title: savedTitle(info),
 				model: modelOf(id),

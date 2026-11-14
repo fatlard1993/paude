@@ -3,7 +3,7 @@ import os from 'os';
 import { join } from 'path';
 import { beforeAll, expect, test } from 'bun:test';
 
-import { bornOf, carriesOn, folderOf, transcriptFile, transcriptLines } from './transcript';
+import { bornOf, carriesOn, folderOf, resumeId, transcriptFile, transcriptLines } from './transcript';
 
 const ID = '74cddd99-0000-4000-8000-000000000000';
 const BARE = '74cddd99-0000-4000-8000-000000000001';
@@ -78,6 +78,29 @@ test("a session's birth is the time on its transcript's first line, and unknown 
 		line({ type: 'summary' }) + line({ type: 'user', timestamp: '2026-11-06T18:00:00.000Z' }),
 	);
 	expect(await bornOf(id, '/work')).toBe(Date.parse('2026-11-06T18:00:00.000Z'));
+});
+
+test('a session is taken back up under where it went on, unless it went on under its old id after moving', async () => {
+	const folder = join(process.env.CLAUDE_CONFIG_DIR, 'projects', '-work');
+	const line = value => `${JSON.stringify(value)}\n`;
+	const [moved, onward, stayed, fork] = ['d0', 'd1', 'd2', 'd3'].map(id => `${id}000000-0000-4000-8000-000000000000`);
+
+	await mkdir(folder, { recursive: true });
+	await Bun.write(
+		join(folder, `${moved}.jsonl`),
+		line({ type: 'continued-in', sessionId: moved, continuedInSessionId: onward }),
+	);
+	await Bun.write(join(folder, `${onward}.jsonl`), line({ type: 'user', sessionId: onward }));
+	expect(await resumeId(moved, '/work')).toBe(onward);
+
+	await Bun.write(
+		join(folder, `${stayed}.jsonl`),
+		line({ type: 'continued-in', sessionId: stayed, continuedInSessionId: fork }) +
+			line({ type: 'assistant', sessionId: stayed }),
+	);
+	await Bun.write(join(folder, `${fork}.jsonl`), line({ type: 'user', sessionId: fork }));
+	expect(await resumeId(stayed, '/work')).toBe(stayed);
+	expect((await transcriptFile(stayed, '/work')).name).toEndWith(`${stayed}.jsonl`);
 });
 
 test('a continuation whose transcript is missing leaves the session on its own', async () => {

@@ -114,7 +114,9 @@ export default class PtySession {
 			...(settings ? ['--settings', settings] : []),
 			...(arcade?.systemPrompt ? ['--append-system-prompt', arcade.systemPrompt] : []),
 			...(model ? ['--model', model] : []),
-			...(resume ? ['--resume', id] : ['--session-id', id, ...(prompt ? ['--', prompt] : [])]),
+			...(resume
+				? ['--resume', resume === true ? id : resume]
+				: ['--session-id', id, ...(prompt ? ['--', prompt] : [])]),
 		];
 
 		const sounds = soundsAddress(id);
