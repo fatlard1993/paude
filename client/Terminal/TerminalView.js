@@ -281,6 +281,7 @@ export default class TerminalView extends View {
 			this.arcadeButton = ghostButton(header, {
 				icon: 'gamepad',
 				title: 'Arcade: the talk big and read aloud, each turn ending with choices to tap, its output beside it',
+				className: 'tool',
 				onPress: () => this.openArcade(),
 			});
 		}
