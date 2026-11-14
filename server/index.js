@@ -22,6 +22,7 @@ import { adoptHeldSessions, runningSession, setClaudePath } from './sessions/run
 import { startPreview } from './preview';
 import { initShares, onSharesChange, watchShares } from './shares';
 import { initSounds } from './sounds';
+import { initGameSpeech } from './gameSpeech';
 import { initSpeech } from './speech';
 import { initTasks, onRunsChange } from './tasks';
 import { initLinks } from './links';
@@ -112,6 +113,7 @@ await initMotherHub(options.data);
 import('./arcade').then(({ hostUnhosted }) => hostUnhosted()).catch(error => console.warn(error.message));
 await initSpeech(options.data);
 await initSounds(options.data);
+await initGameSpeech(options.data);
 await ensureLocalToken(options.data);
 await initServerId(options.data);
 await Bun.write(path.join(options.data, 'server.pid'), `${process.pid}\n`);

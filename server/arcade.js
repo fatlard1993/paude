@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, stat, writeFile } from 'fs/promises';
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'fs/promises';
 import { basename, join, resolve } from 'path';
 
 import pkg from '../package.json';
@@ -9,8 +9,9 @@ import { statusOf } from './activity';
 import { arcadeModeOf } from './arcadeMode';
 import { claudeSettings } from './arcadeSettings';
 import { askClaude } from './claudeInbox';
-import { listProjects, projectOf, projectPath } from './projects';
+import { knownProject, listProjects, projectOf, projectPath } from './projects';
 import { ownerName } from './serverSettings';
+import { gameSpeechAddress } from './hookSettings';
 import { sessionEnvironment } from './sessions/PtySession';
 import { voicePerforms, voiceSettings } from './speech';
 import { feedFrom } from './feed';
@@ -26,6 +27,7 @@ const RULES = '.paude-arcade.md';
 const RULES_IMPORT = `@./${RULES}`;
 const LOCAL_STUB = `${RULES_IMPORT}\n\n<!-- paude rewrites ${RULES} from ${MARKER} whenever Claude starts here. Add your own notes for Claude below. -->\n`;
 const SNAPSHOT = 'turn: ';
+export const SPEECH_FILE = '.paude-speech';
 const SNAPSHOT_WORDS = 72;
 
 // An arcade project: a game made from web-game-framework's scaffold, in a folder of its own under the projects root,
@@ -144,10 +146,10 @@ export const lookingSection = ({ thing = 'game' } = {}) => [
 const handlingSection = () => [
 	'## Handling',
 	'',
-	"- Stop a process you started by its PID (`kill $pid`, saved when you started it). `pkill -f` matches the shell running your own command and ends it (exit 144).",
-	"- Scratch files and screenshots go in your scratchpad, never `/tmp` or the project; clean up what you started before the turn ends.",
+	'- Stop a process you started by its PID (`kill $pid`, saved when you started it). `pkill -f` matches the shell running your own command and ends it (exit 144).',
+	'- Scratch files and screenshots go in your scratchpad, never `/tmp` or the project; clean up what you started before the turn ends.',
 	'- Make changes with the Edit tool, after reading the file, rather than scripted find-and-replace, which trips over tabs and quotes.',
-	"- Stay inside this project and its libraries unless they point you somewhere else, and even then read only what the job needs: never dump a file that may hold passwords, keys or recovery codes (private notes, `.env`, credentials) to find something in it; search it for the one thing instead.",
+	'- Stay inside this project and its libraries unless they point you somewhere else, and even then read only what the job needs: never dump a file that may hold passwords, keys or recovery codes (private notes, `.env`, credentials) to find something in it; search it for the one thing instead.',
 	'',
 ];
 
@@ -220,6 +222,17 @@ const soundsSection = () => [
 	'- Play it on a loop under the game, quiet beside the sounds, started on the first tap (browsers hold sound until then), and let it be turned off: `sound.music(name)` does all of that, crossfading from the track before.',
 	'',
 	'Music is dear: a game has 120 new seconds of it a day, apart from the sounds, and a track asked for again costs nothing. Make each one count, and reuse it.',
+	'',
+	"Lines spoken as the game is played (a verse a player wrote, a narrator, a name called out) are said by paude too, for the game's own server, which never holds a key: POST a line to the address in `PAUDE_SPEECH`, or, where that isn't set (the house's copy of the game), the one in the `.paude-speech` file beside it, and the answer is the MP3. Neither is there when this paude has no voice: the game plays on without speech then.",
+	'',
+	'```js',
+	"const address = process.env.PAUDE_SPEECH ?? (await Bun.file('.paude-speech').text().catch(() => '')).trim();",
+	"const mp3 = await fetch(address, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, voice }) });",
+	'```',
+	'',
+	'- "text" is at most 1000 characters; "voice" is an ElevenLabs voice id, paude\'s own voice when left out, so different characters can have different voices. "model" is optional too.',
+	"- A line said before in the same voice costs nothing; a game has 20,000 new characters a day. Never ask for, look for or use an ElevenLabs key of the game's own.",
+	"- Hand the MP3 to the page to play through the sound kit, which starts on the first tap like the rest of the game's sound.",
 	'',
 ];
 
@@ -683,9 +696,18 @@ const restartOnSave = async cwd => {
 		await writeFile(file, text.replace(HOT, 'bun --watch server.js'));
 };
 
+// Where the game's own server asks for lines said aloud, for a copy run without paude's environment (the house's,
+// run from this same folder): a file of paude's beside the game, ignored, gone when there's no voice to ask
+const writeSpeechAddress = async cwd => {
+	const address = (await voiceSettings()) ? gameSpeechAddress(knownProject(cwd), cwd) : null;
+
+	if (address) await writeFile(join(cwd, SPEECH_FILE), `${address}\n`);
+	else await rm(join(cwd, SPEECH_FILE), { force: true });
+};
+
 // paude's files in a game it made: ignored, and taken out of the repository where an older scaffold committed them
 // (they're rewritten each sitting, so every turn's snapshot would carry them), in a commit of their own
-const IGNORED = ['.claude/', 'CLAUDE.local.md', RULES];
+const IGNORED = ['.claude/', 'CLAUDE.local.md', RULES, SPEECH_FILE];
 
 const untrackOurs = async cwd => {
 	if (!(await exists(join(cwd, '.git')))) return;
@@ -757,6 +779,7 @@ export const refreshArcade = async cwd => {
 	);
 	await mkdir(join(cwd, '.claude'), { recursive: true });
 	await writeFile(join(cwd, '.claude', 'settings.json'), `${JSON.stringify(claudeSettings, null, '\t')}\n`);
+	await writeSpeechAddress(cwd);
 	await restartOnSave(cwd);
 	await untrackOurs(cwd).catch(error =>
 		console.warn(`paude's files could not be untracked in ${cwd}: ${error.message}`),

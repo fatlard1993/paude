@@ -5,6 +5,9 @@ import path from 'path';
 import readJsonFile from '../shared/readJsonFile';
 import writeJsonFile from '../shared/writeJsonFile';
 import { gamePort } from './gamePort';
+import { gameSpeechAddress } from './hookSettings';
+import { knownProject } from './projects';
+import { voiceSettings } from './speech';
 import { sessionProcesses } from './ports';
 import { sessionEnvironment } from './sessions/PtySession';
 
@@ -292,6 +295,8 @@ export const runTask = async (sessionId, cwd, taskId) => {
 	// working copy's newest page pairs it with an older server
 	const saves = arcadeGame && dataDir ? workingSaves(cwd) : null;
 	const page = arcadeGame && dataDir ? workingBuild(cwd) : null;
+	// Where the game's server asks for a line said aloud, the key kept here
+	const speech = arcadeGame && (await voiceSettings()) ? gameSpeechAddress(knownProject(cwd), cwd) : null;
 	const child = Bun.spawn(found.command, {
 		cwd,
 		env: {
@@ -299,6 +304,7 @@ export const runTask = async (sessionId, cwd, taskId) => {
 			...(port ? { PORT: String(port) } : {}),
 			...(saves ? { GAME_DATABASE: saves } : {}),
 			...(page ? { GAME_BUILD: page } : {}),
+			...(speech ? { PAUDE_SPEECH: speech } : {}),
 			PAUDE_SESSION: sessionId,
 			PAUDE_TASK: id,
 			NO_COLOR: '1',

@@ -8,6 +8,7 @@ import sharesRoutes from './shares';
 import tasksRoutes from './tasks';
 import hooksRoutes from './hooks';
 import soundsRoutes from './sounds';
+import gameSpeechRoutes from './gameSpeech';
 import sessionsRoutes from './sessions';
 
 // The page, revalidated on every load, and the built files. Forms post only here, nothing frames the page, no <base>
@@ -44,6 +45,9 @@ const router = async (request, server) => {
 	if (response) return response;
 
 	response = await soundsRoutes(request);
+	if (response) return response;
+
+	response = await gameSpeechRoutes(request);
 	if (response) return response;
 
 	response = guard(request);

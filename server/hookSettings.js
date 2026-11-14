@@ -3,6 +3,7 @@ import { join } from 'path';
 
 import { PROPOSING_TOOLS } from './sessions/proposals';
 import { soundToken } from './sounds';
+import { gameSpeechToken } from './gameSpeech';
 
 // Claude Code tells paude what it's doing through hooks added to each session it starts. They post to this server
 // with a secret, so nothing else can feed it a status.
@@ -112,3 +113,10 @@ export const hookSettings = (extra = null) => {
 		},
 	});
 };
+
+// The address an arcade game's own server asks paude to speak a line at (see router/gameSpeech.js), named by its project
+// and a token of its folder; null before the server knows where it listens
+export const gameSpeechAddress = (project, cwd) =>
+	serverUrl && project
+		? `${serverUrl}/api/game-speech/${encodeURIComponent(project)}/${gameSpeechToken(hookSecret, cwd)}`
+		: null;

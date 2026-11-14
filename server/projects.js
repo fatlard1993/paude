@@ -180,6 +180,15 @@ export const projectOf = cwd => {
 	return child && !hidden.includes(child) ? child : null;
 };
 
+// The same, or null where the projects aren't known yet (a test, or a server still starting)
+export const knownProject = cwd => {
+	try {
+		return projectOf(cwd);
+	} catch {
+		return null;
+	}
+};
+
 export class FolderError extends Error {}
 
 // There's no folder where one was asked for: the one fault of a folder that making it would mend
