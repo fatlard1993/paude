@@ -84,7 +84,7 @@ export default class Login extends View {
 	}
 
 	async login() {
-		const password = this.password.elem.value;
+		const password = this.password.options.value;
 
 		if (!password || this.busy) return;
 
@@ -97,7 +97,7 @@ export default class Login extends View {
 
 		if (response?.ok) return window.location.reload();
 
-		this.password.elem.value = '';
+		this.password.options.value = '';
 		this.message.elem.textContent =
 			response?.status === 429
 				? `Too many tries. Wait ${response.headers.get('retry-after')}s.`

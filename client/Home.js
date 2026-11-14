@@ -133,7 +133,7 @@ export default class Home extends View {
 		});
 		this.watching = new List({ appendTo: scroll });
 		this.unreachable = new List({ appendTo: scroll });
-		new SectionLabel({ appendTo: scroll, textContent: 'Sessions', style: { marginTop: theme.space.md } });
+		new SectionLabel({ appendTo: scroll, textContent: 'Sessions' });
 
 		this.fetchSessions = this.sessionsFrom([]);
 		this.adder = this.addFolderCard();
