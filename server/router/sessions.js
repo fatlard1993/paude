@@ -62,6 +62,7 @@ import { hubLink } from '../motherHub';
 import { SpeechError, hear, readAloud } from '../speech';
 import { askingAsWritten } from '../sessions/askedQuestion';
 import { runTask } from '../tasks';
+import { tidyBrief } from '../tidy';
 import { pinName, pinnedName } from '../names';
 import { may, ownsSession } from '../permissions';
 import {
@@ -991,6 +992,26 @@ const sessionsRoutes = async (request, server) => {
 		if (!(await isFolder(cwd))) return new Response('Unknown project', { status: 404 });
 
 		return Response.json({ checkouts: await checkoutsOf(cwd, runningFolders()) });
+	}
+
+	// A short-lived session that goes over the project's sessions, worktrees and branches with the owner, and cleans
+	// up what's done: deleting is the owner's, so tidying is too
+	match = requestMatch('POST', '/api/projects/:project/tidy', request);
+	if (match) {
+		if (!identity.owner) return new Response('Only the owner tidies a project', { status: 403 });
+
+		const cwd = projectPath(match.project);
+
+		if (!(await isFolder(cwd))) return new Response('Unknown project', { status: 404 });
+
+		const brief = tidyBrief({
+			project: match.project,
+			cwd,
+			sessions: await listProjectSessions(cwd, identity),
+			checkouts: await checkoutsOf(cwd, runningFolders()),
+		});
+
+		return Response.json({ id: await startWith(cwd, brief, { mode: 'brief', identity, project: match.project }) });
 	}
 
 	// `checkout` is { join: name } for a worktree in the project, { create: name } for a new one (with `from`, on

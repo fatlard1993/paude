@@ -119,6 +119,9 @@ export const createSession = async (project, text, checkout, mode, model, arcade
 		invalidates: [['sessions', project]],
 	});
 
+export const tidyProject = async project =>
+	await POST('/api/projects/:project/tidy', { urlParameters: { project }, invalidates: [['sessions', project]] });
+
 export const getSession = async id => await GET('/api/sessions/:id', { urlParameters: { id }, invalidateAfter: 0 });
 
 export const getInvites = async sessionId =>

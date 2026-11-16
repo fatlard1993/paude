@@ -16,6 +16,7 @@ import {
 	markProjectLink,
 	setProjectWatching,
 	setProjectArcade,
+	tidyProject,
 } from './api';
 import confirmDialog from './confirmDialog';
 import { element } from './dom';
@@ -82,6 +83,12 @@ export default class Project extends View {
 				icon: 'gamepad',
 				title: 'Whether sessions here start in the arcade',
 				onPress: () => this.openArcadeDefault(),
+			});
+			ghostButton(this.bar, {
+				icon: 'broom',
+				title:
+					"Tidy up: Claude goes over the sessions, worktrees and branches here, and cleans up what's done once you agree",
+				onPress: () => this.tidy(),
 			});
 		}
 		// The universe, looking at this project's machine
@@ -674,6 +681,18 @@ export default class Project extends View {
 		if (started.error) return new Notify({ intent: 'danger', content: started.error, timeout: 10_000 });
 		this.sent();
 		window.location.hash = `#/sessions/${started.id}`;
+	}
+
+	async tidy() {
+		const { body, response } = await tidyProject(this.options.project);
+
+		if (!response?.ok)
+			return new Notify({
+				intent: 'danger',
+				content: `Could not start the tidy-up: the server answered ${response?.status}.`,
+				timeout: 10_000,
+			});
+		window.location.hash = `#/sessions/${body.id}`;
 	}
 
 	// how: { mode, model, arcade }, as createSession takes them

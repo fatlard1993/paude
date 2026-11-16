@@ -38,6 +38,7 @@ const KEY_HINTS = 3;
 const USAGE = `paude                    pick a session from this machine and every server you're logged into
 paude add [folder...]    make folders (default: this one) projects on this machine's paude; ~/mods/* adds each
 paude remove <name...>   take projects off the list (nothing on disk changes)
+paude delete <id...>     end sessions on this machine's paude and delete them for good
 paude web [url]          open a paude in the browser, already logged in (default: this machine's)
 paude login <url>        log in to a paude server (e.g. https://paude.example.com); --name <name> shows it by that name
 paude login <invite>     join with an invite link someone sent you
@@ -242,6 +243,39 @@ const remove = async names => {
 	}
 };
 
+// For good: Claude ended, its transcript, notes and shares gone, and a worktree paude made for it with them, once
+// clean and no other session uses it. Never the session it's run from, which would end mid-turn.
+const deleteSessions = async ids => {
+	if (!ids.length) return console.log('Which session? paude delete <id>...');
+
+	const server = await ensureLocalServer();
+
+	for (const id of ids) {
+		if (id === process.env.PAUDE_SESSION) {
+			console.log(`${id} is the session this runs in; it isn't deleted.`);
+			continue;
+		}
+
+		const response = await fetch(`${server.url}/api/sessions/${encodeURIComponent(id)}`, {
+			method: 'DELETE',
+			headers: { authorization: `Bearer ${server.token}` },
+		});
+
+		if (response.status === 404) console.log(`${id} isn't a session here.`);
+		else if (!response.ok) throw new Error(`This machine's paude answered ${response.status}.`);
+		else {
+			const released = response.status === 204 ? null : await response.json();
+			const worktree =
+				released &&
+				(released.removed
+					? ` Its worktree ${released.worktree} went with it.`
+					: ` Its worktree ${released.worktree} stays: ${released.why}`);
+
+			console.log(`${id} is deleted.${worktree || ''}`);
+		}
+	}
+};
+
 const serve = async args => {
 	const entry = path.join(import.meta.dir, '..', 'server', 'index.js');
 	const child = Bun.spawn(['bun', entry, ...args], {
@@ -297,6 +331,7 @@ try {
 	else if (command === 'tailscale') await tailscale(process.argv.slice(3));
 	else if (command === 'add') await add(process.argv.slice(3));
 	else if (command === 'remove') await remove(process.argv.slice(3));
+	else if (command === 'delete') await deleteSessions(process.argv.slice(3));
 	else if (command === 'serve') await serve(process.argv.slice(3));
 	else if (command === 'web') await web(target);
 	else if (command === 'logout') await logout(target);
