@@ -3,9 +3,9 @@ import { PALETTE, plating } from './art';
 import { noise, pixelEllipse, rect } from './station';
 
 // A project's machine: modules for its folders on a plinth, ports down each side for the workers jacked into it. It
-// runs while worked on, idles lit low and still while its sessions wait, is dark while nobody is at it, and flashes
-// amber along its top while one of its sessions asks you something. Nothing on it moves but for work or a question;
-// only the ship's own core idles alive.
+// runs while worked on, idles lit low and still while its sessions wait, is dark while nobody is at it, and shows a
+// steady amber along its top while one of its sessions asks you something. Nothing on it moves but for work; only the
+// ship's own core idles alive.
 export const FORMS = ['core', 'coils', 'lattice', 'turbine'];
 
 // What form a part takes from the language its folder is in
@@ -447,7 +447,7 @@ export const drawExterior = (
 ) => {
 	const glow = glowOf(hue, state, time);
 	const trim = hue === null || hue === undefined ? PALETTE.l : hsl(hue, 45, 52);
-	const tip = (asking && (Math.floor(time * 3) % 2 ? PALETTE.y : PALETTE.Y)) || (state === 'idle' ? PALETTE.d : glow);
+	const tip = (asking && PALETTE.Y) || (state === 'idle' ? PALETTE.d : glow);
 	const years = history?.since ? (Date.now() - history.since) / (365 * DAY_MS) : 1;
 	const plating = hullPlating(ship, out < 0 ? 'back' : 'belly');
 	const skin = (x, from, width, rows, fill) =>
@@ -586,7 +586,7 @@ export const drawHousing = (
 		rect(ctx, body.x, Math.round(floor - 3 - ((time * 8) % Math.max(1, h - 3))), body.w, 1, color);
 		ctx.globalAlpha = 1;
 	}
-	if (asking) rect(ctx, body.x, top, body.w, 2, Math.floor(time * 3) % 2 ? PALETTE.y : PALETTE.Y);
+	if (asking) rect(ctx, body.x, top, body.w, 2, PALETTE.Y);
 	health(ctx, { x: body.x + body.w - 5, y: top }, { verdict, tested, time, seed, working: state === 'working' });
 	pending(ctx, { from, to, top, floor, body }, { changed, pressure, pullRequest, time, working: state === 'working' });
 

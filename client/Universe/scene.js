@@ -3433,11 +3433,10 @@ export default class Ship {
 			const sessions = bay.sessions.map(key => this.workers.get(key)?.session).filter(Boolean);
 			const busy = bay.sessions.some(working);
 			const asking = sessions.some(session => this.needs(session) === 'asking');
-			const pulse = 0.75 + 0.25 * Math.sin(this.time * 4);
 			const room = this.layout.bays?.find(({ name }) => name === bay.name);
 
-			// A project's machine lights itself: a glow from each housing, its color while it runs, amber while one asks,
-			// low while it waits; no lamps over a floor that isn't there
+			// A project's machine lights itself: a glow from each housing, its color while it runs, a steady amber while one
+			// asks, low while it waits; no lamps over a floor that isn't there
 			if (room?.parts) {
 				room.parts.forEach(part => {
 					const housing = housingOf(part);
@@ -3447,13 +3446,12 @@ export default class Ship {
 						...at,
 						r: 34,
 						color: (asking && [255, 176, 70]) || (busy && lightOf(bay.hue ?? 200, 60, 66)) || [110, 130, 175],
-						strength: (asking && pulse) || (busy && 0.9) || (sessions.length ? 0.45 : 0.25),
-						moving: asking,
+						strength: (asking && 0.85) || (busy && 0.9) || (sessions.length ? 0.45 : 0.25),
 					});
 				});
 				continue;
 			}
-			if (asking) rooms.push({ ...box(bay, [255, 176, 70], pulse), moving: true });
+			if (asking) rooms.push(box(bay, [255, 176, 70], 0.85));
 			else if (busy) rooms.push(box(bay, tinted(bay.hue), 1));
 			else rooms.push(box(bay, IDLE, sessions.length ? 0.4 : 0.2));
 		}
