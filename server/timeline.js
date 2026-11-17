@@ -2,7 +2,7 @@ import { isAbsolute, relative } from 'path';
 
 import { commandEditsOf } from './commandEdits';
 import { promptText } from './sessions/history';
-import { transcriptFile } from './sessions/transcript';
+import { readGrown, transcriptFile } from './sessions/transcript';
 
 // What Claude did, turn by turn, from its transcript: each prompt, then the tools it used in order (what each was
 // about, whether it worked, a little of what it said back), how long the turn took, and how full the context was.
@@ -182,11 +182,8 @@ export const timelineFrom = (lines, cwd) => {
 	return state.turns;
 };
 
-// A whole transcript is read once, then only what it has grown by, a slice at a time: one can run to hundreds of
-// megabytes, mostly screenshots, and a session's are read again every few seconds while it works
-const WHOLE_SLICE_BYTES = 8 * 1024 * 1024;
-const NEWLINE = 0x0a;
-const decoder = new TextDecoder();
+// A whole transcript is read once, then only what it has grown by: one can run to hundreds of megabytes, mostly
+// screenshots, and a session's are read again every few seconds while it works
 const wholes = new Map();
 // A session not looked at for this long is let go, its turns read again from the top if it's looked at again
 export const WHOLE_IDLE_MS = 15 * 60_000;
@@ -206,23 +203,6 @@ const parseLines = lines =>
 		}
 	});
 
-const catchUp = async (read, file, cwd) => {
-	// Up to the last whole line: the rest is still being written, or cut at the slice's end, perhaps mid-character
-	for (let size = WHOLE_SLICE_BYTES; read.offset < file.size;) {
-		const bytes = new Uint8Array(await file.slice(read.offset, read.offset + size).arrayBuffer());
-		const through = bytes.lastIndexOf(NEWLINE) + 1;
-
-		if (!through && read.offset + size >= file.size) return;
-		// One line longer than the slice
-		if (!through) size *= 2;
-		else {
-			size = WHOLE_SLICE_BYTES;
-			read.offset += through;
-			foldLines(read.state, parseLines(decoder.decode(bytes.subarray(0, through)).split('\n')), cwd);
-		}
-	}
-};
-
 const wholeTurns = async (id, file, cwd, now) => {
 	letGoIdle(now);
 
@@ -232,11 +212,7 @@ const wholeTurns = async (id, file, cwd, now) => {
 		wholes.set(id, (read = { name: file.name, offset: 0, state: { turns: [], pending: new Map() }, reading: null }));
 	read.usedAt = now;
 
-	// One reader at a time: two would fold the same lines in twice
-	const reading = (read.reading ?? Promise.resolve()).then(() => catchUp(read, file, cwd));
-
-	read.reading = reading.catch(() => {});
-	await reading;
+	await readGrown(file, read, lines => foldLines(read.state, parseLines(lines), cwd));
 
 	// The newest turn is still filled in as the transcript grows: what's handed out is a copy, left as it was
 	const { turns } = read.state;

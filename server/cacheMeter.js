@@ -1,4 +1,4 @@
-import { transcriptFile } from './sessions/transcript';
+import { readGrown, transcriptFile } from './sessions/transcript';
 
 // What a session's conversation costs to carry, from the usage Claude Code records with each request in its
 // transcript: how big the context is, whether Claude's prompt cache still holds it, what coming back to it cold costs,
@@ -12,7 +12,6 @@ const RATE_MS = 10 * 60 * 1000;
 
 const fresh = () => ({
 	offset: 0,
-	carry: '',
 	seen: new Set(),
 	last: null,
 	ttl: '1h',
@@ -67,20 +66,15 @@ const readNew = async (id, cwd) => {
 	// Rewritten shorter: counted again from the top
 	if (!meter || file.size < meter.offset) meter = fresh();
 	meters.set(id, meter);
-	if (file.size === meter.offset) return meter;
-
-	const text = meter.carry + (await file.slice(meter.offset, file.size).text());
-	const lines = text.split('\n');
-
-	meter.offset = file.size;
-	meter.carry = lines.pop();
-	for (const line of lines) {
-		try {
-			if (line.includes('"usage"')) countRequest(meter, JSON.parse(line));
-		} catch {
-			// A line cut short; whole lines are all that count
+	await readGrown(file, meter, lines => {
+		for (const line of lines) {
+			try {
+				if (line.includes('"usage"')) countRequest(meter, JSON.parse(line));
+			} catch {
+				// A line cut short; whole lines are all that count
+			}
 		}
-	}
+	});
 
 	return meter;
 };

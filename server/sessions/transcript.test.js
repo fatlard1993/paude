@@ -3,7 +3,16 @@ import os from 'os';
 import { join } from 'path';
 import { beforeAll, expect, test } from 'bun:test';
 
-import { bornOf, carriesOn, folderOf, resumeId, transcriptFile, transcriptLines } from './transcript';
+import {
+	GROWN_SLICE_BYTES,
+	bornOf,
+	carriesOn,
+	folderOf,
+	readGrown,
+	resumeId,
+	transcriptFile,
+	transcriptLines,
+} from './transcript';
 
 const ID = '74cddd99-0000-4000-8000-000000000000';
 const BARE = '74cddd99-0000-4000-8000-000000000001';
@@ -129,4 +138,23 @@ test('a transcript read again as it grows is read from where it was, a line cut 
 
 	await Bun.write(file, line({ type: 'user', sessionId: growing }) + move);
 	expect(await resumeId(growing, '/work')).toBe(onward);
+});
+
+test('what a transcript grew by is folded in whole lines, a slice at a time, once however many read it at once', async () => {
+	const file = join(process.env.CLAUDE_CONFIG_DIR, 'grown.jsonl');
+	// A character across the first slice's end, then a line longer than a slice
+	const across = `${'a'.repeat(GROWN_SLICE_BYTES - 1)}❯`;
+	const long = 'b'.repeat(GROWN_SLICE_BYTES * 2);
+	const read = { offset: 0 };
+	const folded = [];
+	const fold = lines => folded.push(...lines.filter(Boolean));
+
+	await Bun.write(file, `${across}\n${long}\nstill being wri`);
+	await Promise.all([readGrown(Bun.file(file), read, fold), readGrown(Bun.file(file), read, fold)]);
+	expect(folded).toEqual([across, long]);
+
+	await Bun.write(file, `${across}\n${long}\nstill being written\n`);
+	await readGrown(Bun.file(file), read, fold);
+	expect(folded.at(-1)).toBe('still being written');
+	expect(folded).toHaveLength(3);
 });

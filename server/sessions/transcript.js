@@ -9,6 +9,36 @@ const FOLDER_SCAN_BYTES = 1024 * 1024;
 const FOLDER_SCAN_LIMIT = 64 * 1024 * 1024;
 const FOLDER = /"cwd":"((?:[^"\\]|\\.)*)"/;
 
+const NEWLINE = 0x0a;
+const decoder = new TextDecoder();
+export const GROWN_SLICE_BYTES = 1024 * 1024;
+
+// What a transcript grew by since `read.offset`, up to its last whole line, handed to `fold(lines)` a slice at a time,
+// so the server answers between slices of one that runs to hundreds of megabytes. One read of `read` at a time: two would
+// fold the same lines in twice.
+export const readGrown = (file, read, fold) => {
+	const reading = (read.reading ?? Promise.resolve()).then(async () => {
+		// The rest is still being written, or cut at the slice's end, perhaps mid-character
+		for (let size = GROWN_SLICE_BYTES; read.offset < file.size;) {
+			const bytes = new Uint8Array(await file.slice(read.offset, read.offset + size).arrayBuffer());
+			const through = bytes.lastIndexOf(NEWLINE) + 1;
+
+			if (!through && read.offset + size >= file.size) return;
+			// One line longer than the slice
+			if (!through) size *= 2;
+			else {
+				size = GROWN_SLICE_BYTES;
+				read.offset += through;
+				fold(decoder.decode(bytes.subarray(0, through)).split('\n'));
+			}
+		}
+	});
+
+	read.reading = reading.catch(() => {});
+
+	return reading;
+};
+
 export const claudeHome = () => process.env.CLAUDE_CONFIG_DIR ?? join(os.homedir(), '.claude');
 
 // Claude Code keeps a session's transcript in a folder named after the directory it started in

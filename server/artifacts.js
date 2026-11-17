@@ -8,7 +8,7 @@ import { projectPath } from './projects';
 import { promptText } from './sessions/history';
 import { titleOf } from './sessions/record';
 import { runningSession } from './sessions/running';
-import { claudeHome, transcriptFile } from './sessions/transcript';
+import { claudeHome, readGrown, transcriptFile } from './sessions/transcript';
 
 // The things a session made along the way: images, pages, scripts, data, written to a scratchpad, /tmp or an ignored
 // folder and hard to find again. Gathered from its transcript: the files Claude wrote, and the files its commands
@@ -186,7 +186,6 @@ const read = new Map();
 const fresh = name => ({
 	name,
 	offset: 0,
-	rest: '',
 	found: new Map(),
 	turn: '',
 	said: '',
@@ -219,12 +218,11 @@ const transcriptArtifacts = async (id, cwd) => {
 
 	let state = read.get(id);
 
-	if (!state || state.name !== file.name || file.size < state.offset) state = { ...fresh(file.name), cwd };
-	if (file.size > state.offset) {
-		const lines = (state.rest + (await file.slice(state.offset, file.size).text())).split('\n');
-
-		state.rest = lines.pop();
-		state.offset = file.size;
+	if (!state || state.name !== file.name || file.size < state.offset) {
+		state = { ...fresh(file.name), cwd };
+		read.set(id, state);
+	}
+	await readGrown(file, state, lines => {
 		for (const raw of lines) {
 			let line;
 
@@ -235,8 +233,7 @@ const transcriptArtifacts = async (id, cwd) => {
 			}
 			for (const found of artifactsOfLine(line, state)) add(state.found, found, line.timestamp, state.turn);
 		}
-	}
-	read.set(id, state);
+	});
 
 	return state.found;
 };
