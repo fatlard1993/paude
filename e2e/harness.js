@@ -164,8 +164,13 @@ export const VARIANTS = ['dom', 'webgl', 'mac'];
 
 export const openBrowser = async variant => {
 	const executablePath = CHROMES.find(candidate => candidate && Bun.file(candidate).size);
+	// Chrome's profile and the temporary folders it makes of its own, in one place that goes when it does: left in the
+	// system's, they piled up by the thousand, and there it can be memory
+	const dir = await mkdtemp(path.join(os.tmpdir(), 'paude-chrome-'));
 	const browser = await puppeteer.launch({
 		executablePath,
+		userDataDir: dir,
+		env: { ...process.env, TMPDIR: dir },
 		// Over a pipe, Chrome quits when the test process dies however it dies; over a port, a killed run leaves it
 		pipe: true,
 		args:
@@ -173,6 +178,8 @@ export const openBrowser = async variant => {
 				? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']
 				: ['--disable-webgl'],
 	});
+	browser.on('disconnected', () => rm(dir, { recursive: true, force: true }));
+
 	const page = await browser.newPage();
 
 	await page.setViewport({ width: 1300, height: 800 });
