@@ -2340,7 +2340,11 @@ export default class Universe extends View {
 				className: 'icon-only variant-flat fold',
 			}),
 		);
-		this.focus.replaceChildren(heading, table, ...(items.length ? [list] : []), ...(commands.length ? [verbs] : []));
+		// Only what's between the title and the verbs scrolls, so closing and acting stay in reach however long it runs
+		const scroll = element('div', 'scroll');
+
+		scroll.append(table, ...(items.length ? [list] : []));
+		this.focus.replaceChildren(heading, scroll, ...(commands.length ? [verbs] : []));
 		this.focus.style.display = '';
 		this.tendDrawer();
 	}

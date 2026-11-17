@@ -610,6 +610,8 @@ export const Stage = styled(
 		}
 
 		.focus-card .summary .line {
+			overflow: hidden;
+			text-overflow: ellipsis;
 			white-space: nowrap;
 			color: ${colors.muted};
 			font-size: 0.85em;
@@ -638,7 +640,7 @@ export const Stage = styled(
 			gap: ${space.xs};
 			width: ${FOCUS_WIDTH}px;
 			max-height: calc(100% - 64px);
-			overflow-y: auto;
+			overflow: hidden;
 			padding: calc(12px + ${space.xs}) calc(10px + ${space.sm});
 			box-sizing: border-box;
 			background: #151920;
@@ -653,10 +655,30 @@ export const Stage = styled(
 			font-size: 0.85em;
 		}
 
+		.focus-card .title {
+			flex: none;
+			overflow-wrap: anywhere;
+		}
+
+		.focus-card .scroll {
+			display: flex;
+			flex-direction: column;
+			gap: ${space.xs};
+			flex: 0 1 auto;
+			min-height: 3em;
+			margin-right: -${space.sm};
+			padding-right: ${space.sm};
+			overflow: hidden auto;
+			overscroll-behavior: contain;
+			scrollbar-width: thin;
+			scrollbar-color: ${colors.alpha(colors.light(colors.teal), 0.4)} transparent;
+		}
+
 		.focus-card .rows {
 			display: grid;
-			grid-template-columns: auto 1fr;
+			grid-template-columns: auto minmax(0, 1fr);
 			gap: 0 ${space.sm};
+			overflow-wrap: anywhere;
 		}
 
 		.focus-card .key {
@@ -675,6 +697,8 @@ export const Stage = styled(
 		.focus-card .item {
 			display: flex;
 			flex-direction: column;
+			min-width: 0;
+			overflow-wrap: anywhere;
 			padding: 2px ${space.sm};
 			border: none;
 			border-left: 2px solid ${colors.alpha(colors.white, 0.2)};
@@ -711,6 +735,7 @@ export const Stage = styled(
 
 		.focus-card .verbs {
 			display: flex;
+			flex: none;
 			flex-wrap: wrap;
 			gap: 4px;
 			margin-top: ${space.xs};
@@ -854,7 +879,12 @@ export const Stage = styled(
 
 			.drawer .focus-card {
 				flex: 0 1 auto;
-				overflow-y: auto;
+				overflow: hidden;
+			}
+
+			.drawer .focus-card .scroll {
+				margin-right: 0;
+				padding-right: 0;
 			}
 
 			.drawer .focus-card.folded {
