@@ -9,6 +9,7 @@ import { deleteNotes } from './notes';
 import { noteProjectActivity, projectOf, projectPath } from './projects';
 import { sessionRecord } from './sessions/record';
 import { allRunning, stopSession } from './sessions/running';
+import { forgetStoredSessions } from './sessions/stored';
 import { forgetSessionShares } from './shares';
 import { stopTasksOf } from './tasks';
 import { releaseWorktree } from './worktrees';
@@ -32,6 +33,7 @@ const removeSession = async id => {
 	await deleteSession(id, { dir: cwd }).catch(error => {
 		if (!/not found/i.test(error.message)) throw error;
 	});
+	forgetStoredSessions();
 	await deleteNotes(id);
 	await revokeInvitesFor(id);
 	await pinName(id, '');

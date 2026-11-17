@@ -61,14 +61,37 @@ const withFirstPrompts = async sessions =>
 		),
 	);
 
-// Every saved session, each with its folder: the SDK leaves out the folder of one whose transcript opens with a long
-// run of bookkeeping, and such a session would belong to no project (listed by none, opened and deleted by none)
-export const storedSessions = async () =>
+// The SDK reads the head and tail of every transcript on disk to list them, a fifth of a second of the server's one
+// thread for a few hundred sessions, and every open page asks for lists every few seconds: one listing serves every
+// ask for a while. Running sessions are added to it as they are (withUnsaved), so a new one shows at once.
+export const STORED_MS = 10_000;
+let listing = null;
+
+export const forgetStoredSessions = () => {
+	listing = null;
+};
+
+const listStored = async () =>
 	Promise.all(
 		(await listSessions()).map(async session =>
 			session.cwd ? session : { ...session, cwd: await folderOf(session.sessionId) },
 		),
 	);
+
+// Every saved session, each with its folder: the SDK leaves out the folder of one whose transcript opens with a long
+// run of bookkeeping, and such a session would belong to no project (listed by none, opened and deleted by none)
+export const storedSessions = async ({ now = Date.now(), list = listStored } = {}) => {
+	if (!listing || now - listing.at >= STORED_MS) {
+		const sessions = list();
+
+		listing = { at: now, sessions };
+		sessions.catch(() => {
+			if (listing?.sessions === sessions) listing = null;
+		});
+	}
+
+	return listing.sessions;
+};
 
 export const listAllSessions = async identity =>
 	withUnsaved(await withFirstPrompts(await storedSessions()), folder => Boolean(projectOf(folder)))

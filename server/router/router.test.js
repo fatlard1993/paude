@@ -13,6 +13,7 @@ import { initNames } from '../names';
 import { initNotes } from '../notes';
 import { initProjects, setProjectsRoot } from '../projects';
 import { allRunning, setClaudePath, startSession, stopSession } from '../sessions/running';
+import { forgetStoredSessions } from '../sessions/stored';
 import { setPublicUrl, setServerName } from '../serverSettings';
 import { initShares, shareNamed } from '../shares';
 import { saveToken } from '../../shared/credentials';
@@ -352,6 +353,8 @@ test('archiving takes the owner; an archived session leaves the list but not a s
 		transcript,
 		`${JSON.stringify({ type: 'user', sessionId: id, cwd: app, message: { role: 'user', content: 'tidy the attic' } })}\n`,
 	);
+	// Written behind paude's back, as Claude run outside it would: listed afresh rather than in a while
+	forgetStoredSessions();
 
 	expect(await listed('')).toContain(id);
 	expect((await archive(true, tokens.comment)).status).toBe(403);

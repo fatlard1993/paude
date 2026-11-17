@@ -91,7 +91,7 @@ import {
 	removeProject,
 } from '../projects';
 import { sessionRecord } from '../sessions/record';
-import { listAllSessions, listProjectSessions, toSummary } from '../sessions/stored';
+import { forgetStoredSessions, listAllSessions, listProjectSessions, toSummary } from '../sessions/stored';
 import {
 	allRunning,
 	openSession,
@@ -1208,6 +1208,8 @@ const sessionsRoutes = async (request, server) => {
 		if (typeof upToMessageId !== 'string') return new Response('Which message to fork after?', { status: 400 });
 
 		const { sessionId } = await forkSession(match.id, { dir: cwd, upToMessageId });
+
+		forgetStoredSessions();
 
 		await watchProjectIfNew(identity, projectOf(cwd));
 
