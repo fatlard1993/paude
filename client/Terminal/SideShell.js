@@ -9,6 +9,7 @@ import { copySelection, isCopyKey } from './copySelection';
 import KeyBar from './KeyBar';
 import selectLinesByTap from './lineSelect';
 import Panel from './SideShell.styles';
+import { measureGraphemes } from '../../shared/graphemes';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from './xtermOptions';
 
 // Why it ended, when the person didn't end it themselves
@@ -86,6 +87,7 @@ export default class SideShell extends Panel {
 		this.fitter = new FitAddon();
 		this.decoder = new TextDecoder();
 		this.terminal.loadAddon(this.fitter);
+		measureGraphemes(this.terminal);
 		this.terminal.open(this.screen);
 		redrawWhenSymbolsLoad(this.terminal);
 		this.screen.append(this.hint);

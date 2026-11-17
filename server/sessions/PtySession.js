@@ -3,6 +3,7 @@ import path from 'path';
 import xtermHeadless from '@xterm/headless';
 import serializeAddon from '@xterm/addon-serialize';
 
+import { measureGraphemes } from '../../shared/graphemes';
 import { sessionHue } from '../../shared/hues';
 import inputKind, { FOCUS_IN } from '../../shared/inputKind';
 import { setStatus, statusOf } from '../activity';
@@ -99,6 +100,7 @@ export default class PtySession {
 		});
 		this.serializer = new SerializeAddon();
 		this.mirror.loadAddon(this.serializer);
+		measureGraphemes(this.mirror);
 		this.mirror.onTitleChange(terminalTitle => {
 			const { busy, title } = parseTitle(terminalTitle);
 

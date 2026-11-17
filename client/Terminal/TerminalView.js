@@ -58,6 +58,7 @@ import { startCatchUp, trackLastSeen } from './catchUp';
 import KeyBar from './KeyBar';
 import { copyAsSelected, copySelection, selectedText } from './copySelection';
 import selectLinesByTap from './lineSelect';
+import { measureGraphemes } from '../../shared/graphemes';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from './xtermOptions';
 import FilesPanel, { quickOpenMode } from './FilesPanel';
 import GitPanel from './GitPanel';
@@ -645,6 +646,7 @@ export default class TerminalView extends View {
 		});
 		this.fitter = new FitAddon();
 		this.terminal.loadAddon(this.fitter);
+		measureGraphemes(this.terminal);
 		this.decoder = new TextDecoder();
 		this.terminal.open(this.screen.elem);
 		gpuRenderer(this.terminal);

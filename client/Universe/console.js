@@ -14,6 +14,7 @@ import { copyAsSelected, copySelection, selectedText } from '../Terminal/copySel
 import KeyBar from '../Terminal/KeyBar';
 import selectLinesByTap from '../Terminal/lineSelect';
 import { linkFilePaths, linkUrls } from '../Terminal/linkProviders';
+import { measureGraphemes } from '../../shared/graphemes';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from '../Terminal/xtermOptions';
 import { button, element } from '../dom';
 import { FONT, fitFont, roomFor } from './fitFont';
@@ -182,6 +183,7 @@ export default class TerminalPanel {
 		const pointer = claudePointer(terminal);
 
 		this.terminal = terminal;
+		measureGraphemes(terminal);
 		terminal.open(this.screen);
 		terminal.resize(cols, rows);
 		const send = data => Boolean(this.connection?.send({ type: 'input', data }));
