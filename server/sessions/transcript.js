@@ -13,25 +13,39 @@ const NEWLINE = 0x0a;
 const decoder = new TextDecoder();
 export const GROWN_SLICE_BYTES = 1024 * 1024;
 
+// Transcript work takes turns across the whole server, one piece at a time with a pass of the event loop between: after
+// a restart every running session's transcripts are caught up on at once by several readers each, and taken as they
+// came they kept the sessions' terminals and every request waiting behind them for seconds at a time. A turn covers
+// reading its piece too, so nothing read is held while it waits.
+let turns = Promise.resolve();
+
+export const inTurn = work => {
+	const mine = turns.then(() => new Promise(resolve => setTimeout(resolve, 0))).then(work);
+
+	turns = mine.catch(() => {});
+
+	return mine;
+};
+
 // What a transcript grew by since `read.offset`, up to its last whole line, handed to `fold(lines)` a slice at a time,
 // so the server answers between slices of one that runs to hundreds of megabytes. One read of `read` at a time: two would
 // fold the same lines in twice.
 export const readGrown = (file, read, fold) => {
 	const reading = (read.reading ?? Promise.resolve()).then(async () => {
 		// The rest is still being written, or cut at the slice's end, perhaps mid-character
-		for (let size = GROWN_SLICE_BYTES; read.offset < file.size;) {
-			const bytes = new Uint8Array(await file.slice(read.offset, read.offset + size).arrayBuffer());
-			const through = bytes.lastIndexOf(NEWLINE) + 1;
+		for (let size = GROWN_SLICE_BYTES, done = false; !done && read.offset < file.size;)
+			[size, done] = await inTurn(async () => {
+				const bytes = new Uint8Array(await file.slice(read.offset, read.offset + size).arrayBuffer());
+				const through = bytes.lastIndexOf(NEWLINE) + 1;
 
-			if (!through && read.offset + size >= file.size) return;
-			// One line longer than the slice
-			if (!through) size *= 2;
-			else {
-				size = GROWN_SLICE_BYTES;
+				if (!through && read.offset + size >= file.size) return [size, true];
+				// One line longer than the slice
+				if (!through) return [size * 2, false];
 				read.offset += through;
 				fold(decoder.decode(bytes.subarray(0, through)).split('\n'));
-			}
-		}
+
+				return [GROWN_SLICE_BYTES, false];
+			});
 	});
 
 	read.reading = reading.catch(() => {});
@@ -83,20 +97,35 @@ const foldWhere = (id, next, lines) => {
 // The session Claude carried this one on in, as when it moves a session to the background: a resume that forks it, so
 // the new transcript holds the whole conversation, and the old one ends saying where it went. Its end is read once,
 // then only what it has grown by.
-const continuedIn = async (id, file) => {
-	let known = continuations.get(id);
+// One read of each at a time, shared by whoever asks meanwhile: every look at a transcript asks, and while one waits its
+// turn, each would read the same end again
+const continuing = new Map();
+
+const continuedIn = (id, file) => {
+	const known = continuations.get(id);
 
 	if (known?.next || known?.offset === file.size) return known.next;
-	if (!known || file.size < known.offset)
-		known = { offset: Math.max(0, file.size - CONTINUED_TAIL_BYTES), carry: '', next: null };
+	if (continuing.has(id)) return continuing.get(id);
 
-	const lines = (known.carry + (await file.slice(known.offset, file.size).text())).split('\n');
-	const carry = lines.pop();
-	const next = foldWhere(id, known.next, lines);
+	const reading = (async () => {
+		const from =
+			!known || file.size < known.offset
+				? { offset: Math.max(0, file.size - CONTINUED_TAIL_BYTES), carry: '', next: null }
+				: known;
+		return inTurn(async () => {
+			const lines = (from.carry + (await file.slice(from.offset, file.size).text())).split('\n');
+			const carry = lines.pop();
+			const found = foldWhere(id, from.next, lines);
 
-	continuations.set(id, { offset: file.size, carry, next });
+			continuations.set(id, { offset: file.size, carry, next: found });
 
-	return next;
+			return found;
+		});
+	})().finally(() => continuing.delete(id));
+
+	continuing.set(id, reading);
+
+	return reading;
 };
 
 // Where a session is now: the id Claude has carried it on under and that transcript, following each move on from the
@@ -187,17 +216,29 @@ export const bornOf = async (id, cwd) => {
 const firstPrompts = new Map();
 
 // What the session began with, from the head of its transcript; read once, since it never changes
-export const firstPromptOf = async (id, cwd) => {
-	if (firstPrompts.has(id)) return firstPrompts.get(id);
+export const firstPromptOf = (id, cwd) => {
+	if (!firstPrompts.has(id))
+		firstPrompts.set(
+			id,
+			readFirstPrompt(id, cwd).catch(error => {
+				firstPrompts.delete(id);
+				throw error;
+			}),
+		);
 
+	return firstPrompts.get(id);
+};
+
+// Kept as the read on its way, so a listing while it waits its turn doesn't read it again
+const readFirstPrompt = async (id, cwd) => {
 	const file = await transcriptFile(id, cwd);
-	const prompt = file
-		? (parsed(await file.slice(0, PROMPT_SCAN_BYTES).text())
-				.map(promptText)
-				.find(text => text && !/^\[Request interrupted/.test(text)) ?? null)
+
+	return file
+		? inTurn(
+				async () =>
+					parsed(await file.slice(0, PROMPT_SCAN_BYTES).text())
+						.map(promptText)
+						.find(text => text && !/^\[Request interrupted/.test(text)) ?? null,
+			)
 		: null;
-
-	firstPrompts.set(id, prompt);
-
-	return prompt;
 };

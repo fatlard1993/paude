@@ -8,6 +8,7 @@ import {
 	bornOf,
 	carriesOn,
 	folderOf,
+	inTurn,
 	readGrown,
 	resumeId,
 	transcriptFile,
@@ -157,4 +158,25 @@ test('what a transcript grew by is folded in whole lines, a slice at a time, onc
 	await readGrown(Bun.file(file), read, fold);
 	expect(folded.at(-1)).toBe('still being written');
 	expect(folded).toHaveLength(3);
+});
+
+test('transcript work takes turns: one piece at a time, in the order asked, a timer let in between pieces', async () => {
+	const seen = [];
+	const piece = name => async () => {
+		seen.push(`${name} starts`);
+		await Bun.sleep(5);
+		seen.push(`${name} ends`);
+
+		return name;
+	};
+	const first = inTurn(piece('first'));
+	const second = inTurn(piece('second'));
+
+	setTimeout(() => seen.push('a timer'), 0);
+
+	expect(await Promise.all([first, second])).toEqual(['first', 'second']);
+	expect(seen).toEqual(['a timer', 'first starts', 'first ends', 'second starts', 'second ends']);
+	// One that fails leaves the turns going
+	expect(inTurn(async () => Promise.reject(new Error('unreadable')))).rejects.toThrow('unreadable');
+	expect(await inTurn(async () => 'after')).toBe('after');
 });
