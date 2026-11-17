@@ -1,5 +1,3 @@
-import { listSessions } from '@anthropic-ai/claude-agent-sdk';
-
 import { sessionHue } from '../../shared/hues';
 
 import { activitySummary } from '../activity';
@@ -61,15 +59,44 @@ const withFirstPrompts = async sessions =>
 		),
 	);
 
-// The SDK reads the head and tail of every transcript on disk to list them, a fifth of a second of the server's one
-// thread for a few hundred sessions, and every open page asks for lists every few seconds: one listing serves every
-// ask for a while. Running sessions are added to it as they are (withUnsaved), so a new one shows at once.
+// The SDK reads the head and tail of every transcript on disk to list them, a fifth of a second or more for a few hundred
+// sessions, done in a worker so the server answers meanwhile; and every open page asks for lists every few seconds:
+// one listing serves every ask for a while. Running sessions are added to it as they are (withUnsaved), so a new one shows at once.
 export const STORED_MS = 10_000;
 let listing = null;
 
 export const forgetStoredSessions = () => {
 	listing = null;
 };
+
+let worker = null;
+let asked = 0;
+const waiting = new Map();
+
+const listSessions = () =>
+	new Promise((resolve, reject) => {
+		if (!worker) {
+			worker = new Worker(new URL('./listingWorker.js', import.meta.url));
+			worker.unref();
+			worker.onmessage = ({ data: { id, sessions, error } }) => {
+				const asker = waiting.get(id);
+
+				waiting.delete(id);
+				if (error) asker?.reject(new Error(error));
+				else asker?.resolve(sessions);
+			};
+			worker.onerror = event => {
+				for (const asker of waiting.values()) asker.reject(new Error(event.message || 'Listing sessions failed'));
+				waiting.clear();
+				worker.terminate();
+				worker = null;
+			};
+		}
+
+		asked += 1;
+		waiting.set(asked, { resolve, reject });
+		worker.postMessage({ id: asked, configDir: process.env.CLAUDE_CONFIG_DIR });
+	});
 
 const listStored = async () =>
 	Promise.all(
