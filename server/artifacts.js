@@ -241,28 +241,46 @@ const transcriptArtifacts = async (id, cwd) => {
 	return state.found;
 };
 
+const gitOut = async (folder, args) => {
+	const child = Bun.spawn(['git', '-C', folder, ...args], { stdout: 'pipe', stderr: 'ignore' });
+	const out = await new Response(child.stdout).text();
+
+	return (await child.exited) === 0 ? out : null;
+};
+
+// A session names files in hundreds of folders and is asked what it made every half minute, so which repository a
+// folder is in is kept a while: { [folder]: { at, root } }, root null outside git
+const ROOT_MS = 5 * 60_000;
+const roots = new Map();
+
+const rootOf = (folder, now) => {
+	const known = roots.get(folder);
+
+	if (known && now - known.at < ROOT_MS) return known.root;
+
+	const root = gitOut(folder, ['rev-parse', '--show-toplevel']).then(out => out?.trim() || null);
+
+	roots.set(folder, { at: now, root });
+
+	return root;
+};
+
 // Of these files, the ones git tracks, asked of each repository they're in once
-const trackedOf = async files => {
-	const byFolder = Map.groupBy(files, file => path.dirname(file));
+export const trackedOf = async (files, now = Date.now()) => {
+	const folders = [...new Set(files.map(file => path.dirname(file)))];
+	const folderRoots = new Map(await Promise.all(folders.map(async folder => [folder, await rootOf(folder, now)])));
+	const byRoot = Map.groupBy(
+		files.filter(file => folderRoots.get(path.dirname(file))),
+		file => folderRoots.get(path.dirname(file)),
+	);
 	const tracked = new Set();
 
 	await Promise.all(
-		[...byFolder].map(async ([folder, inFolder]) => {
-			const child = Bun.spawn(['git', '-C', folder, 'ls-files', '-z', '--full-name', '--', ...inFolder], {
-				stdout: 'pipe',
-				stderr: 'ignore',
-			});
-			const listed = await new Response(child.stdout).text();
+		[...byRoot].map(async ([root, inRoot]) => {
+			// Asked from a folder it was named in, as named: a folder reached through a link isn't under the root git says
+			const listed = await gitOut(path.dirname(inRoot[0]), ['ls-files', '-z', '--full-name', '--', ...inRoot]);
 
-			if ((await child.exited) !== 0) return;
-
-			const root = (
-				await new Response(
-					Bun.spawn(['git', '-C', folder, 'rev-parse', '--show-toplevel'], { stdout: 'pipe', stderr: 'ignore' }).stdout,
-				).text()
-			).trim();
-
-			for (const name of listed.split('\0').filter(Boolean)) tracked.add(path.join(root, name));
+			for (const name of listed?.split('\0').filter(Boolean) ?? []) tracked.add(path.join(root, name));
 		}),
 	);
 

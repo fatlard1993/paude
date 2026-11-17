@@ -1,7 +1,9 @@
+import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import os from 'os';
+import path from 'path';
 import { expect, test } from 'bun:test';
 
-import { artifactsOfLine, commandFolders, kindOfPath, pathsIn, shownPath, withVariables } from './artifacts';
+import { artifactsOfLine, commandFolders, kindOfPath, pathsIn, shownPath, trackedOf, withVariables } from './artifacts';
 
 const freshState = () => ({ turn: '', said: '', cwd: '/work/app', commands: new Map() });
 const said = text => ({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
@@ -80,4 +82,36 @@ test('a path built from a variable the command sets is seen whole', () => {
 	expect(withVariables('OUT="/tmp/a b"; ls $OUTPUT $OUT')).toBe('OUT="/tmp/a b"; ls $OUTPUT /tmp/a b');
 	expect(pathsIn(withVariables('D=/tmp/viz; cat > $D/gen.js'), '/work')).toEqual(['/tmp/viz/gen.js']);
 	expect(pathsIn('cat /tmp/claude-1000/bundled-skills/2.1/x/dataviz/palette.md', '/work')).toEqual([]);
+});
+
+test('of files in several folders of a repository, beside and outside it, those git tracks', async () => {
+	const dir = await mkdtemp(path.join(os.tmpdir(), 'paude-tracked-'));
+	const at = (...parts) => path.join(dir, ...parts);
+
+	await mkdir(at('repo', 'a', 'b'), { recursive: true });
+	await mkdir(at('repo', 'c'));
+	await mkdir(at('plain'));
+	for (const file of [
+		at('repo', 'a', 'b', 'kept.js'),
+		at('repo', 'a', 'b', 'loose.png'),
+		at('repo', 'c', 'kept.md'),
+		at('plain', 'x.txt'),
+	])
+		await writeFile(file, '');
+	Bun.spawnSync(['git', 'init', '-q'], { cwd: at('repo') });
+	Bun.spawnSync(['git', 'add', 'a/b/kept.js', 'c/kept.md'], { cwd: at('repo') });
+
+	const files = [
+		at('repo', 'a', 'b', 'kept.js'),
+		at('repo', 'a', 'b', 'loose.png'),
+		at('repo', 'c', 'kept.md'),
+		at('plain', 'x.txt'),
+		at('gone', 'y.txt'),
+	];
+
+	try {
+		expect([...(await trackedOf(files))].sort()).toEqual([at('repo', 'a', 'b', 'kept.js'), at('repo', 'c', 'kept.md')]);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
 });
