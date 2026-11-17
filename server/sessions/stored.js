@@ -1,6 +1,7 @@
 import { sessionHue } from '../../shared/hues';
 
 import { activitySummary } from '../activity';
+import { backgroundKnown } from '../backgroundWork';
 import { limitOf } from '../usageLimit';
 import { lastSwitch, lifetimeOf } from '../lifetime';
 import { projectOf, projectPath } from '../projects';
@@ -32,6 +33,8 @@ export const toSummary =
 			attached: running?.clients.size ?? 0,
 			...activitySummary(identity, sessionId, { running: Boolean(running), busy: running?.busy, project }),
 			asking: running?.asking() ?? undefined,
+			// How many things it has running in the background that Claude will be woken by
+			background: (running && backgroundKnown(sessionId).length) || undefined,
 			limit: limitOf(sessionId) ?? undefined,
 			lifetime: lifetimeOf(sessionId),
 			// One running is in use, whatever was decided about it before

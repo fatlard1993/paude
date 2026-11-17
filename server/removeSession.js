@@ -1,6 +1,7 @@
 import { deleteSession, listSessions } from '@anthropic-ai/claude-agent-sdk';
 
 import { forgetActivity } from './activity';
+import { forgetBackground } from './backgroundWork';
 import { forgetCommandEdits } from './commandEdits';
 import { setArchived } from './archive';
 import { revokeInvitesFor } from './auth';
@@ -38,6 +39,7 @@ const removeSession = async id => {
 	await revokeInvitesFor(id);
 	await pinName(id, '');
 	await forgetActivity(id);
+	forgetBackground(id);
 	await forgetSessionShares(id);
 	await forgetCommandEdits(id);
 	await setArchived([id], false);

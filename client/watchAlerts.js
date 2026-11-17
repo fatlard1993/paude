@@ -1,7 +1,7 @@
 import { Notify } from '@vanilla-bean/components';
 
 import byUrgency from '../shared/urgency';
-import watchChanges from '../shared/watchChanges';
+import watchChanges, { lookedAt } from '../shared/watchChanges';
 import { getRemotes, getWatching } from './api';
 import { showNotification } from './notify';
 import { updateTabTitle } from './tabTitle';
@@ -48,7 +48,10 @@ export const startWatchAlerts = ({ remotes }) => {
 		checks += 1;
 
 		const all = [...here, ...remoteWatched];
-		const waiting = all.filter(session => session.status === 'waiting' || session.unseen > 0).sort(byUrgency);
+		// News from one waiting on its background work can wait with it
+		const waiting = all
+			.filter(session => session.status === 'waiting' || (session.unseen > 0 && !session.background))
+			.sort(byUrgency);
 
 		updateTabTitle({ waiting });
 		setWaitingSessions(waiting, [...all].sort(byUrgency));
@@ -60,7 +63,7 @@ export const startWatchAlerts = ({ remotes }) => {
 			await alert(session, what === 'needs you' ? ` ${what}` : `: ${what}`);
 		}
 
-		previous = new Map(all.map(session => [keyOf(session), session]));
+		previous = lookedAt(previous, all, keyOf);
 	};
 
 	check();

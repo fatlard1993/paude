@@ -14,6 +14,7 @@ import { activitySummary, identityKey, watchedBy, watchesProject } from './activ
 import { isArchived } from './archive';
 import { ownerName } from './serverSettings';
 import { sessionArtifacts } from './artifacts';
+import { backgroundOf } from './backgroundWork';
 import { meterOf } from './cacheMeter';
 import { modelFor, windowFor } from './contextWindow';
 import { boostOf, keptOf, readingOf, spentOf } from './keepWarm';
@@ -678,6 +679,8 @@ export const universe = async identity => {
 				// Its keeper reading its reply, before it's nudged on or left to wait
 				reading: readingOf(session.id) ?? undefined,
 				...instrumentsOf(session),
+				// What it has running in the background that Claude will be woken by, each with what it was launched to do
+				background: (await backgroundOf(session).catch(() => [])).map(({ what, kind }) => ({ what, kind })),
 				// Its size, for a terminal opened from the universe to take
 				screen: { cols: session.cols, rows: session.rows },
 			};

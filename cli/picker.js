@@ -1,4 +1,5 @@
 import { relativeTime } from '@vanilla-bean/components/utils/date';
+import { awaitingBackground, backgroundWords } from '../shared/background';
 import { runningSummary } from '../shared/checkouts';
 import mergedPages from '../shared/mergedPages';
 import { matchesFilter, matchesQuery } from '../shared/sessionSearch';
@@ -348,7 +349,9 @@ const sessionsFrom = async (gathered, asked, count, above) => {
 
 const sessionLine = (row, { several, picked, cols }) => {
 	const { server, session } = row;
-	const status = STATUS[session.status] ?? STATUS.stopped;
+	const status = awaitingBackground(session)
+		? { marker: colored('◌', 110), label: backgroundWords(session.background) }
+		: (STATUS[session.status] ?? STATUS.stopped);
 	const detail = [
 		session.unseen ? colored(`${session.unseen} new`, 179) : '',
 		status.label,

@@ -1,5 +1,6 @@
 import { relativeTime } from '@vanilla-bean/components/utils/date';
 
+import { awaitingBackground, backgroundWords } from '../../shared/background';
 import { facilitiesFor, facilityOf } from '../../shared/facilities';
 import { LIFETIMES } from '../../shared/lifetimes';
 import tokenCount from '../../shared/tokenCount';
@@ -23,7 +24,8 @@ export const shipWords = ({ needs, news, working }) =>
 		.filter(Boolean)
 		.join(' · ') || 'quiet';
 
-export const doing = ({ status, tool }) => {
+export const doing = ({ status, tool, background }) => {
+	if (awaitingBackground({ status, background })) return backgroundWords(background);
 	if (status !== 'working') return STATUS[status];
 	if (!tool) return 'thinking';
 
@@ -190,6 +192,10 @@ const FLYOUTS = {
 				session.limit && ['usage limit', limitWords(session.limit.resetAt)],
 				session.todos?.length && ['todos', todoWords(session.todos)],
 				session.agents && ['subagents', `${session.agents} out`],
+				session.background?.length && [
+					'background',
+					session.background.map(({ what }) => what || 'a command').join('; '),
+				],
 				session.faults && ['failed', `${plural(session.faults, 'tool')} this turn`],
 				MODES[session.mode] && ['mode', MODES[session.mode]],
 				context?.model && ['model', context.model],
@@ -389,6 +395,14 @@ const FLYOUTS = {
 			hint: 'Press for its session',
 		};
 	},
+	background: ({ session, job }) => ({
+		title: job?.what || (job?.kind === 'agent' ? 'An agent in the background' : 'A command in the background'),
+		rows: [
+			['run by', session.title || session.project],
+			['then', 'Claude is woken when it finishes'],
+		],
+		hint: 'Press for its session',
+	}),
 	subagent: ({ session, task }) => {
 		return {
 			title: task || 'A subagent',

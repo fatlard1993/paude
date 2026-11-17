@@ -1,6 +1,7 @@
 import { Card, Content, Elem, EmptyState, styled, theme } from '@vanilla-bean/components';
 
 import { relativeTime } from '@vanilla-bean/components/utils/date';
+import { awaitingBackground, backgroundWords } from '../shared/background';
 import { tintsOf } from '../shared/hues';
 import { LIFETIMES, clockTime } from '../shared/lifetimes';
 import { AskingCard, showAsking, showLimit } from './Asking';
@@ -218,6 +219,7 @@ export const LinkCard = ({
 	live,
 	busy,
 	waiting,
+	background,
 	unseen,
 	watching,
 	archived,
@@ -274,7 +276,7 @@ export const LinkCard = ({
 		const holder = new Elem({ appendTo: card, addClass: 'state' });
 
 		new Elem({ appendTo: holder, addClass: ['dot', ...(state ? [state] : [])] });
-		if (!waiting) holder.elem.append(busy ? 'working' : 'ready');
+		if (!waiting) holder.elem.append((busy && 'working') || (background && backgroundWords(background)) || 'ready');
 	}
 
 	if (onWatch)
@@ -360,6 +362,7 @@ export const sessionCard = (session, { showProject = true, appendTo, menu, serve
 			live: session.live,
 			busy: session.status === 'working' || session.busy,
 			waiting: session.status === 'waiting',
+			background: awaitingBackground(session) && session.background,
 			unseen: session.unseen,
 			watching: session.watching,
 			archived: session.archived,

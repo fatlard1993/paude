@@ -3,6 +3,7 @@ import path from 'path';
 import { requestMatch } from '@vanilla-bean/components/app';
 
 import { recordChange, setStatus } from '../activity';
+import { backgroundOf } from '../backgroundWork';
 import { turnEnded } from '../claudeInbox';
 import { fileBeforePush, followDecisions, pushEnded, pushStarted } from '../decisions';
 import { projectOf } from '../projects';
@@ -101,6 +102,8 @@ export const endsWithQuestion = async (id, payload, { arcade = isArcadeSession }
 };
 
 // Where the hooks in hookSettings report; authenticated by the secret in the address rather than a login
+const BACKGROUND_READS_MS = [0, 1500];
+
 const hooksRoutes = async request => {
 	const match =
 		requestMatch('POST', '/api/hooks/:secret/:session', request) || requestMatch('POST', '/api/hooks/:secret', request);
@@ -114,6 +117,9 @@ const hooksRoutes = async request => {
 
 	if (typeof id !== 'string' || !runningSession(id)) return new Response(null, { status: 204 });
 	trackProposals(id, payload);
+	// What it has out in the background, from its transcript, which can be a moment behind the hook
+	for (const wait of BACKGROUND_READS_MS)
+		setTimeout(() => runningSession(id) && backgroundOf(runningSession(id)).catch(() => {}), wait);
 	if (['PostToolUse', 'PostToolUseFailure', 'PermissionDenied'].includes(payload.hook_event_name))
 		pushEnded(id, payload.tool_use_id);
 	if (['Stop', 'StopFailure'].includes(payload.hook_event_name)) pushEnded(id);

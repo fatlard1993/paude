@@ -102,7 +102,7 @@ const place = spot => {
 const selectionOf = (target, view) => {
 	const worker =
 		(['worker', 'monitor'].includes(target?.kind) && target.worker) ||
-		(['talk', 'subagent', 'watcher'].includes(target?.kind) && view.workerOf(target.session)) ||
+		(['talk', 'subagent', 'background', 'watcher'].includes(target?.kind) && view.workerOf(target.session)) ||
 		(target?.kind === 'use' && view.workerOf(target.use.session));
 
 	if (worker)
@@ -900,6 +900,7 @@ export default class Universe extends View {
 				'cargo',
 				'commit',
 				'subagent',
+				'background',
 				'watcher',
 				'delivery',
 				'talk',
@@ -977,7 +978,7 @@ export default class Universe extends View {
 			return this.dockOrReply(this.workerOf(target.session), 'notes');
 		if (target?.kind === 'subagent' && this.workerOf(target.session))
 			return this.dockOrReply(this.workerOf(target.session), 'tasks');
-		if (target?.kind === 'watcher' && this.workerOf(target.session))
+		if (['watcher', 'background'].includes(target?.kind) && this.workerOf(target.session))
 			return this.openWorker(this.workerOf(target.session));
 		if (target?.kind === 'processes') return this.openRack(target, point);
 		if (target?.kind === 'use' && this.workerOf(target.use.session))
@@ -1748,7 +1749,7 @@ export default class Universe extends View {
 		return this.dock.card.show(key);
 	}
 
-		// Woken in its side panel, on its terminal: attaching it wakes it, here or on another paude
+	// Woken in its side panel, on its terminal: attaching it wakes it, here or on another paude
 	wake(worker) {
 		this.select(selectionOf({ kind: 'worker', worker }, this));
 		this.seen(worker.session);

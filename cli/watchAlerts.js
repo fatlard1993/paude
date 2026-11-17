@@ -1,4 +1,4 @@
-import watchChanges from '../shared/watchChanges';
+import watchChanges, { lookedAt } from '../shared/watchChanges';
 import notifier from './notify';
 import { api } from './servers';
 
@@ -33,7 +33,7 @@ const startWatchAlerts = (servers, onScreen) => {
 			notify(`paude · ${session.server.label}`, what === 'needs you' ? `${title} ${what}` : `${title}: ${what}`);
 		}
 
-		previous = new Map(all.map(session => [session.key, session]));
+		previous = lookedAt(previous, all, session => session.key);
 	};
 
 	check();

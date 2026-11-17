@@ -195,6 +195,13 @@ test('what needs you: those asking first, then those with news, newest reply fir
 		session({ key: 'asks', status: 'waiting' }),
 		session({ key: 'quiet' }),
 		session({ key: 'new', unseen: 2, reply: { at: 5 } }),
+		// Its news can wait: Claude goes on by itself once what it left running is done
+		session({
+			key: 'background',
+			unseen: 3,
+			reply: { at: 9 },
+			background: [{ what: 'Run the tests', kind: 'command' }],
+		}),
 	]);
 
 	expect(needed.map(({ session: { key }, need }) => [key, need])).toEqual([
@@ -3970,4 +3977,43 @@ test("a fabled session's monitor walks over with its grey when their island has 
 	expect(worker.watcher.path).toEqual([]);
 	expect(made.watcherStands(worker)).toBe(true);
 	expect([worker.watcher.x, worker.watcher.y]).not.toEqual([stood.x, stood.y]);
+});
+
+test("what a session left running in the background is a lone terminal beside it, after its subagents' small greys, nobody at it", () => {
+	const looks = changes => [
+		answer('here', [session({ status: 'ready', tool: null, ...changes })], { projects: ['paude'] }),
+	];
+	const made = shipWith(
+		looks({ agents: 1, subagents: ['Audit the docs'], background: [{ what: 'Run the e2e tests', kind: 'command' }] }),
+	);
+
+	run(made, 4);
+
+	const worker = made.workers.get('here/a');
+	const { ctx } = recordingContext();
+	const parts = made.smallGreyParts(ctx, worker);
+
+	const hadDocument = 'document' in globalThis;
+
+	if (!hadDocument)
+		globalThis.document = {
+			createElement: () => ({ width: 0, height: 0, getContext: () => recordingContext().ctx }),
+		};
+	made.hits = [];
+	try {
+		parts.forEach(part => part.draw());
+	} finally {
+		if (!hadDocument) delete globalThis.document;
+	}
+
+	// The small grey's terminal and the grey at it, then the lone terminal
+	expect(parts).toHaveLength(3);
+	expect(made.hits.map(({ kind }) => kind)).toEqual(['subagent', 'background']);
+	expect(made.hits[1].job).toEqual({ what: 'Run the e2e tests', kind: 'command' });
+	// Waiting on it, it neither needs anyone nor nods off
+	made.update(looks({ unseen: 3, background: [{ what: 'Run the e2e tests', kind: 'command' }] }));
+	expect(made.needs(worker.session)).toBeNull();
+	expect(made.drowseOf(worker)).toBe(0);
+	made.update(looks({ unseen: 3 }));
+	expect(made.needs(worker.session)).toBe('unread');
 });

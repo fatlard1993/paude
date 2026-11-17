@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { flyoutOf } from './flyout';
+import { doing, flyoutOf } from './flyout';
 
 test("a session's card says how much of its context is used and how much is left, as Claude's status line counts it", () => {
 	const session = {
@@ -66,4 +66,12 @@ test("a project's rack lists what each of its sessions runs under its name, or j
 		'bun test',
 	]);
 	expect(many.hint).toContain('pick a session');
+});
+
+test('a session that ended its turn with work left in the background is waiting on it, not ready', () => {
+	expect(doing({ status: 'ready' })).toBe(doing({ status: 'ready', background: [] }));
+	expect(doing({ status: 'ready', background: [{ what: 'Run the tests' }] })).toBe(
+		'waiting on one thing in the background',
+	);
+	expect(doing({ status: 'ready', background: [{}, {}] })).toBe('waiting on 2 things in the background');
 });

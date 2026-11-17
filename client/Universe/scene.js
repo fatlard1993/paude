@@ -233,6 +233,10 @@ export const LOUNGE = '#lounge';
 const TEXT = 2;
 // How much cargo shows, however much there is
 const MOST = { papers: 8, crates: 6, canisters: 6, cans: 12, smallGreys: 4, bots: 4 };
+
+// What a session has out beside it on the island: a small grey for each subagent, a lone terminal for each thing it
+// left running in the background
+const outOf = session => (Number(session.agents) || 0) + (session.background?.length ?? 0);
 // A lounger's empties pile up, one more every half hour since its session's prompt cache went cold; and they go to its
 // head, until it's passed out on the couch's arm after this many
 const CAN_MS = 30 * 60_000;
@@ -1073,13 +1077,14 @@ const shapeOf = ({ building, rooms, bridge }) => {
 export const sessionKey = (engineKey, id) => `${engineKey}/${id}`;
 
 // What needs this person, most pressing first: those asking something, then those with something new for them
-export const triage = (sessions, read = new Map()) => {
-	const unread = session => session.unseen > (read.get(session.key) ?? 0);
+// News not yet read, unless Claude is still waiting on what it left running in the background: it'll go on by itself
+const unread = (session, read) => session.unseen > (read.get(session.key) ?? 0) && !session.background?.length;
 
+export const triage = (sessions, read = new Map()) => {
 	return [
 		...sessions.filter(session => session.status === 'waiting').map(session => ({ session, need: 'asking' })),
 		...sessions
-			.filter(session => session.status !== 'waiting' && unread(session))
+			.filter(session => session.status !== 'waiting' && unread(session, read))
 			.sort((a, b) => (b.reply?.at ?? 0) - (a.reply?.at ?? 0))
 			.map(session => ({ session, need: 'unread' })),
 	];
@@ -1561,7 +1566,8 @@ export default class Ship {
 					sessions: lounging,
 					cabinets: this.cabinets.filter(({ watched }) => watched),
 				},
-				agents: Object.fromEntries([...this.workers].map(([key, worker]) => [key, worker.session.agents ?? 0])),
+				// Its subagents' small terminals and its background work's beside them
+				agents: Object.fromEntries([...this.workers].map(([key, worker]) => [key, outOf(worker.session)])),
 				watched: Object.fromEntries(
 					[...this.workers].map(([key, worker]) => [key, keepingOf(worker.session) === 'fabled']),
 				),
@@ -2818,7 +2824,7 @@ export default class Ship {
 	needs(session) {
 		if (session.status === 'waiting') return 'asking';
 
-		return session.unseen > (this.read.get(session.key) ?? 0) ? 'unread' : null;
+		return unread(session, this.read) ? 'unread' : null;
 	}
 
 	// Each frame: the sky and its stars on the screen, then the world in art pixels, every one a square of `zoom`
@@ -4864,7 +4870,46 @@ export default class Ship {
 			];
 		});
 
-		const extra = (session.agents ?? 0) - MOST.smallGreys;
+		// Its background work after them: a terminal of its own, nobody at it, churning away until it's done
+		const jobs = worker.lounging
+			? []
+			: (session.background ?? []).slice(0, Math.max(0, MOST.smallGreys - shown.length));
+
+		jobs.forEach((job, index) => {
+			const slot = shown.length + index;
+			const spot = this.smallGreyAt(worker, slot);
+
+			parts.push([
+				{
+					y: worker.seat.y + SEAT_LAYER.smallScreen,
+					draw: () => {
+						const at = this.art({ x: spot.x, y: worker.seat.y + 0.2 });
+						const lamp = Math.floor(this.time * 3 + slot) % 2;
+
+						rect(ctx, at.x - 14, at.y - 22, 10, 8, PALETTE.k);
+						rect(ctx, at.x - 13, at.y - 21, 8, 6, PALETTE.d);
+						drawScreen(
+							ctx,
+							{ x: at.x - 13, y: at.y - 21, w: 8, h: 6 },
+							{ kind: 'terminal', time: this.time * 2.5, seed: worker.seed + slot + 7 },
+						);
+						rect(ctx, at.x - 10, at.y - 14, 2, 3, PALETTE.d);
+						rect(ctx, at.x - 12, at.y - 11, 6, 1, PALETTE.k);
+						// Its lamp, on the stand: busy
+						rect(ctx, at.x - 6, at.y - 14, 1, 1, lamp ? PALETTE.t : PALETTE.d);
+						this.hits.push({
+							...this.toScreen({ x: at.x - 9, y: at.y - 18 }),
+							r: 4 * this.camera.zoom,
+							kind: 'background',
+							session,
+							job,
+						});
+					},
+				},
+			]);
+		});
+
+		const extra = outOf(session) - MOST.smallGreys;
 
 		if (extra > 0 && this.camera.zoom >= 4) {
 			const end = this.art(this.smallGreyAt(worker, MOST.smallGreys));
@@ -5833,7 +5878,8 @@ export default class Ship {
 		const { session } = worker;
 		const cache = session.context?.cache;
 
-		if (session.status !== 'ready' || !cache?.life || this.drinking(worker)) return 0;
+		// Waiting on its own background work it's woken by that, not by anyone
+		if (session.status !== 'ready' || session.background?.length || !cache?.life || this.drinking(worker)) return 0;
 
 		const left = cache.left - (this.time - (worker.cacheAt ?? this.time)) * 1000;
 
