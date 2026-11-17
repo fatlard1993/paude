@@ -4077,14 +4077,17 @@ export default class Ship {
 		const now = new Map();
 
 		for (const [name, { color, weight, working, seed, tray, riser, exit, out, plates }] of this.cables) {
-			const style = { color, weight, working, seed };
+			const style = { color, weight, seed };
 			const machine = [{ x: out.x, y: tray }, out, exit];
+			const busy = island =>
+				working && (island?.keys ?? []).some(key => this.workers.get(key)?.session.status === 'working');
 
-			// From the island, so its pulse runs toward the machine as it always has
+			// From the island, so its pulse runs toward the machine as it always has; only from an island where a session
+			// is at work, so which of its islands is busy can be seen
 			now.set(
 				name,
-				plates.map(({ at, run = at.y }) => ({
-					style,
+				plates.map(({ island, at, run = at.y }) => ({
+					style: { ...style, working: busy(island) },
 					points: [
 						...this.clearOfLounge(
 							[at, ...(run === at.y ? [] : [{ x: at.x, y: run }]), { x: riser, y: run }, { x: riser, y: tray }],
