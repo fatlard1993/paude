@@ -93,7 +93,7 @@ export default class Project extends View {
 		}
 		// The universe, looking at this project's machine
 		ghostButton(this.bar, {
-			icon: 'earth-americas',
+			icon: 'rocket',
 			title: 'See it in the universe',
 			onPress: () => (window.location.hash = `#/universe/projects/${encodeURIComponent(project)}`),
 		});

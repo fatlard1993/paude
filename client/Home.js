@@ -119,7 +119,7 @@ export default class Home extends View {
 
 		breadcrumbs({ appendTo: bar, addCleanup: (name, stop) => this.addCleanup(name, stop) });
 		ghostButton(bar, {
-			icon: 'earth-americas',
+			icon: 'rocket',
 			title: 'Universe: each paude a planet, each running session an alien at work on it',
 			onPress: () => (window.location.hash = '#/universe'),
 		});
