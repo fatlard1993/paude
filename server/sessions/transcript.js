@@ -26,25 +26,45 @@ const ownFile = async (id, cwd) => {
 };
 
 const CONTINUED_TAIL_BYTES = 256 * 1024;
-// { [id]: { size, next } }: where each transcript said its session went on, as of the size it was read at
+// { [id]: { offset, carry, next } }: where each transcript said its session went on, as of how far it was read, and
+// the line it was cut partway through
 const continuations = new Map();
 // { [id carried on in]: the id it was carried on from }
 const continuedFrom = new Map();
+// The lines that say where a session went: a move, or the conversation going on. Inside another line's text a quote is
+// escaped, so a transcript quoting one isn't taken for one.
+const SAYS_WHERE = /"type":"(?:continued-in|user|assistant)"/;
+
+// Where the session went, after these lines: a move sends it on, and only where it ended counts, since a conversation
+// taken up again under its old id afterwards went on here, not there
+const foldWhere = (id, next, lines) => {
+	for (const text of lines) {
+		if (!SAYS_WHERE.test(text)) continue;
+
+		const [line] = parsed(text);
+
+		if (line?.type === 'continued-in' && line.sessionId === id) next = line.continuedInSessionId;
+		else if (['user', 'assistant'].includes(line?.type)) next = null;
+	}
+
+	return next;
+};
 
 // The session Claude carried this one on in, as when it moves a session to the background: a resume that forks it, so
-// the new transcript holds the whole conversation, and the old one ends saying where it went
+// the new transcript holds the whole conversation, and the old one ends saying where it went. Its end is read once,
+// then only what it has grown by.
 const continuedIn = async (id, file) => {
-	const known = continuations.get(id);
+	let known = continuations.get(id);
 
-	if (known?.next || known?.size === file.size) return known.next;
+	if (known?.next || known?.offset === file.size) return known.next;
+	if (!known || file.size < known.offset)
+		known = { offset: Math.max(0, file.size - CONTINUED_TAIL_BYTES), carry: '', next: null };
 
-	const lines = parsed(await file.slice(Math.max(0, file.size - CONTINUED_TAIL_BYTES)).text());
-	const moved = lines.findLastIndex(line => line.type === 'continued-in' && line.sessionId === id);
-	// Only where it ended: a conversation taken up again under its old id afterwards went on here, not there
-	const wentOnHere = lines.slice(moved + 1).some(line => ['user', 'assistant'].includes(line.type));
-	const next = moved !== -1 && !wentOnHere ? lines[moved].continuedInSessionId : null;
+	const lines = (known.carry + (await file.slice(known.offset, file.size).text())).split('\n');
+	const carry = lines.pop();
+	const next = foldWhere(id, known.next, lines);
 
-	continuations.set(id, { size: file.size, next });
+	continuations.set(id, { offset: file.size, carry, next });
 
 	return next;
 };

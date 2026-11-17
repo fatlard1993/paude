@@ -114,3 +114,19 @@ test('a continuation whose transcript is missing leaves the session on its own',
 	);
 	expect((await transcriptFile(id, '/work')).name).toEndWith(`${id}.jsonl`);
 });
+
+test('a transcript read again as it grows is read from where it was, a line cut short read once it ends', async () => {
+	const folder = join(process.env.CLAUDE_CONFIG_DIR, 'projects', '-work');
+	const line = value => `${JSON.stringify(value)}\n`;
+	const [growing, onward] = ['e0', 'e1'].map(id => `${id}000000-0000-4000-8000-000000000000`);
+	const file = join(folder, `${growing}.jsonl`);
+	const move = line({ type: 'continued-in', sessionId: growing, continuedInSessionId: onward });
+
+	await mkdir(folder, { recursive: true });
+	await Bun.write(join(folder, `${onward}.jsonl`), line({ type: 'user', sessionId: onward }));
+	await Bun.write(file, line({ type: 'user', sessionId: growing }) + move.slice(0, 20));
+	expect(await resumeId(growing, '/work')).toBe(growing);
+
+	await Bun.write(file, line({ type: 'user', sessionId: growing }) + move);
+	expect(await resumeId(growing, '/work')).toBe(onward);
+});
