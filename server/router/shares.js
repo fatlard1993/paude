@@ -11,7 +11,7 @@ import { previewOrigin as previewOriginOf } from '../publicOrigin';
 import { serverSettings } from '../serverSettings';
 import { sessionRecord } from '../sessions/record';
 import { ShareError, addShare, removeShare, renameShare, sharesOf } from '../shares';
-import { allCabinets, cabinetShare } from '../cabinets';
+import { allCabinets, cabinetShare, inLounge } from '../cabinets';
 import { FRAME_TICKET, issueFrameTicket } from '../frameTickets';
 
 let previewPort;
@@ -61,10 +61,10 @@ const sharesRoutes = async request => {
 	const playing = requestMatch('GET', '/api/cabinets/:id/play', request);
 
 	if (playing) {
-		if (!identityOf(credentialOf(request))?.owner)
-			return new Response("The lounge's cabinets are the owner's", { status: 403 });
-
 		await allCabinets();
+
+		if (!identityOf(credentialOf(request))?.owner && !inLounge(playing.id))
+			return new Response('That game is not in the lounge', { status: 404 });
 
 		const share = cabinetShare(`game-${playing.id}`);
 

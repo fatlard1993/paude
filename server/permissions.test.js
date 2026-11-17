@@ -52,6 +52,15 @@ describe('guestMayRequest', () => {
 		expect(guestMayRequest(ana, 'GET', '/api/sessions')).toBe(false);
 		expect(guestMayRequest(ana, 'POST', '/api/invites')).toBe(false);
 	});
+
+	test("plays the lounge's games, and doesn't manage them", () => {
+		const ana = guest('view');
+
+		expect(guestMayRequest(ana, 'GET', '/api/cabinets/humanity/play')).toBe(true);
+		expect(guestMayRequest(ana, 'GET', '/api/cabinets/humanity/icon')).toBe(true);
+		expect(guestMayRequest(ana, 'POST', '/api/cabinets/humanity/restart')).toBe(false);
+		expect(guestMayRequest(ana, 'PUT', '/api/cabinets/humanity/watch')).toBe(false);
+	});
 });
 
 test('a comment is resolvable by whoever wrote it, not by someone sharing their name', async () => {

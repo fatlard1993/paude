@@ -1512,12 +1512,12 @@ export default class Universe extends View {
 	openCabinetDock(cabinet, open) {
 		const current = () => (this.aboard.cabinets ?? []).find(({ id }) => id === cabinet.id) ?? cabinet;
 
-		// A guest of the lounge sees how the game is doing; playing it, its addresses and managing it are the owner's
+		// A guest of the lounge plays the game and sees how it's doing; its addresses and managing it are the owner's
 		if (!identity()?.owner)
 			return this.openListDock(`cabinet:${cabinet.id}`, {
 				title: cabinet.title,
 				about: 'a game on the mother hub',
-				entries: [cabinetInfoPane({ current })],
+				entries: [cabinetPane({ cabinet }), cabinetInfoPane({ current })],
 				open,
 				buttons: [],
 			});

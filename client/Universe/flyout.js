@@ -6,9 +6,9 @@ import tokenCount from '../../shared/tokenCount';
 import { identity } from '../identity';
 import { BRIDGE, LOUNGE } from './scene';
 
-// A guest sees how a cabinet's game is doing; where it's played is the owner's
+// A guest plays a cabinet's game through paude, never knowing where it's reached
 const cabinetHint = cabinet => {
-	if (!identity()?.owner) return 'Press to see how it is doing';
+	if (!identity()?.owner) return 'Press to play it';
 
 	return cabinet.url ? 'Press to play it' : 'Not reachable from here yet';
 };

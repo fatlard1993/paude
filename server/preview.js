@@ -6,7 +6,7 @@ import { credentialOf, identityOf } from './auth';
 import { isSecret } from './files';
 import { sessionRecord } from './sessions/record';
 import { isArcadeSession } from './arcade';
-import { cabinetShare } from './cabinets';
+import { cabinetShare, inLounge } from './cabinets';
 import { FRAME_TICKET, frameCookieName, frameGrant, redeemFrameTicket } from './frameTickets';
 import { shareNamed } from './shares';
 import { zipStream } from './zip';
@@ -270,8 +270,8 @@ const site = async (share, rest) => {
 const allowedTo = (request, share) => {
 	const identity = identityOf(credentialOf(request));
 
-	// A mother-hub game from the lounge's cabinets: the owner's, as the cabinets are
-	if (share.cabinet) return Boolean(identity?.owner);
+	// A mother-hub game from the lounge's cabinets: the owner's, and anyone's logged in while it's in the lounge
+	if (share.cabinet) return Boolean(identity?.owner || (identity && inLounge(share.cabinet)));
 
 	return ownsSession(identity, share.sessionId) || framedIn(request, share);
 };

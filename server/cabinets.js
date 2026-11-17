@@ -89,6 +89,9 @@ export const manageCabinet = async (id, action, { hub: given } = {}) => {
 // The cabinets the lounge shows: the watched ones
 export const watchedCabinets = async options => (await allCabinets(options)).filter(cabinet => cabinet.watched);
 
+// Whether a game, as last asked of the hub, is in the lounge: a guest may play it there
+export const inLounge = id => !unwatched.has(id) && known.games.some(game => game.id === id);
+
 // What a guest of the lounge is shown of a cabinet: how it's doing, not where its game is reached (the addresses, the
 // hub, the port), which are the owner's to hand out
 export const guestView = ({ url, publicUrl, lanUrl, hub, hubIcon, port, ...visible }) => visible;

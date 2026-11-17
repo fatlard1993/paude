@@ -10,6 +10,7 @@ import {
 	cabinetShare,
 	forgetCabinets,
 	guestView,
+	inLounge,
 	initCabinets,
 	manageCabinet,
 	watchCabinet,
@@ -95,7 +96,10 @@ test('the hub is asked a little apart, and a game unwatched leaves the lounge bu
 	await watchCabinet('sand-sorter', false);
 	expect((await watchedCabinets()).map(({ id }) => id)).toEqual(['humanity']);
 	expect((await allCabinets()).find(({ id }) => id === 'sand-sorter').watched).toBe(false);
+	// Only a game in the lounge is a guest's to play
+	expect([inLounge('humanity'), inLounge('sand-sorter'), inLounge('nowhere')]).toEqual([true, false, false]);
 	await watchCabinet('sand-sorter', true);
+	expect(inLounge('sand-sorter')).toBe(true);
 	expect((await watchedCabinets()).map(({ id }) => id)).toEqual(['humanity', 'sand-sorter']);
 });
 
