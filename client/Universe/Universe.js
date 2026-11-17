@@ -82,6 +82,9 @@ const FRAME_MS = 1000 / 30;
 // While the view itself is moving (the ship coming in, the view flying somewhere, ships sliding alongside) it's drawn
 // up to twice as often: a glide across the whole screen shows its steps where a figure crossing a floor doesn't
 const GLIDE_MS = 1000 / 60;
+// With the window not the one in use (left open on another screen, say) it's drawn a third as often: as often as a
+// frame can move things on (LONGEST_FRAME_S) without them slowing down
+const UNFOCUSED_MS = 1000 / 10;
 const DRAG_PX = 5;
 const WHEEL_ZOOM = 0.0015;
 // A pinch zooms a step each time the fingers' distance grows or shrinks by this much
@@ -650,7 +653,7 @@ export default class Universe extends View {
 		let frame;
 		const tick = now => {
 			// No more often than FRAME_MS: drawn each refresh, a 120Hz screen drew it four times as often as it needs
-			if (now - last < (this.gliding() ? GLIDE_MS : FRAME_MS) - 1) {
+			if (now - last < this.frameMs() - 1) {
 				frame = requestAnimationFrame(tick);
 
 				return;
@@ -690,6 +693,12 @@ export default class Universe extends View {
 
 		frame = requestAnimationFrame(tick);
 		this.addCleanup('frames', () => cancelAnimationFrame(frame));
+	}
+
+	frameMs() {
+		if (!document.hasFocus()) return UNFOCUSED_MS;
+
+		return this.gliding() ? GLIDE_MS : FRAME_MS;
 	}
 
 	// Whether the view is on the move, so drawn more often: not for someone who asked for less motion, whose view jumps
