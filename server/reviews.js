@@ -16,21 +16,22 @@ export const initReviews = dataDir => {
 	file = path.join(dataDir, 'reviewed.json');
 };
 
-const gitOut = (args, cwd) => {
-	const result = Bun.spawnSync(['git', ...args], { cwd, env: gitEnvironment(), stdout: 'pipe', stderr: 'pipe' });
+const gitOut = async (args, cwd) => {
+	const child = Bun.spawn(['git', ...args], { cwd, env: gitEnvironment(), stdout: 'pipe', stderr: 'ignore' });
+	const out = await new Response(child.stdout).text();
 
-	return result.success ? result.stdout.toString().trim() : '';
+	return (await child.exited) === 0 ? out.trim() : '';
 };
 
 // The repository by its origin, so a clone elsewhere counts as the same; else by where its history is kept
-const repositoryOf = root =>
-	normalizeRemote(gitOut(['remote', 'get-url', 'origin'], root)) ||
+const repositoryOf = async root =>
+	normalizeRemote(await gitOut(['remote', 'get-url', 'origin'], root)) ||
 	gitOut(['rev-parse', '--path-format=absolute', '--git-common-dir'], root);
 
 const keyOf = async root => {
 	const branch = await branchName(root);
 
-	return branch && `${repositoryOf(root)} ${branch}`;
+	return branch && `${await repositoryOf(root)} ${branch}`;
 };
 
 // { head, branch, commit, at, count | rewritten | missing } for the one asking, about the branch checked out at root;

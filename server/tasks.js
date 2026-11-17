@@ -357,13 +357,13 @@ export const stopRun = async (sessionId, runId) => {
 };
 
 // What a process runs, or '' once it's gone
-const commandOf = pid => {
-	const { stdout } = Bun.spawnSync(['ps', '-o', 'command=', '-p', String(pid)]);
+const commandOf = async pid => {
+	const child = Bun.spawn(['ps', '-o', 'command=', '-p', String(pid)], { stdout: 'pipe', stderr: 'ignore' });
 
-	return stdout.toString().trim();
+	return (await new Response(child.stdout).text()).trim();
 };
 
-const isPaude = pid => pid === process.pid || /\bserver\/index\.js\b.*--port/.test(commandOf(pid));
+const isPaude = async pid => pid === process.pid || /\bserver\/index\.js\b.*--port/.test(await commandOf(pid));
 
 // Runs left by a paude that has since gone (restarted or crashed): nothing reads what they print or will stop them,
 // and a game server among them keeps its port, its old code and its hold on the game's saves, beside the copy started
@@ -374,18 +374,23 @@ export const reapLeftoverRuns = async ({ processes = sessionProcesses, wait = tr
 		(await processes()).filter(found => found.task && found.parent),
 		found => found.task,
 	);
-	const leftover = [...runsOf.values()].flatMap(tree => {
-		const inTree = new Set(tree.map(({ pid }) => pid));
-		const tops = tree.filter(({ parent }) => !inTree.has(parent));
+	const leftover = (
+		await Promise.all(
+			[...runsOf.values()].map(async tree => {
+				const inTree = new Set(tree.map(({ pid }) => pid));
+				const tops = tree.filter(({ parent }) => !inTree.has(parent));
+				const kept = await Promise.all(tops.map(({ parent }) => isPaude(parent)));
 
-		return tops.some(({ parent }) => isPaude(parent)) ? [] : tree.map(({ pid }) => pid);
-	});
+				return kept.some(Boolean) ? [] : tree.map(({ pid }) => pid);
+			}),
+		)
+	).flat();
 
 	if (!leftover.length) return [];
 	console.log(`Stopping ${leftover.length} process(es) left running by an earlier paude: ${leftover.join(', ')}`);
 	terminate(leftover);
 	for (let waited = 0; wait && waited < STOP_AFTER_MS + 500; waited += 100) {
-		if (leftover.every(pid => !commandOf(pid))) break;
+		if ((await Promise.all(leftover.map(commandOf))).every(command => !command)) break;
 		await Bun.sleep(100);
 	}
 
