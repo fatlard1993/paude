@@ -4,7 +4,8 @@ import { noise, pixelEllipse, rect } from './station';
 
 // A project's machine: modules for its folders on a plinth, ports down each side for the workers jacked into it. It
 // runs while worked on, idles lit low and still while its sessions wait, is dark while nobody is at it, and flashes
-// amber along its top while one of its sessions asks you something. Nothing on it moves but for work or a question.
+// amber along its top while one of its sessions asks you something. Nothing on it moves but for work or a question;
+// only the ship's own core idles alive.
 export const FORMS = ['core', 'coils', 'lattice', 'turbine'];
 
 // What form a part takes from the language its folder is in
@@ -184,7 +185,7 @@ export const drawCore = (
 	const middle = Math.round((from + to) / 2);
 	const color = hue ?? 200;
 	const lit = state !== 'idle';
-	const speed = state === 'working' ? 5 : 0;
+	const speed = (state === 'working' && 5) || (state === 'ready' && 1.2) || 0;
 	const bright = (light, alpha = 1) => hsl(color, 90, light, lit ? alpha : alpha * 0.3);
 	const top = ceiling + 2;
 
@@ -411,7 +412,7 @@ const drawSpire = (ctx, { left, right, row, plating, hue, state, asking, time })
 	for (let port = middle - 4; port <= middle + 4; port += 4) row(port, 18, 1, 2, light(70, 0.9));
 	// Its mast, dish and beacon
 	row(middle, 30, 1, SPIRE_TALL - 30, edge);
-	const tilt = state === 'working' ? Math.round(Math.sin(time * 1.5) * 3) : 0;
+	const tilt = Math.round(Math.sin(time * (state === 'working' ? 1.5 : 0.4)) * 3);
 
 	row(middle - 4 + tilt, 30, 9, 1, edge);
 	row(middle - 3 + tilt, 31, 7, 1, plate);
@@ -421,7 +422,7 @@ const drawSpire = (ctx, { left, right, row, plating, hue, state, asking, time })
 		3,
 		2,
 		(asking && (Math.floor(time * 3) % 2 ? PALETTE.y : PALETTE.Y)) ||
-			(state === 'working' && !(Math.floor(time * 1.5) % 2) ? '#5a1a16' : light(70)),
+			(Math.floor(time * 1.5) % 2 ? light(70) : '#5a1a16'),
 	);
 };
 
