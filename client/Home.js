@@ -30,7 +30,15 @@ import { button, element } from './dom';
 import { Bar, ghostButton } from './Bar';
 import { Empty, Scroll, sessionCard } from './Layout';
 import { promptPlan } from '../shared/promptPlan';
-import { arcadePicker, composeBox, HOME_PROMPT_KEY, placePrompt, sessionChoices, startSessionIn } from './PromptHome';
+import {
+	arcadePicker,
+	composeBox,
+	HOME_PROMPT_KEY,
+	placePrompt,
+	sendLabel,
+	sessionChoices,
+	startSessionIn,
+} from './PromptHome';
 import makersCard from './Arcade/makersCard';
 
 // The project list's last row: pressed, it opens into the folder's path
@@ -156,7 +164,7 @@ export default class Home extends View {
 
 	// A prompt placed before it's sent: in a conversation it carries on, or a new session in the project that fits
 	promptBox(appendTo) {
-		const arcade = arcadePicker();
+		const arcade = arcadePicker({ onChange: () => said() });
 		// Where it goes, and what a new session there runs on and how long it lasts: all said here with the prompt, so
 		// sending it asks nothing again. With no project said, paude finds where it goes.
 		const where = Object.assign(element('select', 'choice'), { title: 'Where it goes' });
@@ -192,7 +200,7 @@ export default class Home extends View {
 		});
 		const said = () => {
 			buttons[0].style.display = where.value ? '' : 'none';
-			buttons[1].querySelector('.label').textContent = where.value ? 'Start new session' : 'Find where it goes';
+			buttons[1].querySelector('.label').textContent = sendLabel(asked());
 		};
 
 		where.append(Object.assign(element('option', '', 'Let paude find the project'), { value: '' }));

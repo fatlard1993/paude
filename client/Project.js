@@ -482,6 +482,8 @@ export default class Project extends View {
 
 		this.arcadeChip.replaceChildren(element('i', 'fa-solid fa-gamepad'), ` ${words}`);
 		this.arcadeChip.classList.toggle('active', inArcade);
+		this.startWords = inArcade ? 'Start in the arcade' : 'Start session';
+		if (!this.starting) this.startLabel.textContent = this.startWords;
 		this.arcadeChip.title = inArcade
 			? 'Starts in the arcade: big talk, read aloud, choices to tap. Click to change'
 			: 'An ordinary session. Click to start it in the arcade instead: big talk, read aloud, choices to tap';
@@ -637,7 +639,7 @@ export default class Project extends View {
 
 		this.starting = false;
 		this.startButton.disabled = false;
-		this.startLabel.textContent = 'Start session';
+		this.startLabel.textContent = this.startWords;
 
 		if (result.error) {
 			if (checkout?.join) this.loadCheckouts();

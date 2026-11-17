@@ -8,7 +8,7 @@ import { AskingCard, showAsking } from '../Asking';
 import { button, element } from '../dom';
 import { intoBox, micButton } from '../micButton';
 import { promptPlan } from '../../shared/promptPlan';
-import { arcadePicker, HOME_PROMPT_KEY, placePrompt, sessionChoices, startSessionIn } from '../PromptHome';
+import { arcadePicker, HOME_PROMPT_KEY, placePrompt, sendLabel, sessionChoices, startSessionIn } from '../PromptHome';
 import { forget, recall, remember } from '../storage';
 import refusal from './reason';
 import { sessionKey } from './scene';
@@ -186,7 +186,7 @@ export const promptCard = ({ project, projects = [], onSent, onArrive, onClose }
 
 	// Sent for the arcade or not, as on the home page; and what a new session runs on and how long it lasts, picked
 	// here with the rest, not asked once it's sent
-	const arcade = arcadePicker();
+	const arcade = arcadePicker({ onChange: () => said() });
 	const session = sessionChoices();
 	const done = () => {
 		box.sent();
@@ -223,7 +223,7 @@ export const promptCard = ({ project, projects = [], onSent, onArrive, onClose }
 	const said = () => {
 		head.querySelector('.about').textContent = about();
 		finder.style.display = where.value && !chosen()?.remote ? '' : 'none';
-		box.sendLabel.textContent = where.value ? 'Start new session' : 'Find where it goes';
+		box.sendLabel.textContent = sendLabel(asked(''));
 	};
 
 	where.addEventListener('change', said);

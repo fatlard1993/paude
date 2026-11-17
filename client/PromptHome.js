@@ -375,13 +375,12 @@ const lifetimePicker = (suggested, chosen) => {
 	return { node, value: () => select.value };
 };
 
-// Whether what's sent goes to the arcade, and how Claude writes there: a chip for a compose box's options, kept per
-// browser. value() is a READING key, or null for an ordinary session.
-const ARCADE_KEPT = 'paude.prompt.arcade';
-
-export const arcadePicker = () => {
+// Whether what's sent goes to the arcade, and how Claude writes there: a chip for a compose box's options. Picked for
+// each prompt, never carried over from the last, so nothing starts in the arcade unasked. onChange(value) after each
+// pick; value() is a READING key, or null for an ordinary session.
+export const arcadePicker = ({ onChange } = {}) => {
 	const node = element('button', 'chip variant-chip');
-	let reading = recall(ARCADE_KEPT);
+	let reading = null;
 
 	const show = () => {
 		node.replaceChildren(
@@ -411,9 +410,8 @@ export const arcadePicker = () => {
 
 	const pick = key => {
 		reading = key;
-		if (key) remember(ARCADE_KEPT, key);
-		else forget(ARCADE_KEPT);
 		show();
+		onChange?.(key);
 	};
 
 	show();
@@ -722,6 +720,16 @@ export const placePrompt = async ({
 		body.elem.append(pressed, ...(place.after ? [place.after] : []));
 	}
 	body.elem.querySelector('button.place')?.focus();
+};
+
+// What sending does, said on its button: a new session or game, in the arcade or not, or paude finding where it goes
+export const sendLabel = asked => {
+	const { does } = promptPlan(asked);
+
+	if (does === 'game') return 'Make a new game';
+	if (does === 'find') return 'Find where it goes';
+
+	return asked.arcade ? 'Start in the arcade' : 'Start new session';
 };
 
 // Home's prompt, kept until sent; the universe's new prompt, placed as from home, is the same one
