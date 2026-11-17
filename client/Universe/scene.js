@@ -1023,7 +1023,8 @@ export const risersFor = (wall, lounge, weights) => {
 // The height each island's cable runs along its row at, in art pixels, for cables as thick as their `weight` ending at
 // `x`, `y` (an island's console's foot): islands sharing a row each at their own, the nearest the wall along the foot
 // and each further one a cable's width below the last, in the aisle under the row, their outlines meeting; so none lies
-// on another or over a nearer island, and each comes up into its own
+// on another or over a nearer island, and each comes up into its own. Neighbors of one project (`group`) share one
+// run, their cable one line that branches up into each.
 export const runsFor = ends => {
 	const runs = [];
 	const rows = new Map();
@@ -1032,11 +1033,15 @@ export const runsFor = ends => {
 	for (const row of rows.values()) {
 		let below = 0;
 		let above = null;
+		let last = null;
 
-		for (const { y, weight, index } of row.sort((a, b) => a.x - b.x)) {
-			if (above !== null) below += cableStep(above, weight);
+		for (const { y, weight, index, group } of row.sort((a, b) => a.x - b.x)) {
+			const joined = group !== undefined && group === last;
+
+			if (above !== null && !joined) below += cableStep(above, weight);
 			runs[index] = y + below;
 			above = weight;
+			last = group;
 		}
 	}
 
@@ -3891,8 +3896,10 @@ export default class Ship {
 			};
 		});
 		// Each island's run height first, which the risers' order is weighed with
-		const plates = routes.flatMap(({ plates: own, weight }) => own.map(plate => ({ plate, weight })));
-		const runs = runsFor(plates.map(({ plate, weight }) => ({ ...plate.at, weight })));
+		const plates = routes.flatMap(({ bay, plates: own, weight }) =>
+			own.map(plate => ({ plate, weight, group: bay.name })),
+		);
+		const runs = runsFor(plates.map(({ plate, weight, group }) => ({ ...plate.at, weight, group })));
 
 		plates.forEach(({ plate }, index) => (plate.run = runs[index]));
 
@@ -4059,8 +4066,7 @@ export default class Ship {
 		if (!this.cables.size && this.cablesDrawn?.size) {
 			this.cablesGoneAt ??= this.time;
 			if (this.time - this.cablesGoneAt < CABLE_HOLD_SECONDS) {
-				for (const paths of this.cablesDrawn.values())
-					for (const { points, style } of paths) this.drawWire(ctx, points, style);
+				this.drawWires(ctx, [...this.cablesDrawn.values()].flat());
 
 				return;
 			}
@@ -4102,7 +4108,7 @@ export default class Ship {
 			JSON.stringify(paths?.map(({ points }) => points.map(({ x, y }) => [Math.round(x), Math.round(y)])));
 		const draw = (paths, alpha) => {
 			ctx.globalAlpha = alpha;
-			for (const { points, style } of paths) this.drawWire(ctx, points, style);
+			this.drawWires(ctx, paths);
 			ctx.globalAlpha = 1;
 		};
 
@@ -4118,34 +4124,45 @@ export default class Ship {
 		this.cablesDrawn = now;
 	}
 
-	// A wire along axis-aligned points, a pulse running it from the first to the last while `working`
-	drawWire(ctx, points, { color, working, seed, weight = 1 }) {
-		let length = 0;
+	// Wires along axis-aligned points ({ points, style }), each with a pulse running it from its first point to its last
+	// while `working`: every outline, then every wire's color, then every pulse, so where wires share a stretch they
+	// merge into one, no outline cutting across another's join and no wire laid over another's pulse
+	drawWires(ctx, paths) {
+		for (const outline of [true, false])
+			for (const { points, style } of paths) this.drawWireBody(ctx, points, style, outline);
+		for (const { points, style } of paths) this.drawPulse(ctx, points, style);
+	}
+
+	drawWireBody(ctx, points, { color, weight = 1 }, outline) {
 		const half = Math.floor(weight / 2);
+		const [shade, grow] = outline ? [PALETTE.k, 1] : [color, 0];
 
-		for (const [shade, grow] of [
-			[PALETTE.k, 1],
-			[color, 0],
-		])
-			for (let at = 1; at < points.length; at++) {
-				const [from, to] = [points[at - 1], points[at]];
-				const [x, y] = [
-					Math.round(Math.min(from.x, to.x)) - half - grow,
-					Math.round(Math.min(from.y, to.y)) - half - grow,
-				];
+		for (let at = 1; at < points.length; at++) {
+			const [from, to] = [points[at - 1], points[at]];
+			const [x, y] = [
+				Math.round(Math.min(from.x, to.x)) - half - grow,
+				Math.round(Math.min(from.y, to.y)) - half - grow,
+			];
 
-				rect(
-					ctx,
-					x,
-					y,
-					Math.round(Math.abs(to.x - from.x)) + weight + grow * 2,
-					Math.round(Math.abs(to.y - from.y)) + weight + grow * 2,
-					shade,
-				);
-			}
+			rect(
+				ctx,
+				x,
+				y,
+				Math.round(Math.abs(to.x - from.x)) + weight + grow * 2,
+				Math.round(Math.abs(to.y - from.y)) + weight + grow * 2,
+				shade,
+			);
+		}
+	}
+
+	drawPulse(ctx, points, { working, seed, weight = 1 }) {
+		if (!working) return;
+
+		const half = Math.floor(weight / 2);
+		let length = 0;
+
 		for (let at = 1; at < points.length; at++)
 			length += Math.abs(points[at].x - points[at - 1].x) + Math.abs(points[at].y - points[at - 1].y);
-		if (!working) return;
 
 		let left = (((this.time * 60 + seed * 40) % length) + length) % length;
 

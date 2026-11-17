@@ -1779,6 +1779,17 @@ test('islands sharing a row each have their cable along it at its own height, no
 	}
 });
 
+test("one project's islands side by side in a row share its cable's run, and another's between keeps them apart", () => {
+	const end = (x, group) => ({ x, y: 100, weight: 3, group });
+	const [near, far, other, beyond] = runsFor([end(10, 'a'), end(50, 'a'), end(90, 'b'), end(130, 'a')]);
+
+	expect(far).toBe(near);
+	expect(other).toBeGreaterThan(far);
+	expect(beyond).toBeGreaterThan(other);
+	// Without a project said, each its own as ever
+	expect(new Set(runsFor([end(10), end(50)])).size).toBe(2);
+});
+
 test('runs bent round the lounge with their risers apart stay apart over it and down its sides', () => {
 	const box = { left: 0, right: 100, top: 0, bottom: 50 };
 	const run = [
