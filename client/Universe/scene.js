@@ -5521,16 +5521,33 @@ export default class Ship {
 
 	// A lounger's empties as they lie, the first `count` of them: where each is, in art pixels, whether it's one of
 	// those crushed on the floor where they were dropped (the rest heaped on the backrest), and how it fell
+	// Kept while they lie as they did, however many are asked for (the dropped ones and the heap are drawn apart): worked
+	// out afresh each frame they were a tenth of the frame's drawing
 	canShapes(worker, count) {
 		const key = worker.session.key;
+		const { lounge } = this;
+		const where = [
+			worker.seat.x,
+			worker.seat.y,
+			lounge.x,
+			lounge.y,
+			lounge.w,
+			lounge.count,
+			lounge.sessions.indexOf(key),
+		].join();
+		let kept = (this.cansKept ??= new Map()).get(key);
 
-		return Array.from({ length: count }, (_, can) => ({
-			...this.canAt(worker, can),
-			can,
-			dropped: can < CANS_DROPPED,
-			flip: seeded(`${key}|crush${can}`) < 0.5 ? 1 : -1,
-			lie: seeded(`${key}|lie${can}`),
-		}));
+		if (kept?.where !== where) this.cansKept.set(key, (kept = { where, shapes: [] }));
+		for (let can = kept.shapes.length; can < count; can++)
+			kept.shapes.push({
+				...this.canAt(worker, can),
+				can,
+				dropped: can < CANS_DROPPED,
+				flip: seeded(`${key}|crush${can}`) < 0.5 ? 1 : -1,
+				lie: seeded(`${key}|lie${can}`),
+			});
+
+		return kept.shapes.slice(0, count);
 	}
 
 	// A lounger's empties from the `from`th up to `count`
