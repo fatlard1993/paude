@@ -43,6 +43,8 @@ const PROMPT_PREVIEW = 200;
 const RECORD_MS = 60_000;
 // How long a checkout's cargo, a session's context, what it has made and whether it's tested are cached
 const CARGO_MS = 8000;
+// Which branch a checkout's work is compared with, and whether it's a worktree, change far less often than its cargo
+const PLACE_MS = 60_000;
 const CONTEXT_MS = 5000;
 const ASSETS_MS = 30_000;
 const TESTED_MS = 20_000;
@@ -329,6 +331,13 @@ const recordOf = async id => {
 	return record;
 };
 
+const placeOf = root =>
+	cached(`place:${root}`, PLACE_MS, async () => {
+		const [base, worktree] = await Promise.all([defaultBase(root), linkedWorktree(root)]);
+
+		return { base, worktree };
+	});
+
 // Each checkout's commits not pushed when last looked, and on which branch
 const pushedBefore = new Map();
 
@@ -350,7 +359,7 @@ const cargoOf = root =>
 						limit: status.upstream ? CARGO_SHOWN.commits : UNPUSHED_LIMIT,
 					})
 				: [];
-		const [base, worktree] = await Promise.all([defaultBase(root), linkedWorktree(root)]);
+		const { base, worktree } = (await placeOf(root)) ?? {};
 		const files = [...changed].slice(0, CARGO_SHOWN.files).map(file => ({
 			path: file,
 			status: entries.find(entry => entry.path === file).status ?? 'conflicted',
