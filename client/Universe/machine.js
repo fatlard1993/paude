@@ -3,8 +3,8 @@ import { PALETTE, plating } from './art';
 import { noise, pixelEllipse, rect } from './station';
 
 // A project's machine: modules for its folders on a plinth, ports down each side for the workers jacked into it. It
-// runs while worked on, idles lit low while its sessions wait, is dark while nobody is at it, and flashes amber along
-// its top while one of its sessions asks you something.
+// runs while worked on, idles lit low and still while its sessions wait, is dark while nobody is at it, and flashes
+// amber along its top while one of its sessions asks you something. Nothing on it moves but for work or a question.
 export const FORMS = ['core', 'coils', 'lattice', 'turbine'];
 
 // What form a part takes from the language its folder is in
@@ -184,7 +184,7 @@ export const drawCore = (
 	const middle = Math.round((from + to) / 2);
 	const color = hue ?? 200;
 	const lit = state !== 'idle';
-	const speed = (state === 'working' && 5) || (state === 'ready' && 1.2) || 0;
+	const speed = state === 'working' ? 5 : 0;
 	const bright = (light, alpha = 1) => hsl(color, 90, light, lit ? alpha : alpha * 0.3);
 	const top = ceiling + 2;
 
@@ -411,7 +411,7 @@ const drawSpire = (ctx, { left, right, row, plating, hue, state, asking, time })
 	for (let port = middle - 4; port <= middle + 4; port += 4) row(port, 18, 1, 2, light(70, 0.9));
 	// Its mast, dish and beacon
 	row(middle, 30, 1, SPIRE_TALL - 30, edge);
-	const tilt = Math.round(Math.sin(time * (state === 'working' ? 1.5 : 0.4)) * 3);
+	const tilt = state === 'working' ? Math.round(Math.sin(time * 1.5) * 3) : 0;
 
 	row(middle - 4 + tilt, 30, 9, 1, edge);
 	row(middle - 3 + tilt, 31, 7, 1, plate);
@@ -421,7 +421,7 @@ const drawSpire = (ctx, { left, right, row, plating, hue, state, asking, time })
 		3,
 		2,
 		(asking && (Math.floor(time * 3) % 2 ? PALETTE.y : PALETTE.Y)) ||
-			(Math.floor(time * 1.5) % 2 ? light(70) : '#5a1a16'),
+			(state === 'working' && !(Math.floor(time * 1.5) % 2) ? '#5a1a16' : light(70)),
 	);
 };
 
@@ -574,8 +574,8 @@ export const drawHousing = (
 	rect(ctx, body.x - 1, floor - 2, body.w + 2, 1, PALETTE.l);
 	for (let x = body.x + 2; x < body.x + body.w - 1; x += 7) rect(ctx, x, floor - 1, 1, 1, PALETTE.w);
 	weather(ctx, { x: body.x, y: top, w: body.w, h }, { history, state, time, seed });
-	// Lit in the colors of the systems its sessions use (`fed`)
-	if (fed.length) {
+	// Lit in the colors of the systems its sessions use (`fed`), while they're at work
+	if (fed.length && state === 'working') {
 		const color = fed[Math.floor(time / 2) % fed.length];
 
 		for (const x of [from + 1, to - 2]) rect(ctx, x, pylonTop + 2, 1, floor - pylonTop - 4, color);
@@ -586,8 +586,8 @@ export const drawHousing = (
 		ctx.globalAlpha = 1;
 	}
 	if (asking) rect(ctx, body.x, top, body.w, 2, Math.floor(time * 3) % 2 ? PALETTE.y : PALETTE.Y);
-	health(ctx, { x: body.x + body.w - 5, y: top }, { verdict, tested, time, seed });
-	pending(ctx, { from, to, top, floor, body }, { changed, pressure, pullRequest, time });
+	health(ctx, { x: body.x + body.w - 5, y: top }, { verdict, tested, time, seed, working: state === 'working' });
+	pending(ctx, { from, to, top, floor, body }, { changed, pressure, pullRequest, time, working: state === 'working' });
 
 	const socketAt = (side, index) => ({ x: side < 0 ? from - 1 : to, y: pylonTop + 13 + index * 11 });
 
@@ -609,8 +609,8 @@ export const drawHousing = (
 
 const DAY_MS = 864e5;
 
-// What its history has done to it: rust with age, patches bolted on with commits, warm vents while it's been worked
-// on today, dust over it once nothing has been committed for a month
+// What its history has done to it: rust with age, patches bolted on with commits, warm vents while it's at work and
+// has been today, dust over it once nothing has been committed for a month
 const weather = (ctx, { x, y, w, h }, { history = {}, state, time, seed }) => {
 	const years = history.since ? (Date.now() - history.since) / (365 * DAY_MS) : 0;
 	const spot = (index, salt) => Math.abs(Math.sin((seed + 1) * 97.13 + index * 13.7 + salt)) % 1;
@@ -631,7 +631,7 @@ const weather = (ctx, { x, y, w, h }, { history = {}, state, time, seed }) => {
 		rect(ctx, px, py, 1, 1, PALETTE.d);
 		rect(ctx, px + 3, py + 2, 1, 1, PALETTE.d);
 	}
-	if ((history.day ?? 0) > 0)
+	if ((history.day ?? 0) > 0 && state === 'working')
 		for (let vent = 0; vent < 3; vent++) {
 			const rise = (time * 0.6 + vent / 3) % 1;
 
@@ -647,11 +647,12 @@ const weather = (ctx, { x, y, w, h }, { history = {}, state, time, seed }) => {
 	}
 };
 
-const health = (ctx, { x, y }, { verdict, tested, time, seed }) => {
+// Its tests' light; a stale one blinking and a failing one sparking and smoking only while it's at work
+const health = (ctx, { x, y }, { verdict, tested, time, seed, working }) => {
 	if (!verdict) return;
 
-	const failing = tested === 'failing';
-	const blink = tested === 'stale' && Math.floor(time * 2) % 2;
+	const failing = tested === 'failing' && working;
+	const blink = working && tested === 'stale' && Math.floor(time * 2) % 2;
 
 	rect(ctx, Math.round(x) - 2, y - 3, 5, 3, PALETTE.k);
 	rect(ctx, Math.round(x) - 1, y - 2, 3, 1, blink ? '#3a3020' : verdict);
@@ -678,7 +679,7 @@ const health = (ctx, { x, y }, { verdict, tested, time, seed }) => {
 	}
 };
 
-const pending = (ctx, { to, floor, body }, { changed, pressure, pullRequest, time }) => {
+const pending = (ctx, { to, floor, body }, { changed, pressure, pullRequest, time, working }) => {
 	for (let panel = 0; panel < Math.min(3, changed); panel++) {
 		const x = body.x + 3 + panel * 6;
 
@@ -693,7 +694,7 @@ const pending = (ctx, { to, floor, body }, { changed, pressure, pullRequest, tim
 		rect(ctx, x - 1, floor - height - 2, 5, height + 2, PALETTE.k);
 		rect(ctx, x, floor - 1 - fill, 3, fill, PALETTE.o);
 		rect(ctx, x, floor - height - 1, 1, height, 'rgba(255, 255, 255, 0.2)');
-		if (pressure >= 5)
+		if (pressure >= 5 && working)
 			for (let puff = 0; puff < 2; puff++) {
 				const rise = (time * 0.9 + puff / 2) % 1;
 

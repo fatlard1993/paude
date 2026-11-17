@@ -2942,7 +2942,7 @@ export default class Ship {
 				to: art({ x: room.x + room.w, y: 0 }).x,
 			}));
 
-			standing.push(...drawHall(ctx, art, hall, { time: this.time, running, gaps }));
+			standing.push(...drawHall(ctx, art, hall, { gaps }));
 		}
 		standing.push(
 			// The streams' trunk in the bay's inner wall, behind its units
@@ -3764,7 +3764,8 @@ export default class Ship {
 		const hue = bay.hue ?? 200;
 		const [left, right] = [this.art({ x: building.left, y: 0 }).x + 2, this.art({ x: building.right, y: 0 }).x - 2];
 		const [top, bottom] = [this.art({ x: 0, y: building.top }).y + 1, this.art({ x: 0, y: building.bottom }).y - 1];
-		const strength = { working: 0.22, ready: 0.13, idle: 0.07 }[state] * (0.8 + 0.2 * Math.sin(this.time * 1.4));
+		const strength =
+			state === 'working' ? 0.22 * (0.8 + 0.2 * Math.sin(this.time * 1.4)) : { ready: 0.13, idle: 0.07 }[state];
 
 		// Its glow off the rim, fading inward
 		for (let depth = 0; depth < 4; depth++) {

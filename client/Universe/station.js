@@ -396,20 +396,13 @@ const wallTop = (ctx, from, to) => {
 	rect(ctx, from.x, from.y, 1, to.y - from.y, PALETTE.l);
 };
 
-// A hall: its grated floor, the far wall's face, and down its middle lights that run while
-// anything aboard is working. Through a room (`gaps`, spans of art pixels across) it has no wall behind it or before it.
-export const drawHall = (ctx, art, hall, { time, running, gaps = [] }) => {
+// A hall: its grated floor and the far wall's face, its middle left clear for the streams that run along it. Through
+// a room (`gaps`, spans of art pixels across) it has no wall behind it or before it.
+export const drawHall = (ctx, art, hall, { gaps = [] }) => {
 	floor(ctx, art, hall, HALL_FLOOR);
 
 	const [from, to] = corners(art, hall);
-	const lane = art({ x: hall.x, y: hall.lane }).y;
 	const open = x => gaps.some(gap => x >= gap.from && x < gap.to);
-
-	for (let x = from.x + 2; x < to.x - 2; x += 4) {
-		const on = running && Math.floor(x / 4 - time * 6) % 6 === 0;
-
-		rect(ctx, x, lane, 2, 1, on ? PALETTE.t : '#2a3242');
-	}
 
 	return [
 		{ y: hall.y, draw: () => face(ctx, art, hall, { deep: hall.face, gaps }) },
