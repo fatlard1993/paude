@@ -34,8 +34,8 @@ test("a project's sessions are looked back on whole, once each, again when unset
 	await writeFile(path.join(transcripts, 'notes.txt'), '');
 
 	const followed = [];
-	const follow = async (id, cwd, options) => {
-		followed.push([id, cwd, options]);
+	const follow = async (id, cwd) => {
+		followed.push([id, cwd]);
 
 		// One out of time, or waiting on another session at work
 		return id !== 'slow';
@@ -43,8 +43,8 @@ test("a project's sessions are looked back on whole, once each, again when unset
 
 	await lookBack(repo, { follow });
 	expect(followed.toSorted()).toEqual([
-		['old', repo, { whole: true }],
-		['slow', repo, { whole: true }],
+		['old', repo],
+		['slow', repo],
 	]);
 
 	followed.length = 0;

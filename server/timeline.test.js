@@ -3,7 +3,7 @@ import os from 'os';
 import { join } from 'path';
 import { expect, test } from 'bun:test';
 
-import { describeTool, sessionTurns, timelineFrom } from './timeline';
+import { WHOLE_IDLE_MS, describeTool, sessionTurns, timelineFrom } from './timeline';
 
 const at = second => `2026-10-07T12:00:${String(second).padStart(2, '0')}.000Z`;
 const prompt = (text, second) => ({
@@ -117,7 +117,7 @@ test('a whole transcript is read as it grows, once each line, a line still being
 	const id = 'w0000000-0000-4000-8000-000000000000';
 	const file = join(home, 'projects', '-repo', `${id}.jsonl`);
 	const line = value => `${JSON.stringify(value)}\n`;
-	const read = async () => sessionTurns(id, '/repo', { whole: true });
+	const read = async () => sessionTurns(id, '/repo');
 
 	process.env.CLAUDE_CONFIG_DIR = home;
 	try {
@@ -151,6 +151,34 @@ test('a whole transcript is read as it grows, once each line, a line still being
 		// Written anew, shorter
 		await writeFile(file, line(prompt('fresh', 0)));
 		expect((await read()).map(turn => turn.prompt)).toEqual(['fresh']);
+	} finally {
+		if (was === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+		else process.env.CLAUDE_CONFIG_DIR = was;
+		await rm(home, { recursive: true, force: true });
+	}
+});
+
+test("a session not looked at for a while is let go, and read again from the top when it's looked at again", async () => {
+	const home = await mkdtemp(join(os.tmpdir(), 'paude-idle-'));
+	const was = process.env.CLAUDE_CONFIG_DIR;
+	const [kept, idle] = ['i0', 'i1'].map(prefix => `${prefix}000000-0000-4000-8000-000000000000`);
+	const file = id => join(home, 'projects', '-repo', `${id}.jsonl`);
+	const line = value => `${JSON.stringify(value)}\n`;
+
+	process.env.CLAUDE_CONFIG_DIR = home;
+	try {
+		await mkdir(join(home, 'projects', '-repo'), { recursive: true });
+		await writeFile(file(kept), line(prompt('kept', 0)));
+		await writeFile(file(idle), line(prompt('idle', 0)));
+		await sessionTurns(idle, '/repo', { now: 0 });
+		await sessionTurns(kept, '/repo', { now: WHOLE_IDLE_MS });
+
+		// Rewritten in place at the same size: only a session read again from the top sees it
+		await writeFile(file(kept), line(prompt('KEPT', 0)));
+		await writeFile(file(idle), line(prompt('IDLE', 0)));
+		await sessionTurns(kept, '/repo', { now: WHOLE_IDLE_MS + 1 });
+		expect((await sessionTurns(idle, '/repo', { now: WHOLE_IDLE_MS + 2 })).map(turn => turn.prompt)).toEqual(['IDLE']);
+		expect((await sessionTurns(kept, '/repo', { now: WHOLE_IDLE_MS + 3 })).map(turn => turn.prompt)).toEqual(['kept']);
 	} finally {
 		if (was === undefined) delete process.env.CLAUDE_CONFIG_DIR;
 		else process.env.CLAUDE_CONFIG_DIR = was;

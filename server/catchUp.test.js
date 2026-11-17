@@ -86,7 +86,7 @@ test('each stop lands on its turn, and a stop Haiku skipped falls back to the pr
 	expect(parseTour('no idea', turns)).toBeNull();
 });
 
-test('a tour says what it leaves out: turns cut short, sent again, past what it holds, or before what it read', () => {
+test('a tour says what it leaves out: turns sent again, or past what it holds', () => {
 	const turn = (prompt, at, extra = {}) => ({ prompt, at: new Date(at).toISOString(), ...extra });
 	const read = [
 		turn('fix it', 2000),
@@ -96,15 +96,12 @@ test('a tour says what it leaves out: turns cut short, sent again, past what it 
 	];
 	const told = [read[1], read[3]];
 
-	expect(leftOutOf({ read, told, picked: told.slice(-1), since: 1000, reachesBack: true })).toEqual([
+	expect(leftOutOf({ read, told, picked: told.slice(-1), since: 1000 })).toEqual([
 		"The 1 earliest turn since then isn't in it; Activity has every turn.",
 		'1 prompt sent again is told once.',
 	]);
-	expect(leftOutOf({ read: told, told, picked: told, since: 1000, reachesBack: false })).toEqual([
-		'It reads only the latest part of a long session, so anything before that is missing.',
-	]);
-	expect(leftOutOf({ read: told, told, picked: told, since: 1000, reachesBack: true })).toEqual([]);
-	expect(leftOutOf({ read: told, told, picked: told, reachesBack: false })).toEqual([]);
+	expect(leftOutOf({ read: told, told, picked: told, since: 1000 })).toEqual([]);
+	expect(leftOutOf({ read: told, told, picked: told })).toEqual([]);
 });
 
 test('where the person steered is marked and told: a turn stopped, the one that redirected it, a step turned down', () => {

@@ -1,6 +1,5 @@
 import { jsonIn } from './haiku';
-import { transcriptFile } from './sessions/transcript';
-import { TAIL_BYTES, editedFiles, lastLines, timelineFrom, withCommandEdits } from './timeline';
+import { editedFiles, sessionTurns } from './timeline';
 import { tellOnce } from './tours';
 import { verification } from './verification';
 
@@ -119,12 +118,10 @@ const KEEP_WARM_PING = /^keep-?warm ping/i;
 const worthTelling = (turn, index, turns) =>
 	!turn.interrupted && !KEEP_WARM_PING.test(turn.prompt) && turn.prompt !== turns[index + 1]?.prompt;
 
-// What happened that the tour doesn't tell, so a short tour isn't taken for the whole story: prompts sent again, the
-// earliest turns past what one tour holds, and anything older than the end of the transcript it reads. (A turn the
-// person stopped is told, and marked so.)
-// `read` is every turn read since they looked (or all of them, without a since); `told`, those worth a stop;
-// `reachesBack`, whether what was read goes back as far as since.
-export const leftOutOf = ({ read, told, picked, since, reachesBack }) => {
+// What happened that the tour doesn't tell, so a short tour isn't taken for the whole story: prompts sent again, and the
+// earliest turns past what one tour holds. (A turn the person stopped is told, and marked so.)
+// `read` is every turn since they looked (or all of them, without a since); `told`, those worth a stop.
+export const leftOutOf = ({ read, told, picked, since }) => {
 	const again = read.filter((turn, index) => !turn.interrupted && turn.prompt === read[index + 1]?.prompt).length;
 	const earlier = since ? told.length - picked.length : 0;
 
@@ -132,7 +129,6 @@ export const leftOutOf = ({ read, told, picked, since, reachesBack }) => {
 		earlier &&
 			`The ${plural(earlier, 'earliest turn')} since then ${earlier === 1 ? "isn't" : "aren't"} in it; Activity has every turn.`,
 		again && `${plural(again, 'prompt')} sent again ${again === 1 ? 'is' : 'are'} told once.`,
-		since && !reachesBack && 'It reads only the latest part of a long session, so anything before that is missing.',
 	].filter(Boolean);
 };
 
@@ -150,8 +146,7 @@ export const waitingOf = decisions =>
 // since: a time (ms); without it, the latest turns. decisions: what the session settled (decisions.js), told with
 // the turns that settled them, and the questions about them still waiting
 export const catchUp = async (id, cwd, { since, decisions = [] } = {}) => {
-	const file = await transcriptFile(id, cwd);
-	const all = file ? markInterruptions(withCommandEdits(timelineFrom(await lastLines(file), cwd), id)) : [];
+	const all = markInterruptions(await sessionTurns(id, cwd));
 	const read = since ? all.filter(turn => Date.parse(turn.at) > since) : all;
 	const told = read.filter(worthTelling);
 	const picked = (since ? told : told.slice(-RECENT_TURNS)).slice(-MOST_TURNS);
@@ -160,7 +155,6 @@ export const catchUp = async (id, cwd, { since, decisions = [] } = {}) => {
 		told,
 		picked,
 		since,
-		reachesBack: !file || file.size <= TAIL_BYTES || Boolean(all[0] && Date.parse(all[0].at) <= since),
 	});
 
 	if (!picked.length) return { overview: 'Nothing has happened here since you last looked.', stops: [], leftOut };

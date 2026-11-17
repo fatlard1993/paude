@@ -6,8 +6,6 @@ import { transcriptFile } from './sessions/transcript';
 
 // What Claude did, turn by turn, from its transcript: each prompt, then the tools it used in order (what each was
 // about, whether it worked, a little of what it said back), how long the turn took, and how full the context was.
-// Transcripts run to tens of megabytes, so only their end is read: the turns worth looking back at.
-export const TAIL_BYTES = 6 * 1024 * 1024;
 const MAX_TURNS = 40;
 const OUTPUT_CHARACTERS = 2000;
 const PROMPT_PREVIEW = 200;
@@ -17,10 +15,9 @@ const ASKED_CHARACTERS = 2000;
 // sits at its start as often as its end
 const SAID_CHARACTERS = 2000;
 
-const cache = new Map();
 const DECLINED = /doesn't want to proceed with this tool use/;
 
-export const lastLines = async (file, bytes = TAIL_BYTES) => {
+export const lastLines = async (file, bytes) => {
 	const size = file.size;
 	const text = await file.slice(Math.max(0, size - bytes)).text();
 	// Read from partway through a line: the first is cut short
@@ -191,6 +188,12 @@ const WHOLE_SLICE_BYTES = 8 * 1024 * 1024;
 const NEWLINE = 0x0a;
 const decoder = new TextDecoder();
 const wholes = new Map();
+// A session not looked at for this long is let go, its turns read again from the top if it's looked at again
+export const WHOLE_IDLE_MS = 15 * 60_000;
+
+const letGoIdle = now => {
+	for (const [id, read] of wholes) if (now - read.usedAt > WHOLE_IDLE_MS) wholes.delete(id);
+};
 
 const parseLines = lines =>
 	lines.flatMap(line => {
@@ -220,11 +223,14 @@ const catchUp = async (read, file, cwd) => {
 	}
 };
 
-const wholeTurns = async (id, file, cwd) => {
+const wholeTurns = async (id, file, cwd, now) => {
+	letGoIdle(now);
+
 	let read = wholes.get(id);
 
 	if (read?.name !== file.name || read.offset > file.size)
 		wholes.set(id, (read = { name: file.name, offset: 0, state: { turns: [], pending: new Map() }, reading: null }));
+	read.usedAt = now;
 
 	// One reader at a time: two would fold the same lines in twice
 	const reading = (read.reading ?? Promise.resolve()).then(() => catchUp(read, file, cwd));
@@ -263,20 +269,11 @@ export const withCommandEdits = (turns, sessionId) => {
 	);
 };
 
-// Every turn in the part of the transcript read, oldest first, read again only when it has grown; `whole` for every
-// turn it holds, for looking back over a session once
-export const sessionTurns = async (id, cwd, { whole = false } = {}) => {
+// Every turn the transcript holds, oldest first
+export const sessionTurns = async (id, cwd, { now = Date.now() } = {}) => {
 	const file = await transcriptFile(id, cwd);
 
-	if (!file) return [];
-
-	if (whole) return withCommandEdits(await wholeTurns(id, file, cwd), id);
-
-	const key = `${file.name}:${file.size}`;
-
-	if (cache.get(id)?.key !== key) cache.set(id, { key, turns: timelineFrom(await lastLines(file), cwd) });
-
-	return withCommandEdits(cache.get(id).turns, id);
+	return file ? withCommandEdits(await wholeTurns(id, file, cwd, now), id) : [];
 };
 
 // The latest turns, newest first, and how full the context is now

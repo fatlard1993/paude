@@ -10,8 +10,8 @@ import { sessionTurns } from './timeline';
 
 const sessionDeps = {
 	sessionOf: runningSession,
-	turnsOf: (sessionId, cwd) => sessionTurns(sessionId, cwd, { whole: true }),
-	decisionsOf: (sessionId, cwd) => sessionDecisions(sessionId, cwd, { onlyRead: true, whole: true }),
+	turnsOf: (sessionId, cwd) => sessionTurns(sessionId, cwd),
+	decisionsOf: (sessionId, cwd) => sessionDecisions(sessionId, cwd, { onlyRead: true }),
 };
 
 // Claude Code takes what a PreCompact hook prints as instructions for its summary, cut at this

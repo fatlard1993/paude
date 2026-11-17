@@ -51,8 +51,7 @@ export const lookBack = async (cwd, { follow = followDecisions, running = runnin
 		for (const session of toRead) {
 			// Known from here on, for what filing asks of it; looked back on again until it settles
 			read = { ...read, [root]: { ...read[root], [session.id]: read[root]?.[session.id] ?? 0 } };
-			if (await follow(session.id, root, { whole: true }))
-				read = { ...read, [root]: { ...read[root], [session.id]: session.size } };
+			if (await follow(session.id, root)) read = { ...read, [root]: { ...read[root], [session.id]: session.size } };
 			await writeJsonFile(readFile, () => read);
 			under.get(root).done += 1;
 		}
@@ -71,7 +70,7 @@ export const lookedBack = async (sessionId, cwd) => {
 	const sessions = Object.keys(read[root] ?? {}).filter(id => id !== sessionId && !runningSession(id));
 	const earlier = await Promise.all(
 		sessions.map(async id =>
-			(await sessionDecisions(id, root, { whole: true })).decisions
+			(await sessionDecisions(id, root)).decisions
 				.filter(decision => decision.question || decision.filing)
 				.map(decision => ({ ...decision, earlier: true })),
 		),

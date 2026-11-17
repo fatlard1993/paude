@@ -246,8 +246,8 @@ export const fabledVerdict = async (
 	session,
 	reply,
 	{
-		turnsOf = (sessionId, cwd) => sessionTurns(sessionId, cwd, { whole: true }),
-		decisionsOf = (sessionId, cwd) => sessionDecisions(sessionId, cwd, { onlyRead: true, whole: true }),
+		turnsOf = (sessionId, cwd) => sessionTurns(sessionId, cwd),
+		decisionsOf = (sessionId, cwd) => sessionDecisions(sessionId, cwd, { onlyRead: true }),
 		askMonitor = askFabledMonitor,
 		repoOf = repoStateOf,
 		forget = forgetMonitor,
@@ -316,8 +316,8 @@ export const keepGoing = async (
 		forget = forgetMonitor,
 		sessionOf = runningSession,
 		// Whole: a session heavy with screenshots can hold the person's last prompts far back past the usual tail
-		turnsOf = (sessionId, cwd) => sessionTurns(sessionId, cwd, { whole: true }),
-		decisionsOf = (sessionId, cwd) => sessionDecisions(sessionId, cwd, { onlyRead: true, whole: true }),
+		turnsOf = (sessionId, cwd) => sessionTurns(sessionId, cwd),
+		decisionsOf = (sessionId, cwd) => sessionDecisions(sessionId, cwd, { onlyRead: true }),
 		pause = () => Bun.sleep(IDLE_CHECK_MS),
 	} = {},
 ) => {
