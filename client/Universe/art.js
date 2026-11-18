@@ -208,8 +208,9 @@ const SUIT = {
 	glint: [...SUIT_TOP, ...SUIT_LEGS, '...kwwwkwwwk...', '..kmmmmkmmmmk..', '..kkkkk.kkkkk..'].map(
 		(row, index) => ({ 4: '.kwkyWWyyyykwk.', 5: '.kwkYWyyyyykwk.' })[index] ?? row,
 	),
-	// Sat on a stool, facing us: their legs come toward us, so only the boots show under the body
-	sit: [...SUIT_TOP.slice(0, -1), '.kkkmmmkmmmkkk.', '...kkkk.kkkk...'],
+	// Sat on a stool, facing us: their thighs come toward us, so only their knees show over the seat, and their shins
+	// hang from them down to their boots on the floor
+	sit: [...SUIT_TOP, '..kwwwwkwwwwk..', ...SUIT_LEGS.slice(0, 4), '..kmmmmkmmmmk..', '..kkkkk.kkkkk..'],
 };
 
 // Someone at an arcade cabinet to their right: the arm on that side is out to it, drawn apart as it moves, so the

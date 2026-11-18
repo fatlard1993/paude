@@ -8206,12 +8206,13 @@ export default class Ship {
 		const there = !walker.path.length && !walker.leaving && walker.spot;
 
 		if (there && walker.pose === 'copilot') {
-			// Sat on a stool beside their grey: its seat wide enough for the suit, on one leg with a foot
+			// Sat on a stool beside their grey: its seat wide enough for the suit, behind their knees, on one leg with a
+			// foot; their boots on the floor before it
 			rect(ctx, at.x - 6, at.y - 7, 13, 3, PALETTE.k);
 			rect(ctx, at.x - 5, at.y - 7, 11, 2, PALETTE.m);
 			rect(ctx, at.x - 1, at.y - 4, 3, 4, PALETTE.k);
-			rect(ctx, at.x - 4, at.y, 9, 1, PALETTE.k);
-			drawSprite(ctx, 'suitSit', at.x, at.y - 5, { colors });
+			rect(ctx, at.x - 5, at.y, 11, 1, PALETTE.k);
+			drawSprite(ctx, 'suitSit', at.x, at.y, { colors });
 		} else if (there && walker.pose === 'player') {
 			this.drawPersonPlaying(ctx, walker, at, colors);
 		} else if (there && walker.pose === 'overseer') {
