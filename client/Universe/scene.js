@@ -4040,6 +4040,55 @@ export default class Ship {
 
 			return ordered;
 		};
+		// Then each taken out and put back wherever does better, while one does: a swap moves two at once, and can't
+		// carry one riser past several others to where it crosses nothing. Each laid at each riser's place once, and what
+		// two cost where they are kept, so trying an order is only adding up
+		const moved = start => {
+			const at = risersFor(
+				wall,
+				null,
+				start.map(({ weight }) => weight),
+			);
+			const size = start.length;
+			const laid = start.map(route => at.map(x => runs(route, x)));
+			const nth = new Map(start.map((route, index) => [route, index]));
+			const pairs = new Map();
+			const pair = (a, slot, b, other) => {
+				const [one, two] = [nth.get(a), nth.get(b)];
+				const key = ((one * size + slot) * size + two) * size + other;
+
+				if (!pairs.has(key)) pairs.set(key, between(laid[one][slot], laid[two][other]));
+
+				return pairs.get(key);
+			};
+			const cost = ordered => {
+				let count = 0;
+
+				for (let one = 0; one < ordered.length; one++)
+					for (let other = one + 1; other < ordered.length; other++)
+						count += pair(ordered[one], one, ordered[other], other);
+
+				return count;
+			};
+			let ordered = start;
+			let count = cost(ordered);
+
+			for (let pass = 0, better = count > 0; better && pass < SWAP_PASSES; pass++) {
+				better = false;
+				for (let from = 0; from < ordered.length; from++)
+					for (let to = 0; to < ordered.length; to++) {
+						if (to === from) continue;
+
+						const rest = ordered.filter((_, index) => index !== from);
+						const tried = [...rest.slice(0, to), ordered[from], ...rest.slice(to)];
+						const trying = cost(tried);
+
+						if (trying < count) [ordered, count, better] = [tried, trying, true];
+					}
+			}
+
+			return ordered;
+		};
 		const best =
 			routes.length <= 6
 				? permutations(routes).reduce(
@@ -4050,7 +4099,7 @@ export default class Ship {
 						},
 						{ ordered: routes, count: Infinity },
 					).ordered
-				: swapped([...routes].sort((a, b) => a.tray - b.tray));
+				: moved(swapped([...routes].sort((a, b) => a.tray - b.tray)));
 
 		this.risers = { key, names: best.map(({ bay }) => bay.name) };
 

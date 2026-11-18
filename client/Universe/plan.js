@@ -153,36 +153,6 @@ const islandsOf = (
 	const deskOf = run =>
 		ISLAND_END + run.keys.filter(key => !brief[key]).reduce((sum, key) => sum + seatWidth(key), 0) + 0.3;
 	const widthOf = run => deskOf(run) + run.keys.filter(key => brief[key]).length * BRIEF_W;
-	// More than the open rows: down the rows in order, as short a bridge as holds them all, each row starting from what's
-	// already in it (the lounge)
-	const widths = runs.map(widthOf);
-	const fits = length => {
-		let row = 0;
-		let at = reach[0];
-
-		for (const w of widths) {
-			while (row < rows && at + w > length && (at > reach[row] || reach[row] + w > length)) {
-				row++;
-				at = reach[row] ?? 0;
-			}
-			if (row >= rows) return null;
-			at += w + ISLAND_GAP;
-		}
-
-		return length;
-	};
-	let [shortest, longest] = [0, widths.reduce((sum, w) => sum + w + ISLAND_GAP, 0) + Math.max(0, ...reach)];
-
-	for (let step = 0; step < 30; step++) {
-		const middle = (shortest + longest) / 2;
-
-		if (fits(middle) === null) shortest = middle;
-		else longest = middle;
-	}
-
-	const length = longest + 1e-6;
-	let filling = 0;
-	let filled = reach[0];
 	const counts = new Map();
 	const keyed = runs.map(run => {
 		const nth = counts.get(run.name) ?? 0;
@@ -191,6 +161,71 @@ const islandsOf = (
 
 		return { run, key: `${run.name}#${nth}`, w: widthOf(run) };
 	});
+	// A project's islands as one block, so one split over several is never cut where a row ends: stacked one above
+	// another down consecutive rows, each where the others are along them
+	const blocks = [];
+
+	for (const each of keyed) {
+		const last = blocks.at(-1);
+
+		if (last?.[0].run.name === each.run.name) last.push(each);
+		else blocks.push([each]);
+	}
+	// More than the open rows: down the rows in order, as short a bridge as holds them all, each row starting from what's
+	// already in it (the lounge); a block stacked from the row being filled, or the first after it it fits in. Where
+	// each island goes, by its key, for a bridge `length` long; null when they don't all fit.
+	const pack = length => {
+		const ats = [...reach];
+		const spots = new Map();
+		let row = 0;
+
+		for (const block of blocks) {
+			const stack = block.length > 1 ? block.slice(0, rows) : [];
+
+			if (stack.length) {
+				const widest = Math.max(...stack.map(({ w }) => w));
+				const top = start => Math.max(...stack.map((_, i) => ats[start + i]));
+				// From the next row on, so the islands still read in their conduits' order, row by row, and the conduits
+				// nest rather than cross; else wherever it fits nearest the aft wall
+				const next = ats[row] > reach[row] + NEAR ? row + 1 : row;
+				const fresh = Array.from({ length: Math.max(0, rows - stack.length + 1 - next) }, (_, n) => next + n).find(
+					start => top(start) + widest <= length,
+				);
+				const anywhere = Array.from({ length: rows - stack.length + 1 }, (_, start) => start)
+					.filter(start => top(start) + widest <= length)
+					.sort((a, b) => top(a) - top(b) || a - b)[0];
+				const first = fresh ?? anywhere;
+
+				if (first === undefined) return null;
+				if (fresh !== undefined) row = Math.min(rows - 1, first + stack.length);
+
+				const at = Math.max(...stack.map((_, i) => ats[first + i]));
+
+				stack.forEach(({ key, w }, i) => {
+					spots.set(key, { row: first + i, at, w });
+					ats[first + i] = at + w + ISLAND_GAP;
+				});
+			}
+			for (const { key, w } of block.slice(stack.length)) {
+				while (row < rows && ats[row] + w > length && (ats[row] > reach[row] || reach[row] + w > length)) row++;
+				if (row >= rows) return null;
+				spots.set(key, { row, at: ats[row], w });
+				ats[row] += w + ISLAND_GAP;
+			}
+		}
+
+		return spots;
+	};
+	let [shortest, longest] = [0, keyed.reduce((sum, { w }) => sum + w + ISLAND_GAP, 0) + Math.max(0, ...reach)];
+
+	for (let step = 0; step < 30; step++) {
+		const middle = (shortest + longest) / 2;
+
+		if (pack(middle) === null) shortest = middle;
+		else longest = middle;
+	}
+
+	const length = longest + 1e-6;
 	// Laid out before (`kept`: each island's row and where along it it stood, by its project and which of its it is),
 	// each stays where it stood while it still fits there, so islands don't move as others come, go and grow; one that
 	// no longer fits, or a new one, into the first gap wide enough in its row (or the row reaching least far)
@@ -235,39 +270,79 @@ const islandsOf = (
 
 		return at;
 	};
+	// Where a block stacked from row `first` stands: the nearest the aft wall every island of it fits, one row each
+	const stackAt = (first, stack) =>
+		[0, ...stack.flatMap((_, i) => taken[first + i].map(([, end]) => end + ISLAND_GAP))]
+			.sort((a, b) => a - b)
+			.find(at => stack.every(({ w }, i) => free(first + i, at, w)));
 	const placed = new Map();
+	const place = (key, row, at, w) => {
+		take(row, at, w);
+		placed.set(key, { row, at });
+	};
+	// One alone into its kept row's first gap wide enough, or the row reaching least far
+	const placeAlone = ({ key, w }, keptRow) => {
+		const row = Number.isInteger(keptRow) && keptRow < rows ? keptRow : reach.indexOf(Math.min(...reach));
 
-	if (kept)
-		for (const { key, w } of keyed) {
-			const { row, at } = keptOf(key) ?? {};
+		place(key, row, gapIn(row, w), w);
+	};
 
-			if (!Number.isInteger(row) || row >= rows || typeof at !== 'number' || at < 0 || !free(row, at, w)) continue;
-			take(row, at, w);
-			placed.set(key, { row, at });
+	// A split project not kept stacked as one (it's newly split, or was laid before projects were blocks): the bridge is
+	// laid afresh once, its islands gliding to their new places, so its conduits still nest
+	const stackedBefore = block =>
+		block.every((each, i) => {
+			const [spot, first] = [keptOf(each.key), keptOf(block[0].key)];
+
+			return spot && first && spot.row === first.row + i && Math.abs((spot.at ?? -1) - (first.at ?? -2)) < 0.01;
+		});
+	const keeping = kept && blocks.every(block => block.length === 1 || stackedBefore(block));
+
+	if (keeping) {
+		const moving = [];
+
+		// Each block kept where it stood while it all still fits there, and a split one only while still stacked
+		for (const block of blocks) {
+			const spots = block.map(({ key }) => keptOf(key) ?? {});
+			const fit = spots.every(
+				({ row, at }, i) =>
+					Number.isInteger(row) && row < rows && typeof at === 'number' && at >= 0 && free(row, at, block[i].w),
+			);
+			const stacked = spots.every(({ row, at }, i) => row === spots[0].row + i && Math.abs(at - spots[0].at) < 0.01);
+
+			if (fit && stacked) block.forEach(({ key, w }, i) => place(key, spots[i].row, spots[i].at, w));
+			else moving.push(block);
 		}
+		for (const block of moving) {
+			const wanted = keptOf(block[0].key)?.row;
 
-	const islands = keyed.map(({ run, key, w }, index) => {
-		let spot = placed.get(key);
-
-		if (!spot && kept) {
-			const keptRow = keptOf(key)?.row;
-			const row = Number.isInteger(keptRow) && keptRow < rows ? keptRow : reach.indexOf(Math.min(...reach));
-
-			spot = { row, at: gapIn(row, w) };
-			take(row, spot.at, w);
-		}
-		if (!spot) {
-			if (runs.length > open.length) {
-				while (filling < rows - 1 && filled + w > length && (filled > reach[filling] || reach[filling] + w > length))
-					filled = reach[++filling];
-				filled += w + ISLAND_GAP;
+			if (block.length === 1) {
+				placeAlone(block[0], wanted);
+				continue;
 			}
 
-			const row = runs.length <= open.length ? open[Math.floor(((index + 0.5) * open.length) / runs.length)] : filling;
+			const stack = block.slice(0, rows);
+			const [best] = Array.from({ length: rows - stack.length + 1 }, (_, first) => ({
+				first,
+				at: stackAt(first, stack),
+			})).sort((a, b) => a.at - b.at || Math.abs(a.first - (wanted ?? 0)) - Math.abs(b.first - (wanted ?? 0)));
 
-			spot = { row, at: reach[row] };
-			reach[row] += w + ISLAND_GAP;
+			stack.forEach(({ key, w }, i) => place(key, best.first + i, best.at, w));
+			for (const each of block.slice(stack.length)) placeAlone(each);
 		}
+	} else if (runs.length <= open.length) {
+		// With rows to spare, they spread evenly down the bridge, each block down the open rows one after another
+		let index = 0;
+
+		for (const block of blocks) {
+			const first = Math.floor(((index + 0.5) * open.length) / runs.length);
+
+			block.forEach(({ key, w }, i) => place(key, open[first + i], reach[open[first + i]], w));
+			index += block.length;
+		}
+	} else for (const [key, { row, at, w }] of pack(length)) place(key, row, at, w);
+
+	const islands = keyed.map(({ run, key }) => {
+		const spot = placed.get(key);
 
 		const x = from + spot.at;
 		const widths = seatWidths(run);

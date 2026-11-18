@@ -58,3 +58,42 @@ test("an island keeps its place from the aft wall when the rows change under it,
 
 	expect(places(layOut({ ...structuredClone(given), kept: nudged }))).toEqual(places(first));
 });
+
+// A project split over islands is one block: its islands one above another down consecutive rows, each where the others
+// are along them
+const stackedAsOne = (bridge, name) => {
+	const own = bridge.islands.filter(island => island.name === name).sort((a, b) => a.row - b.row);
+
+	expect(own.length).toBeGreaterThan(1);
+	own.forEach((island, index) => {
+		expect(island.row).toBe(own[0].row + index);
+		expect(island.x).toBeCloseTo(own[0].x, 5);
+	});
+};
+
+test('a project split over islands has them stacked as one block, never cut where a row ends, laid fresh or again', () => {
+	const bay = (name, count) => ({
+		name,
+		hue: 40,
+		seated: count,
+		sessions: Array.from({ length: count }, (_, n) => `${name}${n}`),
+	});
+
+	for (const before of [0, 1, 3, 4, 6]) {
+		const bays = [
+			...Array.from({ length: before }, (_, n) => bay(`small${n}`, 1)),
+			bay('big', 15),
+			...Array.from({ length: 6 }, (_, n) => bay(`after${n}`, n % 3 ? 1 : 4)),
+		];
+		const { bridge } = layOut({ bays });
+
+		stackedAsOne(bridge, 'big');
+
+		// Laid again from where they stood, with one of its islands kept rows away from the others: they come together
+		const kept = Object.fromEntries(bridge.islands.map(({ key, row, at }) => [key, { row, at }]));
+		const far = bridge.islands.reduce((most, island) => Math.max(most, island.row), 0);
+
+		kept['big#1'] = { row: kept['big#0'].row === far ? 0 : far, at: 0 };
+		stackedAsOne(layOut({ bays, kept }).bridge, 'big');
+	}
+});
