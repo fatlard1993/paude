@@ -71,13 +71,16 @@ const foundName = (sessionId, port) => {
 const foundShares = sessionId =>
 	(found.get(sessionId) ?? [])
 		.filter(({ port }) => !stopped.has(`${sessionId}:${port}`) && !reservedPorts.has(port))
-		.map(({ port, host, command }) => ({
+		.map(({ port, host, pid, command }) => ({
 			id: `found-${sessionId}-${port}`,
 			name: foundName(sessionId, port),
+			// Named by hand, which a title found for it doesn't replace
+			named: Boolean(portNames[`${sessionId}:${port}`]),
 			sessionId,
 			kind: 'port',
 			port,
 			host,
+			pid,
 			command,
 			auto: true,
 		}));

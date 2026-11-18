@@ -7,7 +7,10 @@ import { copyWithNotice } from './copySelection';
 
 const KIND_ICONS = { port: 'plug', file: 'file-arrow-down', folder: 'file-zipper', site: 'globe' };
 
-const labelOf = share => {
+const NAMING_MS = 3000;
+
+// What it is, by what it's running or where it is in the project
+const detailOf = share => {
 	if (share.kind === 'port')
 		return share.auto ? `Port ${share.port} · ${share.command}` : `Port ${share.port}, forwarded`;
 	if (share.kind === 'site') return `${share.path}, as a site`;
@@ -49,6 +52,10 @@ export default class SharesPanel extends Panel {
 		}
 
 		this.renderShares(body.shares);
+		// A service's name is still being found (its page, or Haiku): look again shortly, while the panel shows
+		clearTimeout(this.again);
+		if (body.shares.some(share => share.naming))
+			this.again = setTimeout(() => this.elem.isConnected && !this.elem.hidden && this.refresh(), NAMING_MS);
 	}
 
 	// A share on another paude opens on a ticket for one use, since this browser's login is this paude's, not that one's
@@ -80,7 +87,8 @@ export default class SharesPanel extends Panel {
 
 	row(share) {
 		const row = element('div', 'branch-row share');
-		const open = element('a', 'name', labelOf(share));
+		const named = share.title ?? (share.kind === 'port' && share.named ? share.name : null);
+		const open = element('a', 'name', named ?? detailOf(share));
 		const copy = button(
 			'',
 			async () => {
@@ -92,13 +100,15 @@ export default class SharesPanel extends Panel {
 		open.href = share.url;
 		open.target = '_blank';
 		open.rel = 'noopener';
-		open.title = share.url;
+		open.title = named ? `${detailOf(share)}: ${share.url}` : share.url;
 		if (sessionRemote(this.options.sessionId))
 			open.addEventListener('click', event => {
 				event.preventDefault();
 				this.openThere(share);
 			});
-		row.append(icon(KIND_ICONS[share.kind]), open, copy);
+		row.append(icon(KIND_ICONS[share.kind]), open);
+		if (named) row.append(element('span', 'detail', detailOf(share)));
+		row.append(copy);
 		if (canType())
 			row.append(
 				button(

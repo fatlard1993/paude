@@ -234,6 +234,17 @@ const Panel = styled(
 			text-decoration: underline;
 		}
 
+		/* What a named service runs, after its name */
+		.share .detail {
+			flex: 0 1 auto;
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			color: ${colors.muted};
+			font-size: 0.85em;
+		}
+
 		.share > i {
 			width: 1.2em;
 			text-align: center;

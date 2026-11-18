@@ -13,6 +13,7 @@ import { sessionRecord } from '../sessions/record';
 import { ShareError, addShare, removeShare, renameShare, sharesOf } from '../shares';
 import { allCabinets, cabinetShare, inLounge } from '../cabinets';
 import { FRAME_TICKET, issueFrameTicket } from '../frameTickets';
+import { nameShares, namingOf, titleOf } from '../shareTitles';
 
 let previewPort;
 
@@ -24,8 +25,10 @@ const previewOrigin = async request =>
 	previewOriginOf(request, { listenerPort: previewPort, settings: await serverSettings() });
 
 const withLinks = (shares, origin) =>
-	shares.map(share => ({
+	shares.map(({ pid: _, ...share }) => ({
 		...share,
+		title: titleOf(share),
+		naming: namingOf(share),
 		url: `${origin}/s/${encodeURIComponent(share.name)}/`,
 		// A newer version of its app is ready, not yet loaded (the preview holds an arcade game's reloads for that)
 		newVersion: newVersionReady(share.name),
@@ -81,7 +84,8 @@ const sharesRoutes = async request => {
 	if (framing) {
 		const credential = credentialOf(request);
 
-		if (!ownsSession(identityOf(credential), framing.id)) return new Response('Not part of your invite', { status: 403 });
+		if (!ownsSession(identityOf(credential), framing.id))
+			return new Response('Not part of your invite', { status: 403 });
 
 		const share = sharesOf(framing.id).find(found => found.name === framing.share);
 
@@ -113,7 +117,13 @@ const sharesRoutes = async request => {
 
 	const origin = await previewOrigin(request);
 
-	if (listing) return Response.json({ shares: withLinks(sharesOf(match.id), origin), origin });
+	if (listing) {
+		const shares = sharesOf(match.id);
+
+		nameShares(shares).catch(error => console.warn('Naming shares:', error.message));
+
+		return Response.json({ shares: withLinks(shares, origin), origin });
+	}
 	if (removing)
 		return (await removeShare(match.id, match.share))
 			? new Response(null, { status: 204 })
