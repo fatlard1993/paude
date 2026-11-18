@@ -87,7 +87,7 @@ const runCommand = async (command, cwd, values, onOutput) => {
 	return { ok: (await child.exited) === 0, output };
 };
 
-const listWorktrees = async project => {
+export const listWorktrees = async project => {
 	const listed = await git(['worktree', 'list', '--porcelain'], project);
 	const found = [];
 	let current = null;

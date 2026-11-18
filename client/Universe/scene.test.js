@@ -4089,3 +4089,33 @@ test("what a session left running in the background is a lone terminal beside it
 	made.update(looks({ unseen: 3 }));
 	expect(made.needs(worker.session)).toBe('unread');
 });
+
+test("a session's desk knows what its checkout hasn't shipped, and the shipping bay every watched repository's", () => {
+	const made = shipWith([
+		{
+			...answer('here', [session({ checkout: '/work/paude' }), session({ id: 'b', checkout: '/work/clean' })], {
+				projects: [{ name: 'paude', hue: 120, watching: true }],
+			}),
+			checkouts: [
+				{ root: '/work/paude', changed: 3, unpushed: 2 },
+				{ root: '/work/clean', changed: 0, unpushed: 0 },
+			],
+			unshipped: [
+				{ project: 'paude', path: 'packages/inner', root: '/work/paude/packages/inner', changed: 1, unpushed: 0 },
+			],
+		},
+	]);
+	const pending = id =>
+		made.pendingOf([...made.workers.values()].find(({ session: { id: own } }) => own === id).session);
+
+	expect(pending('a')).toEqual({ changed: 3, unpushed: 2 });
+	expect(pending('b')).toBeNull();
+	expect(made.unshipped).toEqual([
+		expect.objectContaining({
+			project: 'paude',
+			path: 'packages/inner',
+			hue: 120,
+			key: 'here:/work/paude/packages/inner',
+		}),
+	]);
+});

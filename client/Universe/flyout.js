@@ -111,7 +111,8 @@ export const ROOMS = {
 	materializer: ship =>
 		ship.charged ? 'a new session is on its way' : 'where new sessions start; press it to write a prompt',
 	hold: ship => `each checkout's changes and commits not pushed: ${plural(ship.cargo.length, 'checkout')}`,
-	hangar: () => 'pushes leaving, and pull requests waiting for review',
+	hangar: ship =>
+		`pushes leaving, pull requests waiting for review, and what's not shipped in your watched projects: ${plural(ship.unshipped?.length ?? 0, 'repo')}`,
 	transporter: ship =>
 		ship.fleet.length
 			? `beams you to the ship of another subscription: ${ship.fleet.map(({ name }) => name).join(', ')}`

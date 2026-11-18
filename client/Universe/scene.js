@@ -24,6 +24,7 @@ import {
 	REACTOR_SIDE,
 	drawEngineering,
 	drawHangar,
+	freightAt,
 	drawHold,
 	drawHull,
 	drawLounge,
@@ -1557,6 +1558,7 @@ export default class Ship {
 			(engine, appliance) => `${engine.key}/${appliance.key}`,
 		);
 		this.loadCargo(answers);
+		this.loadUnshipped(answers);
 		// Each island in the row it stood in last time
 		const keptOf = bridge =>
 			bridge?.islands && Object.fromEntries(bridge.islands.map(({ key, row, at }) => [key, { row, at }]));
@@ -1963,6 +1965,27 @@ export default class Ship {
 
 	walking(worker) {
 		return worker.path?.length > 0 && !worker.leaving;
+	}
+
+	// The shipping bay's manifest: every repository in each watched project, sessions or not, with files changed or
+	// commits not pushed, colored as its project
+	loadUnshipped(answers) {
+		this.unshipped = answers.flatMap(answer =>
+			(answer.unshipped ?? []).map(item => ({
+				...item,
+				key: `${answer.key}:${item.root}`,
+				engineName: answer.name,
+				remote: answer.remote,
+				hue: (answer.projects ?? []).find(({ name }) => name === item.project)?.hue ?? null,
+			})),
+		);
+	}
+
+	// What's not shipped from the checkout a session works in: { changed, unpushed }, or null when all is
+	pendingOf(session) {
+		const checkout = session.checkout && this.checkouts?.get(`${session.engine.key}:${session.checkout}`);
+
+		return checkout?.changed || checkout?.unpushed ? { changed: checkout.changed, unpushed: checkout.unpushed } : null;
 	}
 
 	// The hold's cargo: for each checkout a session works in, the files changed and the commits not pushed, with the
@@ -3058,6 +3081,7 @@ export default class Ship {
 				...drawHangar(ctx, art, label, this.layout.hangar, {
 					time: this.time,
 					journey: this.journey,
+					freight: this.unshipped ?? [],
 					launching: this.haulers.length > 0,
 					tugAway: this.haulers.length > 0,
 				}),
@@ -3473,6 +3497,9 @@ export default class Ship {
 			if (this.layout.hangar?.log)
 				lights.push({ ...this.layout.hangar.log, r: 22, color: [255, 190, 90], strength: 0.6 });
 		}
+		// The freight waiting to ship, lit where it stands
+		if (this.layout.hangar && this.unshipped?.length)
+			lights.push({ ...freightAt(this.layout.hangar), r: 26, color: [255, 214, 150], strength: 0.55 });
 		if (this.lounge) rooms.push(box(this.lounge, [255, 186, 140], 0.5));
 		if (this.layout.materializer)
 			rooms.push(box(this.layout.materializer, this.charged ? [120, 240, 220] : IDLE, this.charged ? 0.9 : 0.35));
@@ -4355,6 +4382,7 @@ export default class Ship {
 										time: this.time,
 										seed: worker.seed,
 										todos: session.todos,
+										pending: this.pendingOf(session),
 										frost: cacheCold(session),
 									},
 									seat.island?.key,

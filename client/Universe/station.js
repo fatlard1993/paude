@@ -499,7 +499,7 @@ export const drawIsland = (ctx, { from, to, y }, { color }) => {
 
 // A grey's seat at its island, `at` its foot: its screen on a stand before it, large enough to read, showing what it's
 // at or what needs you; its todos in lamps along the console's front under it, and a keyboard
-export const drawSeat = (ctx, at, { screen, engineColor, time, seed, todos = [], frost }) => {
+export const drawSeat = (ctx, at, { screen, engineColor, time, seed, todos = [], frost, pending }) => {
 	const { x, y } = at;
 
 	drawTodos(ctx, { x: x - 13, y: y - 7, w: 26 }, todos, time);
@@ -511,6 +511,20 @@ export const drawSeat = (ctx, at, { screen, engineColor, time, seed, todos = [],
 	rect(ctx, x - 16, y - 30, 17, 13, PALETTE.d);
 	drawScreen(ctx, { x: x - 15, y: y - 29, w: 15, h: 11 }, { ...screen, time, seed });
 	if (frost) drawFrost(ctx, { x: x - 17, y: y - 31, w: 19, h: 15 });
+	drawPending(ctx, { x: x - 15, y: y - 18 }, pending);
+};
+
+// What its checkout hasn't shipped, as lamps along the screen's bezel under it: amber while files are changed and not
+// committed, orange while commits wait to be pushed; dark with nothing
+export const drawPending = (ctx, { x, y }, pending) => {
+	if (pending?.changed) {
+		rect(ctx, x - 1, y - 1, 6, 3, PALETTE.k);
+		rect(ctx, x, y, 4, 1, PALETTE.y);
+	}
+	if (pending?.unpushed) {
+		rect(ctx, x + 5, y - 1, 6, 3, PALETTE.k);
+		rect(ctx, x + 6, y, 4, 1, PALETTE.o);
+	}
 };
 
 // An arcade session's joystick on its console between the screen's stand and the keyboard, `at` the seat's foot: a dark base, its stick and a red

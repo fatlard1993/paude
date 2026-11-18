@@ -1749,13 +1749,76 @@ const ARCH_TALL = 14;
 
 // The hangar: its landing pad under an arch, lights chasing round it, and the tug waiting on it, unless it's away
 // (`tugAway`); its doors are in the hull below
-export const drawHangar = (ctx, art, label, room, { time, journey, launching = false, tugAway = false }) => {
+// The most pallets of freight laid out in the shipping bay, the last saying how many more there are past them
+const FREIGHT_SHOWN = 5;
+
+// Where the shipping bay's freight stands: just before its pad, in its light (art pixels; `y` the pallets' foot)
+export const freightAt = room => {
+	const pad = padAt(room);
+
+	return { x: pad.x * UNIT.x, y: Math.round(pad.y * UNIT.y) + 15 };
+};
+
+// What's waiting to be shipped, a pallet for each repository with any (`freight`: { changed, unpushed, hue }), in a row
+// across the shipping bay's floor before its pad: amber sheets stacked for files changed and not committed, orange
+// crates atop them for commits not pushed, a stripe of its project's color along its foot
+const freightParts = (ctx, art, room, freight) => {
+	if (!freight.length) return [];
+
+	const [left, right] = [art({ x: room.x, y: 0 }).x + 4, art({ x: room.x + room.w, y: 0 }).x - 4];
+	const floorAt = freightAt(room).y;
+	const pitch = Math.max(9, Math.floor((right - left) / FREIGHT_SHOWN));
+	const shown = freight.length > FREIGHT_SHOWN ? FREIGHT_SHOWN - 1 : freight.length;
+
+	return [
+		{
+			y: floorAt / UNIT.y,
+			draw: () => {
+				freight.slice(0, shown).forEach(({ changed = 0, unpushed = 0, hue }, index) => {
+					const x = left + index * pitch;
+					let top = floorAt - 2;
+
+					rect(ctx, x - 1, floorAt - 2, 9, 3, PALETTE.k);
+					rect(ctx, x, floorAt - 1, 7, 1, isHue(hue) ? hsl(hue, 60, 55) : PALETTE.l);
+					if (changed) {
+						const sheets = Math.min(3, Math.ceil(changed / 4));
+
+						rect(ctx, x - 1, top - sheets * 2 - 1, 9, sheets * 2 + 1, PALETTE.k);
+						for (let sheet = 0; sheet < sheets; sheet++) {
+							rect(ctx, x, top - 2 - sheet * 2, 7, 1, '#ffe2a0');
+							rect(ctx, x, top - 1 - sheet * 2, 7, 1, '#e0a840');
+						}
+						top -= sheets * 2 + 1;
+					}
+					for (let crate = 0; crate < Math.min(3, unpushed); crate++) {
+						rect(ctx, x - 1, top - 6, 9, 6, PALETTE.k);
+						rect(ctx, x, top - 5, 7, 5, PALETTE.o);
+						rect(ctx, x, top - 5, 7, 1, '#d88a4a');
+						rect(ctx, x + 3, top - 4, 1, 4, PALETTE.O);
+						top -= 6;
+					}
+				});
+				if (freight.length > shown)
+					pixelText(ctx, `+${freight.length - shown}`, left + shown * pitch + 1, floorAt - 7, { color: PALETTE.w });
+			},
+		},
+	];
+};
+
+export const drawHangar = (
+	ctx,
+	art,
+	label,
+	room,
+	{ time, journey, freight = [], launching = false, tugAway = false },
+) => {
 	floor(ctx, art, room);
 
 	const pad = art(padAt(room));
 
 	return [
 		...walls(ctx, art, label, room, { name: room.name, color: PALETTE.y }),
+		...freightParts(ctx, art, room, freight),
 		// Its count of what's gone out, the sign atop the pad's arch
 		stationLog(ctx, art, label, room, journey, { x: pad.x, y: pad.y - ARCH_TALL + 2 }),
 		{

@@ -2249,6 +2249,16 @@ export default class Universe extends View {
 							this.paintFocus();
 						},
 					}))) ||
+				(kind === 'hangar' &&
+					(aboard.unshipped ?? []).map(item => ({
+						label: item.path ? `${item.project}/${item.path}` : item.project,
+						detail: [item.branch, cargoWords(item), item.remote && `on ${item.engineName}`].filter(Boolean).join(' · '),
+						tone: item.unpushed ? 'warn' : '',
+						// To its project, where its changes are looked over and shipped from
+						run: () => {
+							if (!item.remote) window.location.hash = `#/projects/${encodeURIComponent(item.project)}`;
+						},
+					}))) ||
 				(kind === 'hold'
 					? aboard.cargo.map(checkout => ({
 							label: `${checkout.project}: ${checkout.branch ?? 'no branch'}`,

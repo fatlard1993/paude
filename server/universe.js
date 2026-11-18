@@ -29,6 +29,7 @@ import { journeyOf, noteDelivered } from './journey';
 import { combinedHistory, foldersOf, languageOf } from './character';
 import { defaultBase, gitLog, gitStatus, linkedWorktree, openBase, repoHistory, repoRoot, trackedFiles } from './git';
 import { pinnedName } from './names';
+import { reposWithin } from './repos';
 import { brandFields } from './brand';
 import { listProjects, projectOf, projectPath } from './projects';
 import { bornOf } from './sessions/transcript';
@@ -44,6 +45,8 @@ const PROMPT_PREVIEW = 200;
 const RECORD_MS = 60_000;
 // How long a checkout's cargo, a session's context, what it has made and whether it's tested are cached
 const CARGO_MS = 8000;
+// How long the repositories found within a project are trusted before they're looked for again
+const REPOS_MS = 5 * 60_000;
 // Which branch a checkout's work is compared with, and whether it's a worktree, change far less often than its cargo
 const PLACE_MS = 60_000;
 const CONTEXT_MS = 5000;
@@ -385,6 +388,58 @@ const cargoOf = root =>
 		};
 	});
 
+// What's not yet shipped in the projects `identity` watches: each repository within each of them (nested, and its
+// worktrees) with files changed or commits not pushed, as { project, path (from the project's folder; '' for the
+// project itself), root, branch, changed, unpushed }
+const unshippedFor = async identity => {
+	const watched = (await listProjects()).filter(name => watchesProject(identity, name));
+	const each = await Promise.all(
+		watched.map(async project => {
+			const folder = projectPath(project);
+			const repos = (await cached(`repos:${folder}`, REPOS_MS, () => reposWithin(folder))) ?? [];
+
+			return Promise.all(
+				repos.map(async root => {
+					const cargo = await cargoOf(root);
+
+					return (
+						(cargo?.changed || cargo?.unpushed) && {
+							project,
+							path: path.relative(folder, root).split(path.sep).join('/'),
+							root,
+							branch: cargo.branch,
+							changed: cargo.changed,
+							unpushed: cargo.unpushed,
+						}
+					);
+				}),
+			);
+		}),
+	);
+
+	return each.flat().filter(Boolean);
+};
+
+// How often the manifest is looked over again
+const UNSHIPPED_MS = 20_000;
+const manifests = new Map();
+
+// The manifest as last looked over, never waited for: looking over every watched project's repositories takes seconds,
+// so it's looked over again behind the answer once it's this old, the answer carrying the last one meanwhile
+const unshippedNow = identity => {
+	const key = identityKey(identity);
+	const known = manifests.get(key) ?? { at: 0, value: [] };
+
+	if (!known.coming && Date.now() - known.at > UNSHIPPED_MS) {
+		known.coming = unshippedFor(identity)
+			.catch(() => known.value)
+			.then(value => manifests.set(key, { at: Date.now(), value }));
+		manifests.set(key, known);
+	}
+
+	return known.value;
+};
+
 // Whether what a session changed has been tested since: { state, said }, state 'current', 'stale', 'failing' or
 // 'untested'; null with neither changes nor runs. Reading its turns is slow.
 const testedOf = session =>
@@ -725,6 +780,8 @@ export const universe = async identity => {
 		// A checkout's changes are the files panel's to show, so a guest sees them only with that much of a role
 		checkouts:
 			scope && !roleAllows(identity.role, 'files') ? [] : checkouts.filter(({ changed }) => changed !== undefined),
+		// The shipping bay's manifest: the owner's alone, as it reaches past the sessions into whole projects
+		unshipped: scope ? [] : unshippedNow(identity),
 		people: await withViewer(peopleOf(running), identity),
 	};
 };
