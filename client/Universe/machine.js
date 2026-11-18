@@ -501,6 +501,8 @@ export const drawExterior = (
 // each side with the sockets its greys' cables plug into; between them its folders'
 // modules on a plinth, a duct from their top up into the hull. Answers where each socket is.
 const PYLON = 5;
+// How far apart a pylon's sockets are, in art pixels, while its deck has the height
+const SOCKET_PITCH = 11;
 
 export const drawHousing = (
 	ctx,
@@ -540,7 +542,11 @@ export const drawHousing = (
 
 	top = floor - Math.max(20, Math.round((floor - ceiling) * (0.45 + 0.4 * size)));
 
-	const pylonTop = Math.min(top, floor - 10 - rows * 11);
+	// Tall enough for a socket every SOCKET_PITCH, but never up out of its deck: past that its sockets crowd closer
+	const pylonTop = Math.max(ceiling + 2, Math.min(top, floor - 10 - rows * SOCKET_PITCH));
+	// The first socket where it always was, else as high as the pylon allows; the rest spread down it to its foot
+	const first = Math.min(13, Math.max(4, floor - 8 - pylonTop - (rows - 1) * SOCKET_PITCH));
+	const pitch = rows > 1 ? Math.min(SOCKET_PITCH, Math.max(0, (floor - 8 - pylonTop - first) / (rows - 1))) : 0;
 	const h = floor - top;
 
 	const years = history?.since ? (Date.now() - history.since) / (365 * DAY_MS) : 1;
@@ -590,7 +596,7 @@ export const drawHousing = (
 	health(ctx, { x: body.x + body.w - 5, y: top }, { verdict, tested, time, seed, working: state === 'working' });
 	pending(ctx, { from, to, top, floor, body }, { changed, pressure, pullRequest, time, working: state === 'working' });
 
-	const socketAt = (side, index) => ({ x: side < 0 ? from - 1 : to, y: pylonTop + 13 + index * 11 });
+	const socketAt = (side, index) => ({ x: side < 0 ? from - 1 : to, y: Math.round(pylonTop + first + index * pitch) });
 
 	for (const [side, taken] of [
 		[-1, sockets.left],
