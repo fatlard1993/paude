@@ -1387,7 +1387,8 @@ export default class Universe extends View {
 		const prompt = { label: 'New prompt', hotkey: 'n', run: () => this.newPrompt() };
 		const folder = { label: 'Add a folder', hotkey: 'a', run: () => this.openShipDock('folders') };
 
-		if (place === 'new') return owned(prompt, folder);
+		if (place === 'new')
+			return owned(prompt, { label: 'Find a session', hotkey: 'f', run: () => this.findSession(null) }, folder);
 
 		return [
 			...owned({ label: 'All sessions', hotkey: 'h', run: () => this.openShipDock('sessions') }, folder, prompt),
@@ -1828,10 +1829,19 @@ export default class Universe extends View {
 				projects,
 				onSent: () => this.aboard.charge(),
 				onArrive: place => this.dockWhenAboard(place),
+				onFind: found => this.findSession(found),
 				onClose: () => this.closeCard(),
 			}),
 			anchor ?? this.aboard.screen(this.bridgeDoor()),
 		);
+	}
+
+	// The sessions to search and open: a project's here, every one on the paude a project is on, or every one aboard
+	findSession(project) {
+		if (project?.remote) return this.openShipDock('sessions', [project.remote], project.remote.name);
+		if (project) return this.openProjectDock(project.name, 'sessions');
+
+		return this.openShipDock('sessions');
 	}
 
 	bridgeDoor() {

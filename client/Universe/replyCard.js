@@ -156,8 +156,9 @@ export const replyCard = ({ session, onOpen, onSent, onClose, note }) => {
 // chosen (`project`, or one of `projects` picked in the card), the session there it carries on or a new one there; and
 // goes there: to `onArrive({ id, remote })` when given, else straight to its page
 // `projects`: [{ name, remote }], `remote` ({ url, name }) for one that is only on another paude, where the prompt then
-// starts a session; `project` the one picked to begin with
-export const promptCard = ({ project, projects = [], onSent, onArrive, onClose }) => {
+// starts a session; `project` the one picked to begin with. `onFind(project)` searches the sessions there (every
+// session, given none) without sending anything.
+export const promptCard = ({ project, projects = [], onSent, onArrive, onFind, onClose }) => {
 	const card = element('div', 'reply-card');
 	const where = element('select', 'where');
 	const choices = [...new Map([...(project ? [project] : []), ...projects].map(each => [each.name, each]))].map(
@@ -203,11 +204,18 @@ export const promptCard = ({ project, projects = [], onSent, onArrive, onClose }
 	});
 	// Looked for: the session it carries on, or the project it belongs in, offered before anything starts
 	const find = text => placePrompt({ ...asked(text), onSent: done });
-	const finder = button('Find a session', () => box.text.value.trim() && find(box.text.value.trim()), {
-		icon: 'magnifying-glass',
-		className: 'variant-flat',
-		title: 'Carry it on in a session already going there, if one fits, instead of starting a new one',
-	});
+	// A prompt this paude can place goes to the session it carries on; with none, or a project on another paude, it's
+	// the sessions there to search
+	const carriesOn = () => Boolean(box.text.value.trim()) && !chosen()?.remote;
+	const finder = button(
+		'Find a session',
+		() => (carriesOn() ? find(box.text.value.trim()) : (onClose(), onFind?.(chosen() ?? null))),
+		{ icon: 'magnifying-glass', className: 'variant-flat' },
+	);
+	const finderSays = () =>
+		(finder.title = carriesOn()
+			? 'Carry it on in a session already going there, if one fits, instead of starting a new one'
+			: `Search the sessions ${where.value ? `in ${where.value}` : 'in every project'}, to open one`);
 	const box = composer({
 		keep: HOME_PROMPT_KEY,
 		placeholder: 'What should Claude do?',
@@ -222,11 +230,12 @@ export const promptCard = ({ project, projects = [], onSent, onArrive, onClose }
 	const starting = element('div', 'choices');
 	const said = () => {
 		head.querySelector('.about').textContent = about();
-		finder.style.display = where.value && !chosen()?.remote ? '' : 'none';
+		finderSays();
 		box.sendLabel.textContent = sendLabel(asked(''));
 	};
 
 	where.addEventListener('change', said);
+	box.text.addEventListener('input', finderSays);
 	starting.append(...session.nodes);
 	card.append(head, where, starting, box.form);
 	said();
