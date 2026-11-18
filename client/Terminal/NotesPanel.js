@@ -10,7 +10,6 @@ import { REACTION_PALETTE } from '../../shared/reactions';
 import { canNote, canType, identity, identityKey } from '../identity';
 import { closeButton, element, icon } from '../dom';
 import { intoBox, micButton } from '../micButton';
-import renderPeople from './People';
 import Panel from './NotesPanel.styles';
 
 const meta = ({ author, at, toClaude }) =>
@@ -95,7 +94,6 @@ export default class NotesPanel extends Panel {
 			tabs: [
 				{ id: 'chat', label: 'Chat' },
 				{ id: 'comments', label: 'Comments' },
-				...(identity()?.owner ? [{ id: 'people', label: 'People' }] : []),
 			],
 			onChange: ({ value }) => this.showTab(value),
 		});
@@ -190,13 +188,11 @@ export default class NotesPanel extends Panel {
 		if (arrived && arrived.author !== this.myName) this.options.announce?.(arrived);
 		if (message.type !== 'chat' && message.type !== 'chatUpdate') this.options.commentsChanged?.();
 
-		if (this.tab !== 'people') this.renderList();
+		this.renderList();
 	}
 
 	// Rebuilding the list would take focus (and the phone keyboard) from a reply being typed, so it's handed back
 	renderList() {
-		if (this.tab === 'people') return this.renderPeople();
-
 		const atBottom = this.list.scrollHeight - this.list.scrollTop - this.list.clientHeight < 40;
 		const { scrollTop } = this.list;
 		const typing = this.list.contains(document.activeElement) ? document.activeElement : null;
@@ -436,12 +432,6 @@ export default class NotesPanel extends Panel {
 		row.append(add, palette);
 
 		return row;
-	}
-
-	async renderPeople() {
-		const rendered = await renderPeople(this.options.sessionId);
-
-		if (this.tab === 'people') this.list.replaceChildren(...rendered);
 	}
 
 	startComment(quote, anchor) {

@@ -31,7 +31,7 @@ import { recall, remember } from '../storage';
 import { ink, isHue } from '../../shared/hues';
 import { LOCAL, fleetBox, panelLeft, placeShips, shipsOf } from './shown';
 import olderPaude from './olderPaude';
-import { dockCard, verbsFor } from './dock';
+import { dockCard, tabsFor, verbsFor } from './dock';
 import { machineDock } from './machineDock';
 import {
 	ROOMS,
@@ -1210,7 +1210,7 @@ export default class Universe extends View {
 				? [{ label: PANELS.terminal.label, hotkey: 't', run: () => this.dockOrReply(worker, 'terminal') }]
 				: []),
 			// Another paude's session's panels are relayed through this one, its side shell among them
-			...verbsFor(session).map(({ key, label, hotkey }) => ({
+			...tabsFor(verbsFor(session)).map(({ key, label, hotkey }) => ({
 				label,
 				hotkey,
 				run: () => this.openDock(worker, key),

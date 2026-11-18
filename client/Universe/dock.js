@@ -22,7 +22,9 @@ import FilesPanel from '../Terminal/FilesPanel';
 import GitPanel from '../Terminal/GitPanel';
 import LinksPanel from '../Terminal/LinksPanel';
 import NotesPanel from '../Terminal/NotesPanel';
-import { PANELS, panelTitle } from '../Terminal/panels';
+import { groupOf, panelIcon, panelLabel, panelTitle, sectionsOf } from '../Terminal/panels';
+import { groupSwitch } from '../Terminal/groupSwitch';
+import PeoplePanel from '../Terminal/PeoplePanel';
 import SharesPanel from '../Terminal/SharesPanel';
 import SideShell from '../Terminal/SideShell';
 import TasksPanel from '../Terminal/TasksPanel';
@@ -37,17 +39,18 @@ export const VERBS = [
 	{ key: 'git', hotkey: 'g', allowed: canBrowse },
 	{ key: 'files', hotkey: 'f', allowed: canBrowse },
 	{ key: 'notes', hotkey: 'c', allowed: () => true },
+	{ key: 'people', hotkey: 'w', allowed: () => Boolean(identity()?.owner) },
 	{ key: 'tasks', hotkey: 'k', allowed: canBrowse },
-	{ key: 'activity', hotkey: 'a', allowed: canBrowse },
-	{ key: 'artifacts', hotkey: 'm', allowed: canBrowse },
-	{ key: 'decisions', hotkey: 'd', allowed: canBrowse },
-	{ key: 'links', hotkey: 'l', allowed: canBrowse },
 	{ key: 'shares', hotkey: 'p', allowed: () => true },
+	{ key: 'artifacts', hotkey: 'm', allowed: canBrowse },
+	{ key: 'links', hotkey: 'l', allowed: canBrowse },
+	{ key: 'activity', hotkey: 'a', allowed: canBrowse },
+	{ key: 'decisions', hotkey: 'd', allowed: canBrowse },
 	{ key: 'shell', hotkey: 's', allowed: canType },
 	// The session as the arcade has it: the talk, and the game it builds
 	{ key: 'arcade', hotkey: 'e', allowed: () => true },
 	{ key: 'game', hotkey: 'v', allowed: () => true },
-].map(verb => ({ ...verb, label: PANELS[verb.key].label }));
+];
 
 // The arcade's panels, for a session that is one (a game built by tapping and talking)
 export const ARCADE_VERBS = ['arcade', 'game'];
@@ -64,6 +67,21 @@ const offered = (key, session) => {
 export const verbsFor = (session, { live = false } = {}) =>
 	VERBS.filter(({ key, allowed }) => allowed() && (key !== 'terminal' || live) && offered(key, session));
 
+// One tab or command for each panel, or for each group of them, under the group's name and its first panel's hotkey
+export const tabsFor = verbs => {
+	const keys = verbs.map(({ key }) => key);
+
+	return verbs
+		.filter(({ key }) => sectionsOf(key, keys)[0] === key)
+		.map(verb => ({
+			...verb,
+			tab: groupOf(verb.key) ?? verb.key,
+			label: panelLabel(verb.key, keys),
+			icon: panelIcon(verb.key, keys),
+			title: panelTitle(verb.key, keys),
+		}));
+};
+
 // A session's panels docked beside the universe, one showing at a time, each built when first wanted and wired to the
 // others as on the session page; the chat on a connection of its own
 export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose, onForked }) => {
@@ -74,6 +92,9 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose,
 	// Another paude's session's panels reach it through this paude, its side shell's socket among them
 	const { remote } = session.engine;
 	const verbs = verbsFor(session, { live });
+	const keys = verbs.map(({ key }) => key);
+	// The section last shown in each group, which its tab opens again
+	const lastSection = {};
 	let connection;
 	let showing;
 
@@ -92,14 +113,14 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose,
 			],
 		},
 	);
-	for (const { key, label, hotkey } of verbs) {
-		const tab = button(label, () => card.show(key), {
-			icon: PANELS[key].icon,
+	for (const { key, tab: name, label, icon, title, hotkey } of tabsFor(verbs)) {
+		const tab = button(label, () => card.show(lastSection[name] ?? key), {
+			icon,
 			className: 'variant-flat',
-			title: `${panelTitle(key)} (${hotkey})`,
+			title: `${title} (${hotkey})`,
 		});
 
-		tab.dataset.verb = key;
+		tab.dataset.verb = name;
 		tabs.append(tab);
 	}
 	card.append(head, tabs, body);
@@ -212,6 +233,7 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose,
 				onForked,
 			}),
 		shares: () => new SharesPanel({ ...common('shares') }),
+		people: () => new PeoplePanel({ ...common('people') }),
 		arcade: () => new ArcadeTalk({ ...common('arcade') }),
 		game: () => new ArcadeGame({ ...common('game'), keepRunning: Boolean(session.arcade) }),
 		shell: () =>
@@ -226,6 +248,7 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose,
 		if (!panels.has(key)) {
 			panels.set(key, make[key]());
 			panels.get(key).elem.hidden = key !== showing;
+			groupSwitch(panels.get(key), key, keys, each => card.show(each));
 			if (key === 'notes') connected();
 		}
 
@@ -237,7 +260,8 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose,
 
 		if (showing !== key) {
 			for (const [other, { elem }] of panels) elem.hidden = other !== key;
-			for (const tab of tabs.children) tab.classList.toggle('active', tab.dataset.verb === key);
+			for (const tab of tabs.children) tab.classList.toggle('active', tab.dataset.verb === (groupOf(key) ?? key));
+			if (groupOf(key)) lastSection[groupOf(key)] = key;
 			if (showing === 'shell') panels.get('shell')?.stop();
 			showing = key;
 			// Its own width again away from the terminal, which sizes the dock to itself

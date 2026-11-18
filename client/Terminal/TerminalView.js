@@ -53,7 +53,9 @@ import { claudePointer, wheelToClaude } from './claudePointer';
 import { acceptFiles } from './fileDrop';
 import { linkFilePaths, linkUrls } from './linkProviders';
 import attach from './attach';
-import { PANELS, panelTitle } from './panels';
+import { GROUPS, PANELS, groupOf, panelIcon, panelTitle, sectionsOf } from './panels';
+import { groupSwitch } from './groupSwitch';
+import PeoplePanel from './PeoplePanel';
 import { startCatchUp, trackLastSeen } from './catchUp';
 import KeyBar from './KeyBar';
 import { copyAsSelected, copySelection, selectedText } from './copySelection';
@@ -110,6 +112,9 @@ const Screen = styled.Component`
 		outline-offset: -2px;
 	}
 `;
+
+// The panels on the right that open, close and refresh alike, grouped ones among them
+const SIDE_PANELS = ['activity', 'decisions', 'tasks', 'shares', 'artifacts', 'links', 'people'];
 
 const ICONS = { web: 'globe', terminal: 'terminal', feed: 'tower-broadcast' };
 const NOTES_OPEN_KEY = 'paude.notesOpen';
@@ -201,36 +206,8 @@ export default class TerminalView extends View {
 				className: 'tool',
 				onPress: () => this.askToOpen(),
 			});
-			this.activityButton = ghostButton(header, {
-				icon: PANELS.activity.icon,
-				title: panelTitle('activity'),
-				className: 'tool',
-				onPress: () => this.toggleActivity(),
-			});
-			this.tasksButton = ghostButton(header, {
-				icon: PANELS.tasks.icon,
-				title: panelTitle('tasks'),
-				className: 'tool',
-				onPress: () => this.toggleTasks(),
-			});
-			this.linksButton = ghostButton(header, {
-				icon: PANELS.links.icon,
-				title: panelTitle('links'),
-				className: 'tool',
-				onPress: () => this.toggleLinks(),
-			});
-			this.artifactsButton = ghostButton(header, {
-				icon: PANELS.artifacts.icon,
-				title: panelTitle('artifacts'),
-				className: 'tool',
-				onPress: () => this.toggleArtifacts(),
-			});
-			this.decisionsButton = ghostButton(header, {
-				icon: PANELS.decisions.icon,
-				title: panelTitle('decisions'),
-				className: 'tool',
-				onPress: () => this.toggleDecisions(),
-			});
+			this.panelButton(header, 'activity');
+			this.panelButton(header, 'artifacts');
 			this.gitButton = ghostButton(header, {
 				icon: PANELS.git.icon,
 				title: panelTitle('git'),
@@ -305,15 +282,11 @@ export default class TerminalView extends View {
 
 			if (mic) header.elem.append(mic);
 		}
-		this.sharesButton = ghostButton(header, {
-			icon: PANELS.shares.icon,
-			title: panelTitle('shares'),
-			className: 'tool',
-			onPress: () => this.toggleShares(),
-		});
+		this.tasksButton = this.panelButton(header, 'shares');
 		this.sharedCount = Object.assign(document.createElement('span'), { className: 'count' });
 		this.sharedCount.style.display = 'none';
-		this.sharesButton.append(this.sharedCount);
+		this.tasksButton.append(this.sharedCount);
+		if (identity()?.owner) this.panelButton(header, 'people');
 		this.notesToggle = ghostButton(header, {
 			icon: PANELS.notes.icon,
 			title: panelTitle('notes'),
@@ -421,14 +394,14 @@ export default class TerminalView extends View {
 				appendTo: body,
 				addClass: 'activity',
 				sessionId: this.options.id,
-				close: () => this.toggleActivity(false),
+				close: () => this.togglePanel('activity', false),
 				openDiff: source => {
-					if (window.matchMedia(NARROW).matches) this.toggleActivity(false);
+					if (window.matchMedia(NARROW).matches) this.togglePanel('activity', false);
 					this.toggleFiles(true);
 					this.files.openDiffSet(source);
 				},
 				openFile: (path, line) => {
-					if (window.matchMedia(NARROW).matches) this.toggleActivity(false);
+					if (window.matchMedia(NARROW).matches) this.togglePanel('activity', false);
 					this.toggleFiles(true);
 					this.files.open(path, line);
 				},
@@ -438,9 +411,9 @@ export default class TerminalView extends View {
 				appendTo: body,
 				addClass: 'tasks',
 				place: this.options.id,
-				close: () => this.toggleTasks(false),
+				close: () => this.togglePanel('tasks', false),
 				openFile: (path, line) => {
-					if (window.matchMedia(NARROW).matches) this.toggleTasks(false);
+					if (window.matchMedia(NARROW).matches) this.togglePanel('tasks', false);
 					this.toggleFiles(true);
 					this.files.open(path, line);
 				},
@@ -452,7 +425,7 @@ export default class TerminalView extends View {
 				addClass: 'links',
 				load: () => getLinks(this.options.id),
 				mark: (url, change) => markLink(this.options.id, url, change),
-				close: () => this.toggleLinks(false),
+				close: () => this.togglePanel('links', false),
 			});
 			addResizeHandle(this.links.elem, PANEL_EDGES.side);
 			this.artifacts = new ArtifactsPanel({
@@ -460,11 +433,11 @@ export default class TerminalView extends View {
 				addClass: 'links',
 				sessionId: this.options.id,
 				load: () => getArtifacts(this.options.id),
-				close: () => this.toggleArtifacts(false),
+				close: () => this.togglePanel('artifacts', false),
 				openFile:
 					this.files &&
 					((path, options) => {
-						if (window.matchMedia(NARROW).matches) this.toggleArtifacts(false);
+						if (window.matchMedia(NARROW).matches) this.togglePanel('artifacts', false);
 						this.toggleFiles(true);
 						this.files.open(path, undefined, undefined, options);
 					}),
@@ -477,7 +450,7 @@ export default class TerminalView extends View {
 				dismiss: id => dismissDecision(this.options.id, id),
 				writeDown: id => writeDownDecision(this.options.id, id),
 				answer: (id, answer) => answerDecision(this.options.id, id, answer),
-				close: () => this.toggleDecisions(false),
+				close: () => this.togglePanel('decisions', false),
 			});
 			addResizeHandle(this.decisions.elem, PANEL_EDGES.side);
 		}
@@ -493,9 +466,20 @@ export default class TerminalView extends View {
 			appendTo: body,
 			addClass: 'shares',
 			sessionId: this.options.id,
-			close: () => this.toggleShares(false),
+			close: () => this.togglePanel('shares', false),
 		});
 		addResizeHandle(this.shares.elem, PANEL_EDGES.side);
+		if (identity()?.owner) {
+			this.people = new PeoplePanel({
+				appendTo: body,
+				addClass: ['links', 'people'],
+				sessionId: this.options.id,
+				close: () => this.togglePanel('people', false),
+			});
+			addResizeHandle(this.people.elem, PANEL_EDGES.side);
+		}
+		for (const key of this.panelKeys())
+			groupSwitch(this[key], key, this.panelKeys(), each => this.togglePanel(each, true));
 		if (canType()) {
 			this.shell = new SideShell({
 				appendTo: body,
@@ -934,17 +918,55 @@ export default class TerminalView extends View {
 		this.focusPanel(this.files.elem, open);
 	}
 
-	// The chat, Git and Shared panels sit on the right: one at a time
+	// The panels on the right, one at a time
 	closeOthersOnTheRight(keep) {
 		if (keep !== 'notes' && this.notes.elem.classList.contains('open')) this.toggleNotes(false);
 		if (keep !== 'git' && this.git?.elem.classList.contains('open')) this.toggleGit(false);
-		if (keep !== 'shares' && this.shares.elem.classList.contains('open')) this.toggleShares(false);
-		if (keep !== 'activity' && this.activity?.elem.classList.contains('open')) this.toggleActivity(false);
-		if (keep !== 'tasks' && this.tasks?.elem.classList.contains('open')) this.toggleTasks(false);
-		if (keep !== 'links' && this.links?.elem.classList.contains('open')) this.toggleLinks(false);
-		if (keep !== 'artifacts' && this.artifacts?.elem.classList.contains('open')) this.toggleArtifacts(false);
-		if (keep !== 'decisions' && this.decisions?.elem.classList.contains('open')) this.toggleDecisions(false);
 		if (keep !== 'output' && this.output.elem.classList.contains('open')) this.toggleOutput(false);
+		for (const key of SIDE_PANELS)
+			if (keep !== key && this[key]?.elem.classList.contains('open')) this.togglePanel(key, false);
+	}
+
+	// The side panels the viewer has
+	panelKeys() {
+		return SIDE_PANELS.filter(key => this[key]);
+	}
+
+	// A button opening `key`, or its group at the section last open in it; one button for the whole group
+	panelButton(header, key) {
+		const group = groupOf(key);
+		const offered = SIDE_PANELS.filter(
+			each => each === 'shares' || (each === 'people' ? identity()?.owner : canBrowse()),
+		);
+		const node = ghostButton(header, {
+			icon: panelIcon(key, offered),
+			title: panelTitle(key, offered),
+			className: 'tool',
+			onPress: () => {
+				const members = sectionsOf(key, this.panelKeys());
+				const open = members.find(each => this[each]?.elem.classList.contains('open'));
+
+				if (open) return this.togglePanel(open, false);
+				this.togglePanel(members.includes(this.lastSection?.[group]) ? this.lastSection[group] : members[0], true);
+			},
+		});
+
+		this.buttons ??= {};
+		for (const each of group ? Object.keys(GROUPS[group].members) : [key]) this.buttons[each] = node;
+
+		return node;
+	}
+
+	togglePanel(key, open = !this[key].elem.classList.contains('open')) {
+		const panel = this[key];
+		const group = groupOf(key);
+
+		if (open) this.closeOthersOnTheRight(key);
+		panel.elem.classList.toggle('open', open);
+		this.buttons?.[key]?.classList.toggle('active', open);
+		if (open && group) this.lastSection = { ...this.lastSection, [group]: key };
+		if (open) panel.refresh();
+		this.focusPanel(panel.elem, open);
 	}
 
 	toggleOutput(open = !this.output.elem.classList.contains('open')) {
@@ -955,38 +977,6 @@ export default class TerminalView extends View {
 		this.focusPanel(this.output.elem, open);
 	}
 
-	toggleDecisions(open = !this.decisions.elem.classList.contains('open')) {
-		if (open) this.closeOthersOnTheRight('decisions');
-		this.decisions.elem.classList.toggle('open', open);
-		this.decisionsButton?.classList.toggle('active', open);
-		if (open) this.decisions.refresh();
-		this.focusPanel(this.decisions.elem, open);
-	}
-
-	toggleArtifacts(open = !this.artifacts.elem.classList.contains('open')) {
-		if (open) this.closeOthersOnTheRight('artifacts');
-		this.artifacts.elem.classList.toggle('open', open);
-		this.artifactsButton?.classList.toggle('active', open);
-		if (open) this.artifacts.refresh();
-		this.focusPanel(this.artifacts.elem, open);
-	}
-
-	toggleLinks(open = !this.links.elem.classList.contains('open')) {
-		if (open) this.closeOthersOnTheRight('links');
-		this.links.elem.classList.toggle('open', open);
-		this.linksButton?.classList.toggle('active', open);
-		if (open) this.links.refresh();
-		this.focusPanel(this.links.elem, open);
-	}
-
-	toggleTasks(open = !this.tasks.elem.classList.contains('open')) {
-		if (open) this.closeOthersOnTheRight('tasks');
-		this.tasks.elem.classList.toggle('open', open);
-		this.tasksButton?.classList.toggle('active', open);
-		if (open) this.tasks.refresh();
-		this.focusPanel(this.tasks.elem, open);
-	}
-
 	// A run started or ended: the button shows one is going, and an open panel catches up
 	showRuns(runs) {
 		this.tasksButton?.classList.toggle(
@@ -994,22 +984,6 @@ export default class TerminalView extends View {
 			runs.some(run => run.code === undefined || run.code === null),
 		);
 		if (this.tasks?.elem.classList.contains('open')) this.tasks.refresh();
-	}
-
-	toggleActivity(open = !this.activity.elem.classList.contains('open')) {
-		if (open) this.closeOthersOnTheRight('activity');
-		this.activity.elem.classList.toggle('open', open);
-		this.activityButton?.classList.toggle('active', open);
-		if (open) this.activity.refresh();
-		this.focusPanel(this.activity.elem, open);
-	}
-
-	toggleShares(open = !this.shares.elem.classList.contains('open')) {
-		if (open) this.closeOthersOnTheRight('shares');
-		this.shares.elem.classList.toggle('open', open);
-		this.sharesButton.classList.toggle('active', open);
-		if (open) this.shares.refresh();
-		this.focusPanel(this.shares.elem, open);
 	}
 
 	// How many things the session shares, on the button; a service seen for the first time says so once
@@ -1282,9 +1256,9 @@ export default class TerminalView extends View {
 			since: this.seenBefore,
 			terminal: this.terminal,
 			openActivity:
-				this.activityButton &&
+				this.activity &&
 				(turnId => {
-					this.toggleActivity(true);
+					this.togglePanel('activity', true);
 					this.activity.focusTurn(turnId);
 				}),
 		});

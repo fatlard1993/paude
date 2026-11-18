@@ -142,6 +142,13 @@ const Panel = styled(
 			opacity: 1;
 		}
 
+		/* A group's switch sits in the bar where the panel's title would be */
+		.bar .section-switch {
+			flex: 0 1 auto;
+			padding: 0;
+			background: none;
+		}
+
 		/* A count reads as part of the label: "Changes 3" */
 		.tabs .count {
 			margin-left: 0;

@@ -251,7 +251,9 @@ export default class Project extends View {
 		};
 
 		this.toolButton = {};
-		for (const name of ['files', 'tasks', 'git', 'shell']) tool(name, PANELS[name].icon, panelTitle(name));
+		const names = ['files', 'tasks', 'git', 'shell'];
+
+		for (const name of names) tool(name, PANELS[name].icon, panelTitle(name, names));
 	}
 
 	tools(body) {

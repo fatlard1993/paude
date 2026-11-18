@@ -5,7 +5,8 @@ export const PANELS = {
 	terminal: { label: 'Terminal', about: "the session's own screen, live", icon: 'display' },
 	git: { label: 'Git', about: 'changes, history, branches', icon: 'code-branch' },
 	files: { label: 'Files', about: "the project's files, to read, edit and compare", icon: 'folder-tree' },
-	notes: { label: 'Chat', about: 'messages, comments on the code, and who is invited', icon: 'comments' },
+	notes: { label: 'Chat', about: 'messages, and comments on the code', icon: 'comments' },
+	people: { label: 'People', about: 'who is invited here, and inviting someone', icon: 'user-plus' },
 	tasks: { label: 'Tasks', about: "the project's checks and tests, problems, and what's running", icon: 'list-check' },
 	activity: { label: 'Activity', about: 'what Claude did, turn by turn', icon: 'clock-rotate-left' },
 	artifacts: {
@@ -33,5 +34,46 @@ export const PANELS = {
 	},
 };
 
+// Panels that share one button and one place, each one's title in its bar a switch to the others: `label` is the
+// button's, and each member's `section` its name within the group
+export const GROUPS = {
+	tasks: {
+		label: 'Tasks',
+		about: "the project's checks and tests, what's running, and what this session shares",
+		icon: 'list-check',
+		members: { tasks: 'Checks', shares: 'Shared' },
+	},
+	made: {
+		label: 'Made',
+		about: 'what was made along the way, and the links that came up',
+		icon: 'shapes',
+		members: { artifacts: 'Artifacts', links: 'Links' },
+	},
+	record: {
+		label: 'Record',
+		about: 'what Claude did turn by turn, and what was settled',
+		icon: 'clock-rotate-left',
+		members: { activity: 'Turns', decisions: 'Decisions' },
+	},
+};
+
+export const groupOf = key => Object.keys(GROUPS).find(group => key in GROUPS[group].members) ?? null;
+
+// The members of `key`'s group the viewer has (`present`, the panel keys offered), in the group's order: `key` alone
+// when it's in none
+export const sectionsOf = (key, present) => {
+	const group = GROUPS[groupOf(key)];
+
+	return group ? Object.keys(group.members).filter(member => member === key || present.includes(member)) : [key];
+};
+
+// What a button or tab opening `key` is called: its group's name where the viewer has more of it than this one
+const named = (key, present) => (sectionsOf(key, present).length > 1 ? GROUPS[groupOf(key)] : PANELS[key]);
+
 // A tooltip: the label, then what it holds. The phone menu takes the label back from before the colon.
-export const panelTitle = key => `${PANELS[key].label}: ${PANELS[key].about}`;
+export const panelTitle = (key, present = Object.keys(PANELS)) =>
+	`${named(key, present).label}: ${named(key, present).about}`;
+
+export const panelLabel = (key, present = Object.keys(PANELS)) => named(key, present).label;
+
+export const panelIcon = (key, present = Object.keys(PANELS)) => named(key, present).icon;
