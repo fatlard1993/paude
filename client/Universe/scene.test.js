@@ -19,6 +19,7 @@ import Ship, {
 	triage,
 } from './scene';
 import {
+	ISLAND_SEATS,
 	NOSE,
 	WATCHER_W,
 	airlockAt,
@@ -811,7 +812,7 @@ test('the ship at its edges: none, one or two projects on one level, a level mor
 	}
 });
 
-test("a project's sessions sit at its islands in order, split so none runs on past six seats, however many projects share the bridge", () => {
+test("a project's sessions sit at its islands in order, split so none runs on past eight seats, however many projects share the bridge", () => {
 	const bays = [
 		{ name: 'big', hue: 10, sessions: Array.from({ length: 14 }, (_, index) => `big${index}`) },
 		...Array.from({ length: 6 }, (_, project) => ({
@@ -829,9 +830,9 @@ test("a project's sessions sit at its islands in order, split so none runs on pa
 	for (const { name, sessions } of bays) {
 		const islands = bridge.islands.filter(island => island.name === name);
 
-		expect(islands.length).toBe(Math.ceil(sessions.length / 6));
+		expect(islands.length).toBe(Math.ceil(sessions.length / ISLAND_SEATS));
 		expect(islands.flatMap(({ seats }) => seats.map(({ key }) => key))).toEqual(sessions);
-		for (const island of islands) expect(island.seats.length).toBeLessThanOrEqual(6);
+		for (const island of islands) expect(island.seats.length).toBeLessThanOrEqual(ISLAND_SEATS);
 	}
 });
 
@@ -2028,32 +2029,32 @@ test('a project seating more than an island holds is split into as few islands a
 	const plain = () => 1.5;
 	const keys = count => Array.from({ length: count }, (_, index) => `k${index}`);
 
-	expect(splitSeats(keys(6), plain).map(run => run.length)).toEqual([6]);
-	expect(splitSeats(keys(7), plain).map(run => run.length)).toEqual([4, 3]);
+	expect(splitSeats(keys(ISLAND_SEATS), plain).map(run => run.length)).toEqual([ISLAND_SEATS]);
+	expect(splitSeats(keys(ISLAND_SEATS + 1), plain).map(run => run.length)).toEqual([5, 4]);
 	for (const count of [13, 14, 19, 25]) {
 		const sizes = splitSeats(keys(count), plain).map(run => run.length);
 
-		expect(sizes).toHaveLength(Math.ceil(count / 6));
-		expect(Math.max(...sizes)).toBeLessThanOrEqual(6);
+		expect(sizes).toHaveLength(Math.ceil(count / ISLAND_SEATS));
+		expect(Math.max(...sizes)).toBeLessThanOrEqual(ISLAND_SEATS);
 		expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThanOrEqual(1);
 	}
 	expect(splitSeats([], plain)).toEqual([[]]);
 	expect(splitSeats(['only'], plain)).toEqual([['only']]);
 	// Wider seats (subagents' terminals beside them) split sooner
-	expect(splitSeats(keys(6), key => (key === 'k0' ? 4 : 1.5)).length).toBe(2);
+	expect(splitSeats(keys(ISLAND_SEATS), key => (key === 'k0' ? 4 : 1.5)).length).toBe(2);
 	// Every seat once, in order
 	expect(splitSeats(keys(14), plain).flat()).toEqual(keys(14));
 
 	const bays = [
-		{ name: 'big', hue: 10, sessions: keys(14) },
+		{ name: 'big', hue: 10, sessions: keys(18) },
 		{ name: 'small', hue: 50, sessions: ['s0'] },
 	];
 	const { bridge } = layOut({ bays: bays.map(bay => ({ ...bay, seated: bay.sessions.length })) });
 	const big = bridge.islands.filter(({ name }) => name === 'big');
 
 	expect(big).toHaveLength(3);
-	expect(big.flatMap(({ keys: seated }) => seated)).toEqual(keys(14));
-	expect(Object.keys(bridge.seats)).toHaveLength(15);
+	expect(big.flatMap(({ keys: seated }) => seated)).toEqual(keys(18));
+	expect(Object.keys(bridge.seats)).toHaveLength(19);
 });
 
 test("the crew's droids wait in line in engineering's trunk and leave up it, clear of its units", () => {

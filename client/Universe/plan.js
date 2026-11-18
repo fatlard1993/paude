@@ -71,8 +71,9 @@ const BRIDGE_ROW = 2.8;
 // How many times the rows are spread out further, at most, as spreading them puts more islands in each
 const PITCH_TRIES = 8;
 const SEAT_W = 1.5;
-// The most an island's seats run across before it's split, in world units: six plain seats
-const ISLAND_SEATS_W = 6 * SEAT_W;
+// The most an island's seats run across before it's split, in world units: eight plain seats
+export const ISLAND_SEATS = 8;
+const ISLAND_SEATS_W = ISLAND_SEATS * SEAT_W;
 // A subagent's small terminal to the left of its grey's seat, as many as are shown, and the room before the first of
 // them, so the farthest one's terminal still stands within the seat's own room
 const SMALL_W = 0.8;
