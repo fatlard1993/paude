@@ -4663,7 +4663,7 @@ export default class Ship {
 		return seating ?? [...plates].sort((a, b) => away(a) - away(b))[0];
 	}
 
-	// Under an island's console, `along` it from its left end in world units: where its conduit runs, between its legs
+	// Under an island's console, `along` it from its left end in world units: where its conduit runs
 	underIsland(island, along) {
 		const at = this.art({ x: island.x + along, y: island.y + 0.2 });
 

@@ -488,10 +488,8 @@ export const box = (ctx, x, y, w, h, color) => {
 };
 
 // A project's island on the bridge, `from` and `to` its ends and `y` its foot: one long console with a stripe of its
-// project's color, legs at its ends
+// project's color, its conduit along under it
 export const drawIsland = (ctx, { from, to, y }, { color }) => {
-	rect(ctx, from + 1, y - 3, 2, 3, PALETTE.k);
-	rect(ctx, to - 3, y - 3, 2, 3, PALETTE.k);
 	rect(ctx, from - 1, y - 14, to - from + 2, 12, PALETTE.k);
 	rect(ctx, from, y - 13, to - from, 1, PALETTE.w);
 	rect(ctx, from, y - 12, to - from, 4, PALETTE.l);
