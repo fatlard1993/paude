@@ -1542,7 +1542,10 @@ export default class FilesPanel extends Panel {
 				this.diffSelection = { file, anchor, from: Math.min(anchor, index), to: Math.max(anchor, index) };
 				this.renderViewer();
 			},
-			onAttachLines: canType() && this.options.attach ? (file, lines) => this.attachDiffLines(this.diffFiles[file].path, lines) : null,
+			onAttachLines:
+				canType() && this.options.attach
+					? (file, lines) => this.attachDiffLines(this.diffFiles[file].path, lines)
+					: null,
 			commentsAt: (path, side, number) => this.diffCommentsAt(path, side, number),
 			onComment: commentId => this.options.showComment(commentId),
 		});
