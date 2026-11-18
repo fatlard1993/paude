@@ -4,7 +4,7 @@ import path from 'path';
 import { beforeAll, expect, test } from 'bun:test';
 
 import { initActivity } from '../activity';
-import PtySession from './PtySession';
+import PtySession, { sessionEnvironment } from './PtySession';
 
 const FAKE_CLAUDE = path.join(import.meta.dir, 'fixtures', 'fake-claude.js');
 
@@ -119,4 +119,20 @@ test('someone reading the feed is here with those attached, under their name and
 	expect(lastPresence().clients.map(client => client.kind)).toEqual(['web']);
 
 	session.process.kill();
+});
+
+test("a paude run as another's task doesn't pass on that task's plain output to the terminals it opens", () => {
+	const kept = { PAUDE_TASK: process.env.PAUDE_TASK, NO_COLOR: process.env.NO_COLOR };
+
+	process.env.NO_COLOR = '1';
+	delete process.env.PAUDE_TASK;
+	expect(sessionEnvironment().NO_COLOR).toBe('1');
+
+	process.env.PAUDE_TASK = 'dev';
+	expect(sessionEnvironment()).not.toHaveProperty('NO_COLOR');
+	expect(sessionEnvironment()).not.toHaveProperty('PAUDE_TASK');
+
+	for (const [name, value] of Object.entries(kept))
+		if (value === undefined) delete process.env[name];
+		else process.env[name] = value;
 });

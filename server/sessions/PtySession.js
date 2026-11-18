@@ -48,8 +48,16 @@ const INHERITED_MARKER =
 const TRACKED_MODES = new Set(['1', '25', '1000', '1002', '1003', '1004', '1006', '2004']);
 const MODE_CHANGE = new RegExp(`${ESC}\\[\\?([\\d;]+)([hl])`, 'g');
 
+// What a paude gives a task it runs (tasks.js), plain output among them, when this paude is itself one: a dev paude
+// run under another. Passed on, every terminal it opens is told it can't show color.
+const TASK_MARKERS = new Set(['PAUDE_TASK', 'NO_COLOR', 'FORCE_COLOR', 'CI']);
+
 export const sessionEnvironment = () =>
-	Object.fromEntries(Object.entries(process.env).filter(([name]) => !INHERITED_MARKER.test(name)));
+	Object.fromEntries(
+		Object.entries(process.env).filter(
+			([name]) => !INHERITED_MARKER.test(name) && !(process.env.PAUDE_TASK && TASK_MARKERS.has(name)),
+		),
+	);
 
 const clientName = (name, fallback) =>
 	String(name ?? '')
