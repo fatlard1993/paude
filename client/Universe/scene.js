@@ -3892,7 +3892,7 @@ export default class Ship {
 				out: { x: exit.x + 4 + (lane % 3) * 2, y: exit.y },
 				plates: (this.bridge.islands ?? [])
 					.filter(({ name }) => name === bay.name)
-					.map(island => ({ island, at: this.art({ x: island.x + 0.15, y: island.y + 0.2 }) })),
+					.map(island => ({ island, at: this.underIsland(island, 0.15) })),
 			};
 		});
 		// Each island's run height first, which the risers' order is weighed with
@@ -4076,7 +4076,8 @@ export default class Ship {
 
 		const now = new Map();
 
-		for (const [name, { color, weight, working, seed, tray, riser, exit, out, plates }] of this.cables) {
+		for (const [name, cable] of this.cables) {
+			const { color, weight, working, seed, tray, exit, out, plates } = cable;
 			const style = { color, weight, seed };
 			const machine = [{ x: out.x, y: tray }, out, exit];
 			const busy = island =>
@@ -4086,15 +4087,9 @@ export default class Ship {
 			// is at work, so which of its islands is busy can be seen
 			now.set(
 				name,
-				plates.map(({ island, at, run = at.y }) => ({
-					style: { ...style, working: busy(island) },
-					points: [
-						...this.clearOfLounge(
-							[at, ...(run === at.y ? [] : [{ x: at.x, y: run }]), { x: riser, y: run }, { x: riser, y: tray }],
-							this.besideOf(riser),
-						),
-						...machine,
-					],
+				plates.map(plate => ({
+					style: { ...style, working: busy(plate.island) },
+					points: [this.underIsland(plate.island, plate.island.w - 0.15), ...this.conduitTo(cable, plate), ...machine],
 				})),
 			);
 		}
@@ -4558,23 +4553,21 @@ export default class Ship {
 			return [
 				...fed,
 				{ track: trackOf(this.clearOfLounge(into)), ports: [...(tech ? [tech.outlet] : []), into.at(-1)] },
-				{ track: trackOf(this.clearOfLounge(out, this.besideOf(conduit.riser))), ports: [out[0]] },
+				{ track: trackOf(out), ports: [out[0]] },
 			];
 		}
 
 		const lane = this.layout.halls[0].lane;
 		const start = key === 'tower' ? navAt(room) : { x: room.door.x, y: room.door.y };
 		const offset = (sources.indexOf(key) - (sources.length - 1) / 2) * 0.09;
-		// Not walked in behind the consoles to the seat, through the screens: along the aisle to its island's plate, and
-		// in under the desk as its project's conduit does
+		// Not walked in behind the consoles to the seat, through the screens: to where its project's conduit leaves the aft
+		// wall for its island, and along that conduit from there, into the island and along under it to the seat
 		const plate = cable && this.plateOf(worker, cable.plates);
-		const seat = this.art({ x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 });
-		const end = plate
-			? { x: plate.x / UNIT.x, y: walkwayOf(this.bridge, plate.island.y) }
+		const along = plate && [...this.conduitTo(cable, plate).slice(0, -1)].reverse();
+		const end = along
+			? { x: along[0].x / UNIT.x, y: along[0].y / UNIT.y }
 			: { x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 };
-		const tail = plate
-			? [{ x: plate.x, y: plate.run }, { x: plate.x, y: plate.y }, { x: seat.x, y: plate.y }, seat]
-			: [];
+		const tail = along ? [...along.slice(1), ...this.seatTail(worker, plate)] : [];
 
 		// From an engine-bay unit: straight across into its lane of the trunk, down it to the hall, and on from there
 		if (tech && room.within?.kind === 'engineering') {
@@ -4665,10 +4658,32 @@ export default class Ship {
 	plateOf(worker, plates) {
 		const seat = this.art({ x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 });
 		const seating = plates.find(({ island }) => island?.keys?.includes(worker.session.key));
+		const away = ({ at }) => Math.hypot(at.x - seat.x, at.y - seat.y);
 
-		return (seating ? [seating] : plates)
-			.map(({ island, at, run = at.y }) => ({ ...at, run, island }))
-			.sort((a, b) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(b.x - seat.x, b.y - seat.y))[0];
+		return seating ?? [...plates].sort((a, b) => away(a) - away(b))[0];
+	}
+
+	// Under an island's console, `along` it from its left end in world units: where its conduit runs, between its legs
+	underIsland(island, along) {
+		const at = this.art({ x: island.x + along, y: island.y + 0.2 });
+
+		return { x: at.x, y: at.y - 1 };
+	}
+
+	// A project's conduit from under an island (`plate`) to the foot of its riser in the hall, in art pixels, bent round
+	// the lounge: what's drawn of it, and what every stream to that island runs along
+	conduitTo({ riser, tray }, { at, run = at.y }) {
+		return this.clearOfLounge(
+			[at, ...(run === at.y ? [] : [{ x: at.x, y: run }]), { x: riser, y: run }, { x: riser, y: tray }],
+			this.besideOf(riser),
+		);
+	}
+
+	// From under the island, along under it to below the worker's seat and up into it
+	seatTail(worker, { at }) {
+		const seat = this.art({ x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 });
+
+		return [{ x: seat.x, y: at.y }, seat];
 	}
 
 	throughProject(worker, room, conduit, nth, outlet) {
@@ -4676,7 +4691,6 @@ export default class Ship {
 		const wall = this.trunkLane(nth);
 		const { tray, entry, exit, out, riser, plates } = conduit;
 		const into = { x: entry.x - 4, y: entry.y };
-		const seat = this.art({ x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 });
 		const plate = this.plateOf(worker, plates);
 
 		return [
@@ -4692,16 +4706,10 @@ export default class Ship {
 				exit,
 				out,
 				{ x: out.x, y: tray },
-				{ x: riser, y: tray },
+				// Along its conduit as drawn, every bend of it, into the island and under it to the seat
 				...(plate
-					? [
-							{ x: riser, y: plate.run },
-							...(plate.run === plate.y ? [] : [{ x: plate.x, y: plate.run }]),
-							{ x: plate.x, y: plate.y },
-							{ x: seat.x, y: plate.y },
-							seat,
-						]
-					: []),
+					? [...[...this.conduitTo(conduit, plate)].reverse(), ...this.seatTail(worker, plate)]
+					: [{ x: riser, y: tray }]),
 			],
 		];
 	}

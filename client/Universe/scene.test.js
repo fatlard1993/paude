@@ -1626,12 +1626,72 @@ test("a stream that is not through a conduit comes in along the aisle and under 
 							Math.max(from.y, to.y) > screen.top &&
 							Math.min(from.y, to.y) < screen.bottom,
 					).toBe(false);
-			// Its last legs are the conduit's: up to the plate's foot, along under the desk, and in to the seat
-			expect([reach.to.x, reach.to.y]).toEqual([plate.x, plate.y]);
-			expect(along.to.y).toBe(plate.y);
+			// Its last legs are the conduit's: up to under the island, along under the desk, and in to the seat
+			expect([reach.to.x, reach.to.y]).toEqual([plate.at.x, plate.at.y]);
+			expect(along.to.y).toBe(plate.at.y);
+			// Along its project's conduit as drawn, every corner of it from where it leaves the aft wall
+			const corners = track.legs.map(({ to }) => `${to.x},${to.y}`);
+			const conduit = made
+				.conduitTo(cable, plate)
+				.slice(0, -1)
+				.reverse()
+				.map(({ x, y }) => `${x},${y}`);
+
+			expect(corners.slice(-conduit.length - 2, -2)).toEqual(conduit);
 			expect(end.to).toEqual(made.art({ x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 }));
 			checked++;
 		}
+		expect(checked).toBeGreaterThan(0);
+	} finally {
+		if (hadDocument) globalThis.document = had;
+		else delete globalThis.document;
+	}
+});
+
+test("a stream out of a project's machine runs its conduit as drawn, corner for corner, under the island to the seat", () => {
+	const surface = new Proxy(function () {}, { get: () => surface, set: () => true, apply: () => surface });
+	const hadDocument = 'document' in globalThis;
+	const had = globalThis.document;
+
+	globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => surface }) };
+
+	try {
+		const tools = ['Read', 'Edit', 'Bash'];
+		// Enough of one project's sessions to split it over islands
+		const sessions = Array.from({ length: 9 }, (_, index) =>
+			session({ id: `s${index}`, project: 'paude', tool: tools[index % tools.length] }),
+		);
+		const made = shipWith([{ ...answer('here', sessions, { projects: ['paude'] }), tools }]);
+
+		for (let step = 0; step < 4; step++) {
+			run(made, 0.5);
+			made.draw(surface, 1);
+		}
+		made.cables = made.conduitsOf();
+
+		const lanes = ['library', 'forge', 'reactor', 'dish', 'tower', 'outpost'];
+		const key = point => `${point.x},${point.y}`;
+		let checked = 0;
+
+		for (const worker of made.workers.values()) {
+			const facility = made.streamOf(worker)?.facility;
+			const room = made.layout.systems[`${worker.session.engine.key}/${facility}`];
+			const cable = made.cables.get(made.bayOf(worker)?.name);
+
+			if (room?.within?.kind !== 'engineering' || !cable) continue;
+
+			const routed = made.streamRoute(worker, room, lanes, facility, cable, cable);
+			const plate = made.plateOf(worker, cable.plates);
+			const corners = routed.at(-1).track.legs.map(({ to }) => key(to));
+			const conduit = [...made.conduitTo(cable, plate)].reverse().map(key);
+
+			expect(corners.slice(-conduit.length - 2, -2)).toEqual(conduit);
+			expect(corners.at(-1)).toBe(key(made.art({ x: worker.seat.x - 0.4, y: worker.seat.y - 0.1 })));
+			checked++;
+		}
+		expect(
+			new Set([...made.workers.values()].map(worker => made.plateOf(worker, made.cables.get('paude').plates))).size,
+		).toBeGreaterThan(1);
 		expect(checked).toBeGreaterThan(0);
 	} finally {
 		if (hadDocument) globalThis.document = had;
