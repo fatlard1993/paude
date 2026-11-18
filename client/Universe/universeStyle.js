@@ -591,6 +591,47 @@ export const Stage = styled(
 			display: none;
 		}
 
+		.dock .update-panel {
+			display: flex;
+			flex-direction: column;
+			align-items: flex-start;
+			gap: ${space.sm};
+			overflow-y: auto;
+		}
+
+		.dock .update-panel p {
+			margin: 0;
+		}
+
+		.dock .update-panel .error {
+			color: ${colors.light(colors.red)};
+		}
+
+		.dock .update-panel .incoming {
+			margin: 0;
+			padding-left: ${space.md};
+			font-size: 0.85em;
+		}
+
+		.dock .update-panel .incoming .more {
+			color: ${colors.muted};
+		}
+
+		.dock .update-panel .log {
+			align-self: stretch;
+			margin: 0;
+			padding: ${space.sm};
+			border-radius: ${radius.md};
+			background: ${colors.alpha(colors.black, 0.4)};
+			font-size: 0.8em;
+			white-space: pre-wrap;
+		}
+
+		.dock .update-panel.busy {
+			opacity: 0.6;
+			pointer-events: none;
+		}
+
 		.focus-card .summary {
 			display: flex;
 			flex-direction: column;

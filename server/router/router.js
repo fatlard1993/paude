@@ -6,6 +6,7 @@ import filesRoutes from './files';
 import gitRoutes from './git';
 import sharesRoutes from './shares';
 import tasksRoutes from './tasks';
+import updateRoutes from './update';
 import hooksRoutes from './hooks';
 import soundsRoutes from './sounds';
 import gameSpeechRoutes from './gameSpeech';
@@ -66,6 +67,9 @@ const router = async (request, server) => {
 	if (response) return response;
 
 	response = await tasksRoutes(request);
+	if (response) return response;
+
+	response = await updateRoutes(request);
 	if (response) return response;
 
 	response = await sessionsRoutes(request, server);

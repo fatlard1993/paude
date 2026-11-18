@@ -145,6 +145,13 @@ export const getGit = async (place, what, search = {}) =>
 export const runGit = async (place, action, body = {}) =>
 	await POST(...placed(place, '/git/:action', { urlParameters: { action }, body }));
 
+// A machine's paude against what it would pull ({ kind, running, last, head, behind, incoming }), asked of its remote
+// again when `fresh`; and updating it, which the installer does there
+export const getUpdate = async (place, fresh) =>
+	await GET(...placed(place, '/update', { invalidateAfter: 0, ...(fresh && { searchParameters: { fresh: '1' } }) }));
+
+export const startUpdate = async place => await POST(...placed(place, '/update'));
+
 // { turns: [{ id, prompt, at, endedAt, steps: [{ tool, summary, file, ok, output }] }], context: { tokens, model } }
 export const getTimeline = async sessionId =>
 	await GET('/api/sessions/:id/timeline', { urlParameters: { id: sessionId }, invalidateAfter: 0 });

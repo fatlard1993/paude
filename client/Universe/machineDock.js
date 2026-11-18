@@ -5,14 +5,18 @@ import FilesPanel from '../Terminal/FilesPanel';
 import { PANELS, panelTitle } from '../Terminal/panels';
 import SideShell from '../Terminal/SideShell';
 import { heading } from './replyCard';
+import { updatePanel } from './updatePanel';
 
 // What the machine's sidebar holds, as a session's dock holds its panels
 export const MACHINE_VERBS = [
-	{ key: 'files', hotkey: 'f' },
-	{ key: 'shell', hotkey: 's' },
-].map(verb => ({ ...verb, label: PANELS[verb.key].label }));
+	...[
+		{ key: 'files', hotkey: 'f' },
+		{ key: 'shell', hotkey: 's' },
+	].map(verb => ({ ...verb, label: PANELS[verb.key].label, icon: PANELS[verb.key].icon, title: panelTitle(verb.key) })),
+	{ key: 'update', hotkey: 'u', label: 'Update', icon: 'download', title: 'Update paude' },
+];
 
-// A machine's own Files and Shell docked beside the universe, in its home folder: this paude's, or another's
+// A machine's own Files, Shell and paude update docked beside the universe, in its home folder: this paude's, or another's
 // (`remote`, its address) through this one. No Claude stands behind it, so there's no prompt to attach anything to.
 export const machineDock = ({ engine, remote, open = 'files', onClose }) => {
 	const card = element('div', 'dock');
@@ -22,12 +26,8 @@ export const machineDock = ({ engine, remote, open = 'files', onClose }) => {
 	const place = { machine: true, ...(remote && { remote }) };
 	let showing;
 
-	for (const { key, label, hotkey } of MACHINE_VERBS) {
-		const tab = button(label, () => card.show(key), {
-			icon: PANELS[key].icon,
-			className: 'variant-flat',
-			title: `${panelTitle(key)} (${hotkey})`,
-		});
+	for (const { key, label, hotkey, icon, title } of MACHINE_VERBS) {
+		const tab = button(label, () => card.show(key), { icon, className: 'variant-flat', title: `${title} (${hotkey})` });
 
 		tab.dataset.verb = key;
 		tabs.append(tab);
@@ -42,6 +42,7 @@ export const machineDock = ({ engine, remote, open = 'files', onClose }) => {
 				...common('shell'),
 				ended: why => why && new Notify({ intent: 'warning', content: why }),
 			}),
+		update: () => updatePanel(common('update')),
 	};
 
 	card.show = key => {

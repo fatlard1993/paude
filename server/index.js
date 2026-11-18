@@ -50,6 +50,7 @@ import { initBriefSessions } from './briefSessions';
 import { meterOf } from './cacheMeter';
 import removeSession from './removeSession';
 import { sessionRecord } from './sessions/record';
+import { initSelfUpdate } from './selfUpdate';
 import { setPreviewPort } from './router/shares';
 import server from './server';
 
@@ -117,6 +118,7 @@ await initSounds(options.data);
 await initGameSpeech(options.data);
 await ensureLocalToken(options.data);
 await initServerId(options.data);
+initSelfUpdate({ data: options.data, projects: options.projects, port: options.port });
 await Bun.write(path.join(options.data, 'server.pid'), `${process.pid}\n`);
 // Where set-password finds this server, to change the password through it rather than behind its back
 await Bun.write(path.join(options.data, 'server-url'), `http://${options.host}:${options.port}\n`);

@@ -1372,6 +1372,7 @@ export default class Universe extends View {
 			...owned(
 				{ label: 'Files', hotkey: 'f', run: () => this.openMachineDock(engine, 'files') },
 				{ label: 'Shell', hotkey: 's', run: () => this.openMachineDock(engine, 'shell') },
+				{ label: 'Update', hotkey: 'u', run: () => this.openMachineDock(engine, 'update') },
 			),
 			...(remote
 				? [

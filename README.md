@@ -41,7 +41,7 @@ curl -fsSL https://raw.githubusercontent.com/fatlard1993/paude/main/scripts/inst
 cd ~/.paude-server && bun run set-password
 ```
 
-That installs to `~/.paude-server` and runs a user service (a launchd agent on macOS, which also links the `paude` command) on `127.0.0.1:8044`, serving the folders in `~/Projects`; running it again updates it. Elsewhere, run it yourself: `bun install`, `NODE_ENV=production bun run build`, `bun run set-password`, then `bun start -- --projects ~/Projects`.
+That installs to `~/.paude-server` and runs a user service (a launchd agent on macOS, which also links the `paude` command) on `127.0.0.1:8044`, serving the folders in `~/Projects`; running it again updates it. So does **Update** on its reactor in the universe (u), for this paude or any other you're logged into: it lists the commits it would pull, runs the installer there, and says how it went once that paude is back. Elsewhere, run it yourself: `bun install`, `NODE_ENV=production bun run build`, `bun run set-password`, then `bun start -- --projects ~/Projects`.
 
 | Option             | Default              |                                            |
 | ------------------ | -------------------- | ------------------------------------------ |
