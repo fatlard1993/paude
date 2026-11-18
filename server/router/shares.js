@@ -73,8 +73,9 @@ const sharesRoutes = async request => {
 		return Response.json({ url: `${await previewOrigin(request)}/s/${encodeURIComponent(share.name)}/` });
 	}
 
-	// A share opened in a frame on another paude's page, which brings none of this paude's cookies: its address with a
-	// ticket for one use, asked for by someone who can see the session (that paude, on its login here). See frameTickets.
+	// A share opened from another paude's page, in a frame or a tab of its own, which brings none of this paude's
+	// cookies: its address with a ticket for one use, asked for by someone who can see the session (that paude, on its
+	// login here). See frameTickets.
 	const framing = requestMatch('POST', '/api/sessions/:id/shares/:share/frame', request);
 
 	if (framing) {
@@ -82,9 +83,7 @@ const sharesRoutes = async request => {
 
 		if (!ownsSession(identityOf(credential), framing.id)) return new Response('Not part of your invite', { status: 403 });
 
-		const share = sharesOf(framing.id).find(
-			found => found.name === framing.share && (found.kind === 'port' || found.kind === 'site'),
-		);
+		const share = sharesOf(framing.id).find(found => found.name === framing.share);
 
 		if (!share) return new Response('No such share', { status: 404 });
 

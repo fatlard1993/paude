@@ -1,4 +1,4 @@
-import { addShare, getShares, renameShare, stopShare } from '../api';
+import { addShare, frameShare, getShares, renameShare, sessionRemote, stopShare } from '../api';
 import { nameDialog } from '../confirmDialog';
 import { button, closeButton, element, icon } from '../dom';
 import { canType } from '../identity';
@@ -51,6 +51,21 @@ export default class SharesPanel extends Panel {
 		this.renderShares(body.shares);
 	}
 
+	// A share on another paude opens on a ticket for one use, since this browser's login is this paude's, not that one's
+	async openThere(share) {
+		const tab = window.open('', '_blank');
+		const { body, response } = await frameShare(this.options.sessionId, share.name).catch(() => ({}));
+
+		if (!response?.ok || !body?.url) {
+			tab?.close();
+
+			return this.say(typeof body === 'string' ? body : 'Could not open it there.');
+		}
+		if (!tab) return window.open(body.url, '_blank', 'noopener');
+		tab.opener = null;
+		tab.location.href = body.url;
+	}
+
 	say(text) {
 		this.output.replaceChildren(
 			element('pre', '', text),
@@ -78,6 +93,11 @@ export default class SharesPanel extends Panel {
 		open.target = '_blank';
 		open.rel = 'noopener';
 		open.title = share.url;
+		if (sessionRemote(this.options.sessionId))
+			open.addEventListener('click', event => {
+				event.preventDefault();
+				this.openThere(share);
+			});
 		row.append(icon(KIND_ICONS[share.kind]), open, copy);
 		if (canType())
 			row.append(
