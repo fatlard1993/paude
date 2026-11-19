@@ -5,9 +5,10 @@ import { listWorktrees } from './worktrees';
 
 // Folders no one keeps a repository of their own in, and that are slow to go through
 const SKIPPED = new Set(['node_modules', 'dist', 'build', 'target', 'vendor', 'coverage', '__pycache__', 'venv']);
-// How deep under a project its repositories are looked for, and how many are taken at most
+// How deep under a project its repositories are looked for, and how many are taken at most: a bound on a runaway
+// walk, well past a project that keeps a repository for each of its many parts (a mod suite's ninety)
 const DEPTH = 4;
-const MOST = 40;
+const MOST = 300;
 
 // Every git repository within `folder`, itself included: the ones nested in it as deep as DEPTH (in hidden folders
 // and the likes of node_modules none are looked for) and every worktree of each, wherever that is; each once, by

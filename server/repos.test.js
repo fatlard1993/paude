@@ -6,7 +6,8 @@ import { expect, test } from 'bun:test';
 
 import { reposWithin } from './repos';
 
-const git = (cwd, ...args) => Bun.spawnSync(['git', ...args], { cwd, env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1' } });
+const git = (cwd, ...args) =>
+	Bun.spawnSync(['git', ...args], { cwd, env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1' } });
 
 test("a project's repositories are found however deep they nest, its worktrees with them, none from node_modules", async () => {
 	const dir = await mkdtemp(path.join(os.tmpdir(), 'paude-repos-'));
@@ -28,6 +29,22 @@ test("a project's repositories are found however deep they nest, its worktrees w
 		const real = async place => (await import('fs/promises')).realpath(place);
 
 		expect(found.sort()).toEqual([await real(top), await real(nested), await real(path.join(dir, 'side'))].sort());
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test('a project that keeps a repository for each of its many parts has every one of them found', async () => {
+	const dir = await mkdtemp(path.join(os.tmpdir(), 'paude-repos-'));
+
+	try {
+		const parts = Array.from({ length: 95 }, (_, index) => path.join(dir, `part-${index}`));
+
+		for (const part of parts) {
+			await mkdir(path.join(part, '.git'), { recursive: true });
+		}
+
+		expect((await reposWithin(dir)).length).toBe(parts.length);
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}

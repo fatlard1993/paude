@@ -388,6 +388,26 @@ const cargoOf = root =>
 		};
 	});
 
+// How many repositories' cargo is asked of git at once while the manifest is looked over
+const CARGO_AT_ONCE = 6;
+
+// `work` done for each of `items`, `limit` of them at a time, the answers in their order
+const inTurns = async (items, limit, work) => {
+	const answers = [];
+	let next = 0;
+	const worker = async () => {
+		while (next < items.length) {
+			const at = next++;
+
+			answers[at] = await work(items[at]);
+		}
+	};
+
+	await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+
+	return answers;
+};
+
 // What's not yet shipped in the projects `identity` watches: each repository within each of them (nested, and its
 // worktrees) with files changed or commits not pushed, as { project, path (from the project's folder; '' for the
 // project itself), root, branch, changed, unpushed }
@@ -398,22 +418,20 @@ const unshippedFor = async identity => {
 			const folder = projectPath(project);
 			const repos = (await cached(`repos:${folder}`, REPOS_MS, () => reposWithin(folder))) ?? [];
 
-			return Promise.all(
-				repos.map(async root => {
-					const cargo = await cargoOf(root);
+			return inTurns(repos, CARGO_AT_ONCE, async root => {
+				const cargo = await cargoOf(root);
 
-					return (
-						(cargo?.changed || cargo?.unpushed) && {
-							project,
-							path: path.relative(folder, root).split(path.sep).join('/'),
-							root,
-							branch: cargo.branch,
-							changed: cargo.changed,
-							unpushed: cargo.unpushed,
-						}
-					);
-				}),
-			);
+				return (
+					(cargo?.changed || cargo?.unpushed) && {
+						project,
+						path: path.relative(folder, root).split(path.sep).join('/'),
+						root,
+						branch: cargo.branch,
+						changed: cargo.changed,
+						unpushed: cargo.unpushed,
+					}
+				);
+			});
 		}),
 	);
 
