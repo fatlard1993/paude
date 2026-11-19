@@ -3785,7 +3785,7 @@ test('a seat is kept through a stop and a waking: seats go by when a session was
 	expect(seats(told)).toEqual(['here/b', 'here/c', 'here/a']);
 });
 
-test("seats run oldest to newest from the aft end, small terminals to a seat's right; short-lived sessions sit on the floor past the desk, each after the last", () => {
+test("seats run oldest to newest from the aft end, small terminals to a seat's right; a project's short-lived sessions sit on a deskless spot of its own, each after the last", () => {
 	const sessions = [
 		session({ id: 'old', age: 90000, checkout: 'z' }),
 		session({ id: 'brief', lifetime: 'brief', age: 1000, checkout: 'a' }),
@@ -3794,35 +3794,75 @@ test("seats run oldest to newest from the aft end, small terminals to a seat's r
 	];
 	const made = shipWith([answer('here', sessions, { projects: ['paude'] })]);
 	const [island] = made.bridge.islands;
+	const [spot] = made.bridge.spots;
 
-	expect(island.seats.map(({ key }) => key)).toEqual(['here/old', 'here/new', 'here/brief', 'here/later']);
+	// The project's island seats only its own long-lived; its short-lived sit on its spot, which is no island, and no
+	// machine's spot is laid with none of the machine's own aboard
+	expect(made.bridge.islands).toHaveLength(1);
+	expect(island.seats.map(({ key }) => key)).toEqual(['here/old', 'here/new']);
+	expect(made.bridge.spots).toHaveLength(1);
+	expect(spot.name).toBe('paude');
+	expect(spot.seats.map(({ key }) => key)).toEqual(['here/brief', 'here/later']);
+	expect(made.bridge.floor).toBeNull();
 
 	const [old, fresh, brief, later] = ['old', 'new', 'brief', 'later'].map(id => made.workers.get(`here/${id}`));
 
-	// On the floor past the desk's end, level with the row, its laptop between it and the desk clear of the end cap
 	expect(brief.seat.floor).toBe(true);
-	expect(brief.seat.x).toBeGreaterThan(island.x + island.w);
-	expect(made.placeOf(brief).y).toBeCloseTo(island.y + 0.2, 5);
-	expect(made.deskOf(brief.seat).x - 6).toBeGreaterThan(made.art({ x: island.x + island.w, y: 0 }).x + 1);
+	expect(brief.seat.spot).toBe(made.bridge.seats['here/brief'].spot);
+	expect(brief.seat.island).toBeUndefined();
+	expect(made.placeOf(brief).y).toBeCloseTo(spot.y + 0.2, 5);
 	expect(later.seat.x - brief.seat.x).toBeCloseTo(1.7, 5);
-	// The desk is only the seats'; nothing on it marks the floor places
-	expect(island.w).toBeLessThan(brief.seat.x - island.x);
-	expect(fresh.seat.x).toBeLessThan(island.x + island.w);
+	// Stacked with its island as one block: the row under it, where it is along it
+	expect(spot.row).toBe(island.row + 1);
+	expect(spot.x).toBeCloseTo(island.x, 5);
 	// Small terminals to the right of their grey's seat, within its own room: each one's screen (to its left) clear of
-	// its grey, and the last short of the next seat's screen; the seat itself right after the one before it
+	// its grey; the seat itself right after the one before it
 	expect(fresh.seat.x - old.seat.x).toBeCloseTo(1.5, 5);
-	for (const index of [0, 1]) {
-		const small = made.art(made.smallGreyAt(fresh, index));
-
-		expect(small.x - 14).toBeGreaterThanOrEqual(made.art(fresh.seat).x + 10);
-		expect(small.x + 6).toBeLessThanOrEqual(made.art(brief.seat).x - 17);
-	}
+	for (const index of [0, 1])
+		expect(made.art(made.smallGreyAt(fresh, index)).x - 14).toBeGreaterThanOrEqual(made.art(fresh.seat).x + 10);
 	// Its monitor, had it one, past them
 	expect(made.watcherAt(fresh).x).toBeCloseTo(fresh.seat.x + 1 + 0.55 + 2 * 0.8, 5);
 	expect(made.watcherAt(fresh).x).toBeGreaterThan(made.smallGreyAt(fresh, 1).x + 0.3);
 	// Sat cross-legged: a body of its own, and one waving
 	expect(spriteSize('bodySit').h).toBe(7);
 	expect(spriteSize('bodySitWave').h).toBe(10);
+});
+
+test("the machine's own sessions, in no project, sit on their own spot wired by a dataline from their engine's reactor, their streams along it; a project's short-lived have none", () => {
+	const sessions = [
+		session({ id: 'old', checkout: 'z' }),
+		session({ id: 'tidy', project: null, lifetime: 'brief', status: 'working', tool: 'Read' }),
+		session({ id: 'brief', lifetime: 'brief', checkout: 'a' }),
+	];
+	const made = shipWith([answer('here', sessions, { projects: ['paude'] })]);
+
+	run(made, 3);
+	made.conduitsOf();
+
+	const home = made.bridge.floor;
+	const tidy = made.workers.get('here/tidy');
+	const [line] = made.conduits.lines;
+	const reactor = made.art(made.engines[0].reactor);
+
+	expect(home.seats.map(({ key }) => key)).toEqual(['here/tidy']);
+	expect(made.bridge.spots.map(({ name }) => name)).toEqual(['paude', null]);
+	expect(made.bays.map(({ name }) => name)).toEqual(['paude']);
+	// One line, for the machine's own: the project's short-lived taps its conduit instead
+	expect(made.conduits.lines).toHaveLength(1);
+	expect(line.workers.map(({ session }) => session.id)).toEqual(['tidy']);
+	// From the reactor's side, ending along the floor before the spot
+	expect(line.points[0].y).toBe(reactor.y - 11);
+	expect(line.points.at(-1).y).toBe(line.plate.at.y);
+	expect(line.points.at(-1).x).toBeGreaterThan(made.art({ x: home.x, y: 0 }).x);
+
+	const room = Object.values(made.layout.systems).find(({ key }) => key === 'library');
+	const [, stream] = made.datalineRoute(tidy, room, 0, line);
+	const laptop = made.art(made.placeOf(tidy));
+	const { legs } = stream.track;
+
+	// Out of the system's foot, ending up the laptop's cord, and along the dataline's tray on the way
+	expect(legs.at(-1).to).toEqual({ x: laptop.x - 20, y: laptop.y - 1 });
+	expect(legs.some(({ from, to }) => from.y === line.tray && to.y === line.tray)).toBe(true);
 });
 
 test('a session turned fabled gets its monitor by a craft of its own at the airlock, walking to its place; turned back, it walks there and the craft takes it off', () => {

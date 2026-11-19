@@ -190,6 +190,8 @@ const LAYOUT_EASE = 7;
 const CABLE_FADE_SECONDS = 0.5;
 // How long the conduits last drawn stay while a changed layout has none yet, at most
 const CABLE_HOLD_SECONDS = 0.25;
+// How far before the short-lived sessions' laptops their dataline runs along the floor, in art pixels
+const DATALINE_FRONT = 3;
 // How long the stars' streaks are at the start of it, in screen pixels for the nearest
 const WARP_STREAK = 160;
 // How long the outer plating takes to fade once what's aboard has come in
@@ -440,9 +442,9 @@ const drinkOf = session => {
 // kept since (`spent`, as its paude tells it); fabled, it had none
 const spentDrinkOf = session =>
 	!drinkOf(session) && ['warm', 'going'].includes(session.spent) ? session.spent : undefined;
-// One deleted once its cache lets go, sitting on the floor past its island's desk with a laptop rather than at a seat
-const briefOf = worker => worker.session.lifetime === 'brief' && !worker.lounging && !worker.seat?.housing;
-// How far left of where it sits its laptop stands, in art pixels: between it and the desk's end it's plugged into
+// Sat on the floor of a short-lived spot with a laptop, rather than at an island's seat
+const onSpot = worker => Boolean(worker.seat?.spot) && !worker.lounging && !worker.seat?.housing;
+// How far left of where it sits its laptop stands, in art pixels
 const LAPTOP_ASIDE = 14;
 
 // In the lounge rather than at its terminal: its prompt cache gone cold, or stopped. While the cache holds a grey stays
@@ -1560,12 +1562,14 @@ export default class Ship {
 		this.loadCargo(answers);
 		// Each island in the row it stood in last time
 		const keptOf = bridge =>
-			bridge?.islands && Object.fromEntries(bridge.islands.map(({ key, row, at }) => [key, { row, at }]));
+			bridge?.islands &&
+			Object.fromEntries([...bridge.islands, ...(bridge.spots ?? [])].map(({ key, row, at }) => [key, { row, at }]));
 		const first = !this.bridge;
 		const lay = kept =>
 			layOut({
 				kept,
 				bays: this.bays.map(bay => ({ ...bay, seated: bay.sessions.length })),
+				home: this.home,
 				engines: engines.filter(({ quiet }) => !quiet),
 				lounge: {
 					count: Math.max(lounging.length, this.couchesHeld() * 2 - 1),
@@ -1639,6 +1643,13 @@ export default class Ship {
 				if (worker && seat) Object.assign(worker, { seat, homeSeat: seat, bay, room: this.bridge });
 			}),
 		);
+		// The machine's own, on their spot, of no bay
+		for (const key of this.home ?? []) {
+			const worker = this.workers.get(key);
+			const seat = seatOf(this.bridge, key);
+
+			if (worker && seat) Object.assign(worker, { seat, homeSeat: seat, bay: null, room: this.bridge });
+		}
 		// A place held for one gone from it (its dust still there) seats nobody
 		this.lounge?.sessions.forEach((key, index) => {
 			const worker = this.workers.get(key);
@@ -2148,9 +2159,13 @@ export default class Ship {
 
 		// Gone to rest in the lounge, it keeps its seat at its project's island all the same: its terminal frosted over
 		// gone cold, switched off stopped; deleted, it keeps it until its dust has gone
+		// The machine's own, in no project, aren't any bay's: they sit on their own spot
+		this.home = [];
 		for (const [key, worker] of this.workers)
 			if (!worker.leaving || worker.opacity > 0 || worker.ashedAt !== undefined)
-				bayOf(worker.session.project ?? 'elsewhere').sessions.push(key);
+				if (worker.session.project) bayOf(worker.session.project).sessions.push(key);
+				else this.home.push(key);
+		this.home.sort((a, b) => this.workers.get(a).born - this.workers.get(b).born || a.localeCompare(b));
 		// Seated oldest born first from the island's aft end, each newer one to the right of the last, so one coming
 		// aboard takes the end and nobody shifts along, whatever stops and wakes; its short-lived ones after them all,
 		// on the floor past the desk
@@ -2331,7 +2346,7 @@ export default class Ship {
 				}
 
 				const pose = person.role === 'drive' ? 'copilot' : 'tourist';
-				const place = `${pose}:${pose === 'copilot' ? worker.session.key : worker.bay.name}`;
+				const place = `${pose}:${pose === 'copilot' ? worker.session.key : (worker.bay?.name ?? 'home')}`;
 				const index = crowd.get(place) ?? 0;
 
 				crowd.set(place, index + 1);
@@ -2808,7 +2823,7 @@ export default class Ship {
 		const ground = this.art(place);
 		const standing = this.standingAt(worker);
 		// Where its dust lands: on the desk before it at its console, on the cushion on a couch, else on the floor
-		const desk = !walking && !worker.lounging && !briefOf(worker) && !worker.seat?.housing;
+		const desk = !walking && !worker.lounging && !onSpot(worker) && !worker.seat?.housing;
 		const lift = (desk && -13) || (worker.lounging && !walking && -2) || 1;
 		const dustAt = { x: ground.x, y: ground.y + lift, depth: place.y + SPOT_LAYER.heap };
 
@@ -3152,6 +3167,7 @@ export default class Ship {
 		// Each cabinet in the lounge, to press and play
 		this.hits.push(...this.cabinetHits());
 		this.cables = this.conduitsOf();
+		this.datalines = this.conduits?.lines ?? [];
 		this.fed = this.feedsOf();
 		// Each whole, machine to island, in one layer so none is broken where two would meet; on the floor, under all that
 		// stands or walks on it
@@ -3860,7 +3876,11 @@ export default class Ship {
 	conduitsOf() {
 		const conduits = new Map();
 
-		if (!this.layout.halls.length || !this.bridge) return conduits;
+		if (!this.layout.halls.length || !this.bridge) {
+			this.conduits = null;
+
+			return conduits;
+		}
 
 		const wall = this.art({ x: this.bridge.x, y: 0 }).x;
 		const wired = this.bays
@@ -3869,14 +3889,27 @@ export default class Ship {
 				machine: bay.built?.[0],
 				workers: bay.sessions.map(key => this.workers.get(key)).filter(worker => this.wired(worker)),
 			}))
-			// Every island stays wired to its project's machine, whether anyone's at it now or not
-			.filter(({ bay, machine }) => machine && (this.bridge.islands ?? []).some(({ name }) => name === bay.name));
+			// Every island stays wired to its project's machine, whether anyone's at it now or not; and its short-lived
+			// spot, which has no island
+			.filter(
+				({ bay, machine }) =>
+					machine &&
+					[...(this.bridge.islands ?? []), ...(this.bridge.spots ?? [])].some(({ name }) => name === bay.name),
+			);
+		// The machine's own sessions on their spot, by engine: a dataline from each engine's reactor with any of them there
+		const spot = this.bridge.floor;
+		const floored = spot
+			? [...this.workers.values()].filter(worker => worker.seat?.spot && !worker.seat.spot.name && this.wired(worker))
+			: [];
+		const feeding = this.engines.filter(({ key }) => floored.some(({ session }) => session.engine.key === key));
 		// The same as last frame's while the layout, the machines' places and who's wired in stand
-		const key = wired
-			.map(({ bay, machine: { from, to, top, floor, socket }, workers }) =>
+		const key = [
+			...wired.map(({ bay, machine: { from, to, top, floor, socket }, workers }) =>
 				[bay.name, from, to, top, floor, socket(1, 0).y, ...workers.map(({ session }) => session.key)].join(':'),
-			)
-			.join('|');
+			),
+			...floored.map(({ session }) => `floor:${session.key}`),
+			spot ? `${spot.x}:${spot.y}:${spot.w}` : '',
+		].join('|');
 
 		if (this.conduits?.layout === this.layout && this.conduits.key === key) return this.conduits.map;
 		// Each its own lane along its level's spine, nearer the machines the nearer its machine is to the bridge: those
@@ -3939,29 +3972,76 @@ export default class Ship {
 				entry: { x: machine.from - 1, y: height },
 				exit,
 				out: { x: exit.x + 4 + (lane % 3) * 2, y: exit.y },
-				plates: (this.bridge.islands ?? [])
-					.filter(({ name }) => name === bay.name)
-					.map(island => ({ island, at: this.underIsland(island, 0.15) })),
+				plates: [
+					...(this.bridge.islands ?? [])
+						.filter(({ name }) => name === bay.name)
+						.map(island => ({ island, at: this.underIsland(island, 0.15) })),
+					// Its short-lived spot's, along the floor before their laptops, as the machine's own dataline runs
+					...(this.bridge.spots ?? [])
+						.filter(({ name }) => name === bay.name)
+						.map(spot => ({ island: spot, spot: true, at: this.beforeSpot(spot) })),
+				],
+			};
+		});
+		// Each dataline's plate along the floor just before the spot's laptops, from the spot's aft end
+		const lines = feeding.map((engine, index) => {
+			const workers = floored.filter(({ session }) => session.engine.key === engine.key);
+			const front = this.beforeSpot(spot);
+
+			return {
+				engine,
+				index,
+				workers,
+				color: hsl(engine.hue ?? 215, 50, 58),
+				working: workers.some(({ session }) => session.status === 'working'),
+				weight: 1,
+				seed: seeded(`floor:${engine.key}`) * TAU,
+				plate: { island: spot, spot: true, at: { x: front.x, y: front.y + index * 2 } },
 			};
 		});
 		// Each island's run height first, which the risers' order is weighed with
-		const plates = routes.flatMap(({ bay, plates: own, weight }) =>
-			own.map(plate => ({ plate, weight, group: bay.name })),
-		);
+		const plates = [
+			...routes.flatMap(({ bay, plates: own, weight }) => own.map(plate => ({ plate, weight, group: bay.name }))),
+			...lines.map(({ engine, plate, weight }) => ({ plate, weight, group: `floor:${engine.key}` })),
+		];
 		const runs = runsFor(plates.map(({ plate, weight, group }) => ({ ...plate.at, weight, group })));
 
 		plates.forEach(({ plate }, index) => (plate.run = runs[index]));
 
 		const order = this.riserOrder(routes, wall);
 		const { lounge } = this;
-		const risers = risersFor(
-			wall,
-			lounge?.count ? this.art({ x: lounge.x, y: 0 }).x : null,
-			order.map(({ weight }) => weight),
-		);
+		const risers = risersFor(wall, lounge?.count ? this.art({ x: lounge.x, y: 0 }).x : null, [
+			...order.map(({ weight }) => weight),
+			...lines.map(({ weight }) => weight),
+		]);
 
 		order.forEach((route, index) => conduits.set(route.bay.name, { ...route, riser: risers[index] }));
-		this.conduits = { layout: this.layout, key, map: conduits };
+
+		// Out of the reactor's side, across to the engine bay's inner wall, down it to the bottom of the first hall, along
+		// it to the line's own riser up the bridge's aft wall, and along the floor before the spot's laptops
+		const hall = this.layout.halls[0];
+		const { gap } = this.trunk();
+
+		this.conduits = {
+			layout: this.layout,
+			key,
+			map: conduits,
+			lines: lines.map(line => {
+				const reactor = this.art(line.engine.reactor);
+				const core = { x: reactor.x + REACTOR_SIDE, y: reactor.y - 11 };
+				const trunk = gap.right - 2 - line.index * 2;
+				const tray = this.art({ x: 0, y: hall.y + hall.d }).y - HALL_TRAY_IN - line.index * 3;
+				const cable = { riser: risers[order.length + line.index], tray, plates: [line.plate] };
+				const toSpot = [...this.conduitTo(cable, line.plate)].reverse();
+				const end = this.art({ x: spot.x + spot.w, y: 0 }).x - 2;
+
+				return {
+					...line,
+					...cable,
+					points: [core, { x: trunk, y: core.y }, { x: trunk, y: tray }, ...toSpot, { x: end, y: line.plate.at.y }],
+				};
+			}),
+		};
 
 		return conduits;
 	}
@@ -4187,7 +4267,7 @@ export default class Ship {
 				name,
 				plates.map(plate => ({
 					style: { ...style, working: busy(plate.island) },
-					points: [this.underIsland(plate.island, plate.island.w - 0.15), ...this.conduitTo(cable, plate), ...machine],
+					points: [this.plateEnd(plate), ...this.conduitTo(cable, plate), ...machine],
 				})),
 			);
 		}
@@ -4218,6 +4298,13 @@ export default class Ship {
 		}
 		if (fading < 1) for (const [name, was] of this.cablesBefore.drawn) if (!now.has(name)) draw(was, 1 - fading);
 		this.cablesDrawn = now;
+		this.drawWires(
+			ctx,
+			(this.datalines ?? []).map(({ points, color, weight, seed, working }) => ({
+				points,
+				style: { color, weight, seed, working },
+			})),
+		);
 	}
 
 	// Wires along axis-aligned points ({ points, style }), each with a pulse running it from its first point to its last
@@ -4331,7 +4418,7 @@ export default class Ship {
 			return [...(walker.length ? walker : this.loungerParts(ctx, worker)), ...this.homeSeatParts(ctx, worker)];
 		const engineColor = hsl(session.engine.hue ?? 215, 45, 50);
 		const at = this.art({ x: seat.x, y: seat.y + 0.2 });
-		const floor = briefOf(worker) && !walker.length && this.art(this.placeOf(worker));
+		const floor = onSpot(worker) && !walker.length && this.art(this.placeOf(worker));
 		const laptop = floor && { x: floor.x - LAPTOP_ASIDE, y: floor.y };
 		// Its terminal says what it's at, or what needs you, in place of a badge over its head: news while there's
 		// something new it hasn't been looked at for
@@ -4419,41 +4506,38 @@ export default class Ship {
 		];
 	}
 
-	// A short-lived session's laptop cord: out of the laptop's side, along the floor and up the end of its island's desk
-	// into a socket there, lit in the session's color
+	// A short-lived session's laptop cord: out of the laptop's side and down along the floor into its project's conduit,
+	// or the machine's own into its engine's dataline, plugged in there in the line's color
 	drawLaptopCord(ctx, worker, laptop) {
-		const { seat, session } = worker;
-		const end = this.art({ x: seat.island.x + seat.island.w, y: seat.y + 0.2 });
-		const color = hsl(session.hue ?? 200, 55, 55);
-		const socket = { x: end.x + 2, y: end.y - 8 };
-		const cord = [
-			{ x: laptop.x - 5, y: laptop.y - 1 },
-			{ x: socket.x + 1, y: laptop.y - 1 },
-			{ x: socket.x + 1, y: socket.y + 1 },
-		];
+		const line = this.feedOf(worker);
 
-		for (const [index, to] of cord.slice(1).entries()) {
-			const from = cord[index];
-			const [left, top] = [Math.min(from.x, to.x), Math.min(from.y, to.y)];
-			const [w, h] = [Math.abs(to.x - from.x) + 1, Math.abs(to.y - from.y) + 1];
+		if (!line) return;
 
-			rect(ctx, left - 1, top - 1, w + 2, h + 2, PALETTE.k);
+		const x = laptop.x - 6;
+		const [top, bottom] = [laptop.y - 1, line.y];
+
+		rect(ctx, x - 1, Math.min(top, bottom) - 1, 3, Math.abs(bottom - top) + 3, PALETTE.k);
+		rect(ctx, x, Math.min(top, bottom), 1, Math.abs(bottom - top) + 1, PALETTE.m);
+		rect(ctx, x - 1, bottom - 1, 3, 3, PALETTE.k);
+		rect(ctx, x, bottom, 1, 1, Math.floor(this.time * 2 + (worker.seed ?? 0)) % 2 ? line.color : PALETTE.m);
+	}
+
+	// What a grey on a short-lived spot is plugged into, and the height it runs at before the laptops: its project's
+	// conduit, or the machine's own its engine's dataline
+	feedOf(worker) {
+		const { spot } = worker.seat ?? {};
+
+		if (!spot) return null;
+		if (!spot.name) {
+			const line = (this.datalines ?? []).find(({ engine }) => engine.key === worker.session.engine.key);
+
+			return line && { color: line.color, y: line.plate.at.y };
 		}
-		for (const [index, to] of cord.slice(1).entries()) {
-			const from = cord[index];
 
-			rect(
-				ctx,
-				Math.min(from.x, to.x),
-				Math.min(from.y, to.y),
-				Math.abs(to.x - from.x) + 1,
-				Math.abs(to.y - from.y) + 1,
-				PALETTE.m,
-			);
-		}
-		rect(ctx, socket.x - 1, socket.y - 1, 5, 4, PALETTE.k);
-		rect(ctx, socket.x, socket.y, 3, 2, PALETTE.d);
-		rect(ctx, socket.x + 1, socket.y, 1, 1, Math.floor(this.time * 2 + (worker.seed ?? 0)) % 2 ? color : PALETTE.m);
+		const cable = this.cables?.get(spot.name);
+		const plate = cable?.plates.find(({ island }) => island.key === spot.key);
+
+		return plate && { color: cable.color, y: plate.at.y };
 	}
 
 	// The bridge: each project's island, its console striped in the project's color and pressable as the project; the
@@ -4566,14 +4650,20 @@ export default class Ship {
 			const phase = Math.round((lanes.indexOf(key) * PACKET_GAP) / lanes.length);
 			const style = { dim: hsl(hue, 30, 22), bright: hsl(hue, 70, 62), phase };
 
-			const cable = this.cables?.get(this.bayOf(worker)?.name);
+			// One of the machine's own is fed by its engine's dataline, not through any project
+			const home = seat.spot && !seat.spot.name;
+			const dataline = home && (this.datalines ?? []).find(({ engine }) => engine.key === worker.session.engine.key);
+			const cable = !home && this.cables?.get(this.bayOf(worker)?.name);
 			const conduit = room.within?.kind === 'engineering' && cable;
 			// Routed again only when where it runs from or to moves
-			const inputs = [this.layout, seat, worker.room, key, conduit, cable];
+			const inputs = [this.layout, seat, worker.room, key, conduit, cable, dataline];
 			const last = this.streamPaths.get(worker);
-			const routed = last?.inputs.every((input, index) => input === inputs[index])
-				? last.routed
-				: this.streamRoute(worker, room, lanes, key, conduit, cable);
+			const fromReactor = dataline && room.kind === 'system' && room.within?.kind === 'engineering';
+			const route = () =>
+				fromReactor
+					? this.datalineRoute(worker, room, lanes.indexOf(key), dataline)
+					: this.streamRoute(worker, room, lanes, key, conduit, cable || undefined);
+			const routed = last?.inputs.every((input, index) => input === inputs[index]) ? last.routed : route();
 
 			this.streamPaths.set(worker, { inputs, routed });
 			for (const { track, ports } of routed) paths.push({ track, style, fade, ports });
@@ -4706,6 +4796,31 @@ export default class Ship {
 		return [{ track: trackOf([...points, ...tail]), ports: [] }];
 	}
 
+	// A short-lived session's stream from an engine-bay system, in art pixels: through the system, across into its lane of
+	// the trunk, down to the dataline's tray and along the dataline to under its laptop, up the laptop's cord
+	datalineRoute(worker, room, nth, line) {
+		const tech = this.throughSystem(room);
+		const lane = this.trunkLane(nth);
+		const laptop = this.art(this.placeOf(worker));
+		const cord = laptop.x - LAPTOP_ASIDE - 6;
+		const along = line.points.slice(3, -1);
+
+		return [
+			{ track: trackOf(tech.feed), ports: [tech.feed.at(-1)] },
+			{
+				track: trackOf([
+					tech.outlet,
+					{ x: lane, y: tech.outlet.y },
+					{ x: lane, y: line.tray },
+					...along,
+					{ x: cord, y: line.plate.at.y },
+					{ x: cord, y: laptop.y - 1 },
+				]),
+				ports: [tech.outlet],
+			},
+		];
+	}
+
 	// The system a worker's stream runs from, and how strongly: while it uses one and for a few seconds after, fading, so
 	// the gaps between one tool and the next don't blink it off and on
 	streamOf(worker) {
@@ -4760,6 +4875,20 @@ export default class Ship {
 		const away = ({ at }) => Math.hypot(at.x - seat.x, at.y - seat.y);
 
 		return seating ?? [...plates].sort((a, b) => away(a) - away(b))[0];
+	}
+
+	// Along the floor just before a short-lived spot's laptops, from its aft end: where a conduit or dataline comes to it
+	beforeSpot(spot) {
+		const front = this.art({ x: spot.x, y: spot.y + 0.2 });
+
+		return { x: front.x + 1, y: front.y + DATALINE_FRONT };
+	}
+
+	// Where a conduit's run under an island, or along the floor before a spot, ends: at its far end
+	plateEnd({ island, spot, at }) {
+		return spot
+			? { x: this.art({ x: island.x + island.w, y: 0 }).x - 2, y: at.y }
+			: this.underIsland(island, island.w - 0.15);
 	}
 
 	// Under an island's console, `along` it from its left end in world units: where its conduit runs
@@ -5090,7 +5219,7 @@ export default class Ship {
 			seat &&
 			!seat.housing &&
 			!worker.lounging &&
-			!briefOf(worker) &&
+			!onSpot(worker) &&
 			!this.walking(worker),
 		);
 	}
@@ -6239,7 +6368,7 @@ export default class Ship {
 		// At a cabinet: up on its stool, once that's out
 		if (!walking && worker.playing) at.y -= Math.round(STOOL.tall * this.stoolOf(worker).up);
 		// Standing by the TV: on the floor, as walking; on a couch a little up; at a console up on its chair
-		if (!walking && !worker.playing && !worker.standing && !worker.seat?.housing && !briefOf(worker))
+		if (!walking && !worker.playing && !worker.standing && !worker.seat?.housing && !onSpot(worker))
 			at.y -= worker.lounging ? 4 : 10;
 
 		return at;
@@ -6318,7 +6447,7 @@ export default class Ship {
 		const lift = bob + (pose?.hiccup ?? 0);
 		// Walking: standing, a step, standing, the other step; a short-lived one sits cross-legged on the floor
 		const stride = walking && making >= 1 ? STEPS[Math.floor(worker.step) % STEPS.length] : '';
-		const sitting = !walking && briefOf(worker);
+		const sitting = !walking && onSpot(worker);
 		const body = (waving && (sitting ? 'bodySitWave' : 'bodyWave')) || (sitting ? 'bodySit' : `body${stride}`);
 		// Bent down to pull its stool out from under a cabinet: its head down and forward over it
 		const stoop = worker.playing && !walking ? this.stoolOf(worker).bend : 0;
@@ -8021,7 +8150,7 @@ export default class Ship {
 		const holdTop = this.art({ x: 0, y: this.layout.hold.y }).y;
 		const rows = new Map();
 
-		for (const island of this.bridge.islands ?? []) {
+		for (const island of [...(this.bridge.islands ?? []), ...(this.bridge.spots ?? [])]) {
 			const y = this.art({ x: 0, y: island.y + 0.2 }).y - CEILING;
 			const end = this.art({ x: island.x + island.w, y: 0 }).x - 4;
 
@@ -8036,7 +8165,8 @@ export default class Ship {
 	// The way a part takes from the ceiling over a seat to the hopper, in art pixels; null where there's no tube over it
 	pipeFrom(seat) {
 		const net = this.tubeNet();
-		const row = seat?.island && net?.rows.get(seat.island.y);
+		const under = seat?.island ?? seat?.spot;
+		const row = under && net?.rows.get(under.y);
 
 		if (!row) return null;
 
