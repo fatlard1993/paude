@@ -90,39 +90,56 @@ const linkToSend = (link, about) => {
 };
 
 // Who's in the session now: each page, terminal or game reading it, under their name, where from and on what role
+// A section's heading, with how many it holds when that's worth saying
+const heading = (text, count) => {
+	const node = element('h3', 'heading', text);
+
+	if (count) node.append(element('span', 'count', String(count)));
+
+	return node;
+};
+
+// Who's in the session now, a row each: their name and role, and every page, terminal or game they're in it from
 const hereNow = async sessionId => {
 	const section = element('section', 'here');
 	const { body } = await getPeopleHere(sessionId).catch(() => ({}));
 	const here = body?.here ?? null;
 
-	section.append(element('h3', 'heading', 'Here now'));
 	if (!here) {
-		section.append(element('div', 'empty', "This paude doesn't say who's here."));
+		section.append(heading('Here now'), element('div', 'empty', "This paude doesn't say who's here."));
 
 		return section;
 	}
-	if (!here.length) section.append(element('div', 'empty', "Nobody's in it right now."));
 
-	for (const person of here) {
+	const people = new Map();
+
+	for (const client of here) {
+		const key = `${client.invite ?? 'owner'}\n${client.name}`;
+		const person = people.get(key) ?? { name: client.name, role: client.role, from: [], driving: false };
+
+		person.from.push(client.reading ? `reading from ${client.device}` : client.device);
+		person.driving ||= client.driving;
+		people.set(key, person);
+	}
+
+	section.append(heading('Here now', people.size));
+	if (!people.size) section.append(element('div', 'empty', "Nobody's in it right now."));
+
+	for (const person of people.values()) {
 		const row = element('div', 'person');
+		const top = element('div', 'person-head');
 
-		row.append(
+		top.append(
 			element('span', 'name', person.name),
-			element(
-				'span',
-				'meta',
-				[
-					person.role === 'owner' ? 'owner' : roleName(person.role),
-					person.reading ? `reading from ${person.device}` : person.device,
-				].join(' · '),
-			),
+			element('span', 'pill', person.role === 'owner' ? 'Owner' : roleName(person.role)),
 		);
 		if (person.driving) {
-			const sizing = element('span', 'tag', 'sized for');
+			const sizing = element('span', 'pill quiet', 'sized for');
 
 			sizing.title = 'The terminal is laid out for their screen: they typed into it last';
-			row.append(sizing);
+			top.append(sizing);
 		}
+		row.append(top, element('div', 'meta', [...new Set(person.from)].join(', ')));
 		section.append(row);
 	}
 
@@ -223,14 +240,16 @@ const inviteRow = (sessionId, invite, { redraw }) => {
 		{ className: 'variant-flat danger' },
 	);
 
-	head.append(element('span', 'name', invite.name), role, expiry);
-	row.append(
-		head,
-		element('div', 'meta', invite.seen ? `came in ${span(Date.now() - invite.seen)} ago` : "hasn't come in yet"),
-		element('div', 'actions'),
-		extra,
+	const controls = element('div', 'invite-controls');
+	const actions = element('div', 'actions');
+
+	head.append(
+		element('span', 'name', invite.name),
+		element('span', 'meta', invite.seen ? `came in ${span(Date.now() - invite.seen)} ago` : "hasn't come in yet"),
 	);
-	row.querySelector('.actions').append(renew, revoke);
+	controls.append(role, expiry);
+	actions.append(renew, revoke);
+	row.append(head, controls, actions, extra);
 
 	return row;
 };
@@ -239,7 +258,7 @@ const invited = async (sessionId, { redraw }) => {
 	const section = element('section', 'invited');
 	const { body, response } = await getInvites(sessionId).catch(() => ({}));
 
-	section.append(element('h3', 'heading', 'Invited'));
+	section.append(heading('Invited', response?.ok ? body.length : 0));
 	if (!response?.ok) {
 		section.append(
 			element('div', 'empty', "Couldn't load the invites."),
@@ -278,15 +297,19 @@ const inviteForm = (sessionId, { redraw }) => {
 	roles.setAttribute('role', 'radiogroup');
 	roles.setAttribute('aria-label', 'What they get');
 	for (const [family, members] of FAMILIES) {
-		roles.append(element('div', 'family', family));
+		const group = element('div', 'family');
+		const choices = element('div', 'choices');
+
+		group.append(element('div', 'family-name', family), choices);
 		for (const role of members) {
 			const choice = button('', () => pick(role), { className: 'role variant-flat' });
 
 			choice.setAttribute('role', 'radio');
 			choice.dataset.role = role;
 			choice.append(element('span', 'name', ROLE_INFO[role].name), element('span', 'opens', ROLE_INFO[role].opens));
-			roles.append(choice);
+			choices.append(choice);
 		}
+		roles.append(group);
 	}
 
 	const create = button(
@@ -319,14 +342,7 @@ const inviteForm = (sessionId, { redraw }) => {
 	name.addEventListener('keydown', event => event.key === 'Enter' && create.click());
 	expiry.setAttribute('aria-label', 'How long it lasts');
 	pick(picked);
-	section.append(
-		element('h3', 'heading', 'Invite someone'),
-		field('Name', name),
-		roles,
-		warning,
-		element('div', 'make'),
-		result,
-	);
+	section.append(heading('Invite someone'), field('Name', name), roles, warning, element('div', 'make'), result);
 	section.querySelector('.make').append(expiry, create);
 
 	return section;

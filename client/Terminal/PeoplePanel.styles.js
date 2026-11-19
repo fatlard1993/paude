@@ -40,7 +40,7 @@ const Panel = styled(
 			overflow-y: auto;
 			display: flex;
 			flex-direction: column;
-			gap: ${space.sm};
+			gap: ${space.md};
 			padding: ${space.sm};
 		}
 
@@ -48,18 +48,28 @@ const Panel = styled(
 			display: flex;
 			flex-direction: column;
 			gap: ${space.sm};
-			padding: ${space.sm};
+			padding: ${space.md};
 			border-radius: ${radius.md};
-			background: ${colors.alpha(colors.vantablack, 0.5)};
+			background: ${colors.alpha(colors.vantablack, 0.6)};
 		}
 
 		.heading {
-			margin: 0;
-			color: ${colors.muted};
+			display: flex;
+			align-items: center;
+			gap: ${space.sm};
+			margin: 0 0 ${space.xs};
+			padding-bottom: ${space.sm};
+			border-bottom: 1px solid ${colors.alpha(colors.white, 0.1)};
+			font-size: 1em;
+			font-weight: bold;
+		}
+
+		.heading .count {
+			padding: 0 ${space.sm};
+			border-radius: ${radius.lg};
+			background: ${colors.alpha(colors.white, 0.12)};
 			font-size: 0.8em;
 			font-weight: normal;
-			letter-spacing: 0.06em;
-			text-transform: uppercase;
 		}
 
 		.meta,
@@ -68,35 +78,61 @@ const Panel = styled(
 			font-size: 0.85em;
 		}
 
-		.person,
-		.invite-head {
-			display: flex;
-			align-items: baseline;
-			flex-wrap: wrap;
-			gap: ${space.sm};
-		}
-
 		.name {
 			font-weight: bold;
 		}
 
-		.tag {
+		.pill {
 			padding: 0 ${space.sm};
 			border-radius: ${radius.lg};
-			background: ${colors.alpha(colors.white, 0.1)};
+			background: ${colors.alpha(colors.blue, 0.3)};
 			font-size: 0.8em;
 		}
 
+		.pill.quiet {
+			background: ${colors.alpha(colors.white, 0.1)};
+			color: ${colors.muted};
+		}
+
+		.person,
 		.invite {
 			display: flex;
 			flex-direction: column;
-			gap: ${space.xs};
+			gap: 2px;
+		}
+
+		.person + .person,
+		.invite + .invite {
 			padding-top: ${space.sm};
-			border-top: 1px solid ${colors.alpha(colors.white, 0.08)};
+			border-top: 1px solid ${colors.alpha(colors.white, 0.06)};
+		}
+
+		.person-head,
+		.invite-head {
+			display: flex;
+			align-items: center;
+			flex-wrap: wrap;
+			gap: ${space.sm};
+		}
+
+		.invite-head .name {
+			margin-right: auto;
+		}
+
+		.invite-controls {
+			display: flex;
+			gap: ${space.sm};
+			margin-top: ${space.xs};
+		}
+
+		.invite-controls select {
+			flex: 1;
+			min-width: 0;
 		}
 
 		.invite .actions {
 			display: flex;
+			justify-content: flex-end;
 			gap: ${space.sm};
 		}
 
@@ -111,19 +147,32 @@ const Panel = styled(
 		}
 
 		.field .label,
-		.family {
+		.family-name {
 			color: ${colors.muted};
-			font-size: 0.85em;
-		}
-
-		.family {
-			margin-top: ${space.xs};
+			font-size: 0.8em;
+			letter-spacing: 0.05em;
+			text-transform: uppercase;
 		}
 
 		.roles {
 			display: flex;
 			flex-direction: column;
+			gap: ${space.md};
+			margin-top: ${space.sm};
+		}
+
+		.family {
+			display: flex;
+			flex-direction: column;
 			gap: ${space.xs};
+		}
+
+		.choices {
+			display: flex;
+			flex-direction: column;
+			border: 1px solid ${colors.alpha(colors.white, 0.1)};
+			border-radius: ${radius.md};
+			overflow: hidden;
 		}
 
 		button.role {
@@ -131,22 +180,32 @@ const Panel = styled(
 			flex-direction: column;
 			align-items: flex-start;
 			gap: 2px;
-			padding: ${space.sm};
-			border: 1px solid ${colors.alpha(colors.white, 0.1)};
-			border-radius: ${radius.md};
+			margin: 0;
+			padding: ${space.sm} ${space.md};
+			border: 0;
+			border-left: 3px solid transparent;
+			border-radius: 0;
 			color: inherit;
 			text-align: left;
 		}
 
+		button.role + button.role {
+			border-top: 1px solid ${colors.alpha(colors.white, 0.06)};
+		}
+
 		button.role[aria-checked='true'] {
-			border-color: ${colors.light(colors.blue)};
-			background: ${colors.alpha(colors.blue, 0.18)};
+			border-left-color: ${colors.light(colors.blue)};
+			background: ${colors.alpha(colors.blue, 0.2)};
 		}
 
 		button.role .opens {
 			color: ${colors.muted};
 			font-size: 0.85em;
 			white-space: normal;
+		}
+
+		button.role[aria-checked='true'] .opens {
+			color: inherit;
 		}
 
 		.warning {
@@ -159,6 +218,9 @@ const Panel = styled(
 		.make {
 			display: flex;
 			gap: ${space.sm};
+			margin-top: ${space.sm};
+			padding-top: ${space.md};
+			border-top: 1px solid ${colors.alpha(colors.white, 0.1)};
 		}
 
 		.make select {
@@ -169,15 +231,23 @@ const Panel = styled(
 			display: flex;
 			flex-wrap: wrap;
 			gap: ${space.sm};
+			padding: ${space.sm};
+			border-radius: ${radius.md};
+			background: ${colors.alpha(colors.green, 0.12)};
 		}
 
 		.link-to-send .meta {
 			flex-basis: 100%;
+			color: inherit;
 		}
 
 		.link-to-send input {
 			flex: 1;
 			min-width: 0;
+		}
+
+		.result:empty {
+			display: none;
 		}
 	`,
 );

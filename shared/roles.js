@@ -20,10 +20,10 @@ export const ROLE_INFO = {
 	try: { name: 'Try it', opens: 'the app the session serves, and what it shares; no terminal, no files', only: true },
 	play: { name: 'Play', opens: 'the arcade: the game, and talking with Claude in big type, read aloud', only: true },
 	watch: { name: 'Look in', opens: 'the terminal live, read only, and the session aboard its ship' },
-	comment: { name: 'Review', opens: 'and chat and comment, and read its files, git, what it made and its record' },
+	comment: { name: 'Review', opens: 'Look in, and chat and comment; read its files, git, what it made, its record' },
 	drive: {
 		name: 'Pair',
-		opens: 'and type to Claude, use a shell, edit files, commit and push, run tasks and share',
+		opens: 'Review, and type to Claude; a shell, editing files, commit and push, tasks, shares',
 		warns: true,
 	},
 };
