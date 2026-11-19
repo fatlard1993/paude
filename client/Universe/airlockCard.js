@@ -1,40 +1,46 @@
-import { element } from '../dom';
-import renderPeople from '../Terminal/People';
+import { roleName } from '../../shared/roles';
+import { button, element } from '../dom';
 import { heading } from './replyCard';
 
-// The airlock's card: a session aboard picked (`chosen` first, if it's one of them), and its invites under it, to make
-// a link or revoke one, as its People panel has them
-export const airlockCard = ({ sessions, chosen, onClose }) => {
+// The airlock's card: who's come aboard, by the session each came in to, those with someone aboard first; each
+// session's People (`onPeople`) to invite someone into it or change who may. `aboard`: [{ session, guests }], the
+// guests as the ship has them ({ name, role }).
+export const airlockCard = ({ aboard, onPeople, onClose }) => {
 	const card = element('div', 'reply-card airlock-card');
-	const picker = element('select');
-	const people = element('div', 'people');
+	const count = aboard.reduce((total, { guests }) => total + guests.length, 0);
 
-	card.append(heading('Airlock', 'Who may come aboard, a session at a time', onClose));
-	if (!sessions.length) {
+	card.append(
+		heading(
+			'Airlock',
+			count ? `${count} aboard by invite` : "Nobody's come aboard by invite: each session's People invites them",
+			onClose,
+		),
+	);
+	if (!aboard.length) {
 		card.append(element('div', 'about', 'No session of this machine aboard to invite anyone into'));
 
 		return card;
 	}
 
-	for (const session of sessions) {
-		const option = element('option', '', session.title || session.project || 'A new session');
+	const list = element('div', 'aboard');
 
-		option.value = session.id;
-		picker.append(option);
+	for (const { session, guests } of [...aboard].sort((a, b) => b.guests.length - a.guests.length)) {
+		const row = element('div', 'aboard-session');
+		const head = element('div', 'aboard-head');
+
+		head.append(
+			element('span', 'title', session.title || session.project || 'A new session'),
+			button('People', () => onPeople(session), {
+				icon: 'user-plus',
+				className: 'variant-flat',
+				title: `Who may come aboard ${session.title || 'this session'}, and inviting someone`,
+			}),
+		);
+		row.append(head);
+		for (const guest of guests) row.append(element('div', 'guest', `${guest.name} · ${roleName(guest.role)}`));
+		list.append(row);
 	}
-	if (sessions.some(({ id }) => id === chosen?.id)) picker.value = chosen.id;
-
-	const show = async () => {
-		const id = picker.value;
-		const nodes = await renderPeople(id);
-
-		// Only the session still picked: one picked meanwhile shows instead
-		if (picker.value === id) people.replaceChildren(...nodes);
-	};
-
-	picker.addEventListener('change', show);
-	card.append(picker, people);
-	show();
+	card.append(list);
 
 	return card;
 };

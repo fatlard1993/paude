@@ -56,10 +56,11 @@ export const VERBS = [
 export const ARCADE_VERBS = ['arcade', 'game'];
 
 // The verbs for `session` as the viewer may have them: the arcade's talk only for a session that is one, its Output for
-// any, and for a guest invited to the arcade the arcade's alone, since the rest is the owner's; the terminal only while
+// any, and for a guest invited to play the arcade's alone, since the rest is the owner's; the terminal only while
 // the session's live
 const offered = (key, session) => {
-	if (identity()?.view === 'arcade') return ARCADE_VERBS.includes(key) && Boolean(session.arcade);
+	if (identity()?.role === 'play' || identity()?.view === 'arcade')
+		return ARCADE_VERBS.includes(key) && Boolean(session.arcade);
 
 	return key !== 'arcade' || Boolean(session.arcade);
 };

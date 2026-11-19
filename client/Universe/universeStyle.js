@@ -404,50 +404,35 @@ export const Stage = styled(
 			overflow: visible;
 		}
 
-		.airlock-card .people,
-		.airlock-card .invites {
+		.airlock-card .aboard {
 			display: grid;
 			gap: ${space.sm};
-		}
-
-		.airlock-card .people {
 			min-height: 0;
 			overflow-y: auto;
 		}
 
-		.airlock-card .invite-form,
-		.airlock-card .invite-result {
-			display: flex;
-			flex-wrap: wrap;
-			gap: ${space.xs};
-		}
-
-		.airlock-card .invite-form input,
-		.airlock-card .invite-result input {
-			flex: 1 1 10em;
-			min-width: 0;
-		}
-
-		.airlock-card .comment {
+		.airlock-card .aboard-session {
 			display: grid;
-			grid-template-columns: minmax(0, 1fr) auto;
-			align-items: center;
-			column-gap: ${space.sm};
+			gap: 2px;
 			padding: ${space.xs} ${space.sm};
 			border-left: 2px solid ${colors.teal};
 		}
 
-		.airlock-card .comment .meta {
-			grid-column: 1;
+		.airlock-card .aboard-head {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: ${space.sm};
 		}
 
-		.airlock-card .comment button {
-			grid-column: 2;
-			grid-row: 1 / span 2;
+		.airlock-card .aboard-head .title {
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
 		}
 
-		.airlock-card .meta,
-		.airlock-card .empty {
+		.airlock-card .guest {
 			color: ${colors.muted};
 			font-size: 0.85em;
 		}

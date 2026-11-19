@@ -9,6 +9,7 @@ import { registerNotificationWorker } from './notify';
 import Project from './Project';
 import { keepDraft } from './PromptHome';
 import TerminalView from './Terminal/TerminalView';
+import TryView from './TryView';
 import Arcade from './Arcade/Arcade';
 import MakerHome from './Arcade/MakerHome';
 import Universe from './Universe/Universe';
@@ -75,8 +76,8 @@ updateTabTitle();
 
 if (authenticated) {
 	registerNotificationWorker();
-	// A guest in the arcade has one session, in front of them: no alerts about it over their page
-	if (identity.view !== 'arcade') startWatchAlerts(identity);
+	// A guest playing or trying it has one thing, in front of them: no alerts about it over their page
+	if (identity.owner || !['play', 'try'].includes(identity.role)) startWatchAlerts(identity);
 }
 
 const content = () => {
@@ -105,9 +106,22 @@ const content = () => {
 			}
 		}
 
-		// Invited to the arcade, the guest gets the arcade and the ship (with the arcade's panels on their session's
-		// dock), never the session's own page, whatever page the link or an old bookmark named
-		if (identity.view === 'arcade') {
+		// Handed only what the session serves, the guest gets that page and nothing else, whatever page the link named
+		if (identity.role === 'try') {
+			class GuestTry extends TryView {
+				constructor(options) {
+					super({ ...options, id: identity.sessionId });
+				}
+			}
+
+			if (!window.location.hash.startsWith('#/try/')) window.location.replace(`#/try/${identity.sessionId}`);
+
+			return new Router({ views: { '/try/:id': GuestTry }, defaultPath: `/try/${identity.sessionId}` });
+		}
+
+		// Invited to play, the guest gets the arcade and the ship (with the arcade's panels on their session's dock),
+		// never the session's own page, whatever page the link or an old bookmark named
+		if (identity.role === 'play' || identity.view === 'arcade') {
 			if (!/^#\/(arcade|universe)\b/.test(window.location.hash))
 				window.location.replace(`#/arcade/${identity.sessionId}`);
 

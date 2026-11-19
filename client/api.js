@@ -130,7 +130,21 @@ export const getInvites = async sessionId =>
 export const createInvite = async (sessionId, invite) =>
 	await POST('/api/sessions/:id/invites', { urlParameters: { id: sessionId }, body: invite });
 
-export const revokeInvite = async id => await DELETE('/api/invites/:id', { urlParameters: { id } });
+// Under the session's path, so another paude's invites are reached through this one
+export const revokeInvite = async (sessionId, invite) =>
+	await DELETE('/api/sessions/:id/invites/:invite', { urlParameters: { id: sessionId, invite } });
+
+// `change`: { role } or { hours }, either or both
+export const changeInvite = async (sessionId, invite, change) =>
+	await PATCH('/api/sessions/:id/invites/:invite', { urlParameters: { id: sessionId, invite }, body: change });
+
+// A new link for an invite, the old one no longer letting anyone in: { link }
+export const renewInviteLink = async (sessionId, invite) =>
+	await POST('/api/sessions/:id/invites/:invite/link', { urlParameters: { id: sessionId, invite } });
+
+// Who's in the session now: { here: [{ name, device, role, reading, driving, invite }] }
+export const getPeopleHere = async sessionId =>
+	await GET('/api/sessions/:id/people', { urlParameters: { id: sessionId }, invalidateAfter: 0 });
 
 export const listFiles = async place => await GET(...placed(place, '/files', { invalidateAfter: 0 }));
 

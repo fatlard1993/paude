@@ -1904,14 +1904,25 @@ export default class Universe extends View {
 		);
 	}
 
-	// The airlock's invites, for a session of this machine aboard: the one picked, else the first
+	// The airlock: who's come aboard by invite, by the session of this machine each came in to, each session's People
+	// a press away
 	openAirlock(point) {
-		const sessions = [...this.aboard.workers.values()]
-			.filter(({ leaving, session }) => !leaving && !session.engine.remote)
-			.map(({ session }) => session);
+		const people = [...(this.aboard.people?.values() ?? [])].filter(({ role }) => role !== 'owner');
+		const aboard = [...this.aboard.workers]
+			.filter(([, { leaving, session }]) => !leaving && !session.engine.remote)
+			.map(([key, { session }]) => ({ session, guests: people.filter(({ sessions }) => sessions.includes(key)) }));
 
 		this.openCard(
-			airlockCard({ sessions, chosen: this.selected?.worker?.session, onClose: () => this.closeCard() }),
+			airlockCard({
+				aboard,
+				onPeople: session => {
+					const worker = this.workerOf(session);
+
+					this.closeCard();
+					if (worker) this.openDock(worker, 'people');
+				},
+				onClose: () => this.closeCard(),
+			}),
 			point,
 			{ focus: false },
 		);
