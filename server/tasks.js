@@ -46,6 +46,8 @@ const scriptRunner = async cwd => {
 
 // What a task is for, by its name: tests and checks are what problems come from
 const kindOf = name => {
+	// A fixer or formatter changes the files: a script to run, never a check to keep running
+	if (/(^|[:-])(fix|format|write)([:-]|$)/.test(name) && !/format:check/.test(name)) return 'run';
 	if (/(^|[:-])(test|spec)s?([:-]|$)/.test(name)) return 'test';
 	if (/(^|[:-])(lint|check|typecheck|types|tsc|vet|clippy|format:check)([:-]|$)/.test(name)) return 'check';
 	if (/(^|[:-])(build|compile|bundle)([:-]|$)/.test(name)) return 'build';

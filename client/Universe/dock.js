@@ -41,6 +41,7 @@ export const VERBS = [
 	{ key: 'notes', hotkey: 'c', allowed: () => true },
 	{ key: 'people', hotkey: 'w', allowed: () => Boolean(identity()?.owner) },
 	{ key: 'tasks', hotkey: 'k', allowed: canBrowse },
+	{ key: 'running', hotkey: 'j', allowed: canBrowse },
 	{ key: 'shares', hotkey: 'p', allowed: () => true },
 	{ key: 'artifacts', hotkey: 'm', allowed: canBrowse },
 	{ key: 'links', hotkey: 'l', allowed: canBrowse },
@@ -145,7 +146,7 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose,
 			onOutput: () => {},
 			onMessage: message => {
 				if (NOTE_TYPES.includes(message.type)) panels.get('notes')?.receive(message);
-				else if (message.type === 'runs') panels.get('tasks')?.refresh();
+				else if (message.type === 'runs') for (const key of ['tasks', 'running']) panels.get(key)?.refresh();
 				else if (message.type === 'shares') panels.get('shares')?.refresh();
 			},
 			onState: () => {},
@@ -192,9 +193,19 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose,
 				announce: () => {},
 				showUnread: () => {},
 			}),
+		running: () =>
+			new TasksPanel({
+				...common('running'),
+				addClass: ['docked', 'tasks'],
+				sections: ['running'],
+				openFile: () => {},
+				attach: attachToPrompt,
+			}),
 		tasks: () =>
 			new TasksPanel({
 				...common('tasks'),
+				addClass: ['docked', 'tasks'],
+				sections: ['checks'],
 				openFile: (path, line) => card.show('files').open(path, line),
 				attach: attachToPrompt,
 			}),

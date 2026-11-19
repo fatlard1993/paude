@@ -114,7 +114,7 @@ const Screen = styled.Component`
 `;
 
 // The panels on the right that open, close and refresh alike, grouped ones among them
-const SIDE_PANELS = ['activity', 'decisions', 'tasks', 'shares', 'artifacts', 'links', 'people'];
+const SIDE_PANELS = ['activity', 'decisions', 'tasks', 'running', 'shares', 'artifacts', 'links', 'people'];
 
 const ICONS = { web: 'globe', terminal: 'terminal', feed: 'tower-broadcast' };
 const NOTES_OPEN_KEY = 'paude.notesOpen';
@@ -407,10 +407,21 @@ export default class TerminalView extends View {
 				},
 			});
 			addResizeHandle(this.activity.elem, PANEL_EDGES.side);
+			this.running = new TasksPanel({
+				appendTo: body,
+				addClass: 'tasks',
+				place: this.options.id,
+				sections: ['running'],
+				close: () => this.togglePanel('running', false),
+				openFile: () => {},
+				attach: text => this.attachToPrompt(text),
+			});
+			addResizeHandle(this.running.elem, PANEL_EDGES.side);
 			this.tasks = new TasksPanel({
 				appendTo: body,
 				addClass: 'tasks',
 				place: this.options.id,
+				sections: ['checks'],
 				close: () => this.togglePanel('tasks', false),
 				openFile: (path, line) => {
 					if (window.matchMedia(NARROW).matches) this.togglePanel('tasks', false);
@@ -983,7 +994,7 @@ export default class TerminalView extends View {
 			'busy',
 			runs.some(run => run.code === undefined || run.code === null),
 		);
-		if (this.tasks?.elem.classList.contains('open')) this.tasks.refresh();
+		for (const panel of [this.tasks, this.running]) if (panel?.elem.classList.contains('open')) panel.refresh();
 	}
 
 	// How many things the session shares, on the button; a service seen for the first time says so once

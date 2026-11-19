@@ -1,11 +1,51 @@
 import { relativeTime } from '@vanilla-bean/components/utils/date';
-import { getEnvironment, getRun, getTasks, runTask, sessionOf, setAfterTurn, stopProcess, stopRun } from '../api';
-import { button, closeButton, element, icon } from '../dom';
+import {
+	getEnvironment,
+	getRun,
+	getShares,
+	getTasks,
+	runTask,
+	sessionOf,
+	setAfterTurn,
+	stopProcess,
+	stopRun,
+} from '../api';
+import { button, closeButton, element } from '../dom';
 import { canType } from '../identity';
 import Panel from './GitPanel.styles';
 
-const KIND_ICONS = { test: 'flask', check: 'circle-check', build: 'hammer', serve: 'server', run: 'play' };
+// The commands that run and end, by what they're for; a server (dev, start) is the Running section's
+const TASK_GROUPS = [
+	['Checks', ['test', 'check']],
+	['Build', ['build']],
+	['Other', ['run']],
+];
+// How a task's last run went, at a glance
+const MARKS = { ok: '✓', failed: '✗', running: '●', stopped: '■', never: '·' };
+// A task's errors show unfolded up to this many
+const OPEN_ERRORS = 20;
 const FOLLOW_MS = 700;
+
+const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+
+const isRunning = run => run.code === undefined || run.code === null;
+
+// "179 warnings", or "179 warnings, 176 spelling" when one rule makes up most of them
+const warningsSaid = warnings => {
+	const rules = new Map();
+
+	for (const { message } of warnings) {
+		const rule = /\s(\S+\/\S+|[\w-]+)$/.exec(message.trim())?.[1];
+
+		if (rule) rules.set(rule, (rules.get(rule) ?? 0) + 1);
+	}
+
+	const [rule, count] = [...rules].sort((a, b) => b[1] - a[1])[0] ?? [];
+
+	return count > warnings.length / 2
+		? `${plural(warnings.length, 'warning')}, ${count} ${rule.split('/').at(-1)}`
+		: plural(warnings.length, 'warning');
+};
 
 const seconds = (from, to = Date.now()) => {
 	const total = Math.max(0, Math.round((to - from) / 1000));
@@ -72,21 +112,34 @@ export default class TasksPanel extends Panel {
 		this.output.classList.add('error', 'shown');
 	}
 
+	// Which of the panel's parts it shows: its checks (and builds and scripts, with what they found wrong), what's
+	// running (servers, other processes, the environment), or both where nothing else shows what's running
+	get sections() {
+		return this.options.sections ?? ['checks', 'running'];
+	}
+
 	async refresh() {
 		if (this.viewing) return this.followRun();
 
-		const { body, response } = await getTasks(this.options.place);
+		const running = this.sections.includes('running') && sessionOf(this.options.place);
+		const [{ body, response }, shared] = await Promise.all([
+			getTasks(this.options.place),
+			running ? getShares(running).catch(() => ({})) : {},
+		]);
 
 		// A run opened while the list was on its way: the run's output stays
 		if (this.viewing) return;
 
 		if (!response?.ok) {
-			this.body.replaceChildren(element('div', 'empty', 'Could not read the tasks here.'));
+			this.body.replaceChildren(
+				element('div', 'empty', 'Could not read the tasks here.'),
+				button('Try again', () => this.refresh(), { className: 'variant-flat' }),
+			);
 
 			return;
 		}
 
-		this.state = body;
+		this.state = { ...body, shares: shared.body?.shares ?? [] };
 		this.renderTasks();
 	}
 
@@ -100,85 +153,200 @@ export default class TasksPanel extends Panel {
 	}
 
 	renderTasks() {
-		const { tasks, processes } = this.state;
+		this.body.replaceChildren(
+			...(this.sections.includes('checks') ? this.checksNodes() : []),
+			...(this.sections.includes('running') ? this.runningNodes() : []),
+		);
+	}
+
+	// The project's commands that run and end, by what they're for, then what the latest runs of them found wrong
+	checksNodes() {
+		const { tasks } = this.state;
 		const latest = this.latestRuns();
-		const problems = [...latest.values()].flatMap(run => run.problems.map(problem => ({ ...problem, task: run.name })));
-		const nodes = [element('div', 'section-head', 'Tasks')];
+		const nodes = [];
 
 		if (!tasks.length)
-			nodes.push(element('div', 'empty', 'No package.json scripts, Makefile, justfile, Cargo, Go or pytest here.'));
-		for (const task of tasks) nodes.push(this.taskRow(task, latest.get(task.id)));
+			return [element('div', 'empty', 'No package.json scripts, Makefile, justfile, Cargo, Go or pytest here.')];
 
-		const head = element('div', 'section-head', `Problems ${problems.length || ''}`);
+		for (const [title, kinds] of TASK_GROUPS) {
+			const members = tasks.filter(task => kinds.includes(task.kind));
 
-		if (problems.length && canType())
-			head.append(
-				button('Attach all', () =>
-					this.options.attach(
-						`Problems found by ${[...new Set(problems.map(problem => problem.task))].join(', ')}:\n${problems
-							.map(
-								problem =>
-									`${problem.file}:${problem.line}${problem.column ? `:${problem.column}` : ''}: ${problem.message}`,
-							)
-							.join('\n')}`,
-					),
-				),
-			);
-		nodes.push(head);
-		if (!problems.length)
-			nodes.push(
+			if (!members.length) continue;
+			nodes.push(element('div', 'section-head', title));
+			for (const task of members) nodes.push(this.taskRow(task, latest.get(task.id)));
+		}
+
+		return [...nodes, ...this.problemNodes(latest)];
+	}
+
+	// What the latest runs found wrong, a fold for each task: its errors open, its warnings folded, a kind of warning
+	// that makes up most of them named
+	problemNodes(latest) {
+		const found = [...latest.values()].filter(run => run.problems.length);
+		const head = element('div', 'section-head', 'Problems');
+
+		if (!found.length)
+			return [
+				head,
 				element(
 					'div',
 					'empty',
 					latest.size ? 'None in the latest runs.' : 'Run a check or the tests to see them here.',
 				),
-			);
-		for (const problem of problems) {
-			const row = element('button', `problem ${problem.severity} variant-flat`);
+			];
 
-			row.append(
-				element('span', 'where', `${problem.file}:${problem.line}`),
-				element('span', 'message', problem.message),
+		const attach = problems =>
+			problems
+				.map(
+					problem => `${problem.file}:${problem.line}${problem.column ? `:${problem.column}` : ''}: ${problem.message}`,
+				)
+				.join('\n');
+
+		return [
+			head,
+			...found.map(run => {
+				const errors = run.problems.filter(problem => problem.severity !== 'warning');
+				const warnings = run.problems.filter(problem => problem.severity === 'warning');
+				const fold = element('details', 'problems');
+				const summary = element('summary');
+				const said = [errors.length && plural(errors.length, 'error'), warnings.length && warningsSaid(warnings)];
+
+				fold.open = errors.length > 0 && errors.length <= OPEN_ERRORS;
+				summary.append(element('span', 'name', run.name), element('span', 'meta', said.filter(Boolean).join(', ')));
+				if (canType())
+					summary.append(
+						button(
+							'Attach',
+							event => {
+								event.preventDefault();
+								this.options.attach(`Problems found by ${run.name}:\n${attach([...errors, ...warnings])}`);
+							},
+							{ className: 'variant-flat', title: `Put what ${run.name} found in Claude's prompt` },
+						),
+					);
+				fold.append(summary, ...[...errors, ...warnings].map(problem => this.problemRow(problem)));
+
+				return fold;
+			}),
+		];
+	}
+
+	problemRow(problem) {
+		const row = element('button', `problem ${problem.severity} variant-flat`);
+
+		row.append(
+			element('span', 'where', `${problem.file}:${problem.line}`),
+			element('span', 'message', problem.message),
+		);
+		row.title = problem.message;
+		row.addEventListener('click', () => this.options.openFile(problem.file, problem.line));
+
+		return row;
+	}
+
+	// What's running: the project's servers, up or not, each with the port it serves on; the session's other
+	// processes; and the environment they see
+	runningNodes() {
+		const { tasks, processes, shares } = this.state;
+		const latest = this.latestRuns();
+		const servers = tasks.filter(task => task.kind === 'serve');
+		const serving = new Set();
+		const nodes = [element('div', 'section-head', 'Servers')];
+
+		if (!servers.length) nodes.push(element('div', 'empty', 'No dev or start script here.'));
+		for (const task of servers) {
+			const run = latest.get(task.id);
+			const up = run && isRunning(run);
+			const theirs = up ? processes.filter(found => found.run === run.id) : [];
+			const pids = new Set(theirs.map(({ pid }) => pid));
+			const ports = shares.filter(share => share.kind === 'port' && pids.has(share.pid));
+
+			for (const pid of pids) serving.add(pid);
+			nodes.push(
+				this.serverRow(task, run, { up, ports, memory: theirs.reduce((sum, found) => sum + found.memoryBytes, 0) }),
 			);
-			row.title = `${problem.task}: ${problem.message}`;
-			row.addEventListener('click', () => this.options.openFile(problem.file, problem.line));
-			nodes.push(row);
 		}
 
-		nodes.push(element('div', 'section-head', 'Running'));
-		if (!processes.length)
+		const others = processes.filter(found => !serving.has(found.pid));
+		const named = new Map(this.state.runs.map(run => [run.id, run.name]));
+
+		nodes.push(element('div', 'section-head', 'Other processes'));
+		if (!others.length)
 			nodes.push(element('div', 'empty', sessionOf(this.options.place) ? 'Nothing but Claude.' : 'Nothing.'));
-		for (const found of processes) {
-			const row = element('div', 'branch-row process');
-
-			row.append(
-				element('span', 'name', found.args || found.command),
-				element(
-					'span',
-					'meta',
-					`${megabytes(found.memoryBytes)} · ${Math.round(found.cpuSeconds)}s cpu · ${relativeTime(found.startedAt)}`,
-				),
-			);
-			row.title = `pid ${found.pid}: ${found.args}`;
-			if (canType())
-				row.append(
-					button(
-						'',
-						async () => {
-							const { body, response } = await stopProcess(this.options.place, found.pid);
-
-							if (!response?.ok) this.say(typeof body === 'string' ? body : 'Could not stop it.');
-							setTimeout(() => this.refresh(), 500);
-						},
-						{ icon: 'stop', title: 'Stop it', className: 'icon-only danger' },
-					),
-				);
-			nodes.push(row);
-		}
+		for (const found of others) nodes.push(this.processRow(found, named.get(found.run)));
 
 		if (canType()) nodes.push(...this.environmentNodes());
 
-		this.body.replaceChildren(...nodes);
+		return nodes;
+	}
+
+	serverRow(task, run, { up, ports, memory }) {
+		const row = element('div', `branch-row task server${up ? ' up' : ''}`);
+		const name = element('button', 'name task-name variant-flat');
+
+		name.append(
+			element('span', `mark ${up ? 'running' : 'idle'}`, up ? '●' : '○'),
+			element('span', 'label', task.name),
+		);
+		name.title = `${task.command.join(' ')} (${task.source})${run ? ': show its output' : ''}`;
+		if (!run) name.setAttribute('aria-disabled', 'true');
+		name.addEventListener('click', () => run && this.showRun(run.id));
+		const idle = run ? `stopped ${relativeTime(run.endedAt ?? run.startedAt)}` : 'not running';
+		const serving = [
+			...ports.map(share => `:${share.port}`),
+			ports.length && 'shared',
+			memory && megabytes(memory),
+			run && relativeTime(run.startedAt),
+		];
+
+		name.append(
+			element('span', `meta${up ? ' outcome running' : ''}`, up ? serving.filter(Boolean).join(' · ') : idle),
+		);
+		row.append(name);
+		if (canType())
+			row.append(
+				up
+					? button('Stop', () => stopRun(this.options.place, run.id).then(() => this.refresh()), {
+							className: 'variant-flat danger',
+						})
+					: button('Start', () => this.start(task), { className: 'variant-flat' }),
+			);
+
+		return row;
+	}
+
+	processRow(found, runName) {
+		const row = element('div', 'branch-row process');
+
+		const said = element('div', 'name task-name');
+
+		said.append(
+			element('span', 'label', found.command),
+			element(
+				'span',
+				'meta',
+				[runName, megabytes(found.memoryBytes), `${Math.round(found.cpuSeconds)}s cpu`, relativeTime(found.startedAt)]
+					.filter(Boolean)
+					.join(' · '),
+			),
+		);
+		row.append(said);
+		row.title = `pid ${found.pid}: ${found.args}`;
+		if (canType())
+			row.append(
+				button(
+					'',
+					async () => {
+						const { body, response } = await stopProcess(this.options.place, found.pid);
+
+						if (!response?.ok) this.say(typeof body === 'string' ? body : 'Could not stop it.');
+						setTimeout(() => this.refresh(), 500);
+					},
+					{ icon: 'stop', title: 'Stop it', className: 'icon-only danger' },
+				),
+			);
+
+		return row;
 	}
 
 	// What the session's processes see, and the project's .env files: shown on asking, secret values masked
@@ -212,39 +380,50 @@ export default class TasksPanel extends Panel {
 		];
 	}
 
+	// A command that runs and ends: how its last run went, a press away; whether it runs after Claude's turns (a check
+	// or the tests); and running it
 	taskRow(task, run) {
 		const row = element('div', 'branch-row task');
 		const name = element('button', 'name task-name variant-flat');
-		const running = run && (run.code === undefined || run.code === null);
+		const running = run && isRunning(run);
+		const { text, state } = run ? outcome(run) : { text: 'never run', state: 'never' };
 
-		name.append(icon(KIND_ICONS[task.kind]), ` ${task.name}`);
+		name.append(
+			element('span', `mark ${state}`, MARKS[state]),
+			element('span', 'label', task.name),
+			element(
+				'span',
+				`meta outcome ${state}`,
+				run && !running ? `${text} · ${relativeTime(run.endedAt ?? run.startedAt)}` : text,
+			),
+		);
 		name.title = `${task.command.join(' ')} (${task.source})${run ? ': show its last run' : ''}`;
-		name.addEventListener('click', () => (run ? this.showRun(run.id) : this.start(task)));
+		if (!run) name.setAttribute('aria-disabled', 'true');
+		name.addEventListener('click', () => run && this.showRun(run.id));
 		row.append(name);
-		if (run) {
-			const { text, state } = outcome(run);
-
-			row.append(element('span', `meta outcome ${state}`, text));
-		}
 		if (!canType()) return row;
 
-		const after = button(
-			'',
-			async () => {
-				await setAfterTurn(this.options.place, task.id, !task.afterTurn);
-				this.refresh();
-			},
-			{
-				icon: 'rotate',
-				title: task.afterTurn
-					? "Runs after each of Claude's turns that edits files (click to stop)"
-					: "Run it after each of Claude's turns that edits files",
-				className: `icon-only${task.afterTurn ? ' on' : ''}`,
-			},
-		);
+		if (['test', 'check'].includes(task.kind)) {
+			const after = button(
+				'after turns',
+				async () => {
+					const { body, response } = await setAfterTurn(this.options.place, task.id, !task.afterTurn);
 
+					if (!response?.ok) this.say(typeof body === 'string' ? body : 'Could not change that.');
+					this.refresh();
+				},
+				{
+					title: task.afterTurn
+						? "Runs after each of Claude's turns that edits files: press to stop"
+						: "Run it after each of Claude's turns that edits files",
+					className: `variant-flat after-turns${task.afterTurn ? ' on' : ''}`,
+				},
+			);
+
+			after.setAttribute('aria-pressed', String(Boolean(task.afterTurn)));
+			row.append(after);
+		}
 		row.append(
-			after,
 			running
 				? button('', () => stopRun(this.options.place, run.id), {
 						icon: 'stop',

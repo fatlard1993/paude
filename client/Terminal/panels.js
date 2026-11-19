@@ -7,7 +7,16 @@ export const PANELS = {
 	files: { label: 'Files', about: "the project's files, to read, edit and compare", icon: 'folder-tree' },
 	notes: { label: 'Chat', about: 'messages, and comments on the code', icon: 'comments' },
 	people: { label: 'People', about: 'who is invited here, and inviting someone', icon: 'user-plus' },
-	tasks: { label: 'Tasks', about: "the project's checks and tests, problems, and what's running", icon: 'list-check' },
+	tasks: {
+		label: 'Tasks',
+		about: "the project's checks, tests and scripts, and what they found wrong",
+		icon: 'list-check',
+	},
+	running: {
+		label: 'Running',
+		about: 'its servers, with the ports they serve on, and its other processes',
+		icon: 'server',
+	},
 	activity: { label: 'Activity', about: 'what Claude did, turn by turn', icon: 'clock-rotate-left' },
 	artifacts: {
 		label: 'Artifacts',
@@ -41,7 +50,7 @@ export const GROUPS = {
 		label: 'Tasks',
 		about: "the project's checks and tests, what's running, and what this session shares",
 		icon: 'list-check',
-		members: { tasks: 'Checks', shares: 'Shared' },
+		members: { tasks: 'Checks', running: 'Running', shares: 'Shared' },
 	},
 	made: {
 		label: 'Made',

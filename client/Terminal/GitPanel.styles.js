@@ -502,6 +502,113 @@ const Panel = styled(
 			background: ${colors.alpha(colors.blue, 0.45)};
 		}
 
+		/* A task's last run at a glance, before its name */
+		.mark {
+			display: inline-block;
+			width: 1.2em;
+			text-align: center;
+			color: ${colors.muted};
+		}
+
+		.mark.ok { color: ${colors.light(colors.success)}; }
+		.mark.failed { color: ${colors.light(colors.danger)}; }
+		.mark.running { color: ${colors.light(colors.warning)}; }
+
+		/* A task, a server or a process: its name, and under it how it went or what it's doing */
+		.task .task-name,
+		.process .task-name {
+			display: grid;
+			grid-template-columns: 1.2em minmax(0, 1fr);
+			column-gap: ${space.xs};
+			align-items: baseline;
+			padding: ${space.xs} 2px;
+		}
+
+		.process .task-name {
+			grid-template-columns: minmax(0, 1fr);
+			padding-left: calc(1.2em + ${space.xs} + 2px);
+		}
+
+		.task-name .label {
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
+		.task-name .meta {
+			grid-column: -2;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			font-size: 0.8em;
+		}
+
+		/* Never run: nothing to open */
+		.task-name[aria-disabled='true'] {
+			cursor: default;
+		}
+
+		/* Whether it runs after Claude's turns: a small switch that says so, lit while it's on */
+		button.after-turns {
+			flex-shrink: 0;
+			padding: 0 ${space.sm};
+			border: 1px solid ${colors.alpha(colors.white, 0.15)};
+			border-radius: ${radius.lg};
+			color: ${colors.muted};
+			font-size: 0.8em;
+		}
+
+		button.after-turns.on {
+			border-color: ${colors.light(colors.blue)};
+			background: ${colors.alpha(colors.blue, 0.3)};
+			color: inherit;
+		}
+
+		/* What one task found wrong, folded under a line that sums it up */
+		details.problems {
+			border-radius: ${radius.sm};
+		}
+
+		details.problems > summary {
+			display: flex;
+			align-items: center;
+			gap: ${space.sm};
+			padding: ${space.xs} ${space.sm};
+			cursor: pointer;
+			list-style: none;
+		}
+
+		details.problems > summary::-webkit-details-marker {
+			display: none;
+		}
+
+		details.problems > summary::before {
+			content: '▸';
+			color: ${colors.muted};
+		}
+
+		details.problems[open] > summary::before {
+			content: '▾';
+		}
+
+		details.problems > summary .meta {
+			flex: 1;
+		}
+
+		details.problems > summary button {
+			padding: 0 ${space.sm};
+			font-size: 0.8em;
+		}
+
+		details.problems .problem {
+			padding-left: ${space.xl};
+			white-space: nowrap;
+		}
+
+		details.problems .problem .message {
+			white-space: nowrap;
+		}
+
 		.problem {
 			display: flex;
 			gap: ${space.sm};

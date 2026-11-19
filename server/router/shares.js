@@ -24,8 +24,9 @@ export const setPreviewPort = port => {
 const previewOrigin = async request =>
 	previewOriginOf(request, { listenerPort: previewPort, settings: await serverSettings() });
 
+// A found service keeps its process's pid, which ties it to the task run that started it in the Tasks panel
 const withLinks = (shares, origin) =>
-	shares.map(({ pid: _, ...share }) => ({
+	shares.map(share => ({
 		...share,
 		title: titleOf(share),
 		naming: namingOf(share),
