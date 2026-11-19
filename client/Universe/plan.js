@@ -640,8 +640,12 @@ export const layOut = ({
 		const width = Math.max(0, ...reach.map((_, deck) => reaching(deck)));
 		const hall = hallFor(placed);
 		const total = levels * (depth.top + hall + depth.bottom + extraDepthOf(levels, hall)) + rise;
-		// The rows as far apart as their conduits need, worked out again while spreading them changes how many fit
-		const rowsAt = pitch => Math.max(1, Math.floor((total - BRIDGE_ROW_TOP - 0.4) / pitch + 1e-9) + 1);
+		// As many rows as the bridge's height holds with each as far apart as the conduits along it need. Fewer rows put
+		// more islands, and so more conduits, in each, so the counts are tried from the most down and the first whose
+		// conduits fit is kept, its rows as close as they need; spacing them by what a row needed and laying them out
+		// again only ever widens them, to a few far-apart rows and a bridge many times longer
+		const span = total - BRIDGE_ROW_TOP - 0.4;
+		const rowsAt = pitch => Math.max(1, Math.floor(span / pitch + 1e-9) + 1);
 		const islandsAt = pitch =>
 			islandsOf(inLine(placed), {
 				from: 0,
@@ -657,8 +661,17 @@ export const layOut = ({
 				stern: sternRoom(inLine(placed)),
 			});
 		let pitch = BRIDGE_ROW;
-		let laid = islandsAt(pitch);
+		let laid = null;
 
+		for (let count = rowsAt(BRIDGE_ROW); !laid && count > 1; count--) {
+			const widest = Math.max(BRIDGE_ROW, span / (count - 1));
+			const needed = Math.max(BRIDGE_ROW, rowPitch(islandsAt(widest).islands));
+
+			if (needed > widest + 1e-9) continue;
+			pitch = rowsAt(needed) === count ? needed : widest;
+			laid = islandsAt(pitch);
+		}
+		laid ??= islandsAt(pitch);
 		for (let tries = 0; tries < PITCH_TRIES && rowPitch(laid.islands) > pitch + 1e-9; tries++) {
 			pitch = rowPitch(laid.islands);
 			laid = islandsAt(pitch);

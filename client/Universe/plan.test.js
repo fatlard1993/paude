@@ -2,7 +2,7 @@ import { join } from 'path';
 
 import { expect, test } from 'bun:test';
 
-import { holdSpotAt, layOut } from './plan';
+import { holdSpotAt, layOut, rowPitch } from './plan';
 
 test('a ship laid again and again from where its islands stood keeps one shape: it never turns between two', async () => {
 	// What a live ship gave the planner when it turned between two hulls at every answer, cut down to what still did
@@ -96,6 +96,20 @@ test('a project split over islands has them stacked as one block, never cut wher
 		kept['big#1'] = { row: kept['big#0'].row === far ? 0 : far, at: 0 };
 		stackedAsOne(layOut({ bays, kept }).bridge, 'big');
 	}
+});
+
+test("the bridge has as many rows as its height holds with each row's conduits fitting, not a few far apart", () => {
+	const seats = index => 1 + ((index * 2) % 6);
+	const bays = Array.from({ length: 21 }, (_, index) => ({
+		name: `p${index}`,
+		seated: seats(index),
+		sessions: Array.from({ length: seats(index) }, (_, seat) => `p${index}-${seat}`),
+	}));
+	const { bridge } = layOut({ bays, checkouts: 7, lounge: { count: 20, cabinets: [] } });
+
+	expect(rowPitch(bridge.islands)).toBeLessThanOrEqual(bridge.pitch + 1e-9);
+	// Spacing the rows by what the last laying needed and laying them again ratcheted this one to four
+	expect(bridge.rows).toBe(5);
 });
 
 test('the hold stacks its pods in tiers, four abreast, rather than running on along the deck', () => {
