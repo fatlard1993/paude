@@ -155,6 +155,24 @@ test('starting a session watches its project the first time; one turned off by h
 	await Promise.all([stopSession(fresh.id), stopSession(again.id)]);
 });
 
+test('a tidy-up of the whole machine takes the owner, and starts one session that goes over every project there', async () => {
+	expect((await call('/api/tidy', { token: tokens.comment, method: 'POST' })).status).toBe(403);
+
+	const started = await call('/api/tidy', { token: tokens.owner, method: 'POST' });
+	const { id } = await started.json();
+	const session = [...allRunning()].find(running => running.id === id);
+
+	expect(started.status).toBe(200);
+	await stopSession(id);
+	expect(session).toBeDefined();
+
+	const remote = (token, project) => call('/api/remotes/tidy', { token, method: 'POST', body: { url: 'x', project } });
+
+	expect((await remote(tokens.owner, 'shop')).status).toBe(403);
+	expect((await remote(tokens.local, 'a/b')).status).toBe(400);
+	expect((await remote(tokens.local, 'shop')).status).toBe(404);
+});
+
 test("git: reading takes the files role, changing takes the typing role, and a guest's own session only", async () => {
 	const status = `/api/sessions/${session.id}/git/status`;
 	const stage = { method: 'POST', body: { all: true } };

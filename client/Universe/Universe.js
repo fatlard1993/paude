@@ -15,6 +15,9 @@ import {
 	setWatching,
 	sessionElsewhere,
 	setCabinetWatched,
+	tidyMachine,
+	tidyProject,
+	tidyRemote,
 } from '../api';
 import { Bar, ghostButton } from '../Bar';
 import { breadcrumbs } from '../Breadcrumbs';
@@ -1319,6 +1322,14 @@ export default class Universe extends View {
 				: []),
 			{ label: 'Look closer', hotkey: 'z', run: () => this.aboard.look(bay.name) },
 			{ label: watch.label, hotkey: 'w', run: watch.onPress },
+			// Each engine's copy gone over by a tidy-up of its own there
+			...owned(
+				...bay.engines.map((engine, index) => ({
+					label: `Tidy up${on(engine.name)}`,
+					...(index ? {} : { hotkey: 'y' }),
+					run: () => this.tidy(engine, bay.name),
+				})),
+			),
 			...(local
 				? [
 						{
@@ -1391,7 +1402,11 @@ export default class Universe extends View {
 			return owned(prompt, { label: 'Find a session', hotkey: 'f', run: () => this.findSession(null) }, folder);
 
 		return [
-			...owned({ label: 'All sessions', hotkey: 'h', run: () => this.openShipDock('sessions') }, folder, prompt),
+			...owned({ label: 'All sessions', hotkey: 'h', run: () => this.openShipDock('sessions') }, folder, prompt, {
+				label: 'Tidy the ship',
+				hotkey: 'y',
+				run: () => this.tidyShip(),
+			}),
 			{ label: 'Look closer', hotkey: 'z', run: () => this.aboard.look(BRIDGE) },
 		];
 	}
@@ -1757,6 +1772,32 @@ export default class Universe extends View {
 		this.seen(worker.session);
 
 		return this.openDock(worker, 'terminal', { wake: true });
+	}
+
+	// A tidy-up started on `engine`'s paude, of `project` there or of every project it has: its session's panel opens once
+	// it's aboard (`open`), or a note says it's started
+	async tidy(engine, project, { open = true } = {}) {
+		const url = engine.key === LOCAL ? null : engine.key;
+		const local = () => (project ? tidyProject(project) : tidyMachine());
+		const { body, response } = await (url ? tidyRemote(url, project) : local());
+
+		if (!response?.ok)
+			return new Notify({
+				intent: 'danger',
+				content: `Could not start the tidy-up on ${engine.name}: the server answered ${response?.status}.`,
+				timeout: 10_000,
+			});
+		if (open) this.dockWhenAboard({ id: body.id, remote: url && { url, name: engine.name } });
+		else new Notify({ intent: 'info', content: `Tidying up ${engine.name}: its session is on the bridge.` });
+	}
+
+	// Every machine on the ship gone over, each by a tidy-up of its own there, as deleting is each machine's own; this
+	// paude's opened, the others told
+	async tidyShip() {
+		const engines = this.aboard.engines.filter(({ quiet }) => !quiet);
+		const opened = engines.find(({ key }) => key === LOCAL) ?? engines[0];
+
+		await Promise.all(engines.map(engine => this.tidy(engine, undefined, { open: engine === opened })));
 	}
 
 	// A session just placed (`id`, on `remote` or here): its side panel opens on its terminal once it's aboard, which

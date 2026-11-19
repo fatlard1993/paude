@@ -119,6 +119,12 @@ export const createSession = async (project, text, checkout, mode, model, arcade
 		invalidates: [['sessions', project]],
 	});
 
+// Every project on this machine gone over at once: { id }
+export const tidyMachine = async () => await POST('/api/tidy', { invalidates: [['sessions']] });
+
+// A tidy-up on another server, of `project` there or of all of them: { id } there
+export const tidyRemote = async (url, project) => await POST('/api/remotes/tidy', { body: { url, project } });
+
 export const tidyProject = async project =>
 	await POST('/api/projects/:project/tidy', { urlParameters: { project }, invalidates: [['sessions', project]] });
 

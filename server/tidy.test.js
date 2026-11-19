@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { LISTED, tidyBrief } from './tidy';
+import { LISTED, SHIP_LISTED, tidyBrief, tidyShipBrief } from './tidy';
 
 const session = (id, more = {}) => ({
 	id,
@@ -50,5 +50,48 @@ describe('tidyBrief', () => {
 		expect(brief).not.toContain(`- s${LISTED} `);
 		expect(brief).toContain('(and 3 older, not listed');
 		expect(brief).toContain('not the top of a git repository');
+	});
+});
+
+describe('tidyShipBrief', () => {
+	const main = path => ({ main: true, path, branch: 'main', paude: false, active: 0 });
+
+	test('goes over every project with sessions or other checkouts, a section each, and names the rest', () => {
+		const brief = tidyShipBrief({
+			machine: 'dellbook',
+			projects: [
+				{ project: 'shop', cwd: '/p/shop', sessions: [session('a')], checkouts: [main('/p/shop')] },
+				{
+					project: 'yard',
+					cwd: '/p/yard',
+					sessions: [],
+					checkouts: [main('/p/yard'), { main: false, name: 'old', path: '/p/yard/old', branch: 'old', paude: true }],
+				},
+				{ project: 'attic', cwd: '/p/attic', sessions: [], checkouts: [main('/p/attic')] },
+				{ project: 'notes', cwd: '/p/notes', sessions: [], checkouts: null },
+			],
+		});
+
+		expect(brief).toContain('Tidy up every project on dellbook');
+		expect(brief).toContain('## shop (/p/shop)');
+		expect(brief).toContain('- a "session a"');
+		expect(brief).toContain('## yard (/p/yard)');
+		expect(brief).toContain('- worktree old: /p/yard/old');
+		expect(brief).not.toContain('## attic');
+		expect(brief).toContain('Nothing to go over (no sessions, no other checkouts): attic, notes.');
+		expect(brief).toContain('`paude delete <id>...`');
+		expect(brief).toContain('grouped by project');
+	});
+
+	test("lists fewer of each project's sessions than a project's own tidy-up", () => {
+		const many = Array.from({ length: SHIP_LISTED + 2 }, (_, at) => session(`s${at}`));
+		const brief = tidyShipBrief({
+			machine: 'm',
+			projects: [{ project: 'shop', cwd: '/p/shop', sessions: many, checkouts: null }],
+		});
+
+		expect(brief).toContain(`- s${SHIP_LISTED - 1} `);
+		expect(brief).not.toContain(`- s${SHIP_LISTED} `);
+		expect(brief).toContain('(and 2 older, not listed');
 	});
 });
