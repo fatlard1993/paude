@@ -10,7 +10,7 @@ import writeJsonFile from '../shared/writeJsonFile';
 import { isArcadeSession } from './arcade';
 import { allCabinets, guestCabinets } from './cabinets';
 
-import { activitySummary, identityKey, watchedBy, watchesProject } from './activity';
+import { activitySummary, identityKey, watchedBy, watchesAnyProject, watchesProject } from './activity';
 import { isArchived } from './archive';
 import { ownerName } from './serverSettings';
 import { sessionArtifacts } from './artifacts';
@@ -36,6 +36,7 @@ import { bornOf } from './sessions/transcript';
 import { serverName } from './serverSettings';
 import { sessionRecord } from './sessions/record';
 import { allRunning } from './sessions/running';
+import { listAllSessions } from './sessions/stored';
 import { limitOf } from './usageLimit';
 import { verification } from './verification';
 
@@ -648,10 +649,13 @@ const stoppedOf = async (identity, id) => {
 	};
 };
 
-// The stopped sessions this person sees: those they watch, and no others; unwatched, one leaves the ship. Archived
-// ones are put away, watched or not.
+// The stopped sessions this person sees: those they watch, by hand or through a watched project, and no others;
+// unwatched, one leaves the ship. Archived ones are put away, watched or not.
 const stoppedFor = async (identity, running) => {
-	const ids = watchedBy(identity).filter(id => !running.has(id) && !isArchived(id));
+	const byProject = watchesAnyProject(identity)
+		? (await listAllSessions(identity)).filter(session => session.watching).map(({ id }) => id)
+		: [];
+	const ids = [...new Set([...watchedBy(identity), ...byProject])].filter(id => !running.has(id) && !isArchived(id));
 
 	return (await Promise.all(ids.map(id => stoppedOf(identity, id)))).filter(Boolean);
 };

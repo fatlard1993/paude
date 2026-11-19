@@ -17,7 +17,7 @@ const sessionLine = session =>
 		`- ${session.id} "${session.title}"`,
 		state(session),
 		session.asking ? 'asking a question' : null,
-		session.watchedByHand ? 'watched' : null,
+		session.watching ? 'watched' : null,
 		`in ${session.worktree ? `worktree ${session.worktree}` : 'the main checkout'}`,
 		`on ${session.gitBranch || 'no branch'}`,
 		`last active ${when(session.activeAt ?? session.lastModified)}`,

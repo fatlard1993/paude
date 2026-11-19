@@ -141,8 +141,8 @@ export const watchedBy = identity =>
 		.filter(([, entry]) => entry.watching)
 		.map(([sessionId]) => sessionId);
 
-// A session that isn't running is 'stopped'; reopening it resumes it. `watchedByHand`: watched for itself, not through
-// its project, which is what keeps a stopped one on the ship (see watchedBy)
+// A session that isn't running is 'stopped'; reopening it resumes it. Watched is its own choice when it has one, its
+// project's watch when it doesn't
 export const activitySummary = (identity, sessionId, { running, busy, project }) => {
 	const { seq, status, at } = record(sessionId);
 	const entry = entryFor(identity, sessionId);
@@ -156,7 +156,6 @@ export const activitySummary = (identity, sessionId, { running, busy, project })
 	return {
 		status: shown,
 		watching,
-		watchedByHand: Boolean(entry?.watching),
 		unseen: watching ? Math.max(seq - (entry?.seen ?? 0), 0) : 0,
 		activeAt: at,
 	};

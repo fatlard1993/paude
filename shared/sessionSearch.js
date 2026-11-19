@@ -19,13 +19,12 @@ export const matchesQuery = (session, query) => {
 export const FILTERS = ['running', 'watching', 'hidden', 'archived'];
 
 // Which sessions a list shows: those running, watched, hidden or archived, or with no filter every one not archived. A
-// search with no filter looks through the archived ones too, so nothing put away is lost. Hidden is what the ship leaves
-// off: stopped and not watched by hand (a project's watch doesn't keep one aboard), going by `watching` for a paude too
-// old to say `watchedByHand`.
+// search with no filter looks through the archived ones too, so nothing put away is lost. Hidden is what isn't
+// watched: off the ship once it stops.
 export const matchesFilter = (session, filter, query) => {
 	if (filter === 'running') return Boolean(session.live);
 	if (filter === 'watching') return Boolean(session.watching);
-	if (filter === 'hidden') return !session.live && !session.archived && !(session.watchedByHand ?? session.watching);
+	if (filter === 'hidden') return !session.watching;
 	if (filter === 'archived') return Boolean(session.archived);
 
 	return !session.archived || Boolean(String(query ?? '').trim());

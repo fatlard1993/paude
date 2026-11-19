@@ -26,24 +26,14 @@ test('with no filter archived sessions are left out, unless searching; a filter 
 		{ id: 'put-away', archived: true },
 		{ id: 'plain' },
 		{ id: 'live-unwatched', live: true, watching: false },
-		{ id: 'by-project', watching: true, watchedByHand: false },
-		{ id: 'by-hand', watching: true, watchedByHand: true },
 	];
 	const shown = (filter, query) =>
 		sessions.filter(session => matchesFilter(session, filter, query)).map(({ id }) => id);
 
-	expect(shown()).toEqual(['live', 'watched', 'plain', 'live-unwatched', 'by-project', 'by-hand']);
-	expect(shown(undefined, 'away')).toEqual([
-		'live',
-		'watched',
-		'put-away',
-		'plain',
-		'live-unwatched',
-		'by-project',
-		'by-hand',
-	]);
+	expect(shown()).toEqual(['live', 'watched', 'plain', 'live-unwatched']);
+	expect(shown(undefined, 'away')).toEqual(['live', 'watched', 'put-away', 'plain', 'live-unwatched']);
 	expect(shown('running')).toEqual(['live', 'live-unwatched']);
-	expect(shown('watching')).toEqual(['watched', 'by-project', 'by-hand']);
-	expect(shown('hidden')).toEqual(['plain', 'by-project']);
+	expect(shown('watching')).toEqual(['watched']);
+	expect(shown('hidden')).toEqual(['live', 'put-away', 'plain', 'live-unwatched']);
 	expect(shown('archived')).toEqual(['put-away']);
 });

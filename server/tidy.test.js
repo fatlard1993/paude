@@ -22,7 +22,7 @@ describe('tidyBrief', () => {
 			cwd: '/p/shop',
 			sessions: [
 				session('a', { live: true, status: 'working', attached: 1, worktree: 'fix', gitBranch: 'fix' }),
-				session('b', { archived: true, watchedByHand: true }),
+				session('b', { archived: true, watching: true }),
 				session('c', { live: true, status: 'waiting', asking: { question: 'which?' } }),
 			],
 			checkouts: [
