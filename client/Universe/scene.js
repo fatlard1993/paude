@@ -24,7 +24,6 @@ import {
 	REACTOR_SIDE,
 	drawEngineering,
 	drawHangar,
-	freightAt,
 	drawHold,
 	drawHull,
 	drawLounge,
@@ -1121,6 +1120,7 @@ export default class Ship {
 	systems = new Map();
 	engineSystems = new Map();
 	cargo = [];
+	repos = [];
 	tanks = [];
 	// Each checkout's commits not pushed, as last seen: fewer now means a push went; and its files changed, more meaning
 	// more parts made
@@ -1558,7 +1558,6 @@ export default class Ship {
 			(engine, appliance) => `${engine.key}/${appliance.key}`,
 		);
 		this.loadCargo(answers);
-		this.loadUnshipped(answers);
 		// Each island in the row it stood in last time
 		const keptOf = bridge =>
 			bridge?.islands && Object.fromEntries(bridge.islands.map(({ key, row, at }) => [key, { row, at }]));
@@ -1967,20 +1966,6 @@ export default class Ship {
 		return worker.path?.length > 0 && !worker.leaving;
 	}
 
-	// The shipping bay's manifest: every repository in each watched project, sessions or not, with files changed or
-	// commits not pushed, colored as its project
-	loadUnshipped(answers) {
-		this.unshipped = answers.flatMap(answer =>
-			(answer.unshipped ?? []).map(item => ({
-				...item,
-				key: `${answer.key}:${item.root}`,
-				engineName: answer.name,
-				remote: answer.remote,
-				hue: (answer.projects ?? []).find(({ name }) => name === item.project)?.hue ?? null,
-			})),
-		);
-	}
-
 	// What's not shipped from the checkout a session works in: { changed, unpushed }, or null when all is
 	pendingOf(session) {
 		const checkout = session.checkout && this.checkouts?.get(`${session.engine.key}:${session.checkout}`);
@@ -1988,18 +1973,37 @@ export default class Ship {
 		return checkout?.changed || checkout?.unpushed ? { changed: checkout.changed, unpushed: checkout.unpushed } : null;
 	}
 
-	// The hold's cargo: for each checkout a session works in, the files changed and the commits not pushed, with the
-	// project it's for. A checkout with fewer commits to push than last time pushed them, and a hauler takes them away.
+	// The repositories the hold knows (`repos`): every checkout a session works in, and every one in a watched project
+	// with files changed or commits not pushed (the manifest), each with the project it's for. The hold's cargo is a
+	// pod for each with anything in it. Fewer commits to push than last time pushed them, and a hauler takes them away:
+	// from its pod's cradle, or from where its pod stood when that left it empty.
 	loadCargo(answers) {
+		const was = this.cargo ?? [];
+		const launch = (key, crates, project, pod = this.cargo.findIndex(({ key: other }) => other === key)) =>
+			pod >= 0
+				? this.haulers.push({ crates, time: 0, pod, project })
+				: this.haulers.push({
+						crates,
+						time: 0,
+						pod: was.findIndex(({ key: other }) => other === key),
+						project,
+						gone: true,
+					});
+		const pushes = [];
+
 		this.checkouts = new Map();
-		this.cargo = [];
-		for (const answer of answers)
-			for (const checkout of answer.checkouts ?? []) {
+		this.repos = [];
+		for (const answer of answers) {
+			const worked = new Set((answer.checkouts ?? []).map(({ root }) => root));
+			const manifest = (answer.unshipped ?? []).filter(({ root }) => !worked.has(root));
+
+			for (const checkout of [...(answer.checkouts ?? []), ...manifest]) {
 				const key = `${answer.key}:${checkout.root}`;
 
 				this.checkouts.set(key, checkout);
 				const users = (answer.sessions ?? []).filter(session => session.checkout === checkout.root);
-				const project = users.find(({ project: name }) => this.bays.some(bay => bay.name === name))?.project;
+				const project =
+					checkout.project ?? users.find(({ project: name }) => this.bays.some(bay => bay.name === name))?.project;
 				const before = this.pushed.get(key);
 				const changed = this.changed.get(key);
 
@@ -2018,14 +2022,36 @@ export default class Ship {
 				}
 				if (!project) continue;
 
-				this.cargo.push({ ...checkout, key, engineName: answer.name, project });
+				this.repos.push({
+					...checkout,
+					key,
+					engineName: answer.name,
+					remote: answer.remote,
+					project,
+					engine: answer.key,
+					manifest: !worked.has(checkout.root),
+				});
 				// Committed: its changes pressed into a crate of their own
 				if (before !== undefined && checkout.unpushed > before) this.packings.set(key, this.time);
 				// Pushed: its pod drops out through the doors under the dock
-				if (before > checkout.unpushed)
-					this.haulers.push({ crates: before - checkout.unpushed, time: 0, pod: this.cargo.length - 1, project });
+				if (before > checkout.unpushed) pushes.push([key, before - checkout.unpushed, project]);
 			}
-		this.deliveries = this.cargo.filter(({ pullRequest }) => pullRequest?.state === 'OPEN').slice(0, 3);
+		}
+		this.cargo = this.repos.filter(({ changed, unpushed }) => changed || unpushed);
+		for (const push of pushes) launch(...push);
+
+		// A pod no session works in leaves the manifest once it's all shipped: pushed, it drops out from where it stood.
+		// Not one whose project is no longer watched, or whose machine's manifest hasn't been looked over.
+		const known = new Set(this.repos.map(({ key }) => key));
+
+		was.forEach(({ key, engine, project, unpushed, manifest }) => {
+			const answer = answers.find(({ key: other }) => other === engine);
+			const watched = answer?.projects?.some(({ name, watching }) => name === project && watching);
+
+			if (manifest && unpushed && !known.has(key) && Array.isArray(answer?.unshipped) && watched)
+				launch(key, unpushed, project, -1);
+		});
+		this.deliveries = this.repos.filter(({ pullRequest }) => pullRequest?.state === 'OPEN').slice(0, 3);
 		this.noteRow(
 			'hold',
 			this.cargo.map(({ key }) => key),
@@ -3081,7 +3107,6 @@ export default class Ship {
 				...drawHangar(ctx, art, label, this.layout.hangar, {
 					time: this.time,
 					journey: this.journey,
-					freight: this.unshipped ?? [],
 					launching: this.haulers.length > 0,
 					tugAway: this.haulers.length > 0,
 				}),
@@ -3497,9 +3522,6 @@ export default class Ship {
 			if (this.layout.hangar?.log)
 				lights.push({ ...this.layout.hangar.log, r: 22, color: [255, 190, 90], strength: 0.6 });
 		}
-		// The freight waiting to ship, lit where it stands
-		if (this.layout.hangar && this.unshipped?.length)
-			lights.push({ ...freightAt(this.layout.hangar), r: 26, color: [255, 214, 150], strength: 0.55 });
 		if (this.lounge) rooms.push(box(this.lounge, [255, 186, 140], 0.5));
 		if (this.layout.materializer)
 			rooms.push(box(this.layout.materializer, this.charged ? [120, 240, 220] : IDLE, this.charged ? 0.9 : 0.35));
@@ -3701,7 +3723,7 @@ export default class Ship {
 		const form = FORMS[cksum(`form|${bay.name}`) % FORMS.length];
 		const tested = Ship.worstVerdict(sessions);
 		const verdict = VERDICT_COLORS[tested];
-		const checkouts = this.cargo.filter(({ project }) => project === bay.name);
+		const checkouts = this.repos.filter(({ project }) => project === bay.name);
 		const pressure = checkouts.reduce((sum, { unpushed = 0 }) => sum + unpushed, 0);
 		const changed = checkouts.reduce((sum, { changed: count = 0 }) => sum + count, 0);
 		const pullRequest = checkouts.find(({ pullRequest: pr }) => pr?.state === 'OPEN')?.pullRequest;
@@ -7240,8 +7262,9 @@ export default class Ship {
 
 		if (!hold) return [];
 
-		// A pod on its way out has left its cradle; an empty one is back once it's gone
-		const launching = new Set(this.haulers.map(({ pod }) => pod));
+		// A pod on its way out has left its cradle; an empty one is back once it's gone. One gone from the manifest took its
+		// cradle with it, and whatever slid into its place stays
+		const launching = new Set(this.haulers.filter(({ gone }) => !gone).map(({ pod }) => pod));
 		// The gantry along the hold's ceiling, its crane's trolley over the pod it's working or wandering the rail
 		const gantry = {
 			y: hold.y + ROOM_LAYER.gantry,

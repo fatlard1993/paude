@@ -2147,7 +2147,7 @@ export default class Universe extends View {
 
 		if (kind === 'bay') {
 			const flyout = flyoutOf({ kind: 'bay', bay }, aboard);
-			const checkouts = aboard.cargo.filter(({ project }) => project === bay.name);
+			const checkouts = aboard.repos.filter(({ project }) => project === bay.name);
 
 			return {
 				...flyout,
@@ -2271,24 +2271,20 @@ export default class Universe extends View {
 							this.paintFocus();
 						},
 					}))) ||
-				(kind === 'hangar' &&
-					(aboard.unshipped ?? []).map(item => ({
-						label: item.path ? `${item.project}/${item.path}` : item.project,
-						detail: [item.branch, cargoWords(item), item.remote && `on ${item.engineName}`].filter(Boolean).join(' · '),
-						tone: item.unpushed ? 'warn' : '',
-						// To its project, where its changes are looked over and shipped from
-						run: () => {
-							if (!item.remote) window.location.hash = `#/projects/${encodeURIComponent(item.project)}`;
-						},
-					}))) ||
 				(kind === 'hold'
 					? aboard.cargo.map(checkout => ({
-							label: `${checkout.project}: ${checkout.branch ?? 'no branch'}`,
-							detail: cargoWords(checkout),
+							label: `${checkout.path ? `${checkout.project}/${checkout.path}` : checkout.project}: ${checkout.branch ?? 'no branch'}`,
+							detail: [cargoWords(checkout), checkout.remote && `on ${checkout.engineName}`]
+								.filter(Boolean)
+								.join(' · '),
+							tone: checkout.unpushed ? 'warn' : '',
+							// To the git of a session working in it, or else to its project, where its changes are looked over
+							// and shipped from
 							run: () => {
 								const worker = this.workerIn(checkout);
 
 								if (worker) this.dockOrReply(worker, 'git');
+								else if (!checkout.remote) window.location.hash = `#/projects/${encodeURIComponent(checkout.project)}`;
 							},
 						}))
 					: []),
@@ -2499,7 +2495,7 @@ export default class Universe extends View {
 					detail: cargoWords(checkout),
 					run: git(checkout),
 				})),
-			...aboard.cargo
+			...aboard.repos
 				.filter(({ pullRequest }) => pullRequest?.state === 'OPEN')
 				.map(checkout => ({
 					label: `${checkout.project}: in review`,

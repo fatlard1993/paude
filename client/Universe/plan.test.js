@@ -2,7 +2,7 @@ import { join } from 'path';
 
 import { expect, test } from 'bun:test';
 
-import { layOut } from './plan';
+import { holdSpotAt, layOut } from './plan';
 
 test('a ship laid again and again from where its islands stood keeps one shape: it never turns between two', async () => {
 	// What a live ship gave the planner when it turned between two hulls at every answer, cut down to what still did
@@ -96,4 +96,20 @@ test('a project split over islands has them stacked as one block, never cut wher
 		kept['big#1'] = { row: kept['big#0'].row === far ? 0 : far, at: 0 };
 		stackedAsOne(layOut({ bays, kept }).bridge, 'big');
 	}
+});
+
+test('the hold stacks its pods in tiers, four abreast, rather than running on along the deck', () => {
+	const holdOf = checkouts => layOut({ bays: [{ name: 'p', seated: 1, sessions: ['p-0'] }], checkouts });
+	const one = holdOf(1);
+	const seven = holdOf(7);
+	const spots = Array.from({ length: 7 }, (_, index) => holdSpotAt(seven.hold, index));
+
+	expect(seven.hold.columns).toBe(4);
+	expect(seven.hold.w).toBeCloseTo(holdOf(4).hold.w, 5);
+	expect(seven.hold.d).toBeGreaterThan(one.hold.d);
+	expect(seven.bridge.d).toBeGreaterThan(one.bridge.d);
+	// The second tier above the first, each pod over the one in its column below
+	expect(spots[4].x).toBeCloseTo(spots[0].x, 5);
+	expect(spots[4].y).toBeLessThan(spots[0].y);
+	spots.forEach(({ y }) => expect(y).toBeGreaterThan(seven.hold.y));
 });

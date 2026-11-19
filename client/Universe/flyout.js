@@ -110,9 +110,9 @@ export const ROOMS = {
 		`a reactor for each machine: ${ship.engines.map(({ name, detail }) => `${name}, ${detail}`).join('; ')}`,
 	materializer: ship =>
 		ship.charged ? 'a new session is on its way' : 'where new sessions start; press it to write a prompt',
-	hold: ship => `each checkout's changes and commits not pushed: ${plural(ship.cargo.length, 'checkout')}`,
-	hangar: ship =>
-		`pushes leaving, pull requests waiting for review, and what's not shipped in your watched projects: ${plural(ship.unshipped?.length ?? 0, 'repo')}`,
+	hold: ship =>
+		`a pod for each repository a session works in or your watched projects haven't shipped, its changes and commits not pushed: ${plural(ship.cargo.length, 'repo')}`,
+	hangar: () => 'pushes leaving, and pull requests waiting for review',
 	transporter: ship =>
 		ship.fleet.length
 			? `beams you to the ship of another subscription: ${ship.fleet.map(({ name }) => name).join(', ')}`

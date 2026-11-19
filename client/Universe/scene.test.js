@@ -432,6 +432,54 @@ test('a checkout with work in it has cargo in the hold; fewer commits to push th
 	expect(made.haulers).toHaveLength(0);
 });
 
+test('a pod is in the hold only while it holds something; one a push empties launches from where it stood', () => {
+	const working = (changed, unpushed) => [
+		{
+			...answer('here', [session({ checkout: '/work/paude' })], { projects: ['paude'] }),
+			checkouts: [{ root: '/work/paude', changed, unpushed }],
+		},
+	];
+	const made = new Ship();
+
+	made.resize(800, 600);
+	made.update(working(0, 0));
+	expect(made.cargo).toHaveLength(0);
+	made.update(working(0, 2));
+	expect(made.cargo).toHaveLength(1);
+	made.update(working(0, 0));
+	expect(made.cargo).toHaveLength(0);
+	expect(made.haulers).toMatchObject([{ crates: 2, pod: 0, gone: true }]);
+});
+
+test("a pod no session works in launches when it's pushed and leaves the manifest, not when its project is unwatched or the manifest isn't looked over yet", () => {
+	const watched = watching => ({ name: 'tools', hue: 10, watching });
+	const pod = { project: 'tools', path: '', root: '/work/tools', changed: 0, unpushed: 2 };
+	const docked = { project: 'tools', path: '', root: '/work/other', changed: 1, unpushed: 0 };
+	const manifest = (unshipped, watching = true) => [
+		{ ...answer('here', [], { projects: [watched(watching)] }), checkouts: [], unshipped },
+	];
+	const launchedFrom = (before, after) => {
+		const made = new Ship();
+
+		made.resize(800, 600);
+		made.update(before);
+		made.update(after);
+
+		return made;
+	};
+
+	const pushed = launchedFrom(manifest([docked, pod]), manifest([docked]));
+
+	expect(pushed.haulers).toMatchObject([{ crates: 2, pod: 1, project: 'tools', gone: true }]);
+	expect(pushed.cargo.map(({ root }) => root)).toEqual(['/work/other']);
+	run(pushed, 7);
+	expect(pushed.haulers).toHaveLength(0);
+
+	expect(launchedFrom(manifest([pod]), manifest([], false)).haulers).toHaveLength(0);
+	expect(launchedFrom(manifest([pod]), manifest(null)).haulers).toHaveLength(0);
+	expect(launchedFrom(manifest([{ ...pod, unpushed: 0, changed: 3 }]), manifest([])).haulers).toHaveLength(0);
+});
+
 test("what is staged to ship is in the shipping bay in the hull's bottom deck, at the bridge's end, with the pad: a pod for each checkout, all inside it, clear of every project's machine", () => {
 	// Six checkouts, each with a session working in it
 	const names = Array.from({ length: 6 }, (_, index) => `p${index}`);
@@ -4090,7 +4138,7 @@ test("what a session left running in the background is a lone terminal beside it
 	expect(made.needs(worker.session)).toBe('unread');
 });
 
-test("a session's desk knows what its checkout hasn't shipped, and the shipping bay every watched repository's", () => {
+test("a session's desk knows what its checkout hasn't shipped, and the hold has a pod for each repository with any", () => {
 	const made = shipWith([
 		{
 			...answer('here', [session({ checkout: '/work/paude' }), session({ id: 'b', checkout: '/work/clean' })], {
@@ -4101,6 +4149,7 @@ test("a session's desk knows what its checkout hasn't shipped, and the shipping 
 				{ root: '/work/clean', changed: 0, unpushed: 0 },
 			],
 			unshipped: [
+				{ project: 'paude', path: '', root: '/work/paude', changed: 3, unpushed: 2 },
 				{ project: 'paude', path: 'packages/inner', root: '/work/paude/packages/inner', changed: 1, unpushed: 0 },
 			],
 		},
@@ -4110,12 +4159,9 @@ test("a session's desk knows what its checkout hasn't shipped, and the shipping 
 
 	expect(pending('a')).toEqual({ changed: 3, unpushed: 2 });
 	expect(pending('b')).toBeNull();
-	expect(made.unshipped).toEqual([
-		expect.objectContaining({
-			project: 'paude',
-			path: 'packages/inner',
-			hue: 120,
-			key: 'here:/work/paude/packages/inner',
-		}),
+	expect(made.cargo.map(({ key, project }) => [key, project])).toEqual([
+		['here:/work/paude', 'paude'],
+		['here:/work/paude/packages/inner', 'paude'],
 	]);
+	expect(made.repos.map(({ key }) => key)).toContain('here:/work/clean');
 });

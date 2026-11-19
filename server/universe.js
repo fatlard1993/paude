@@ -444,7 +444,8 @@ const UNSHIPPED_MS = 20_000;
 const manifests = new Map();
 
 // The manifest as last looked over, never waited for: looking over every watched project's repositories takes seconds,
-// so it's looked over again behind the answer once it's this old, the answer carrying the last one meanwhile
+// so it's looked over again behind the answer once it's this old, the answer carrying the last one meanwhile; null
+// until it's first been looked over, so nothing reads as shipped that just hasn't been looked at yet
 const unshippedNow = identity => {
 	const key = identityKey(identity);
 	const known = manifests.get(key) ?? { at: 0, value: [] };
@@ -456,7 +457,7 @@ const unshippedNow = identity => {
 		manifests.set(key, known);
 	}
 
-	return known.value;
+	return known.at ? known.value : null;
 };
 
 // Whether what a session changed has been tested since: { state, said }, state 'current', 'stale', 'failing' or

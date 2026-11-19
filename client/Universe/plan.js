@@ -33,8 +33,18 @@ const COMPACT = { w: SYSTEM.w / 2, d: FACE + 1.2 };
 export const systemTallOf = room => (room.compact ? 16 : 33);
 const HANGAR_W = 2.6;
 const POD_PITCH = 1.7;
-// The staged part of the shipping bay, long enough for each checkout's pod
-const holdWidth = checkouts => Math.max(2.4, checkouts * POD_PITCH + 0.6);
+// How far each tier of pods in the hold stands over the one under it
+const POD_TIER = 1.8;
+// The hold stacks its pods rather than running on along the deck, which would set the ship's length: four abreast,
+// a tier more for every four more, three tiers at most and any more abreast
+const HOLD_ABREAST = 4;
+const MOST_TIERS = 3;
+const holdTiers = checkouts => Math.min(MOST_TIERS, Math.max(1, Math.ceil(checkouts / HOLD_ABREAST)));
+const holdColumns = checkouts => Math.ceil(checkouts / holdTiers(checkouts));
+// The staged part of the shipping bay, long enough for a tier of pods, and how much deeper than its deck its tiers
+// make it
+const holdWidth = checkouts => Math.max(2.4, holdColumns(checkouts) * POD_PITCH + 0.6);
+const holdRise = checkouts => (holdTiers(checkouts) - 1) * POD_TIER;
 const MATERIALIZER_W = 1.8;
 // How deep the materializer and transporter stand on the bridge, from its foot
 const STATION_D = 2.4;
@@ -437,7 +447,14 @@ export const recyclerAt = engineering => ({ x: engineering.x + engineering.w - 0
 export const clonerAt = room => ({ x: room.x + room.w / 2, y: room.y + FACE + 1.3 });
 
 // The i-th checkout's stack in the hold
-export const holdSpotAt = (hold, index) => ({ x: hold.x + 0.9 + index * POD_PITCH, y: hold.y + hold.d - 0.45 });
+export const holdSpotAt = (hold, index) => {
+	const columns = hold.columns ?? Number.POSITIVE_INFINITY;
+
+	return {
+		x: hold.x + 0.9 + (index % columns) * POD_PITCH,
+		y: hold.y + hold.d - 0.45 - Math.floor(index / columns) * POD_TIER,
+	};
+};
 
 // The hangar's landing pad, where the hauler waits
 export const padAt = hangar => ({ x: hangar.x + (hangar.w - 0.9) / 2, y: hangar.y + (hangar.face ?? FACE) + 1.8 });
@@ -577,7 +594,9 @@ export const layOut = ({
 		FACE + 0.6 + engineCount * PER_REACTOR,
 		Math.max(SYSTEMS.length * SYSTEM.d, ((engineCount * SYSTEMS.length) / across) * unit.d) + 0.4,
 	);
-	const extraDepthOf = (levels, hall) => Math.max(0, need - levels * (depth.top + hall + depth.bottom)) / levels;
+	// The bottom deck deeper by the hold's tiers
+	const rise = holdRise(checkouts);
+	const extraDepthOf = (levels, hall) => Math.max(0, need - levels * (depth.top + hall + depth.bottom) - rise) / levels;
 	const working = bays.filter(bay => bay.seated);
 	// The projects at work in the order their conduits come along the spines to the bridge, top to bottom: a level's
 	// at a time from the top, those over its spine first, the one nearest the bridge topmost, then those under it, the
@@ -620,7 +639,7 @@ export const layOut = ({
 		});
 		const width = Math.max(0, ...reach.map((_, deck) => reaching(deck)));
 		const hall = hallFor(placed);
-		const total = levels * (depth.top + hall + depth.bottom + extraDepthOf(levels, hall));
+		const total = levels * (depth.top + hall + depth.bottom + extraDepthOf(levels, hall)) + rise;
 		// The rows as far apart as their conduits need, worked out again while spreading them changes how many fit
 		const rowsAt = pitch => Math.max(1, Math.floor((total - BRIDGE_ROW_TOP - 0.4) / pitch + 1e-9) + 1);
 		const islandsAt = pitch =>
@@ -687,7 +706,7 @@ export const layOut = ({
 		const above = deck % 2 === 0;
 		const spine = spines[Math.floor(deck / 2)];
 		const y = above ? spine.hallTop - depth.top : spine.hallTop + hall;
-		const d = above ? depth.top : depth.bottom;
+		const d = above ? depth.top : depth.bottom + (deck === levels * 2 - 1 ? rise : 0);
 
 		return {
 			name: bay.name,
@@ -723,9 +742,17 @@ export const layOut = ({
 	// checkout a pod docked along it and the pad beside them; what's pushed drops out through the belly under it
 	const staged = holdWidth(checkouts);
 	const bottomSpine = spines.at(-1);
-	const shipping = { x: middle + width - staged - HANGAR_W, y: bottomSpine.hallTop + hall, d: depth.bottom };
+	const shipping = { x: middle + width - staged - HANGAR_W, y: bottomSpine.hallTop + hall, d: depth.bottom + rise };
 	const docked = [
-		{ kind: 'hold', name: 'changes', x: shipping.x, w: staged, joined: { right: true }, unsigned: true },
+		{
+			kind: 'hold',
+			name: 'changes',
+			x: shipping.x,
+			w: staged,
+			columns: holdColumns(checkouts),
+			joined: { right: true },
+			unsigned: true,
+		},
 		{ kind: 'hangar', name: 'shipping', x: shipping.x + staged, w: HANGAR_W, joined: { left: true } },
 	].map(room => ({
 		...room,
