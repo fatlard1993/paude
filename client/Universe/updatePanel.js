@@ -72,7 +72,7 @@ export const updatePanel = ({ appendTo, place, addClass = [] }) => {
 		if (state.behind > state.incoming.length)
 			list.append(element('li', 'more', `and ${state.behind - state.incoming.length} more`));
 		elem.append(list);
-		elem.append(button('Update', update, { icon: 'download', className: 'variant-primary' }));
+		elem.append(button('Update', update, { icon: 'download' }));
 	};
 
 	const poll = () => {
@@ -115,7 +115,7 @@ export const updatePanel = ({ appendTo, place, addClass = [] }) => {
 
 		elem.classList.remove('busy');
 		if (!response?.ok) {
-			new Notify({ intent: 'error', content: (typeof body === 'string' && body) || "Couldn't start the update" });
+			new Notify({ intent: 'danger', content: (typeof body === 'string' && body) || "Couldn't start the update" });
 
 			return refresh();
 		}
