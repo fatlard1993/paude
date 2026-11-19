@@ -300,6 +300,9 @@ export default class Universe extends View {
 		});
 		// A step in and out by button, in the bar as every page's actions are, for a hand without a wheel or a pinch;
 		// + and - do the same
+		// Finding a session from anywhere on the ship, whatever's looked at: the owner's, who has every session to find
+		if (identity()?.owner)
+			ghostButton(bar, { icon: 'magnifying-glass', title: 'Find a session (/)', onPress: () => this.findAnywhere() });
 		this.zoomButtons = {
 			in: ghostButton(bar, { icon: 'magnifying-glass-plus', title: 'Zoom in (+)', onPress: () => this.zoomBy(2) }),
 			out: ghostButton(bar, { icon: 'magnifying-glass-minus', title: 'Zoom out (-)', onPress: () => this.zoomBy(0.5) }),
@@ -860,6 +863,11 @@ export default class Universe extends View {
 				event.preventDefault();
 
 				return this.zoomBy(event.key === '-' || event.key === '_' ? 0.5 : 2);
+			}
+			if (event.key === '/' && identity()?.owner) {
+				event.preventDefault();
+
+				return this.findAnywhere();
 			}
 			// The floor's map over the ship, for seeing what's in the way of what
 			if (event.key === 'G') {
@@ -1878,6 +1886,12 @@ export default class Universe extends View {
 	}
 
 	// The sessions to search and open: a project's here, every one on the paude a project is on, or every one aboard
+	// The search over every session on every paude, its box ready to type in
+	findAnywhere() {
+		this.findSession(null);
+		requestAnimationFrame(() => this.dock?.card.querySelector('input[type="search"]')?.focus());
+	}
+
 	findSession(project) {
 		if (project?.remote) return this.openShipDock('sessions', [project.remote], project.remote.name);
 		if (project) return this.openProjectDock(project.name, 'sessions');
