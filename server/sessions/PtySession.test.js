@@ -83,6 +83,25 @@ test("only someone who may type sets the size; a viewer's small terminal doesn't
 	session.process.kill();
 });
 
+test("a page's side connection, with no screen of its own, never holds the size from the screen beside it", async () => {
+	const { session } = start();
+	const side = socket();
+	const screen = socket();
+
+	session.attach(side, { kind: 'web', label: 'universe', role: 'owner' });
+	session.attach(screen, { kind: 'web', label: 'universe', role: 'owner', cols: 150, rows: 50 });
+	const [sideClient, screenClient] = [...session.clients];
+
+	session.resize(screenClient, 160, 55);
+	expect([session.cols, session.rows]).toEqual([160, 55]);
+
+	session.input(sideClient, '\x1b[200~attached\x1b[201~');
+	session.resize(screenClient, 170, 60);
+	expect([session.cols, session.rows]).toEqual([170, 60]);
+
+	session.process.kill();
+});
+
 test('a typed answer clears needs you, and the session ending is reported', async () => {
 	const { setStatus, statusOf } = await import('../activity');
 	const { session, exits } = start();

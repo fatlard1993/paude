@@ -73,6 +73,9 @@ const clampSize = (value, [min, max]) => {
 const LOOK = path.join(import.meta.dir, '..', '..', 'bin', 'look.js');
 
 const canDrive = client => client.role === 'owner' || client.role === 'drive';
+// Who the session takes its size from: one who may type, with a screen of their own. A page's side connection for
+// its chat and tasks (dock.js, the arcade's talk) has none, and taking it would leave no one sizing the session.
+const canSize = client => canDrive(client) && Boolean(client.cols && client.rows);
 
 const send = (socket, message) => socket.send(typeof message === 'string' ? message : JSON.stringify(message));
 
@@ -208,7 +211,7 @@ export default class PtySession {
 		this.clients.add(client);
 		clearTimeout(this.idleTimer);
 
-		if (!this.driver && canDrive(client)) this.drive(client);
+		if (!this.driver && canSize(client)) this.drive(client);
 		else if (client.kind === 'terminal' && canDrive(client)) this.fitSize();
 
 		this.sendSnapshot(client);
@@ -274,7 +277,7 @@ export default class PtySession {
 
 		if (this.ended) return;
 
-		if (this.driver === client) this.driver = [...this.clients].findLast(canDrive) ?? null;
+		if (this.driver === client) this.driver = [...this.clients].findLast(canSize) ?? null;
 		this.fitSize();
 		if (!this.clients.size && !this.readers.size) this.resetIdle();
 
@@ -290,7 +293,7 @@ export default class PtySession {
 
 		if (kind === 'reply' && !driving) return;
 
-		if (!driving && (kind === 'typing' || (client.kind === 'terminal' && data.includes(FOCUS_IN)))) {
+		if (!driving && canSize(client) && (kind === 'typing' || (client.kind === 'terminal' && data.includes(FOCUS_IN)))) {
 			this.drive(client);
 		}
 
@@ -358,7 +361,8 @@ export default class PtySession {
 		client.cols = clampSize(cols, SIZE_LIMITS.cols);
 		client.rows = clampSize(rows, SIZE_LIMITS.rows);
 
-		if (canDrive(client)) this.fitSize();
+		if (!this.driver && canSize(client)) this.drive(client);
+		else if (canDrive(client)) this.fitSize();
 	}
 
 	drive(client) {
