@@ -1,3 +1,4 @@
+import os from 'os';
 import { basename } from 'path';
 
 import { forkSession } from '@anthropic-ai/claude-agent-sdk';
@@ -113,7 +114,7 @@ import {
 } from '../worktrees';
 import { markProjectLink, projectLinks } from '../links';
 import { projectArtifacts } from '../artifacts';
-import { isOwnProject, universe } from '../universe';
+import { universe } from '../universe';
 import { serverName } from '../serverSettings';
 import { placeFolder, placeMark, placeMatch, placeMissing } from './place';
 
@@ -1039,8 +1040,8 @@ const sessionsRoutes = async (request, server) => {
 		return Response.json({ id: await startWith(cwd, brief, { mode: 'brief', identity, project: match.project }) });
 	}
 
-	// The same over every project on this machine at once, in a session of its own in paude's own project, or the one
-	// worked in last when paude isn't one of them
+	// The same over every project on this machine at once, in a session of the machine's own: in its home folder, in no
+	// project
 	if (requestMatch('POST', '/api/tidy', request)) {
 		if (!identity.owner) return new Response('Only the owner tidies the ship', { status: 403 });
 
@@ -1061,18 +1062,9 @@ const sessionsRoutes = async (request, server) => {
 				}),
 			)
 		).filter(Boolean);
-		const home =
-			projects.find(({ cwd }) => isOwnProject(cwd)) ??
-			projects.find(({ project }) => project === sessions[0]?.project) ??
-			projects[0];
-
-		if (!home) return new Response('No projects to tidy', { status: 404 });
-
 		const brief = tidyShipBrief({ machine: await serverName(), projects });
 
-		return Response.json({
-			id: await startWith(home.cwd, brief, { mode: 'brief', identity, project: home.project }),
-		});
+		return Response.json({ id: await startWith(os.homedir(), brief, { mode: 'brief', identity, project: null }) });
 	}
 
 	// `checkout` is { join: name } for a worktree in the project, { create: name } for a new one (with `from`, on

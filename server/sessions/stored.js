@@ -1,3 +1,6 @@
+import os from 'os';
+import { resolve } from 'path';
+
 import { sessionHue } from '../../shared/hues';
 
 import { activitySummary } from '../activity';
@@ -13,6 +16,9 @@ import { firstPromptOf, folderOf } from './transcript';
 
 const FIRST_PROMPT_PREVIEW = 200;
 
+// The machine's own sessions are those started in its home folder, outside any project: a tidy-up of the whole machine
+export const isHomeFolder = folder => Boolean(folder) && resolve(folder) === resolve(os.homedir());
+
 export const toSummary =
 	identity =>
 	({ sessionId, summary, customTitle, firstPrompt, lastModified, gitBranch, cwd }) => {
@@ -26,6 +32,7 @@ export const toSummary =
 			gitBranch,
 			firstPrompt: firstPrompt?.slice(0, FIRST_PROMPT_PREVIEW),
 			project,
+			...(!project && isHomeFolder(cwd) && { home: true }),
 			worktree: worktreeName(projectPath(project), cwd),
 			hue: sessionHue(sessionId),
 			live: Boolean(running),
@@ -124,9 +131,12 @@ export const storedSessions = async ({ now = Date.now(), list = listStored } = {
 };
 
 export const listAllSessions = async identity =>
-	withUnsaved(await withFirstPrompts(await storedSessions()), folder => Boolean(projectOf(folder)))
+	withUnsaved(
+		await withFirstPrompts(await storedSessions()),
+		folder => Boolean(projectOf(folder)) || isHomeFolder(folder),
+	)
 		.map(toSummary(identity))
-		.filter(session => session.project);
+		.filter(session => session.project || session.home);
 
 // The project's sessions, as its count on the projects page has them: those in its folders below too, not only the
 // ones started at its top
