@@ -559,8 +559,10 @@ const Panel = styled(
 			margin-bottom: ${space.sm};
 		}
 
-		.run-output {
+		/* A task's run, the panel's height under its head: over .step-output's cap, which comes later */
+		.step-output.run-output {
 			flex: 1;
+			min-height: 0;
 			margin: 0;
 			max-height: none;
 		}
