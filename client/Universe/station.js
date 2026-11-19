@@ -627,14 +627,25 @@ export const drawScreen = (ctx, area, { kind, hue, time, seed }) => {
 			);
 		}
 	if (kind === 'terminal' && blink) rect(ctx, x + w - 3, y + h - 2, 2, 1, PALETTE.W);
+	// Three dots seven wide, in from a monitor's corner and across a laptop's screen
 	if (kind === 'think')
 		for (let dot = 0; dot < 3; dot++)
-			rect(ctx, x + 2 + dot * 3, y + 3, 1, 1, dot === Math.floor(time * 3) % 3 ? PALETTE.W : PALETTE.l);
+			rect(
+				ctx,
+				x + Math.min(2, Math.max(0, Math.floor((w - 7) / 2))) + dot * 3,
+				y + Math.min(3, Math.floor(h / 2)),
+				1,
+				1,
+				dot === Math.floor(time * 3) % 3 ? PALETTE.W : PALETTE.l,
+			);
+	// A question mark, three wide and six tall, in from the corner on a monitor and filling a laptop's screen
 	if (kind === 'ask' && blink) {
-		rect(ctx, x + 4, y + 1, 3, 1, PALETTE.k);
-		rect(ctx, x + 6, y + 2, 1, 2, PALETTE.k);
-		rect(ctx, x + 5, y + 4, 1, 1, PALETTE.k);
-		rect(ctx, x + 5, y + 6, 1, 1, PALETTE.k);
+		const [left, top] = [x + Math.min(4, Math.floor((w - 3) / 2)), y + (h >= 8 ? 1 : 0)];
+
+		rect(ctx, left, top, 3, 1, PALETTE.k);
+		rect(ctx, left + 2, top + 1, 1, 2, PALETTE.k);
+		rect(ctx, left + 1, top + 3, 1, 1, PALETTE.k);
+		rect(ctx, left + 1, top + 5, 1, 1, PALETTE.k);
 	}
 	if (kind === 'limit') drawBattery(ctx, area, blink);
 	// Its reply going out to its keeper: a packet sliding off the screen's right edge, again and again
@@ -649,28 +660,35 @@ export const drawScreen = (ctx, area, { kind, hue, time, seed }) => {
 				rect(ctx, px, y + Math.floor(h / 2), 1, 1, step ? hsl(hue, 70, 45) : hsl(hue, 80, 72));
 		}
 	}
-	// Something new for you: a letter, lit while it waits to be looked at
+	// Something new for you: a letter, lit while it waits to be looked at; as wide as the screen has room for, an odd
+	// number of pixels so its flap meets in the middle, nine at most
 	if (kind === 'news') {
-		const [left, top] = [x + Math.floor((w - 9) / 2), y + Math.floor((h - 6) / 2)];
+		const wide = Math.min(9, w % 2 ? w : w - 1);
+		const tall = Math.min(h, (wide - 1) / 2 + 2);
+		const [left, top] = [x + Math.floor((w - wide) / 2), y + Math.floor((h - tall) / 2)];
 		const ink = blink ? PALETTE.W : PALETTE.b;
 
-		rect(ctx, left, top, 9, 6, ink);
-		rect(ctx, left + 1, top + 1, 7, 4, '#0f2a4a');
-		for (let step = 0; step < 4; step++) {
+		rect(ctx, left, top, wide, tall, ink);
+		rect(ctx, left + 1, top + 1, wide - 2, tall - 2, '#0f2a4a');
+		for (let step = 0; step < (wide - 1) / 2; step++) {
 			rect(ctx, left + 1 + step, top + 1 + step, 1, 1, ink);
-			rect(ctx, left + 7 - step, top + 1 + step, 1, 1, ink);
+			rect(ctx, left + wide - 2 - step, top + 1 + step, 1, 1, ink);
 		}
 	}
 	if (kind === 'idle' && blink) rect(ctx, x + 1, y + 1, 1, 2, PALETTE.W);
 	if (kind === 'off') rect(ctx, x + w - 1, y + h, 1, 1, PALETTE.r);
 };
 
-// Out of power: an empty battery, its last bar blinking
-const drawBattery = (ctx, { x, y }, blink) => {
-	rect(ctx, x + 2, y + 2, 7, 4, PALETTE.r);
-	rect(ctx, x + 3, y + 3, 5, 2, '#2a0f0f');
-	rect(ctx, x + 9, y + 3, 1, 2, PALETTE.r);
-	if (blink) rect(ctx, x + 3, y + 3, 1, 2, PALETTE.r);
+// Out of power: an empty battery, its last bar blinking; eight wide with its nub, in from a monitor's corner and
+// filling a laptop's screen
+const drawBattery = (ctx, { x, y, w, h }, blink) => {
+	const left = x + Math.min(2, Math.max(0, Math.floor((w - 8) / 2)));
+	const top = y + Math.min(2, Math.max(0, Math.floor((h - 4) / 2)));
+
+	rect(ctx, left, top, 7, 4, PALETTE.r);
+	rect(ctx, left + 1, top + 1, 5, 2, '#2a0f0f');
+	rect(ctx, left + 7, top + 1, 1, 2, PALETTE.r);
+	if (blink) rect(ctx, left + 1, top + 1, 1, 2, PALETTE.r);
 };
 
 export { rect };
