@@ -738,7 +738,8 @@ const sessionsRoutes = async (request, server) => {
 	// The game put back to before Claude's last turn, for whoever may drive
 	match = requestMatch('POST', '/api/sessions/:id/arcade/undo', request);
 	if (match) {
-		if (!may(identity, 'type', match.id)) return new Response('Putting it back takes the drive role', { status: 403 });
+		if (!may(identity, 'talk', match.id))
+			return new Response('Your invite does not include putting it back', { status: 403 });
 
 		const record = await sessionRecord(match.id);
 
@@ -770,7 +771,8 @@ const sessionsRoutes = async (request, server) => {
 
 	match = requestMatch('POST', '/api/sessions/:id/answer', request);
 	if (match) {
-		if (!may(identity, 'type', match.id)) return new Response('Answering takes the drive role', { status: 403 });
+		if (!may(identity, 'talk', match.id))
+			return new Response('Your invite does not include answering Claude', { status: 403 });
 
 		const session = runningSession(match.id);
 		const { question, key, text } = await request.json();
@@ -810,8 +812,8 @@ const sessionsRoutes = async (request, server) => {
 	// A prompt for a session, typed in once its prompt box is free (taken back up first if it isn't running)
 	match = requestMatch('POST', '/api/sessions/:id/prompt', request);
 	if (match) {
-		if (!may(identity, 'type', match.id))
-			return new Response('Sending to Claude takes the drive role', { status: 403 });
+		if (!may(identity, 'talk', match.id))
+			return new Response('Your invite does not include talking to Claude', { status: 403 });
 
 		const { text, hold } = await request.json();
 
@@ -837,8 +839,8 @@ const sessionsRoutes = async (request, server) => {
 	// A prompt taken back before it was typed in: not once Claude has it
 	match = requestMatch('DELETE', '/api/sessions/:id/prompt/:message', request);
 	if (match) {
-		if (!may(identity, 'type', match.id))
-			return new Response('Sending to Claude takes the drive role', { status: 403 });
+		if (!may(identity, 'talk', match.id))
+			return new Response('Your invite does not include talking to Claude', { status: 403 });
 
 		if (!(await cancelAsk(match.id, match.message))) return new Response('Claude has it already', { status: 409 });
 
@@ -904,8 +906,7 @@ const sessionsRoutes = async (request, server) => {
 	// with the arcade's rules and settings or without them
 	match = requestMatch('POST', '/api/sessions/:id/arcade', request);
 	if (match) {
-		if (!may(identity, 'type', match.id))
-			return new Response('Switching the arcade takes the drive role', { status: 403 });
+		if (!may(identity, 'type', match.id)) return new Response('Switching the arcade takes Pair', { status: 403 });
 		if (!(await sessionRecord(match.id))) return new Response('Session not found', { status: 404 });
 
 		const { on, reading } = await request.json().catch(() => ({}));
@@ -937,7 +938,8 @@ const sessionsRoutes = async (request, server) => {
 
 	match = requestMatch('POST', '/api/sessions/:id/continue', request);
 	if (match) {
-		if (!may(identity, 'type', match.id)) return new Response('Continuing takes the drive role', { status: 403 });
+		if (!may(identity, 'talk', match.id))
+			return new Response('Your invite does not include carrying on', { status: 403 });
 
 		const { when } = await request.json();
 
@@ -1147,6 +1149,25 @@ const sessionsRoutes = async (request, server) => {
 		if (!(await releaseArcade(cwd))) return new Response('A game paude made stays in the arcade', { status: 400 });
 
 		return new Response(null, { status: 204 });
+	}
+
+	// Who's in the session now: each page or terminal attached and each game reading its feed, under the name they go
+	// by, where from, their role and the invite they came in on (none for the owner), and which of them it's sized for
+	match = requestMatch('GET', '/api/sessions/:id/people', request);
+	if (match) {
+		const session = runningSession(match.id);
+		const here = session
+			? [...session.clients, ...session.readers.values()].map(client => ({
+					name: client.name,
+					device: client.label,
+					role: client.role,
+					reading: client.kind === 'feed',
+					driving: client === session.driver,
+					invite: (client.identity ?? client.socket?.data.identity)?.inviteId ?? null,
+				}))
+			: [];
+
+		return Response.json({ here });
 	}
 
 	match = requestMatch('GET', '/api/sessions/:id/attach', request);

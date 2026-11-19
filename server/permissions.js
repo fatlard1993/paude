@@ -71,8 +71,18 @@ export const guestMayRequest = (identity, method, pathname) => {
 	return sessionGuestMayRequest({ ...identity, sessionId }, method, pathname);
 };
 
+// Someone handed only what the session serves (Try it) reaches that and nothing else of it: its shares and the tasks
+// that serve them, read, and a ticket to frame one
+const outputGuestMayRequest = (own, method, pathname) =>
+	(method === 'GET' && ['/api/auth', own, `${own}/shares`, `${own}/tasks`].includes(pathname)) ||
+	(method === 'POST' && new RegExp(`^${own}/shares/[^/]+/frame$`).test(pathname)) ||
+	(method === 'POST' && pathname === '/api/logout') ||
+	(method === 'DELETE' && pathname === '/api/tokens/current');
+
 const sessionGuestMayRequest = (identity, method, pathname) => {
 	const own = `/api/sessions/${identity.sessionId}`;
+
+	if (!roleAllows(identity.role, 'screen')) return outputGuestMayRequest(own, method, pathname);
 
 	return (
 		(method === 'GET' &&

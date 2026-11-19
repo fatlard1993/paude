@@ -711,3 +711,36 @@ test('sessions page and search: every word has to match, and the header says how
 		'2',
 	);
 });
+
+test("the owner changes a session's invite in place, renews its link and sees who's here, through the session", async () => {
+	const owner = { token: tokens.owner };
+	const made = await (
+		await call(`/api/sessions/${session.id}/invites`, {
+			...owner,
+			method: 'POST',
+			body: { name: 'Ana', role: 'watch', hours: 1 },
+		})
+	).json();
+
+	const changed = await call(`/api/sessions/${session.id}/invites/${made.id}`, {
+		...owner,
+		method: 'PATCH',
+		body: { role: 'play' },
+	});
+
+	expect(changed.status).toBe(200);
+	expect(await changed.json()).toMatchObject({ role: 'play', view: 'arcade' });
+
+	const renewed = await (
+		await call(`/api/sessions/${session.id}/invites/${made.id}/link`, { ...owner, method: 'POST' })
+	).json();
+
+	expect(renewed.link).not.toContain(made.token);
+	// One session's path never reaches another's invite
+	expect((await call(`/api/sessions/${other.id}/invites/${made.id}`, { ...owner, method: 'DELETE' })).status).toBe(404);
+	expect((await call(`/api/sessions/${session.id}/people`, owner)).status).toBe(200);
+	expect((await call(`/api/sessions/${session.id}/people`, { token: tokens.comment })).status).toBe(403);
+	expect((await call(`/api/sessions/${session.id}/invites/${made.id}`, { ...owner, method: 'DELETE' })).status).toBe(
+		204,
+	);
+});

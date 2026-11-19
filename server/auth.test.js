@@ -26,6 +26,9 @@ import {
 	createHandoff,
 	redeemHandoff,
 	ensureLocalToken,
+	changeInvite,
+	listInvites,
+	renewInviteLink,
 } from './auth';
 import { guard } from './router/auth';
 
@@ -286,6 +289,41 @@ describe('invites', () => {
 		expect(guard(request({ cookie, url: 'http://paude.test/api/sessions/s1/attach' }))).toBeNull();
 		expect(guard(request({ cookie, url: 'http://paude.test/api/sessions/s2/attach' }))?.status).toBe(403);
 		expect(guard(request({ cookie, url: 'http://paude.test/api/projects' }))?.status).toBe(403);
+	});
+
+	test('an invite takes another role in place, and those who came in on it come back under it', async () => {
+		const { invite } = await createInvite({ sessionId: 's1', name: 'ana', role: 'watch', hours: 1 });
+		const cookie = await createLogin({ invite });
+
+		await changeInvite(invite.id, { role: 'play', hours: 24 * 7 });
+
+		expect(identityOf(credentialOf(request({ cookie })))).toMatchObject({ role: 'play', view: 'arcade' });
+		expect(listInvites('s1')[0]).toMatchObject({ role: 'play', seen: expect.any(Number) });
+		expect(listInvites('s1')[0].expires).toBeGreaterThan(Date.now() + 24 * 6 * 3_600_000);
+
+		await changeInvite(invite.id, { role: 'comment' });
+		expect(identityOf(credentialOf(request({ cookie })))).not.toHaveProperty('view');
+	});
+
+	test("a new link lets in where the old one doesn't, and keeps in whoever's already in", async () => {
+		const { invite, token } = await createInvite({ sessionId: 's1', name: 'ana', role: 'watch', hours: 1 });
+		const cookie = await createLogin({ invite });
+		const renewed = await renewInviteLink(invite.id);
+
+		expect(inviteFromToken(token)).toBeUndefined();
+		expect(inviteFromToken(renewed)?.id).toBe(invite.id);
+		expect(isAuthenticated(request({ cookie }))).toBe(true);
+	});
+
+	test('an invite to the arcade made as a Pair invite opening it is Play', async () => {
+		await createInvite({ sessionId: 's1', name: 'ana', role: 'drive', hours: 1, view: 'arcade' });
+		// Read back as written before Play, not as this server last wrote it
+		const file = path.join(dataDir, 'auth.json');
+
+		await Bun.write(file, `${await Bun.file(file).text()}\n`);
+		await initAuth(dataDir);
+
+		expect(listInvites('s1')[0]).toMatchObject({ role: 'play', view: 'arcade' });
 	});
 
 	test('a new password revokes every invite too', async () => {

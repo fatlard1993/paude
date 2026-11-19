@@ -235,7 +235,7 @@ const artifacts = async (request, match) => {
 	});
 };
 
-// Reading a session's project needs at least the comment role; watchers see only the terminal
+// Reading a session's project takes Review or more; Look in sees only the terminal
 // A guided tour of code, for anyone who may read the project: { file: { path, from, to, focus } } for a file, some of
 // its lines, or one function or class in it; { diff: source } for any diff the files panel shows
 const tour = async (request, match) => {

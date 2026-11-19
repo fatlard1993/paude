@@ -12,6 +12,21 @@ describe('may', () => {
 		expect([may(guest('drive'), 'note', 's1'), may(guest('drive'), 'type', 's1')]).toEqual([true, true]);
 	});
 
+	test('Play talks to Claude without acting in the session, and Try it only sees what it serves', () => {
+		expect(['talk', 'type', 'files', 'screen'].map(action => may(guest('play'), action, 's1'))).toEqual([
+			true,
+			false,
+			false,
+			true,
+		]);
+		expect(['output', 'screen', 'talk', 'note'].map(action => may(guest('try'), action, 's1'))).toEqual([
+			true,
+			false,
+			false,
+			false,
+		]);
+	});
+
 	test('a guest has no say in any other session; the owner has it in all', () => {
 		expect(may(guest('drive'), 'type', 's2')).toBe(false);
 		expect(may(owner, 'type', 's2')).toBe(true);
@@ -53,8 +68,20 @@ describe('guestMayRequest', () => {
 		expect(guestMayRequest(ana, 'POST', '/api/invites')).toBe(false);
 	});
 
+	test('one handed only what the session serves reaches its shares and nothing else of it', () => {
+		const ana = guest('try');
+
+		expect(guestMayRequest(ana, 'GET', '/api/sessions/s1/shares')).toBe(true);
+		expect(guestMayRequest(ana, 'POST', '/api/sessions/s1/shares/app/frame')).toBe(true);
+		expect(guestMayRequest(ana, 'GET', '/api/sessions/s1/tasks')).toBe(true);
+		expect(guestMayRequest(ana, 'GET', '/api/sessions/s1/attach')).toBe(false);
+		expect(guestMayRequest(ana, 'GET', '/api/universe')).toBe(false);
+		expect(guestMayRequest(ana, 'GET', '/api/sessions/s1/feed')).toBe(false);
+		expect(guestMayRequest(ana, 'POST', '/api/sessions/s2/shares/app/frame')).toBe(false);
+	});
+
 	test("plays the lounge's games, and doesn't manage them", () => {
-		const ana = guest('view');
+		const ana = guest('watch');
 
 		expect(guestMayRequest(ana, 'GET', '/api/cabinets/humanity/play')).toBe(true);
 		expect(guestMayRequest(ana, 'GET', '/api/cabinets/humanity/icon')).toBe(true);

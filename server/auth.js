@@ -48,6 +48,9 @@ const load = async () => {
 	state = { ...structuredClone(EMPTY), ...JSON.parse(text) };
 	state.logins = state.logins.filter(login => login.expires > Date.now());
 	state.invites = state.invites.filter(invite => invite.expires > Date.now());
+	// An invite to the arcade was once a Pair invite opening the arcade page; it's Play now, which is that page alone
+	for (const invite of state.invites)
+		if (!invite.maker && invite.view === 'arcade' && invite.role === 'drive') invite.role = 'play';
 };
 
 // The server watches the file so a password set from the command line (scripts/set-password.js) takes effect,
@@ -142,6 +145,16 @@ export const checkPassword = async (request, password) => {
 
 const liveInvite = id => state.invites.find(invite => invite.id === id && invite.expires > Date.now());
 
+// When a guest last came in, by any request of theirs: kept on their invite, written out at most this often
+const SEEN_SAVED_MS = 5 * 60_000;
+
+const noteSeen = invite => {
+	const before = invite.seen ?? 0;
+
+	invite.seen = Date.now();
+	if (invite.seen - before > SEEN_SAVED_MS) save().catch(() => {});
+};
+
 // A guest's login lasts as long as the invite it came from
 // One invite link opened many times can't grow the stored logins without end: past this, its oldest go
 const MAX_PER_INVITE = 20;
@@ -226,7 +239,10 @@ export const identityOf = credential => {
 	if (!record) return null;
 	if (!record.invite) return { owner: true, ...(record.local && { local: true }) };
 
-	const { id, name, role, sessionId, view, maker } = liveInvite(record.invite);
+	const invite = liveInvite(record.invite);
+	const { id, name, role, sessionId, view, maker } = invite;
+
+	noteSeen(invite);
 
 	if (maker)
 		return {
@@ -355,7 +371,47 @@ export const inviteFromToken = token =>
 export const listInvites = sessionId =>
 	state.invites
 		.filter(invite => invite.sessionId === sessionId && invite.expires > Date.now())
-		.map(({ id, name, role, expires, view }) => ({ id, name, role, expires, ...(view && { view }) }));
+		.map(({ id, name, role, created, expires, seen, view }) => ({
+			id,
+			name,
+			role,
+			created,
+			expires,
+			seen: seen ?? null,
+			...(view && { view }),
+		}));
+
+// A session's invite given another role or a new expiry, `hours` from now; null when it's gone
+export const changeInvite = async (id, { role, hours }) => {
+	const invite = liveInvite(id);
+
+	if (!invite || invite.maker) return null;
+	if (role !== undefined) {
+		invite.role = role;
+		// Play is the arcade's page; any other role opens the session's own
+		if (role === 'play') invite.view = 'arcade';
+		else delete invite.view;
+	}
+	if (hours !== undefined) invite.expires = Date.now() + hours * 60 * 60 * 1000;
+	await save();
+
+	return invite;
+};
+
+// A new link for an invite, for someone who lost theirs: the old link stops working, and whoever already came in
+// through it stays in
+export const renewInviteLink = async id => {
+	const invite = liveInvite(id);
+
+	if (!invite) return null;
+
+	const token = randomToken();
+
+	invite.hash = digest(token);
+	await save();
+
+	return token;
+};
 
 export const revokeInvite = async id => {
 	const before = state.invites.length;

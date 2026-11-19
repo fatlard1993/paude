@@ -8,6 +8,7 @@ import { blobOf, hasObject, headCommit, inRepository, keepFile } from '../git';
 import { addChat, addComment, addReply, cleanAnchor, deleteComment, getNotes, react, setResolved } from '../notes';
 import { may, mayManage } from '../permissions';
 import { ownerName } from '../serverSettings';
+import { roleName } from '../../shared/roles';
 import { CLOSED } from '../../shared/protocol';
 import { allRunning, runningSession } from './running';
 
@@ -20,10 +21,7 @@ const refuse = socket => {
 	socket.send(
 		JSON.stringify({
 			type: 'notice',
-			text:
-				socket.data.identity?.role === 'comment'
-					? 'Your invite lets you chat and comment, not type into Claude.'
-					: 'Your invite is watch-only.',
+			text: `Your invite, ${roleName(socket.data.identity?.role)}, doesn't include that.`,
 		}),
 	);
 };
@@ -311,4 +309,11 @@ export const sweepCredentials = () => {
 			if (!credentialValid(socket.data.credential)) socket.close(CLOSED.unauthorized, 'Login ended');
 		}
 	}
+};
+
+// Whoever came in on an invite, made to come in again: their pages reload and take up what it now allows
+export const signInAgain = inviteId => {
+	for (const session of allRunning())
+		for (const { socket } of session.clients)
+			if (socket.data.identity?.inviteId === inviteId) socket.close(CLOSED.unauthorized, 'Invite changed');
 };

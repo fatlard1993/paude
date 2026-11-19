@@ -22,10 +22,13 @@ import {
 	revokeInvite,
 	revokeToken,
 	setPassword,
+	changeInvite,
+	renewInviteLink,
 } from '../auth';
 import { READING } from '../../shared/arcade';
 import { ROLES, guestMayRequest } from '../permissions';
 import { publicOrigin } from '../publicOrigin';
+import { signInAgain } from '../sessions/attachSocket';
 
 const OPEN_ROUTES = new Set(['/api/auth', '/api/login', '/api/tokens', '/api/join', '/api/handoff/redeem']);
 // An hour, a day, a week, a month, a year: the last for someone's own machine, revoked from the People tab like any
@@ -173,14 +176,22 @@ const authRoutes = async request => {
 		if (view !== undefined && !INVITE_VIEWS.includes(view))
 			return new Response(`The page must be one of ${INVITE_VIEWS.join(', ')}`, { status: 400 });
 
-		const { invite, token } = await createInvite({ sessionId: match.id, name: cleanName, role, hours, view });
+		// An older page asks for the arcade as a page on a Pair invite: that's Play
+		const given = view === 'arcade' && role === 'drive' ? 'play' : role;
+		const { invite, token } = await createInvite({
+			sessionId: match.id,
+			name: cleanName,
+			role: given,
+			hours,
+			view: given === 'play' ? 'arcade' : view,
+		});
 
 		// The link carries the server's public address, not this tab's: an invite made from a .local tab has to open from
 		// wherever the guest is
 		return Response.json({
 			id: invite.id,
 			name: invite.name,
-			role,
+			role: given,
 			expires: invite.expires,
 			token,
 			link: `${publicOrigin(request, await serverSettings())}/#/join/${token}`,
@@ -210,6 +221,44 @@ const authRoutes = async request => {
 		});
 	}
 
+	// One of a session's invites, by a path under the session so another paude's is reached through this one: given
+	// another role or a new expiry (whoever came in on it signed in again under it at once), a new link, or revoked
+	match = requestMatch('PATCH', '/api/sessions/:session/invites/:id', request);
+	if (match && !listInvites(match.session).some(({ id }) => id === match.id))
+		return new Response('No such invite', { status: 404 });
+	if (match) {
+		const { role, hours } = await request.json();
+
+		if (role !== undefined && !ROLES.includes(role))
+			return new Response(`Role must be one of ${ROLES.join(', ')}`, { status: 400 });
+		if (hours !== undefined && !INVITE_HOURS.includes(hours))
+			return new Response(`Expiry must be ${INVITE_HOURS.join(', ')} hours`, { status: 400 });
+
+		const invite = await changeInvite(match.id, { role, hours });
+
+		if (!invite) return new Response('No such invite', { status: 404 });
+		if (role !== undefined) signInAgain(match.id);
+
+		return Response.json(listInvites(invite.sessionId).find(({ id }) => id === invite.id));
+	}
+
+	match = requestMatch('POST', '/api/sessions/:session/invites/:id/link', request);
+	if (match && !listInvites(match.session).some(({ id }) => id === match.id))
+		return new Response('No such invite', { status: 404 });
+	if (match) {
+		const token = await renewInviteLink(match.id);
+
+		if (!token) return new Response('No such invite', { status: 404 });
+
+		return Response.json({ link: `${publicOrigin(request, await serverSettings())}/#/join/${token}` });
+	}
+
+	match = requestMatch('DELETE', '/api/sessions/:session/invites/:id', request);
+	if (match && !listInvites(match.session).some(({ id }) => id === match.id))
+		return new Response('No such invite', { status: 404 });
+	if (match) return new Response(null, { status: (await revokeInvite(match.id)) ? 204 : 404 });
+
+	// The same, from a page older than the path above
 	match = requestMatch('DELETE', '/api/invites/:id', request);
 	if (match) return new Response(null, { status: (await revokeInvite(match.id)) ? 204 : 404 });
 

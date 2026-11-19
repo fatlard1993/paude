@@ -18,7 +18,7 @@ import { placeFolder, placeMark, placeMatch, placeMissing } from './place';
 // The Tasks panel: what's there and what's running is reading the project ('files'); starting or stopping anything,
 // or choosing what runs after each turn, is as much a write as typing into Claude ('type')
 const ROUTES = [
-	['GET', '/tasks', 'files'],
+	['GET', '/tasks', 'output'],
 	['GET', '/tasks/runs/:run', 'files'],
 	['POST', '/tasks/run', 'type'],
 	['POST', '/tasks/runs/:run/stop', 'type'],
