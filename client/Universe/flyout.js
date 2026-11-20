@@ -113,6 +113,8 @@ export const ROOMS = {
 	hold: ship =>
 		`a pod for each repository a session works in or your watched projects haven't shipped, its changes and commits not pushed: ${plural(ship.cargo.length, 'repo')}`,
 	hangar: () => 'pushes leaving, and pull requests waiting for review',
+	uplinks: ship =>
+		`a rack for each MCP server Claude has reached, its antenna on the hull over it: ${plural(ship.layout.uplinks?.racks.length ?? 0, 'server')}`,
 	transporter: ship =>
 		ship.fleet.length
 			? `beams you to the ship of another subscription: ${ship.fleet.map(({ name }) => name).join(', ')}`

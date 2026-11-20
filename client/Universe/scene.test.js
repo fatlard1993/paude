@@ -388,6 +388,26 @@ test("a machine's appliances: Claude at its core, then what it can reach, at wor
 	expect(appliances.find(({ key }) => key === 'dish')).toMatchObject({ active: false, uses: 0, load: 0 });
 });
 
+test("each MCP server a ship's engines have reached gets a rack in the bank, a session using one fed from its own rack, not the web", () => {
+	const made = shipWith([
+		{
+			...answer('here', [session({ tool: 'mcp__github__search' })], { projects: ['paude'] }),
+			tools: ['Read', 'WebFetch', 'mcp__sentry__issues', 'mcp__github__search'],
+		},
+	]);
+	const bank = made.layout.uplinks;
+
+	expect(bank.racks.map(({ key }) => key)).toEqual(['mcp:github', 'mcp:sentry']);
+
+	const rack = made.rackRoom('mcp:github', 'here');
+	const { feed, outlet } = made.throughSystem(rack);
+	const at = made.art(bank.racks[0]);
+
+	expect(outlet).toEqual({ x: at.x, y: at.y + 2 });
+	expect(feed.at(-1).x).toBe(at.x);
+	expect(made.rackRoom('mcp:nowhere', 'here')).toBeUndefined();
+});
+
 test('a new session is made in the materializer and walks to its desk; one stopped walks to the lounge, and back once woken', () => {
 	const answers = (sessions, people = []) => [answer('here', sessions, { projects: ['paude', 'site'], people })];
 	const made = shipWith(answers([session()]));

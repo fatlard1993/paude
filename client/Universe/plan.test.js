@@ -127,3 +127,36 @@ test('the hold stacks its pods in tiers, four abreast, rather than running on al
 	expect(spots[4].y).toBeLessThan(spots[0].y);
 	spots.forEach(({ y }) => expect(y).toBeGreaterThan(seven.hold.y));
 });
+
+test("the MCP servers' bank is a column of the engine bay's own, wider for more servers rather than crowded, every rack inside it", () => {
+	const engines = [{ key: 'local', name: 'local' }];
+	const servers = count => Array.from({ length: count }, (_, index) => `mcp:server${index}`);
+	const without = layOut({ engines });
+
+	expect(without.uplinks).toBeUndefined();
+
+	const banks = [1, 5, 12, 30].map(count => layOut({ engines, uplinks: servers(count) }));
+
+	for (const [nth, { uplinks: bank, engineering, systems }] of banks.entries()) {
+		// Between the systems and the trunk, in the engine bay, which grows by its width
+		expect(bank.x).toBeGreaterThanOrEqual(Math.max(...Object.values(systems).map(({ x, w }) => x + w)) - 1e-9);
+		expect(bank.x + bank.w).toBeLessThan(engineering.x + engineering.w);
+		expect(engineering.w).toBeCloseTo(without.engineering.w + bank.w);
+		// A rack for each server, each clear of the bank's sides and floor, none on another
+		expect(bank.racks.map(({ key }) => key)).toEqual(servers([1, 5, 12, 30][nth]));
+		for (const rack of bank.racks) {
+			expect(rack.x - 0.25).toBeGreaterThan(bank.x);
+			expect(rack.x + 0.25).toBeLessThan(bank.x + bank.w);
+			expect(rack.y).toBeLessThan(bank.y + bank.d);
+		}
+		expect(new Set(bank.racks.map(({ x, y }) => `${x.toFixed(2)},${y.toFixed(2)}`)).size).toBe(bank.racks.length);
+	}
+	// More servers, a wider bank, never a deeper ship
+	const widths = banks.map(({ uplinks }) => uplinks.w);
+
+	expect(widths).toEqual([...widths].sort((a, b) => a - b));
+	expect(widths.at(-1)).toBeGreaterThan(widths[0]);
+	expect(banks.at(-1).building.bottom - banks.at(-1).building.top).toBeCloseTo(
+		without.building.bottom - without.building.top,
+	);
+});

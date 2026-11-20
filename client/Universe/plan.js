@@ -25,6 +25,12 @@ const SYSTEM = { w: 2.6, d: FACE + 2.3 };
 // Room left between the systems and the bay's inner wall for the channel their streams leave by
 const TRUNK_W = 0.4;
 const ENGINE_BAY_W = ENGINEERING_W + SYSTEM.w + TRUNK_W;
+// The uplink bank, between the systems and the trunk: a rack for each MCP server, in rows down the bay from its back
+// wall and as many columns of them as the bay's least depth needs, so a ship that reaches many servers has a wider bank,
+// never a crowded one; its antennas over it on the hull, as wide as it is
+const RACK = { across: 0.6, row: 2.4, top: FACE + 1.7, margin: 0.25 };
+const rackRows = depth => Math.max(1, Math.floor((depth - RACK.top) / RACK.row) + 1);
+const uplinkWidth = (count, depth) => (count ? Math.ceil(count / rackRows(depth)) * RACK.across + RACK.margin * 2 : 0);
 // One engine's systems full size in a column down the bay; more engines' compact, half as wide and shallower, two over
 // two beside each reactor, so the bay keeps one engine's width and the hull its depth for up to four engines (the
 // ship's zoom steps by whole numbers, so a little more length can halve it)
@@ -583,6 +589,8 @@ export const layOut = ({
 	brief = {},
 	// The machine's own sessions, in no project: on their own spot, wired straight to the reactors
 	home = [],
+	// The MCP servers the engines have reached, by key: a rack each in the uplink bank
+	uplinks = [],
 	fleet = 0,
 	terminals = fleet,
 	kept,
@@ -625,11 +633,12 @@ export const layOut = ({
 	const compact = engineCount > 1;
 	const unit = compact ? COMPACT : SYSTEM;
 	const across = compact ? 2 : 1;
-	const bayW = ENGINE_BAY_W;
 	const need = Math.max(
 		FACE + 0.6 + engineCount * PER_REACTOR,
 		Math.max(SYSTEMS.length * SYSTEM.d, ((engineCount * SYSTEMS.length) / across) * unit.d) + 0.4,
 	);
+	const uplinkW = uplinkWidth(uplinks.length, need);
+	const bayW = ENGINE_BAY_W + uplinkW;
 	// The bottom deck deeper by the hold's tiers
 	const rise = holdRise(checkouts);
 	const extraDepthOf = (levels, hall) => Math.max(0, need - levels * (depth.top + hall + depth.bottom) - rise) / levels;
@@ -948,6 +957,30 @@ export const layOut = ({
 			});
 		});
 	});
+	if (uplinks.length) {
+		const x = left + ENGINEERING_W + SYSTEM.w;
+		const columns = Math.ceil(uplinks.length / rackRows(need));
+
+		rooms.push({
+			kind: 'uplinks',
+			name: 'MCP servers',
+			x,
+			y: top,
+			w: uplinkW,
+			d: total,
+			face: FACE,
+			door: { x: x + uplinkW / 2, y: top + total, side: 'bottom', lane },
+			hull: { top: true, bottom: true },
+			joined: { left: true, right: true },
+			within: engineering,
+			props: [],
+			racks: uplinks.map((key, index) => ({
+				key,
+				x: x + RACK.margin + ((index % columns) + 0.5) * RACK.across,
+				y: top + RACK.top + Math.floor(index / columns) * RACK.row,
+			})),
+		});
+	}
 	bridge.islands = islands;
 	// Every short-lived spot, and the machine's own among them (`floor`)
 	bridge.spots = spots;
@@ -977,6 +1010,7 @@ export const layOut = ({
 		transporter: kind('transporter'),
 		hold: kind('hold'),
 		hangar: kind('hangar'),
+		uplinks: kind('uplinks'),
 		rooms: [engineering, ...rooms, bridge],
 		halls: spines.map(spine => ({
 			x: middle,

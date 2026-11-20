@@ -30,6 +30,8 @@ import {
 	drawMaterializer,
 	drawSystem,
 	drawTransporter,
+	drawUplinks,
+	RACK_TALL,
 	drawHullCover,
 	drawShuttle,
 	shuttleAt,
@@ -41,6 +43,7 @@ import {
 import {
 	BRIEF_SIT,
 	BRIEF_W,
+	busAt,
 	standingOf,
 	walkwayOf,
 	airlockAt,
@@ -375,7 +378,7 @@ const SUIT_STEPS = ['StepLeftLow', 'StepLeft', 'StepLeftLow', 'StepRightLow', 'S
 // An island's hit sorts after every figure on it and before the rooms round it
 const ISLAND_HIT = 1e6;
 // Where each kind of stream runs from, in the order their packets are spaced along a shared conduit
-const STREAM_LANES = ['library', 'forge', 'reactor', 'dish', 'tower', 'outpost'];
+const STREAM_LANES = ['library', 'forge', 'reactor', 'dish', 'uplink', 'tower', 'outpost'];
 // How long a deleted session takes to crumble to dust under the emitter's beam
 const VAPOR_SECONDS = 1.6;
 // A heap of ash where a deleted session crumbled: how long it lies before the tube's nozzle comes down for it, takes
@@ -1571,6 +1574,7 @@ export default class Ship {
 				bays: this.bays.map(bay => ({ ...bay, seated: bay.sessions.length })),
 				home: this.home,
 				engines: engines.filter(({ quiet }) => !quiet),
+				uplinks: [...this.systems.keys()].filter(key => key.startsWith('mcp:')).sort(),
 				lounge: {
 					count: Math.max(lounging.length, this.couchesHeld() * 2 - 1),
 					sessions: lounging,
@@ -2949,14 +2953,20 @@ export default class Ship {
 		const working = key => this.workers.get(key)?.session.status === 'working';
 		const running = this.bays.some(bay => bay.sessions.some(working));
 		const sessions = this.sessions;
-		const masts = [...this.systems.values()]
-			.filter(({ key }) => key.startsWith('mcp:'))
-			.map(system => ({
-				...system,
-				color: hsl(system.hue, 75, 64),
-				dim: hsl(system.hue, 20, 28),
-				faulty: system.failures > 0,
-			}));
+		const bank = this.layout.uplinks;
+		const racks = (bank?.racks ?? []).map(rack => {
+			const system = this.systems.get(rack.key);
+
+			return {
+				...rack,
+				system,
+				active: Boolean(system?.active),
+				load: system?.load ?? 0,
+				color: hsl(accentOf(rack.key), 75, 64),
+				dim: hsl(accentOf(rack.key), 35, 40),
+				faulty: (system?.failures ?? 0) > 0,
+			};
+		});
 		this.labels = [];
 		drawHull(ctx, this.layout, {
 			time: this.time,
@@ -2980,15 +2990,22 @@ export default class Ship {
 			comms: {
 				active: Boolean(this.systems.get('dish')?.active),
 				hue: hsl(accentOf('dish'), 75, 64),
-				masts,
 			},
+			uplinks: bank && { room: bank, racks },
 			bayDoors: this.bayDoors,
 			sections: this.sectionsOfHull(),
 			// The plumes as long as the stars are fast
 			pace: 1 + ((this.pace - 1) * 3) / (STAR_PACE.most - 1),
 		});
-		for (const mast of masts)
-			if (mast.at) this.hits.push({ ...this.toScreen(mast.at), r: 6 * this.camera.zoom, kind: 'system', system: mast });
+		// Each server by its rack's middle and its antenna's head
+		for (const { system, mast, ...rack } of racks) {
+			if (!system) continue;
+
+			const foot = this.art(rack);
+
+			for (const [at, r] of [[{ x: foot.x, y: foot.y - RACK_TALL / 2 }, 6], ...(mast ? [[mast, 4]] : [])])
+				this.hits.push({ ...this.toScreen(at), r: r * this.camera.zoom, kind: 'system', system });
+		}
 		this.tanks.forEach((tank, index) => {
 			tank.at = { ...this.tankAt(index), y: this.tankAt(index).y - 10 };
 			this.hits.push({ ...this.toScreen(tank.at), r: 9 * this.camera.zoom, kind: 'fuel', tank });
@@ -3092,10 +3109,11 @@ export default class Ship {
 			standing.push(
 				...drawSystem(ctx, art, label, room, {
 					time: this.time,
-					system: { ...system, hue: accentOf(room.key), masts: room.key === 'dish' ? masts : undefined },
+					system: { ...system, hue: accentOf(room.key) },
 				}),
 			);
 		}
+		if (bank) standing.push(...drawUplinks(ctx, art, label, bank, { time: this.time, racks }));
 		if (this.layout.materializer)
 			standing.push(
 				...drawMaterializer(ctx, art, label, this.layout.materializer, {
@@ -4639,8 +4657,11 @@ export default class Ship {
 			if (!seat || !stream) continue;
 
 			const { facility, fade } = stream;
-			const key = facility.startsWith('mcp:') ? 'dish' : facility;
-			const room = sourceOf(key, worker.session.engine.key);
+			const key = facility.startsWith('mcp:') ? 'uplink' : facility;
+			const room =
+				key === 'uplink'
+					? this.rackRoom(facility, worker.session.engine.key)
+					: sourceOf(key, worker.session.engine.key);
 
 			if (!room) continue;
 
@@ -4656,7 +4677,7 @@ export default class Ship {
 			const cable = !home && this.cables?.get(this.bayOf(worker)?.name);
 			const conduit = room.within?.kind === 'engineering' && cable;
 			// Routed again only when where it runs from or to moves
-			const inputs = [this.layout, seat, worker.room, key, conduit, cable, dataline];
+			const inputs = [this.layout, seat, worker.room, facility, conduit, cable, dataline];
 			const last = this.streamPaths.get(worker);
 			const fromReactor = dataline && room.kind === 'system' && room.within?.kind === 'engineering';
 			const route = () =>
@@ -4700,7 +4721,10 @@ export default class Ship {
 
 		if (this.trunkOf?.layout === this.layout) return this.trunkOf;
 
-		const rooms = Object.values(systems);
+		const rooms = [
+			...Object.values(systems),
+			...(this.layout.uplinks ? [{ ...this.layout.uplinks, key: 'uplink' }] : []),
+		];
 		const right = this.art({ x: engineering.x + engineering.w, y: 0 }).x;
 		const left = rooms.length ? Math.max(...rooms.map(room => this.art({ x: room.x + room.w, y: 0 }).x)) : right - 8;
 		const nths = [...new Set(rooms.map(({ key }) => STREAM_LANES.indexOf(key)).filter(nth => nth >= 0))].sort(
@@ -4847,8 +4871,44 @@ export default class Ship {
 	// A stream's way through its engine's tech, in art pixels: from the reactor's side out along its bus, up or down the bus
 	// to the system's main, along it and down its drop into the unit (`feed`), and out at the unit's foot (`outlet`),
 	// which lights up between
+	// An MCP server's rack in the uplink bank, as a stream from `engine` runs from it: a unit of the engine bay's as
+	// the systems are, fed by that engine
+	rackRoom(key, engine) {
+		const bank = this.layout.uplinks;
+		const rack = bank?.racks.find(rack => rack.key === key);
+
+		return rack && { kind: 'system', key: 'uplink', rack, engine, within: bank.within, door: bank.door, y: bank.y };
+	}
+
+	// A stream's way to a rack: out along its engine's bus as a system's, up the bus to the tray along the bay's back
+	// wall, along it over the bank and down the gap beside the rack's column to its top; out at its foot
+	throughRack(room, engine) {
+		const at = this.art(room.rack);
+		const tray = this.art({ x: 0, y: room.within.y + room.within.face }).y + 3;
+		const across = this.art({ x: busAt(room.within), y: 0 }).x;
+		const reactor = engine ? this.art(engine.reactor) : null;
+		const core = reactor ? reactor.y - 11 : tray;
+		const [beside, top] = [at.x + 6, at.y - RACK_TALL - 2];
+
+		return {
+			feed: [
+				...(reactor ? [{ x: reactor.x + REACTOR_SIDE, y: core }] : []),
+				{ x: across, y: core },
+				{ x: across, y: tray },
+				{ x: beside, y: tray },
+				{ x: beside, y: top },
+				{ x: at.x, y: top },
+				{ x: at.x, y: top + 2 },
+			],
+			outlet: { x: at.x, y: at.y + 2 },
+		};
+	}
+
 	throughSystem(room) {
 		const engine = this.engines.find(({ key }) => key === room.engine);
+
+		if (room.rack) return this.throughRack(room, engine);
+
 		const at = this.art(systemFootOf(room));
 		const main = this.art({ x: 0, y: room.y }).y + 7;
 		const across = this.art({ x: room.feed ?? room.x, y: 0 }).x;
@@ -4994,9 +5054,12 @@ export default class Ship {
 
 			if (!stream) continue;
 
-			const facility = stream.facility.startsWith('mcp:') ? 'dish' : stream.facility;
+			const { facility } = stream;
+			const fedFrom = facility.startsWith('mcp:')
+				? this.rackRoom(facility, worker.session.engine.key)
+				: this.layout.systems[`${worker.session.engine.key}/${facility}`];
 
-			if (!this.layout.systems[`${worker.session.engine.key}/${facility}`]?.within) continue;
+			if (!fedFrom?.within) continue;
 
 			const name = this.bayOf(worker)?.name;
 			const color = hsl(accentOf(facility), 85, 68);

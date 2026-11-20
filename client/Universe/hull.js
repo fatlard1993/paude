@@ -840,12 +840,13 @@ const drawBayDoor = (ctx, { left, right, top, open, time, hue }) => {
 	for (const x of [left - 2, right]) rect(ctx, x, top + Math.floor(deep / 2) - 1, 2, 2, lamp);
 };
 
-// The hull and what's on it: the engines, a fuel tank for each account, each project's section, the comms dish and
-// masts, the hangar's doors, running lights; its plating, its fins' stripes and its canopy in the ship's color (`hue`)
+// The hull and what's on it: the engines, a fuel tank for each account, each project's section, the comms dish, the
+// MCP servers' antennas, the hangar's doors, running lights; its plating, its fins' stripes and its canopy in the
+// ship's color (`hue`)
 export const drawHull = (
 	ctx,
 	layout,
-	{ time, engines = [], comms, bayDoors = {}, sections = [], pace = 1, drift = 0, hue = 200 },
+	{ time, engines = [], comms, uplinks, bayDoors = {}, sections = [], pace = 1, drift = 0, hue = 200 },
 ) => {
 	const image = hullImage(layout.building, hue);
 	const { shape } = image;
@@ -938,21 +939,9 @@ export const drawHull = (
 				}
 				ctx.globalAlpha = 1;
 			}
-		comms.masts.forEach((mast, index) => {
-			const x = Math.round((room.x + 1.7 + index * 0.45) * UNIT.x);
-			const tall = 12 + (index % 2) * 5;
-
-			rect(ctx, x - 1, base - tall, 3, tall, PALETTE.k);
-			rect(ctx, x, base - tall + 1, 1, tall - 1, PALETTE.l);
-			rect(ctx, x - 2, base - tall + 4, 5, 1, PALETTE.m);
-			rect(ctx, x - 1, base - tall - 3, 3, 3, mast.active ? mast.color : mast.dim);
-			if (mast.faulty && Math.floor(time * 3) % 2) rect(ctx, x + 2, base - tall + 2, 1, 1, PALETTE.r);
-			if (mast.active)
-				for (let beam = base - tall - 6 - (Math.floor(time * 18) % 5); beam > base - tall - 70; beam -= 5)
-					rect(ctx, x, beam, 1, 3, mast.color);
-			mast.at = { x, y: base - tall - 2 };
-		});
 	}
+
+	if (uplinks) drawAntennas(ctx, uplinks, { base: shape.top, time });
 
 	for (let x = shape.left + 14; x < shape.right; x += 26) {
 		const on = (Math.floor(time * 2) + x / 26) % 4 < 1;
@@ -1247,7 +1236,7 @@ const SYSTEM_ART = {
 		box(ctx, at.x - 14, at.y - 4, 29, 5, PALETTE.l);
 	},
 	// Comms: a transceiver rack, its trunk up to the dish on the hull, its link lights running while the web is reached
-	dish: (ctx, at, { active, accent, time, masts = [] }) => {
+	dish: (ctx, at, { active, accent, time }) => {
 		rect(ctx, at.x - 2, at.y - 38, 3, 10, PALETTE.k);
 		rect(ctx, at.x - 1, at.y - 38, 1, 10, active ? accent : PALETTE.m);
 		box(ctx, at.x - 9, at.y - 30, 19, 22, PALETTE.m);
@@ -1263,22 +1252,6 @@ const SYSTEM_ART = {
 					active && Math.floor(time * 8 + row * 3 + led * 7) % 5 < 2 ? accent : PALETTE.d,
 				);
 		box(ctx, at.x - 16, at.y - 8, 33, 8, PALETTE.l);
-		masts.forEach((mast, index) => {
-			const x = at.x + 22 + index * 7;
-
-			box(ctx, x, at.y - 24, 6, 24, PALETTE.d);
-			rect(ctx, x + 1, at.y - 22, 4, 3, mast.active ? mast.color : mast.dim);
-			for (let row = 0; row < 4; row++)
-				rect(
-					ctx,
-					x + 2,
-					at.y - 16 + row * 4,
-					2,
-					1,
-					mast.active && Math.floor(time * 5 + row) % 2 ? mast.color : PALETTE.m,
-				);
-			if (mast.faulty && Math.floor(time * 3) % 2) rect(ctx, x + 4, at.y - 2, 1, 1, PALETTE.r);
-		});
 	},
 	// The fabricator: a press stamping each edit onto a glowing bed
 	forge: (ctx, at, { active, accent, time }) => {
@@ -1520,12 +1493,112 @@ export const drawSystem = (ctx, art, label, room, { time, system }) => {
 					return;
 				}
 				mount(ctx, art, room, at, { active: system.active, accent, time });
-				SYSTEM_ART[room.key](ctx, at, { active: system.active, accent, time, masts: system.masts });
+				SYSTEM_ART[room.key](ctx, at, { active: system.active, accent, time });
 				usagePanel(ctx, art(panelAt(room)), { ...system, faulty: system.failures > 0, time });
 			},
 		},
 		...stockParts(ctx, art, room, { ...system, key: room.key, accent }),
 	];
+};
+
+// How tall an MCP server's rack stands from its foot, in art pixels
+export const RACK_TALL = 24;
+// The bank's raised floor, a little bluer than the bay's grating
+const BANK_FLOOR = { base: '#0a0e18', alt: '#131c2c' };
+
+// One MCP server's rack, `at` its foot: a cabinet capped in the server's color, its blades' lamps chattering while it's
+// used, its load along its plinth and a lamp blinking red once a use has failed
+const drawRack = (ctx, at, { active, load, color, dim, faulty }, time) => {
+	const top = at.y - RACK_TALL;
+
+	rect(ctx, at.x - 5, at.y, 11, 2, PALETTE.k);
+	rect(ctx, at.x - 4, at.y, Math.round(9 * load), 1, color);
+	box(ctx, at.x - 4, top, 9, RACK_TALL, PALETTE.m);
+	rect(ctx, at.x - 3, top + 1, 1, RACK_TALL - 2, PALETTE.l);
+	rect(ctx, at.x - 2, top + 1, 6, 2, active ? color : dim);
+	rect(ctx, at.x - 2, top + 4, 6, RACK_TALL - 6, '#0b1016');
+	for (let blade = 0; blade < 6; blade++) {
+		rect(ctx, at.x - 2, top + 6 + blade * 3, 6, 1, '#151d29');
+		for (let lamp = 0; lamp < 2; lamp++)
+			rect(
+				ctx,
+				at.x - 1 + lamp * 3,
+				top + 5 + blade * 3,
+				1,
+				1,
+				active && seededLamp(blade, lamp + at.x, Math.floor(time * 7)) ? color : PALETTE.m,
+			);
+	}
+	if (faulty && Math.floor(time * 3) % 2) rect(ctx, at.x + 3, at.y - 2, 1, 1, PALETTE.r);
+};
+
+// The MCP servers' bank in the engine bay: its raised floor, a cable tray along its back wall where the antennas'
+// feeds go up through the hull, a riser down beside each column of racks, and the racks in rows, each `racks` with its
+// server's state
+export const drawUplinks = (ctx, art, label, room, { time, racks }) => {
+	const below = room.y + room.face;
+
+	floor(ctx, art, { ...room, y: below, d: room.d - room.face }, BANK_FLOOR);
+
+	const [from, to] = corners(art, room);
+	const deck = art({ x: 0, y: below }).y;
+	const tray = deck + 3;
+	const columns = [...new Set(racks.map(rack => Math.round(art(rack).x)))];
+
+	return [
+		...walls(ctx, art, label, room, { name: 'MCP', color: ink(290, 55, 78) }),
+		{
+			y: below,
+			draw: () => {
+				for (const x of [from.x, to.x - 1]) rect(ctx, x, deck, 1, to.y - deck, PALETTE.m);
+				rect(ctx, from.x + 1, tray - 1, to.x - from.x - 2, 3, PALETTE.k);
+				rect(ctx, from.x + 1, tray, to.x - from.x - 2, 1, PALETTE.d);
+				for (const x of columns) {
+					const lowest = Math.max(...racks.filter(rack => Math.round(art(rack).x) === x).map(rack => art(rack).y));
+
+					rect(ctx, x + 5, tray, 3, lowest - RACK_TALL - tray, PALETTE.k);
+					rect(ctx, x + 6, tray, 1, lowest - RACK_TALL - tray, PALETTE.d);
+					rect(ctx, x + 5, from.y, 3, tray - from.y, PALETTE.k);
+					rect(ctx, x + 6, from.y, 1, tray - from.y, PALETTE.m);
+				}
+			},
+		},
+		...racks.map(rack => ({
+			y: rack.y,
+			draw: () => {
+				const at = art(rack);
+
+				// Its tap off its column's riser
+				rect(ctx, at.x + 1, at.y - RACK_TALL - 2, 6, 1, PALETTE.d);
+				drawRack(ctx, at, rack, time);
+			},
+		})),
+	];
+};
+
+// The MCP servers' antennas on the hull's back over their bank, an antenna for each rack across the bank's width, tall
+// and short by turns so their heads stand clear of each other however many there are; each beaming while its server's
+// used, blinking red once a use has failed. Where each head is kept on its rack (`mast`), to be pointed at.
+const drawAntennas = (ctx, { room, racks }, { base, time }) => {
+	const [from, to] = [Math.round(room.x * UNIT.x), Math.round((room.x + room.w) * UNIT.x)];
+	const pitch = (to - from - 6) / Math.max(1, racks.length);
+
+	rect(ctx, from + 1, base - 3, to - from - 2, 3, PALETTE.k);
+	rect(ctx, from + 2, base - 2, to - from - 4, 1, PALETTE.m);
+	racks.forEach((rack, index) => {
+		const x = Math.round(from + 3 + (index + 0.5) * pitch);
+		const tall = 10 + (index % 2) * 7;
+
+		rect(ctx, x - 1, base - tall, 3, tall - 2, PALETTE.k);
+		rect(ctx, x, base - tall + 1, 1, tall - 3, PALETTE.l);
+		if (index % 2) rect(ctx, x - 1, base - tall + 5, 3, 1, PALETTE.m);
+		rect(ctx, x - 1, base - tall - 3, 3, 3, rack.active ? rack.color : rack.dim);
+		if (rack.faulty && Math.floor(time * 3) % 2) rect(ctx, x, base - tall - 4, 1, 1, PALETTE.r);
+		if (rack.active)
+			for (let beam = base - tall - 6 - (Math.floor(time * 18) % 5); beam > base - tall - 40; beam -= 5)
+				rect(ctx, x, beam, 1, 3, rack.color);
+		rack.mast = { x, y: base - tall - 2 };
+	});
 };
 
 // A notice from the other ships on the transporter console's screen, `at` the screen's foot: an amber mark while one of

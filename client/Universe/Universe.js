@@ -1010,6 +1010,10 @@ export default class Universe extends View {
 			return this.aboard.look(looking === target.bay.name ? 'all' : target.bay.name, { fly: false });
 		if (target?.room && (target.kind === 'system' || ROOMS[target.kind]))
 			return this.aboard.look(looking === target.room.name ? 'all' : target.room.name, { fly: false });
+		// An MCP server's rack, or its antenna on the hull: the bank it's in
+		const bank = target?.kind === 'system' && target.system?.key?.startsWith('mcp:') && this.aboard.layout.uplinks;
+
+		if (bank) return this.aboard.look(looking === bank.name ? 'all' : bank.name, { fly: false });
 		if (target?.kind === 'engine')
 			return this.aboard.look(looking === target.engine.key ? 'all' : target.engine.key, { fly: false });
 		// No hover on a touch screen: a touch says what it landed on
@@ -2246,6 +2250,25 @@ export default class Universe extends View {
 					: [],
 			};
 		}
+		if (kind === 'uplinks')
+			return {
+				...flyoutOf({ kind, room }, aboard),
+				items: room.racks
+					.map(({ key }) => aboard.systems.get(key))
+					.filter(Boolean)
+					.map(system => ({
+						label: system.word,
+						detail: [
+							system.active ? system.users.map(({ title, project }) => title || project).join(', ') : 'not in use',
+							plural(system.uses, 'use'),
+							system.failures && `${system.failures} failed`,
+						]
+							.filter(Boolean)
+							.join(' · '),
+						tone: (system.failures && 'warn') || (system.active && 'busy') || '',
+						run: () => this.openLog({ room: { name: `${system.word} (MCP)` }, system }, this.aboard.screen(room)),
+					})),
+			};
 		if (kind === 'engineering')
 			return {
 				title: titled(room.name),

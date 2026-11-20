@@ -54,6 +54,7 @@ module.exports = {
 		"materializer's",
 		'dont',
 		'uplink',
+		'uplinks',
 		'glyphs',
 		'quantize',
 		'pixelated',
