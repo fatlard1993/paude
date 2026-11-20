@@ -71,7 +71,7 @@ const stackedAsOne = (bridge, name) => {
 	});
 };
 
-test('a project split over islands has them stacked as one block, never cut where a row ends, laid fresh or again', () => {
+test('a project split over islands has them stacked as one block, never cut where a row ends, laid fresh; laid again, nobody moves', () => {
 	const bay = (name, count) => ({
 		name,
 		hue: 40,
@@ -89,12 +89,87 @@ test('a project split over islands has them stacked as one block, never cut wher
 
 		stackedAsOne(bridge, 'big');
 
-		// Laid again from where they stood, with one of its islands kept rows away from the others: they come together
+		// Laid again from where they stood, every island where it was
 		const kept = Object.fromEntries(bridge.islands.map(({ key, row, at }) => [key, { row, at }]));
-		const far = bridge.islands.reduce((most, island) => Math.max(most, island.row), 0);
+		const again = layOut({
+			bays,
+			kept,
+			held: { pitch: bridge.pitch, need: bridge.need, stern: bridge.stern, levels: bridge.levels },
+		}).bridge;
 
-		kept['big#1'] = { row: kept['big#0'].row === far ? 0 : far, at: 0 };
-		stackedAsOne(layOut({ bays, kept }).bridge, 'big');
+		expect(again.islands.map(({ key, row, x }) => [key, row, x.toFixed(4)])).toEqual(
+			bridge.islands.map(({ key, row, x }) => [key, row, x.toFixed(4)]),
+		);
+	}
+});
+
+test("the bridge holds still while it's watched: each island keeps its row and order, pushed along by one grown before it, never reshuffled", () => {
+	const bay = (name, count, extra = []) => ({
+		name,
+		hue: 40,
+		sessions: [...Array.from({ length: count }, (_, n) => `${name}${n}`), ...extra],
+	});
+	let bays = ['alpha', 'beta', 'gamma', 'delta', 'eps', 'zeta'].map((name, index) => bay(name, 1 + (index % 3)));
+	let agents = {};
+	let brief = {};
+	const seated = () => bays.map(each => ({ ...each, seated: each.sessions.length }));
+	let { bridge } = layOut({ bays: seated() });
+	const changes = [
+		() => (bays[0] = bay('alpha', 2)),
+		() => bays.push(bay('omega', 1)),
+		() => (agents = { beta0: 3 }),
+		() => (bays[1] = bay('beta', 5)),
+		() => {
+			bays[2] = bay('gamma', 3, ['gamma-brief']);
+			brief = { 'gamma-brief': true };
+		},
+		() => (bays[0] = bay('alpha', 10)),
+		() => (agents = {}),
+		() => (bays = bays.filter(({ name }) => name !== 'delta')),
+	];
+
+	for (const change of changes) {
+		change();
+
+		const before = new Map(bridge.islands.map(island => [island.key, island]));
+		const kept = Object.fromEntries(bridge.islands.map(({ key, row, at }) => [key, { row, at }]));
+		const next = layOut({
+			bays: seated(),
+			agents,
+			brief,
+			kept,
+			held: { pitch: bridge.pitch, need: bridge.need, stern: bridge.stern, levels: bridge.levels },
+		}).bridge;
+
+		expect(next.pitch).toBeGreaterThanOrEqual(bridge.pitch - 1e-9);
+		for (const island of next.islands) {
+			const was = before.get(island.key);
+
+			if (!was) continue;
+			expect(island.row).toBe(was.row);
+			// Only ever pushed along, never pulled back to fill a gap or sent to the row's other end
+			expect(island.x - next.x).toBeGreaterThanOrEqual(was.x - bridge.x - 1e-6);
+		}
+		for (const row of new Set(next.islands.map(({ row }) => row))) {
+			const order = islands =>
+				islands.filter(island => island.row === row && before.has(island.key)).sort((a, b) => a.x - b.x);
+
+			expect(order(next.islands).map(({ key }) => key)).toEqual(
+				order(
+					bridge.islands.map(island => ({ ...island, row: next.islands.find(({ key }) => key === island.key)?.row })),
+				)
+					.filter(island => island.row !== undefined)
+					.map(({ key }) => key),
+			);
+		}
+		// A project's new island under its first
+		const alphas = next.islands.filter(({ name }) => name === 'alpha').sort((a, b) => a.row - b.row);
+
+		if (alphas.length > 1 && !before.has(alphas[1].key)) {
+			expect(alphas[1].row).toBe(alphas[0].row + 1);
+			expect(alphas[1].x).toBeCloseTo(alphas[0].x, 5);
+		}
+		bridge = next;
 	}
 });
 

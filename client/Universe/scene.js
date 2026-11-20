@@ -1568,9 +1568,12 @@ export default class Ship {
 			bridge?.islands &&
 			Object.fromEntries([...bridge.islands, ...(bridge.spots ?? [])].map(({ key, row, at }) => [key, { row, at }]));
 		const first = !this.bridge;
-		const lay = kept =>
+		const heldOf = bridge =>
+			bridge && { pitch: bridge.pitch, need: bridge.need, stern: bridge.stern, levels: bridge.levels };
+		const lay = (kept, held) =>
 			layOut({
 				kept,
+				held,
 				bays: this.bays.map(bay => ({ ...bay, seated: bay.sessions.length })),
 				home: this.home,
 				engines: engines.filter(({ quiet }) => !quiet),
@@ -1591,7 +1594,7 @@ export default class Ship {
 				terminals: this.unseenFleet().length,
 			});
 
-		let laid = lay(first ? undefined : keptOf(this.bridge));
+		let laid = lay(first ? undefined : keptOf(this.bridge), first ? undefined : heldOf(this.bridge));
 
 		// Laid again from where its islands stand, a ship can come out another shape than laid afresh: the first is laid
 		// twice, so it comes in the shape it keeps rather than changing under its plating at the next answer
@@ -1601,7 +1604,7 @@ export default class Ship {
 		// that gives back the shape it has now, that's the laying kept (it's as fresh as the other, and nothing moves):
 		// the ship changes shape when something aboard does, not by turns.
 		else if (shapeOf(laid) !== this.laidShape) {
-			const again = lay(keptOf(laid.bridge));
+			const again = lay(keptOf(laid.bridge), heldOf(this.bridge));
 
 			if (shapeOf(again) === this.laidShape) laid = again;
 		}

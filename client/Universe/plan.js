@@ -86,6 +86,9 @@ const BRIDGE_ROW_TOP = FACE + 1.3;
 const BRIDGE_ROW = 2.8;
 // How many times the rows are spread out further, at most, as spreading them puts more islands in each
 const PITCH_TRIES = 8;
+// How much further than it must the bridge's rows spread, or its risers' room grows, when it has to while it's watched,
+// so the next session or project along doesn't nudge every island again
+const HELD_ROOM = { pitch: 0.3, stern: 1, aspect: 1.5 };
 const SEAT_W = 1.5;
 // The most an island's seats run across before it's split, in world units: eight plain seats
 export const ISLAND_SEATS = 8;
@@ -319,11 +322,6 @@ const islandsOf = (
 
 		return at;
 	};
-	// Where a block stacked from row `first` stands: the nearest the aft wall every island of it fits, one row each
-	const stackAt = (first, stack) =>
-		[0, ...stack.flatMap((_, i) => taken[first + i].map(([, end]) => end + ISLAND_GAP))]
-			.sort((a, b) => a - b)
-			.find(at => stack.every(({ w }, i) => free(first + i, at, w)));
 	const placed = new Map();
 	const place = (key, row, at, w) => {
 		take(row, at, w);
@@ -336,48 +334,44 @@ const islandsOf = (
 		place(key, row, gapIn(row, w), w);
 	};
 
-	// A split project not kept stacked as one (it's newly split, or was laid before projects were blocks): the bridge is
-	// laid afresh once, its islands gliding to their new places, so its conduits still nest
-	const stackedBefore = block =>
-		block.every((each, i) => {
-			const [spot, first] = [keptOf(each.key), keptOf(block[0].key)];
-
-			return spot && first && spot.row === first.row + i && Math.abs((spot.at ?? -1) - (first.at ?? -2)) < 0.01;
-		});
-	const keeping = kept && blocks.every(block => block.length === 1 || stackedBefore(block));
+	// Laid before, the bridge holds still while it's watched: each island stays in its row, in its order along it, and
+	// where it stood unless one before it in its row grew into its place, when it's pushed along just clear of it, never
+	// to another row; a project's new island (it's split, or has short-lived sessions now) under its first where that's
+	// free, else in the first gap of its row; one whose row is gone, or a new project's, into the first gap of the row
+	// reaching least far. Laid afresh, a stacked project and the conduits' order come back.
+	const keptSpots = new Map(
+		keyed
+			.map(({ key }) => [key, keptOf(key)])
+			.filter(([, spot]) => Number.isInteger(spot?.row) && spot.row < rows && typeof spot.at === 'number'),
+	);
+	const keeping = keptSpots.size > 0;
 
 	if (keeping) {
-		const moving = [];
-
-		// Each block kept where it stood while it all still fits there, and a split one only while still stacked
-		for (const block of blocks) {
-			const spots = block.map(({ key }) => keptOf(key) ?? {});
-			const fit = spots.every(
-				({ row, at }, i) =>
-					Number.isInteger(row) && row < rows && typeof at === 'number' && at >= 0 && free(row, at, block[i].w),
+		const widthByKey = new Map(keyed.map(({ key, w }) => [key, w]));
+		// The nearest `at` on or past `from` that `w` fits at in `row`, stepping past whatever's already there in turn
+		const clearFrom = (row, from, w) =>
+			taken[row].reduce(
+				(at, [start, end]) =>
+					at + w + ISLAND_GAP > start + NEAR && at < end + ISLAND_GAP - NEAR ? end + ISLAND_GAP : at,
+				Math.max(0, from),
 			);
-			const stacked = spots.every(({ row, at }, i) => row === spots[0].row + i && Math.abs(at - spots[0].at) < 0.01);
 
-			if (fit && stacked) block.forEach(({ key, w }, i) => place(key, spots[i].row, spots[i].at, w));
-			else moving.push(block);
-		}
-		for (const block of moving) {
-			const wanted = keptOf(block[0].key)?.row;
+		for (let row = 0; row < rows; row++)
+			[...keptSpots]
+				.filter(([, spot]) => spot.row === row)
+				.sort((a, b) => a[1].at - b[1].at)
+				.forEach(([key, { at }]) => place(key, row, clearFrom(row, at, widthByKey.get(key)), widthByKey.get(key)));
+		for (const block of blocks)
+			block.forEach((each, i) => {
+				if (placed.has(each.key)) return;
 
-			if (block.length === 1) {
-				placeAlone(block[0], wanted);
-				continue;
-			}
+				const first = block.map(({ key }, nth) => placed.has(key) && { ...placed.get(key), nth }).find(Boolean);
+				const under = first && first.row + (i - first.nth);
+				const row = under >= 0 && under < rows ? under : undefined;
 
-			const stack = block.slice(0, rows);
-			const [best] = Array.from({ length: rows - stack.length + 1 }, (_, first) => ({
-				first,
-				at: stackAt(first, stack),
-			})).sort((a, b) => a.at - b.at || Math.abs(a.first - (wanted ?? 0)) - Math.abs(b.first - (wanted ?? 0)));
-
-			stack.forEach(({ key, w }, i) => place(key, best.first + i, best.at, w));
-			for (const each of block.slice(stack.length)) placeAlone(each);
-		}
+				if (row !== undefined && free(row, first.at, each.w)) place(each.key, row, first.at, each.w);
+				else placeAlone(each, row);
+			});
 	} else if (runs.length <= open.length) {
 		// With rows to spare, they spread evenly down the bridge, each block down the open rows one after another
 		let index = 0;
@@ -578,7 +572,9 @@ export const shortest = names => {
 // work shares in two rows either side of the spine (the lounge and the plans station above, the hold, the hangar and
 // the materializer on the bridge); then each project's machine on one deck or the other. Engineering is as deep as both rows and
 // the spine, deeper still when it needs the room.
-// `kept`: the rows the bridge's islands stood in last time, by island key, so they stay in them
+// `kept`: the rows the bridge's islands stood in last time, by island key, so they stay in them; `held`: its rows'
+// pitch, what its conduits needed of it, its risers' room and the hull's levels last time ({ pitch, need, stern,
+// levels }), none of which then shrinks, nor grows unless it must
 export const layOut = ({
 	bays = [],
 	engines = [],
@@ -594,6 +590,7 @@ export const layOut = ({
 	fleet = 0,
 	terminals = fleet,
 	kept,
+	held,
 } = {}) => {
 	// A ship of a fleet has a transporter besides, on the bridge beside the materializer
 	const transporter = fleet ? TRANSPORTER_W : 0;
@@ -668,6 +665,13 @@ export const layOut = ({
 	// The hull grows in levels, a pair of decks round a spine of its own each, the first with the core's rooms beside
 	// its spine and the rest starting right behind engineering: as few as keep the ship no more than about three times
 	// as long as it's deep, so a hundred projects make a deeper ship rather than an endless one
+	const sternOf = placed => {
+		const need = sternRoom(inLine(placed));
+
+		if (!held?.stern) return need;
+
+		return need <= held.stern ? held.stern : need + HELD_ROOM.stern;
+	};
 	const plan = levels => {
 		const reach = Array(levels * 2).fill(0);
 		// Shipping takes the bridge's end of the bottom deck: counted there while the machines are shared out, so the
@@ -704,14 +708,27 @@ export const layOut = ({
 				home,
 				pitch,
 				kept,
-				stern: sternRoom(inLine(placed)),
+				stern: sternOf(placed),
 			});
 		// A project's short-lived spot is on its conduit as an island is; the machine's own has a single thin dataline
 		const pitchOf = ({ islands, spots }) =>
 			rowPitch([...islands, ...spots.map(spot => (spot.name === null ? { ...spot, keys: [] } : spot))]);
-		let pitch = BRIDGE_ROW;
+		let pitch = held?.pitch ?? BRIDGE_ROW;
 		let laid = null;
 
+		// Watched, the rows stay as far apart as they were while their conduits need no more than they did then; when
+		// they need more, only as much further apart (and a little) as keeps as many rows
+		if (held?.pitch) {
+			const kept = islandsAt(held.pitch);
+			const need = pitchOf(kept);
+			const most = rowsAt(held.pitch) > 1 ? span / (rowsAt(held.pitch) - 1) : Infinity;
+
+			if (need <= Math.max(held.pitch, held.need ?? 0) + 1e-9) laid = kept;
+			else if (need <= most + 1e-9) {
+				pitch = Math.min(need + HELD_ROOM.pitch, most);
+				laid = islandsAt(pitch);
+			}
+		}
 		for (let count = rowsAt(BRIDGE_ROW); !laid && count > 1; count--) {
 			const widest = Math.max(BRIDGE_ROW, span / (count - 1));
 			const needed = Math.max(BRIDGE_ROW, pitchOf(islandsAt(widest)));
@@ -728,23 +745,37 @@ export const layOut = ({
 
 		const rows = rowsAt(pitch);
 		const { reach: islandsReach } = laid;
-		const bridgeW = sternRoom(inLine(placed)) + BRIDGE_MARGIN + Math.max(2 * SEAT_W, islandsReach) + BRIDGE_NAV_W;
+		const bridgeW = sternOf(placed) + BRIDGE_MARGIN + Math.max(2 * SEAT_W, islandsReach) + BRIDGE_NAV_W;
 
-		return { levels, placed, width, total, rows, pitch, bridgeW, hall };
+		return { levels, placed, width, total, rows, pitch, need: pitchOf(laid), bridgeW, hall };
 	};
 	// Another level only while it shortens the ship: one that only adds empty decks under the core and the bridge isn't
 	// worth its depth
 	const long = ({ width, bridgeW }) => bayW + width + bridgeW;
-	let layout = plan(1);
+	// Watched, the hull keeps its levels while it isn't far longer than it likes, so its depth, and the bridge's rows,
+	// hold
+	const heldLevels = held?.levels && plan(held.levels);
+	const keepLevels = heldLevels && long(heldLevels) <= ASPECT * HELD_ROOM.aspect * heldLevels.total;
+	let layout = keepLevels ? heldLevels : plan(1);
 
-	for (let levels = 2; levels <= MAX_LEVELS && long(layout) > ASPECT * layout.total; levels++) {
+	for (let levels = 2; !keepLevels && levels <= MAX_LEVELS && long(layout) > ASPECT * layout.total; levels++) {
 		const deeper = plan(levels);
 
 		if (long(deeper) > long(layout) - 1) break;
 		layout = deeper;
 	}
 
-	const { levels, placed: packed, width, total, rows: bridgeRows, pitch: rowsApart, bridgeW, hall } = layout;
+	const {
+		levels,
+		placed: packed,
+		width,
+		total,
+		rows: bridgeRows,
+		pitch: rowsApart,
+		need: rowsNeed,
+		bridgeW,
+		hall,
+	} = layout;
 
 	const extra = extraDepthOf(levels, hall);
 
@@ -842,6 +873,7 @@ export const layOut = ({
 		joined: { right: true },
 		props: [],
 	};
+	const stern = sternOf(layout.placed);
 	const bridge = {
 		kind: 'bridge',
 		name: 'bridge',
@@ -852,11 +884,14 @@ export const layOut = ({
 		face: FACE,
 		rows: bridgeRows,
 		pitch: rowsApart,
+		// How far apart its rows' conduits needed them, which may be a little more than they are
+		need: rowsNeed,
+		stern,
+		levels,
 		door: { x: middle + width, y: lane, side: 'left', lane },
 		hull: { top: true, bottom: true, right: true },
 		props: [],
 	};
-	const stern = sternRoom(inLine(layout.placed));
 	const {
 		islands,
 		spots,
