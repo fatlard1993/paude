@@ -537,18 +537,7 @@ export const createArcadeProject = async ({ name, idea, player, reading }, onOut
 	onOutput('Making the first commit\n');
 	await git(folder, ['init', '-q']);
 	await git(folder, ['add', '-A']);
-	// With no identity set up here, the commit is paude's
-	(await git(folder, ['commit', '-q', '-m', `${title}: a new game from the scaffold`])) ||
-		(await git(folder, [
-			'-c',
-			'user.name=paude',
-			'-c',
-			'user.email=paude@localhost',
-			'commit',
-			'-q',
-			'-m',
-			`${title}: a new game from the scaffold`,
-		]));
+	await git(folder, [...(await committer(folder)), 'commit', '-q', '-m', `${title}: a new game from the scaffold`]);
 
 	// The hub has it from the start; it builds and starts it there itself
 	keepHosted(folder, { delay: 0 });
@@ -733,8 +722,7 @@ const untrackOurs = async cwd => {
 	// What's staged is only this: the files let go and the ignore file
 	const message = "paude's session files stay out of the repo";
 
-	(await git(cwd, ['commit', '-q', '-m', message])) ||
-		(await git(cwd, ['-c', 'user.name=paude', '-c', 'user.email=paude@localhost', 'commit', '-q', '-m', message]));
+	await git(cwd, [...(await committer(cwd)), 'commit', '-q', '-m', message]);
 };
 
 // Whether a project's page links an icon of its own: { icon, page }, icon null when it has no page to give one
@@ -929,9 +917,15 @@ const gitOut = async (folder, args) => {
 	return { ok: (await child.exited) === 0, out: out.trim(), err: err.trim() };
 };
 
-const asPaude = ['-c', 'user.name=paude', '-c', 'user.email=paude@localhost'];
+// Whoever a plain `git commit` here would be by, by git's own test of it; paude's name only where it knows no one
+const AS_PAUDE = ['-c', 'user.name=paude', '-c', 'user.email=paude@localhost'];
 
-// What the steward changed in the files it keeps, committed on its own, as paude: only those paths, whatever else
+const committer = async cwd =>
+	(await gitOut(cwd, ['var', 'GIT_AUTHOR_IDENT'])).ok && (await gitOut(cwd, ['var', 'GIT_COMMITTER_IDENT'])).ok
+		? []
+		: AS_PAUDE;
+
+// What the steward changed in the files it keeps, committed on its own: only those paths, whatever else
 // is half done beside them. Whether anything was committed.
 export const commitOwned = async (cwd, paths, message) => {
 	const there = [];
@@ -941,7 +935,7 @@ export const commitOwned = async (cwd, paths, message) => {
 	await gitOut(cwd, ['add', '--', ...there]);
 	if ((await gitOut(cwd, ['diff', '--cached', '--quiet', '--', ...there])).ok) return false;
 
-	return (await gitOut(cwd, [...asPaude, 'commit', '-q', '-m', message, '--', ...there])).ok;
+	return (await gitOut(cwd, [...(await committer(cwd)), 'commit', '-q', '-m', message, '--', ...there])).ok;
 };
 
 // Put it back needs history to put back to: a folder in no repository is made one when it comes into the arcade, its
@@ -954,7 +948,14 @@ export const beginRepository = async cwd => {
 	if (!(await gitOut(cwd, ['init', '-q'])).ok) return false;
 	if (!(await exists(join(cwd, '.gitignore')))) await writeFile(join(cwd, '.gitignore'), STARTING_IGNORES);
 	await gitOut(cwd, ['add', '-A']);
-	await gitOut(cwd, [...asPaude, 'commit', '-q', '--allow-empty', '-m', 'As it was when it came into the arcade']);
+	await gitOut(cwd, [
+		...(await committer(cwd)),
+		'commit',
+		'-q',
+		'--allow-empty',
+		'-m',
+		'As it was when it came into the arcade',
+	]);
 
 	return true;
 };
@@ -979,7 +980,7 @@ export const snapshotTurn = async (sessionId, cwd) => {
 		.then(lines => feedFrom(lines, cwd))
 		.catch(() => []);
 	const subject = `${SNAPSHOT}${turnName(entries)}`;
-	const committed = await gitOut(cwd, [...asPaude, 'commit', '-q', '-m', subject]);
+	const committed = await gitOut(cwd, [...(await committer(cwd)), 'commit', '-q', '-m', subject]);
 
 	return committed.ok ? subject : null;
 };
@@ -1033,7 +1034,8 @@ export const undoLastTurn = async (sessionId, cwd) => {
 
 	const reverted = await gitOut(cwd, ['revert', '--no-commit', `${turn.from}..${turn.to}`]);
 	const committed =
-		reverted.ok && (await gitOut(cwd, [...asPaude, 'commit', '-q', '--allow-empty', '-m', `Put back: ${turn.name}`]));
+		reverted.ok &&
+		(await gitOut(cwd, [...(await committer(cwd)), 'commit', '-q', '--allow-empty', '-m', `Put back: ${turn.name}`]));
 
 	if (!committed?.ok) {
 		await gitOut(cwd, ['revert', '--abort']);

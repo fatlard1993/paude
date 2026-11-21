@@ -13,6 +13,7 @@ import {
 	arcadeLaunch,
 	isArcadeSession,
 	beginRepository,
+	commitOwned,
 	noteTurnEnd,
 	acceptTrust,
 	adoptedInstructions,
@@ -573,5 +574,66 @@ describe('beginRepository', () => {
 		expect(sh(folder, 'git ls-files')).toBe('.gitignore\nnotes.md');
 		expect(await beginRepository(folder)).toBe(false);
 		await rm(folder, { recursive: true, force: true });
+	});
+});
+
+describe('who an arcade commit is by', () => {
+	const IDENTITY = /^GIT_(AUTHOR|COMMITTER)_(NAME|EMAIL)$|^GIT_CONFIG_(GLOBAL|NOSYSTEM)$|^EMAIL$/;
+	let saved;
+	let dir;
+	let game;
+
+	const byWhom = cwd => sh(cwd, 'git log -1 --format="%an <%ae>, %cn <%ce>"');
+	const globalConfig = async text => {
+		await writeFile(join(dir, 'gitconfig'), text);
+		process.env.GIT_CONFIG_GLOBAL = join(dir, 'gitconfig');
+		process.env.GIT_CONFIG_NOSYSTEM = '1';
+	};
+
+	beforeEach(async () => {
+		saved = Object.fromEntries(Object.entries(process.env).filter(([name]) => IDENTITY.test(name)));
+		for (const name of Object.keys(saved)) delete process.env[name];
+		dir = await mkdtemp(join(tmpdir(), 'arcade-identity-'));
+		game = join(dir, 'game');
+		await globalConfig('[user]\n\tname = Ana\n\temail = ana@example.com\n');
+		sh(dir, 'mkdir game');
+		await writeFile(join(game, '.paude-arcade.json'), JSON.stringify({ title: 'Moon', reading: 'learning' }));
+		await writeFile(join(game, 'Game.js'), 'export default 1;\n');
+		sh(game, 'git init -q && git add -A && git commit -q -m scaffold');
+	});
+	afterEach(async () => {
+		for (const name of Object.keys(process.env)) if (IDENTITY.test(name)) delete process.env[name];
+		Object.assign(process.env, saved);
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	test("a turn's snapshot and its putting back are the repo's own identity's, as a plain commit there would be", async () => {
+		sh(game, 'git config user.name Ben && git config user.email ben@example.com');
+		await writeFile(join(game, 'Game.js'), 'export default 2;\n');
+
+		expect(await snapshotTurn('who-1', game)).toBe('turn: a change');
+		expect(byWhom(game)).toBe('Ben <ben@example.com>, Ben <ben@example.com>');
+		await undoLastTurn('who-1', game);
+		expect(byWhom(game)).toBe('Ben <ben@example.com>, Ben <ben@example.com>');
+	});
+
+	test("the steward's commit and a folder's first are the person's own, from their git config", async () => {
+		await writeFile(join(game, 'README.md'), '# Moon\n');
+		expect(await commitOwned(game, ['README.md'], 'steward: a README')).toBe(true);
+		expect(byWhom(game)).toBe('Ana <ana@example.com>, Ana <ana@example.com>');
+
+		const folder = join(dir, 'unrepo');
+
+		sh(dir, 'mkdir unrepo');
+		expect(await beginRepository(folder)).toBe(true);
+		expect(byWhom(folder)).toBe('Ana <ana@example.com>, Ana <ana@example.com>');
+	});
+
+	test("paude's name stands in only where git knows no one to commit as", async () => {
+		await globalConfig('[user]\n\tuseConfigOnly = true\n');
+		await writeFile(join(game, 'Game.js'), 'export default 2;\n');
+
+		expect(await snapshotTurn('who-2', game)).toBe('turn: a change');
+		expect(byWhom(game)).toBe('paude <paude@localhost>, paude <paude@localhost>');
 	});
 });
