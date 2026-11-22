@@ -4,8 +4,8 @@ import path from 'path';
 import { markInterruptions, steeringOf } from './catchUp';
 import { crewJob } from './crew';
 import { GitError, gitStack } from './git';
+import { draftCommand } from './pullRequests';
 import { sessionEnvironment } from './sessions/PtySession';
-import { claudeCommand } from './sessions/running';
 import { editedFiles, sessionTurns } from './timeline';
 import gitEnvironment from './utils/gitEnvironment';
 
@@ -123,11 +123,12 @@ export const draftCommitMessage = async (root, { sessionId, cwd, amend = false, 
 	);
 };
 
-// What a Claude of its own (claude -p) answers: run outside any project so it isn't listed among its sessions
+// What a Claude of its own (claude -p) answers, run as the pull request's drafter is: outside any project, with none of
+// the owner's settings and nothing saved
 export const claudeWrites = prompt => crewJob('writing a commit message', () => write(prompt));
 
 const write = async prompt => {
-	const child = Bun.spawn([claudeCommand(), '-p', '--output-format', 'text'], {
+	const child = Bun.spawn(draftCommand(), {
 		cwd: os.tmpdir(),
 		env: sessionEnvironment(),
 		stdin: new TextEncoder().encode(prompt),
