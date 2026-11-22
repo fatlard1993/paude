@@ -8,6 +8,7 @@ import { revokeInvitesFor } from './auth';
 import { pinName } from './names';
 import { deleteNotes } from './notes';
 import { noteProjectActivity, projectOf, projectPath } from './projects';
+import { keepSignals } from './sessionSignals';
 import { sessionRecord } from './sessions/record';
 import { allRunning, stopSession } from './sessions/running';
 import { forgetStoredSessions } from './sessions/stored';
@@ -30,6 +31,8 @@ const removeSession = async id => {
 	await stopSession(id);
 	// A server it ran as a task (a game's dev server) would otherwise outlive it
 	await stopTasksOf(id).catch(() => {});
+	// What it reached for outlives it; failing to keep that never keeps it from going
+	await keepSignals(id, cwd).catch(error => console.error(`Keeping ${id}'s signals failed:`, error));
 	// A session that never got a prompt has no transcript to delete
 	await deleteSession(id, { dir: cwd }).catch(error => {
 		if (!/not found/i.test(error.message)) throw error;

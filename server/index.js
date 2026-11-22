@@ -37,6 +37,7 @@ import { initArchive } from './archive';
 import { initUniverse } from './universe';
 import { initFuel } from './fuel';
 import { initJourney } from './journey';
+import { initSessionSignals } from './sessionSignals';
 import { initFabled } from './fabled';
 import { initKeepWarm, stewardWith } from './keepWarm';
 import { stewardPass } from './steward';
@@ -110,6 +111,7 @@ await initActivity(options.data);
 await initUniverse(options.data);
 await initFuel(options.data);
 await initJourney(options.data);
+initSessionSignals(options.data);
 await initProjects(options.data);
 await initMotherHub(options.data);
 // Arcade games the mother hub doesn't host yet go to it, in the background
