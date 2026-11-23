@@ -37,6 +37,11 @@ export const Body = styled.Component`
 		}
 	}
 
+	/* paude's own question (a session asking to start another) has no dialog on Claude's screen to answer instead */
+	.asking-overlay.shown.own {
+		display: flex;
+	}
+
 	/* A usage limit stopped the turn: shown on any screen, since Claude's own says nothing of carrying on; at the top,
 	   clear of the prompt box */
 	.limit-overlay {

@@ -140,6 +140,18 @@ A repo with its own way of making worktrees (a workspace tool that installs depe
 
 The commands run in the main checkout. `{name}` and `{path}` are filled in already quoted, so don't put quotes around them; they're also in `$PAUDE_WORKTREE_NAME` and `$PAUDE_WORKTREE_PATH`. The new worktree is whichever one appears, so the tool can name and place it as it likes. Its output shows on the page, or in the terminal, while it runs. Without `remove`, it's `git worktree remove`.
 
+## A session starting another
+
+Claude in one session can start another, for work that should go on beside it rather than inside it (a separate concern, another project, a long job of its own), with `paude start`:
+
+```sh
+paude start --project shop --worktree release-notes -- "Write the release notes for 2.4 from the merged pull requests"
+```
+
+It works from inside a paude session only. Every Claude session paude starts has `$PAUDE_START` in its environment, an address naming that session with a token of its own, so no login, least of all the owner's token, is handed to a session; `paude start` asks there. paude doesn't start anything yet: it asks the people in the session first, as a question on the session's page (over the terminal, on any screen) and in the universe's reply card, the session shown as waiting on you meanwhile. The command waits for the answer (give it a long timeout), then prints the new session's id, page and transcript, or who said no. A yes takes what typing into the session takes, the owner or a Pair guest: the new session runs on the machine as the owner's, as anything Claude is let run from there does. It belongs to the owner, not to whoever said yes, and a guest's invite doesn't reach it. Without `--project` it's the asking session's project; `--worktree` makes a new worktree for it, `--model` picks its model, and a prompt with no words given is read from stdin.
+
+The new session is told where it came from every time Claude starts in it. From either side, `paude lineage` lists the session it was started from and the ones it started, each with its status, transcript and page. paude passes no messages between them: what one needs to know of the other is in the other's work and transcript.
+
 ## Who can do what
 
 The password belongs to the owner, and the owner can type into any session, which means running commands as the server's user. Give it only to someone you'd give that shell.

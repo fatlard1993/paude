@@ -9,6 +9,7 @@ import tasksRoutes from './tasks';
 import updateRoutes from './update';
 import hooksRoutes from './hooks';
 import soundsRoutes from './sounds';
+import sessionStartsRoutes from './sessionStarts';
 import gameSpeechRoutes from './gameSpeech';
 import sessionsRoutes from './sessions';
 
@@ -46,6 +47,9 @@ const router = async (request, server) => {
 	if (response) return response;
 
 	response = await soundsRoutes(request);
+	if (response) return response;
+
+	response = await sessionStartsRoutes(request);
 	if (response) return response;
 
 	response = await gameSpeechRoutes(request);

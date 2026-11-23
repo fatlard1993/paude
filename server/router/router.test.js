@@ -16,6 +16,8 @@ import { allRunning, setClaudePath, startSession, stopSession } from '../session
 import { forgetStoredSessions } from '../sessions/stored';
 import { setPublicUrl, setServerName } from '../serverSettings';
 import { initShares, shareNamed } from '../shares';
+import { initSessionStarts, originPrompt, startToken } from '../sessionStarts';
+import { readAnswers } from '../../cli/sessionStart';
 import { saveToken } from '../../shared/credentials';
 import { readProgress } from '../../shared/progress';
 import app from '../server';
@@ -56,6 +58,7 @@ beforeAll(async () => {
 	initTrash(data);
 	await initArchive(data);
 	await initShares(data);
+	await initSessionStarts(data);
 	setHookAddress({ host: '127.0.0.1', port: 1 });
 	setClaudePath(FAKE_CLAUDE);
 
@@ -426,6 +429,93 @@ test("what a session made is edited wherever it landed, within what the owner ma
 	expect((await save({ path: plan, text: 'x\n', hash: hashOf('the plan\n') }, reviewer)).status).toBe(403);
 	expect((await save({ path: plan, text: 'the plan, paired\n', hash: hashOf('the plan\n') }, pair)).status).toBe(200);
 	expect(await Bun.file(plan).text()).toBe('the plan, paired\n');
+});
+
+test('a session asks to start another at its own address, its people are asked, and a yes from one who types starts it', async () => {
+	const at = `/api/session-starts/${session.id}/${startToken(hookSecret, session.id)}`;
+	const ask = (body, { signal } = {}) =>
+		fetch(`${server.url}${at.slice(1)}`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(body),
+			signal,
+		});
+	const asking = async () =>
+		(await (await call(`/api/sessions/${session.id}/asking`, { token: tokens.owner })).json()).asking;
+	const answer = (key, token = tokens.owner) =>
+		call(`/api/sessions/${session.id}/answer`, {
+			token,
+			method: 'POST',
+			body: { question: 'Start a new session in app, as this session asks?', key },
+		});
+	const { invite: pairing } = await createInvite({ sessionId: session.id, name: 'pal', role: 'drive', hours: 1 });
+	const pal = await createToken('pal', { invite: pairing });
+	const { invite: playing } = await createInvite({ sessionId: session.id, name: 'kid', role: 'play', hours: 1 });
+	const kid = await createToken('kid', { invite: playing });
+
+	// Another session's token, or none, is nothing; a request needs words, and a project that's here
+	expect(
+		(await fetch(`${server.url}api/session-starts/${session.id}/${startToken(hookSecret, other.id)}`)).status,
+	).toBe(404);
+	expect((await ask({ prompt: '' })).status).toBe(400);
+	expect((await ask({ prompt: 'go', project: 'nowhere' })).status).toBe(400);
+
+	const answers = readAnswers((await ask({ prompt: 'write the release notes' })).body);
+
+	expect((await answers.next()).value).toEqual({ asked: true });
+	await Bun.sleep(50);
+	expect(await asking()).toMatchObject({
+		paude: 'start',
+		question: 'Start a new session in app, as this session asks?',
+		details: ['In app:', 'write the release notes'],
+	});
+	expect(statusOf(session.id)).toBe('waiting');
+	// Answering it takes what typing into the session takes: not a player's tap, nor a reviewer's
+	expect((await answer('1', kid)).status).toBe(403);
+	expect((await answer('1', tokens.comment)).status).toBe(403);
+	expect((await answer('2', pal)).status).toBe(204);
+
+	let last;
+
+	for await (const line of answers) last = line;
+	expect(last).toEqual({ declined: true, by: 'pal' });
+	expect((await asking())?.paude).toBeUndefined();
+
+	// A yes starts it as the owner's, and the two find each other
+	const again = readAnswers((await ask({ prompt: 'write the release notes' })).body);
+
+	await again.next();
+	await Bun.sleep(50);
+	expect((await answer('1')).status).toBe(204);
+	for await (const line of again) last = line;
+
+	const started = last.started;
+
+	expect(started).toMatchObject({ project: 'app', status: expect.any(String) });
+	expect(started.page).toEndWith(`/#/sessions/${started.id}`);
+	expect(originPrompt(started.id)).toContain(session.id);
+
+	const found = await (await fetch(`${server.url}${at.slice(1)}`)).json();
+
+	expect(found.started.map(({ id }) => id)).toEqual([started.id]);
+
+	const back = await (
+		await fetch(`${server.url}api/session-starts/${started.id}/${startToken(hookSecret, started.id)}`)
+	).json();
+
+	expect(back.from).toMatchObject({ id: session.id });
+
+	// The asker going away withdraws the question
+	const leaving = new AbortController();
+	const withdrawn = readAnswers((await ask({ prompt: 'never mind' }, { signal: leaving.signal })).body);
+
+	await withdrawn.next();
+	await Bun.sleep(50);
+	expect((await asking())?.paude).toBe('start');
+	leaving.abort();
+	await Bun.sleep(200);
+	expect((await asking())?.paude).toBeUndefined();
+	await stopSession(started.id);
 });
 
 test('moving, deleting, restoring and uploading take the typing role; a download is the file to save', async () => {

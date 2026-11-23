@@ -77,6 +77,7 @@ import {
 } from '../remotes';
 import { trustedCertificates } from '../../shared/certificates';
 import { mayListRemotes, ownerName } from '../serverSettings';
+import { answerStart, startAsking } from '../sessionStarts';
 import { sessionTurns } from '../sessions/history';
 import {
 	FolderError,
@@ -179,7 +180,7 @@ const arcadeDefaultOf = async name => {
 // A new session, kept warm, kept going, fabled or short-lived from the start when asked, on the model asked for: mode
 // is 'warm', 'going', 'fabled', 'brief' or anything else for none, model one of MODEL_NAMES or anything else for the default.
 // Whoever starts it watches its project from then on, unless they turned that off themselves
-const startWith = async (folder, text, { mode, model, identity, project = projectOf(folder), arcade } = {}) => {
+export const startWith = async (folder, text, { mode, model, identity, project = projectOf(folder), arcade } = {}) => {
 	const known = MODEL_NAMES.includes(model) ? model : undefined;
 	const id = crypto.randomUUID();
 
@@ -800,6 +801,17 @@ const sessionsRoutes = async (request, server) => {
 
 		const session = runningSession(match.id);
 		const { question, key, text } = await request.json();
+
+		// Whether this session may start another takes what typing into it takes: the new session runs on the machine
+		// as the owner's, as anything Claude is let run from here does
+		if (startAsking(match.id)?.question === String(question)) {
+			if (!may(identity, 'type', match.id))
+				return new Response('Starting a session takes an invite that types into this one', { status: 403 });
+			if (!answerStart(match.id, String(question), String(key), identity.owner ? await ownerName() : identity.name))
+				return new Response('That is no longer asked', { status: 409 });
+
+			return new Response(null, { status: 204 });
+		}
 		const words = typeof text === 'string' ? text.trim().slice(0, 4000) : '';
 
 		if (!session?.answer(String(question), String(key), words || undefined))

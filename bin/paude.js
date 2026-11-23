@@ -19,6 +19,7 @@ import openLocally from '../cli/openLocally';
 import { readHidden } from '../cli/screen';
 import { certificatesFile, needsRestartForCertificates } from '../shared/certificates';
 import { serverName, setServerName } from '../server/serverSettings';
+import { START_USAGE, lineage, startFromSession } from '../cli/sessionStart';
 
 // Started again with the certificates in its environment, so every connection to a server trusts them; the terminal
 // is the new process's, so Ctrl+C reaches it and this one just waits
@@ -50,7 +51,9 @@ paude --url <url> -s <id>  attach straight to a session there
 paude stop               stop this machine's background paude (after an update, say)
 paude doctor             what works on this machine, and what to install for the rest
 paude tailscale [off]    put this machine's paude on your tailnet with HTTPS, as https://<machine>.<tailnet>.ts.net; --preview-port <port> for shares when 8444 isn't allowed
-paude serve              run this machine's paude in the foreground instead (--projects, --host, --port, --data, --claude)`;
+paude serve              run this machine's paude in the foreground instead (--projects, --host, --port, --data, --claude)
+
+${START_USAGE}`;
 
 // An invite link (https://host/#/join/<token>) logs its guest in without a password
 const parseTarget = target => {
@@ -334,6 +337,8 @@ try {
 	else if (command === 'delete') await deleteSessions(process.argv.slice(3));
 	else if (command === 'serve') await serve(process.argv.slice(3));
 	else if (command === 'web') await web(target);
+	else if (command === 'start') await startFromSession(process.argv.slice(3));
+	else if (command === 'lineage') await lineage();
 	else if (command === 'logout') await logout(target);
 	else if (command === 'help' || command === '--help') console.log(USAGE);
 	else await run();

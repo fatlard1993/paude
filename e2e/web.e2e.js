@@ -2816,6 +2816,57 @@ test(
 );
 
 test(
+	'a session asking to start another shows the question on its page, and the yes starts the new session',
+	async () => {
+		const server = await startServer();
+		const id = await server.newSession();
+		const { browser, page } = await openBrowser('dom');
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+
+		try {
+			await page.goto(await server.loginLink(`/sessions/${id}`));
+			await page.waitForSelector('.xterm-screen');
+			await wait(1500);
+
+			// As `paude start` asks, from inside the session
+			const asked = await fetch(await server.startAddress(id), {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ prompt: 'write the release notes' }),
+			});
+			const card = () =>
+				page.$eval('.asking-overlay', shown => (shown.classList.contains('shown') ? shown.innerText : ''));
+
+			await eventually(async () =>
+				expect(await card()).toContain('Start a new session in demo, as this session asks?'),
+			);
+			expect(await card()).toContain('write the release notes');
+			await press('.asking-overlay button', 'Yes, start it');
+
+			const answers = (await asked.text())
+				.trim()
+				.split('\n')
+				.map(line => JSON.parse(line));
+			const { started } = answers.at(-1);
+
+			expect(started.project).toBe('demo');
+			await eventually(async () => expect(await card()).toBe(''));
+			await page.goto(started.page.replace(/^http:\/\/[^/]+/, server.url));
+			await page.waitForSelector('.xterm-screen');
+		} finally {
+			await browser.close();
+			await server.stop();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
 	'the editor: Ctrl+D picks each occurrence to type over at once, Ctrl+H replaces, Ctrl+Z undoes, Ctrl+S saves',
 	async () => {
 		const server = await startServer();

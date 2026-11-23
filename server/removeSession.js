@@ -15,6 +15,7 @@ import { forgetStoredSessions } from './sessions/stored';
 import { forgetSessionShares } from './shares';
 import { stopTasksOf } from './tasks';
 import { releaseWorktree } from './worktrees';
+import { forgetStart } from './sessionStarts';
 
 // A session gone for good: Claude ended, the tasks it was running stopped, its transcript, chat and comments deleted,
 // its invites revoked, its shares stopped, and its worktree let go once no other session uses it. { released } (the worktree's fate, if it had one);
@@ -46,6 +47,7 @@ const removeSession = async id => {
 	await forgetSessionShares(id);
 	await forgetCommandEdits(id);
 	await setArchived([id], false);
+	await forgetStart(id);
 
 	const projectDir = projectPath(projectOf(cwd));
 	const remaining = projectDir

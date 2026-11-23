@@ -4,6 +4,8 @@ import path from 'path';
 
 import puppeteer from 'puppeteer-core';
 
+import { startToken } from '../server/sessionStarts';
+
 const ROOT = path.join(import.meta.dir, '..');
 const FAKE_CLAUDE = path.join(import.meta.dir, 'fakeClaude.js');
 const CHROMES = [
@@ -116,6 +118,13 @@ export const startServer = async ({
 		return fetch(`${url}/api/hooks/${secret}/${sessionId}`, { method: 'POST', body: JSON.stringify(payload) });
 	};
 
+	// Where a session's Claude asks to start another ($PAUDE_START in its environment)
+	const startAddress = async sessionId => {
+		const secret = (await Bun.file(path.join(dir, 'data', 'hook-secret')).text()).trim();
+
+		return `${url}/api/session-starts/${sessionId}/${startToken(secret, sessionId)}`;
+	};
+
 	// A transcript as Claude Code keeps one, for a session the fake runs
 	// Each line names its session and folder, as Claude Code writes them
 	const writeTranscript = (sessionId, lines) =>
@@ -129,6 +138,7 @@ export const startServer = async ({
 	return {
 		url,
 		hook,
+		startAddress,
 		writeTranscript,
 		// Logs this server's machine into another, as `paude login` would, under a name
 		logInto: (other, name) =>

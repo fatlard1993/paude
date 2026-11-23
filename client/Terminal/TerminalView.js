@@ -849,6 +849,7 @@ export default class TerminalView extends View {
 			const { body } = await getAsking(this.options.id);
 
 			if (body?.asking) {
+				shown.toggle('own', Boolean(body.asking.paude));
 				showAsking(this.askingCard, this.options.id, body.asking, {
 					canAnswer: canType(),
 					onAnswered: () => shown.remove('shown'),

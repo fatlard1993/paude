@@ -8,7 +8,8 @@ import { sessionHue } from '../../shared/hues';
 import inputKind, { FOCUS_IN } from '../../shared/inputKind';
 import { setStatus, statusOf } from '../activity';
 import { launchSettings } from '../arcadeSettings';
-import { hookSettings, soundsAddress } from '../hookSettings';
+import { hookSettings, soundsAddress, startAddress } from '../hookSettings';
+import { originPrompt, startAsking } from '../sessionStarts';
 import { warmUntil } from '../keepWarm';
 import { limitOf } from '../usageLimit';
 import { pinnedName } from '../names';
@@ -126,10 +127,12 @@ export default class PtySession {
 		// The arcade's settings when the session is in it (arcadeLaunch, worked out by whoever starts it; a project
 		// brought into the arcade is known from its marker even without that), and its rules where no file carries them
 		const settings = hookSettings(arcade ? (arcade.settings ?? null) : launchSettings(cwd));
+		// The arcade's rules, and where a session started by another came from
+		const appended = [arcade?.systemPrompt, originPrompt(id)].filter(Boolean).join('\n\n');
 		// `--` keeps a prompt that starts with a dash from being read as an option
 		const args = [
 			...(settings ? ['--settings', settings] : []),
-			...(arcade?.systemPrompt ? ['--append-system-prompt', arcade.systemPrompt] : []),
+			...(appended ? ['--append-system-prompt', appended] : []),
 			...(model ? ['--model', model] : []),
 			...(resume
 				? ['--resume', resume === true ? id : resume]
@@ -137,6 +140,7 @@ export default class PtySession {
 		];
 
 		const sounds = soundsAddress(id);
+		const starts = startAddress(id);
 		const env = {
 			...sessionEnvironment(),
 			TERM: 'xterm-256color',
@@ -146,6 +150,8 @@ export default class PtySession {
 			...(sounds && { PAUDE_SOUNDS: sounds }),
 			// A look at a page as a player sees it: screenshots at a phone's size and a computer's, and what went wrong
 			PAUDE_LOOK: LOOK,
+			// Where its Claude asks to start another session (`paude start`), asked of the people in this one first
+			...(starts && { PAUDE_START: starts }),
 		};
 		const command = heldCommand({ id, cwd, env, command: [claudePath, ...args] }) ?? [claudePath, ...args];
 
@@ -315,7 +321,12 @@ export default class PtySession {
 	}
 
 	// What Claude is asking, while it waits on someone: its dialog, read from the screen (null for nothing asked)
+	// What's asked of the people in the session: paude's own question while Claude asks to start another session (its
+	// command waits on the answer), else the dialog Claude draws
 	asking() {
+		const starting = startAsking(this.id);
+
+		if (starting) return starting;
 		if (statusOf(this.id) !== 'waiting' || this.promptDraft() !== null) return null;
 
 		return readDialog(this.mirror.buffer.active, this.cols);
@@ -326,6 +337,8 @@ export default class PtySession {
 	// the key is the question's typing option, and the words are typed into it and entered.
 	answer(question, key, text) {
 		const asked = this.asking();
+		// paude's own question is answered through answerStart, which knows who answered
+		if (asked?.paude) return false;
 		const offered = asked?.options.some(option => option.key === key) || (text && asked?.typing === key);
 
 		if (asked?.question !== question || !offered) return false;

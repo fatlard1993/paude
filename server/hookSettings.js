@@ -3,6 +3,7 @@ import { join } from 'path';
 
 import { PROPOSING_TOOLS } from './sessions/proposals';
 import { soundToken } from './sounds';
+import { startToken } from './sessionStarts';
 import { gameSpeechToken } from './gameSpeech';
 
 // Claude Code tells paude what it's doing through hooks added to each session it starts. They post to this server
@@ -38,6 +39,14 @@ export const setHookAddress = ({ host, port }) => {
 // server knows where it listens
 export const soundsAddress = sessionId =>
 	serverUrl && `${serverUrl}/api/sounds/${sessionId}/${soundToken(hookSecret, sessionId)}`;
+
+// Where this server is reached from the machine it runs on; null before it knows
+export const serverAddress = () => serverUrl;
+
+// The address a session's Claude asks paude to start another session at, and finds the sessions it came from and
+// started (see router/sessionStarts.js), its own token in it; null before the server knows where it listens
+export const startAddress = sessionId =>
+	serverUrl && `${serverUrl}/api/session-starts/${sessionId}/${startToken(hookSecret, sessionId)}`;
 
 export const HOOK_EVENTS = {
 	Notification: payload =>
