@@ -668,15 +668,24 @@ const Panel = styled(
 			line-height: ${LINE_HEIGHT}px;
 		}
 
-		/* The syntax font colors the text, as it does in the source view */
+		/* The syntax font colors the text, as it does in the source view: its family and palette, not the code look's
+		   opaque ground, which would cover the selection CodeMirror draws behind the text */
 		.code-editor .cm-content {
-			${fonts.code}
-			color: ${colors.white};
+			--text: ${colors.white};
+			font-family: 'FontWithASyntaxHighlighter', ${fonts.family.code};
+			font-palette: --vbc-javascript-theme;
+			color: var(--text);
+		}
+
+		/* CodeMirror draws the selection itself; the page's selected-text color (black, for its light highlight) would
+		   leave the text dark on the editor's dark selection */
+		.code-editor .cm-content ::selection, .code-editor .cm-content::selection {
+			color: var(--text);
 		}
 
 		.code-editor .cm-content[class*='language-css'] {
+			--text: ${colors.light(colors.green)};
 			font-palette: --vbc-css-theme;
-			color: ${colors.light(colors.green)};
 		}
 
 		.code-editor .cm-content[class*='language-json'] {

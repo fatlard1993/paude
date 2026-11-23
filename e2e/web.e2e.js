@@ -2801,6 +2801,139 @@ test(
 	TIMEOUT_MS,
 );
 
+// The ground and the text of a strip of the page, as a screenshot shows them: its commonest color, and the one
+// farthest from it, with the contrast between the two
+const inkOn = async (page, clip) => {
+	const shot = await page.screenshot({ clip, encoding: 'base64' });
+
+	return page.evaluate(async png => {
+		const image = new Image();
+
+		image.src = `data:image/png;base64,${png}`;
+		await image.decode();
+
+		const canvas = Object.assign(document.createElement('canvas'), { width: image.width, height: image.height });
+		const context = canvas.getContext('2d');
+
+		context.drawImage(image, 0, 0);
+
+		const { data } = context.getImageData(0, 0, image.width, image.height);
+		const counts = new Map();
+
+		for (let at = 0; at < data.length; at += 4) {
+			const key = `${data[at]},${data[at + 1]},${data[at + 2]}`;
+
+			counts.set(key, (counts.get(key) ?? 0) + 1);
+		}
+
+		const ground = [...counts]
+			.sort((a, b) => b[1] - a[1])[0][0]
+			.split(',')
+			.map(Number);
+		const distance = color => color.reduce((sum, channel, n) => sum + (channel - ground[n]) ** 2, 0);
+		const ink = [...counts.keys()]
+			.map(key => key.split(',').map(Number))
+			.reduce((far, color) => (distance(color) > distance(far) ? color : far), ground);
+		const luminance = color =>
+			color
+				.map(channel => channel / 255)
+				.map(channel => (channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
+				.reduce((sum, channel, n) => sum + channel * [0.2126, 0.7152, 0.0722][n], 0);
+		const [light, dark] = [luminance(ground), luminance(ink)].sort((a, b) => b - a);
+
+		return { ground, ink, contrast: (light + 0.05) / (dark + 0.05) };
+	}, shot);
+};
+
+test(
+	'what a drag or a Shift+click selects in the editor shows, its text as readable as the rest, in every syntax palette',
+	async () => {
+		const server = await startServer();
+		const id = await server.newSession();
+		const files = {
+			'notes.txt': 'alpha beta alpha\nbeta gamma delta\nthird line here\n',
+			'notes.md': 'alpha beta alpha\nbeta gamma delta\nthird line here\n',
+			'notes.js': 'alphaBetaAlpha();\nbetaGammaDelta();\nthirdLineHere();\n',
+			'notes.css': '.alpha { beta: 1 }\n.gamma { delta: 2 }\n.third { line: 3 }\n',
+			'notes.json': '{\n"alpha": "beta gamma",\n"delta": "third line"\n}\n',
+			'notes.html': '<p>alpha beta alpha</p>\n<p>beta gamma delta</p>\n<p>third line here</p>\n',
+		};
+
+		for (const [name, text] of Object.entries(files)) await Bun.write(path.join(server.project, name), text);
+
+		const { browser, page } = await openBrowser('dom');
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+		const lines = () =>
+			page.$$eval('.files .cm-line', found =>
+				found.map(line => {
+					const { left, top, height } = line.getBoundingClientRect();
+					const range = document.createRange();
+
+					range.selectNodeContents(line);
+
+					return { x: left, y: top, height, width: range.getBoundingClientRect().width };
+				}),
+			);
+		const selected = () =>
+			page.$$eval('.files .cm-selectionBackground', found => found.filter(shown => shown.offsetWidth).length);
+
+		try {
+			await page.goto(await server.loginLink(`/sessions/${id}`));
+			await page.waitForSelector('.xterm-screen');
+			await wait(1500);
+			await press('[title^="Files"]');
+
+			for (const name of Object.keys(files)) {
+				await press('.files .list .entry', name);
+				// Markdown opens rendered, and is edited from its source
+				if (name.endsWith('.md')) await press('.files .head button', 'Source');
+				await press('.files .head button', 'Edit');
+
+				const [first, second, third] = await lines();
+				const strip = line => ({ x: line.x, y: line.y + 2, width: line.width, height: line.height - 4 });
+				const before = await inkOn(page, strip(second));
+
+				// A drag from the first line to the end of the third: the second is measured, all of it selected, and
+				// neither the cursor nor the active line's highlight on it
+				await page.mouse.move(first.x + 1, first.y + first.height / 2);
+				await page.mouse.down();
+				await page.mouse.move(third.x + third.width - 1, third.y + third.height / 2, { steps: 8 });
+				await page.mouse.up();
+				await wait(300);
+				expect(await selected()).toBeGreaterThan(0);
+
+				const dragged = await inkOn(page, strip(second));
+
+				expect({ name, distinct: dragged.ground.join() !== before.ground.join() }).toEqual({ name, distinct: true });
+				expect({ name, contrast: dragged.contrast > 4.5 }).toEqual({ name, contrast: true });
+
+				// A click, then a Shift+click two lines down
+				await page.mouse.click(first.x + 1, first.y + first.height / 2);
+				await page.keyboard.down('Shift');
+				await page.mouse.click(third.x + third.width - 1, third.y + third.height / 2);
+				await page.keyboard.up('Shift');
+				await wait(300);
+
+				const extended = await inkOn(page, strip(second));
+
+				expect({ name, distinct: extended.ground.join() !== before.ground.join() }).toEqual({ name, distinct: true });
+				expect({ name, contrast: extended.contrast > 4.5 }).toEqual({ name, contrast: true });
+
+				await press('.files .head button', 'Cancel');
+			}
+		} finally {
+			await browser.close();
+			await server.stop();
+		}
+	},
+	TIMEOUT_MS,
+);
+
 test(
 	'an edit not saved survives a reload as a draft to restore; Ctrl+/ comments a line out and a bracket closes itself',
 	async () => {
