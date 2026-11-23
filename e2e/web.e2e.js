@@ -462,7 +462,9 @@ test(
 		};
 
 		try {
-			await press('[title^="Shared"]');
+			// Shared is a section of Tasks
+			await press('[title^="Tasks"]');
+			await press('.open .section-switch button', 'Shared');
 			await page.type('.shares form:last-of-type input', 'server/app.js');
 			await press('.shares form:last-of-type button', 'Download');
 			await page.type('.shares form:last-of-type input', 'site');
@@ -1286,7 +1288,8 @@ test(
 			await page.goto(await server.loginLink(`/sessions/${id}`));
 			await page.waitForSelector('.xterm-screen');
 
-			const open = await centerOf(page, '[title^="Activity"]');
+			// Turns, the first section of Record
+			const open = await centerOf(page, '[title^="Record"]');
 
 			await page.mouse.click(open.x, open.y);
 			await wait(800);
@@ -1334,13 +1337,12 @@ test(
 		try {
 			await press('[title^="Tasks"]');
 			await eventually(async () =>
-				expect(await page.$$eval('.tasks .task-name', names => names.map(name => name.textContent.trim()))).toEqual([
-					'check',
-					'hello',
-				]),
+				expect(
+					await page.$$eval('.tasks.open .task-name .label', names => names.map(name => name.textContent.trim())),
+				).toEqual(['check', 'hello']),
 			);
 
-			await press('.tasks .task [title^="Run "][title$="run check"]');
+			await press('.tasks.open .task [title^="Run "][title$="run check"]');
 			// The script takes as long as it takes to start and fail: waited for, not given a second
 			await page.waitForFunction(() => document.querySelector('.tasks .run-head')?.textContent.includes('failed'), {
 				timeout: 20_000,
@@ -1616,12 +1618,14 @@ test(
 				),
 			);
 
+			// The environment is in Running, a section of Tasks
 			await press('[title^="Tasks"]');
 			// The replace's toast stacks in the corner the Show button sits in; a tap clears it, as a person would
 			await press('[popover]', 'Replaced');
-			await press('.tasks .section-head button', 'Show');
+			await press('.open .section-switch button', 'Running');
+			await press('.tasks.open .section-head button', 'Show');
 
-			const shown = await page.$eval('.tasks .body', body => body.textContent);
+			const shown = await page.$eval('.tasks.open .body', body => body.textContent);
 
 			expect(shown).toContain('API_TOKEN');
 			expect(shown).not.toContain('supersecret');
@@ -1712,7 +1716,9 @@ test(
 		try {
 			await page.goto(await server.loginLink(`/sessions/${id}`));
 			await page.waitForSelector('.xterm-screen');
-			await press('[title^="Links"]');
+			// Links is a section of Made
+			await press('[title^="Made"]');
+			await press('.open .section-switch button', 'Links');
 			await eventually(async () =>
 				expect(await shown()).toEqual(['docs.acme.dev/api', 'github.com/acme/shop/issues/12']),
 			);
@@ -1766,7 +1772,12 @@ test(
 			await page.waitForSelector('.xterm-screen');
 			await wait(1000);
 
-			const links = await centerOf(page, '[title^="Links"]');
+			const made = await centerOf(page, '[title^="Made"]');
+
+			await page.mouse.click(made.x, made.y);
+			await wait(800);
+
+			const links = await centerOf(page, '.open .section-switch button', 'Links');
 
 			await page.mouse.click(links.x, links.y);
 			await page.waitForSelector('.links .link a');
@@ -1825,7 +1836,9 @@ test(
 			await page.goto(await server.loginLink(`/sessions/${id}`));
 			await page.waitForSelector('.xterm-screen');
 			await wait(1000);
-			await press('[title^="Decisions"]');
+			// Decisions is a section of Record
+			await press('[title^="Record"]');
+			await press('.open .section-switch button', 'Decisions');
 			await page.waitForFunction(
 				() => document.querySelector('.decisions-panel')?.innerText.includes('Lock accounts per user'),
 				{ timeout: 20_000 },
@@ -1839,7 +1852,9 @@ test(
 				{ cwd: server.project },
 			);
 			await press('.decisions-panel .bar .close');
-			await press('[title^="Decisions"]');
+			// Decisions is a section of Record
+			await press('[title^="Record"]');
+			await press('.open .section-switch button', 'Decisions');
 			await page.waitForFunction(() => document.querySelector('.decisions-panel')?.innerText.includes('Recorded 1'), {
 				timeout: 20_000,
 			});
@@ -2194,7 +2209,9 @@ test(
 			await page.goto(await server.loginLink(`/sessions/${id}`));
 			await page.waitForSelector('.xterm-screen');
 			await wait(1000);
-			await press('[title^="Decisions"]');
+			// Decisions is a section of Record
+			await press('[title^="Record"]');
+			await press('.open .section-switch button', 'Decisions');
 			// Found nowhere, then offered to the commit that changed lock.js, which asks rather than guesses
 			await showing('Why per user and not per session?');
 			expect(git('log', '-1', '--format=%s')).toBe('lock accounts');
