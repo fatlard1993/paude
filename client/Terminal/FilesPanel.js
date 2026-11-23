@@ -19,7 +19,10 @@ import {
 	getTurnChanges,
 	listFiles,
 	rawFileUrl,
+	createEntry,
+	readArtifact,
 	readFile,
+	saveArtifact,
 	saveFile,
 	searchFiles,
 	tourOf,
@@ -345,6 +348,14 @@ export const quickOpenMode = event =>
 		? QUICK_OPEN[`${event.shiftKey ? 'Shift+' : ''}${event.key.toLowerCase()}`]
 		: undefined;
 
+// Why an artifact read to edit can't be saved, as its paude says, or null when it can; an older paude, which hashes
+// none, can't save one at all
+const readOnlyBecause = headers => {
+	if (headers.has('x-read-only')) return decodeURIComponent(headers.get('x-read-only'));
+
+	return headers.has('x-content-hash') ? null : 'the paude it is on is too old to edit what a session made';
+};
+
 export default class FilesPanel extends Panel {
 	build() {
 		document.addEventListener('selectionchange', () => this.offerNameActions());
@@ -578,7 +589,20 @@ export default class FilesPanel extends Panel {
 
 		this.paths = body;
 		this.renderList();
-		if (!this.view) this.viewer.replaceChildren(element('div', 'empty', 'Pick a file to read it.'));
+		if (!this.view) this.viewer.replaceChildren(this.nothingOpen());
+	}
+
+	// Nothing to read yet: a file to pick, or, for whoever may edit, one to begin
+	nothingOpen() {
+		const empty = element('div', 'empty', 'Pick a file to read it');
+
+		if (!canType()) return empty;
+		empty.append(
+			', or ',
+			button('write a new one', () => this.manager.create(), { className: 'variant-flat' }),
+		);
+
+		return empty;
 	}
 
 	// null outside git, which hides the Changes mode
@@ -1035,7 +1059,7 @@ export default class FilesPanel extends Panel {
 		this.view = null;
 		this.editing = null;
 		this.panes.classList.remove('reading');
-		this.viewer.replaceChildren(element('div', 'empty', 'Pick a file to read it.'));
+		this.viewer.replaceChildren(this.nothingOpen());
 	}
 
 	// Search the contents of one folder
@@ -1178,8 +1202,8 @@ export default class FilesPanel extends Panel {
 			.forEach(entry => entry.classList.toggle('current', entry.dataset.path === path));
 	}
 
-	// `outside`: a file the session made outside the project (its scratchpad, /tmp), read through its artifacts: shown,
-	// but not edited, blamed or listed
+	// `outside`: a file the session made that the list doesn't have (in its scratchpad, /tmp, home, or a folder git
+	// ignores), read and edited through its artifacts, but not blamed or listed
 	fileUrl() {
 		return this.outside
 			? artifactUrl(sessionOf(this.options.place), this.current)
@@ -1194,6 +1218,7 @@ export default class FilesPanel extends Panel {
 		this.current = path;
 		this.here = outside ? this.here : path.split('/').slice(0, -1).join('/');
 		this.outside = outside;
+		this.readOnly = null;
 		this.view = 'file';
 		this.kind = kindOf(path);
 		this.selection = line ? { anchor: line, from: line, to: lastLine } : null;
@@ -1207,10 +1232,7 @@ export default class FilesPanel extends Panel {
 		if (['image', 'video', 'audio', 'pdf'].includes(this.kind)) return this.renderViewer();
 
 		const { body, response } = outside
-			? await fetch(this.fileUrl()).then(
-					async read => ({ response: read, body: await read.text() }),
-					() => ({ body: null }),
-				)
+			? await readArtifact(sessionOf(this.options.place), path)
 			: await readFile(this.options.place, path);
 
 		if (this.current !== path) return;
@@ -1224,8 +1246,9 @@ export default class FilesPanel extends Panel {
 
 		this.failure = null;
 		this.hash = response.headers.get('x-content-hash');
+		this.readOnly = outside ? readOnlyBecause(response.headers) : null;
 		this.text = body;
-		this.draft = outside ? null : this.draftOf(path, body);
+		this.draft = this.readOnly ? null : this.draftOf(path, body);
 		this.lines = body.replace(/\n$/, '').split('\n');
 		this.commentLines = null;
 		await this.loadCommentLines();
@@ -1358,7 +1381,7 @@ export default class FilesPanel extends Panel {
 		if (this.lines && this.showingSource && !this.outside) head.append(this.walkButton(walk => this.walkMenu(walk)));
 
 		if (canType()) {
-			if (this.lines && this.showingSource && !this.outside)
+			if (this.lines && this.showingSource && !this.readOnly)
 				head.append(button('Edit', () => this.startEditing(), { icon: 'pen' }));
 			if (this.options.attach) head.append(button('Attach file', () => this.attachFile()));
 
@@ -1473,9 +1496,10 @@ export default class FilesPanel extends Panel {
 
 	editingHead(head) {
 		const dirty = this.editing.text !== this.text;
+		const state = dirty ? 'Editing, not saved' : 'Editing';
 
 		head.append(
-			element('span', 'editing', dirty ? 'Editing, not saved' : 'Editing'),
+			element('span', 'editing', this.editing.creating ? 'New, made when saved' : state),
 			iconButton('magnifying-glass', 'Find and replace (Ctrl+F, Ctrl+H)', () => openSearchPanel(this.editorView)),
 			button('Save', () => this.save(), { title: 'Save (Ctrl+S)', className: 'primary' }),
 			button('Cancel', () => this.cancelEditing()),
@@ -1511,6 +1535,9 @@ export default class FilesPanel extends Panel {
 			this.viewerHead(),
 			...(this.tour ? [this.tourCard.elem] : []),
 			...(this.conflict ? [this.conflictNotice()] : []),
+			...(this.readOnly && this.lines && canType() && this.view === 'file'
+				? [element('div', 'conflict read-only', `Can't be edited here: ${this.readOnly}.`)]
+				: []),
 			...(this.draft && !this.editing && this.view === 'file' ? [this.draftNotice()] : []),
 			this.body,
 		);
@@ -1665,13 +1692,44 @@ export default class FilesPanel extends Panel {
 		this.viewer.querySelector('.head')?.replaceWith(this.viewerHead());
 	}
 
+	// A file that isn't there yet, opened to write: it's made when the edit is first saved, and leaving it unsaved leaves
+	// nothing behind
+	async openNew(path) {
+		if (!(await this.leaveEditing())) return;
+		this.leaving(path);
+
+		this.leaveTour(() => false);
+		Object.assign(this, {
+			current: path,
+			here: path.split('/').slice(0, -1).join('/'),
+			outside: false,
+			readOnly: null,
+			view: 'file',
+			kind: kindOf(path),
+			selection: null,
+			fileHistory: null,
+			blame: null,
+			conflict: null,
+			failure: null,
+			draft: null,
+			commentLines: null,
+			hash: null,
+			text: '',
+			lines: [''],
+		});
+		this.panes.classList.add('reading');
+		this.markCurrent(path);
+		this.startEditing({ creating: true });
+	}
+
 	// An edit begins from the file as read, or from a draft kept from before (over the version it was begun on, so a
 	// newer one is a conflict when saving rather than lost)
-	startEditing({ text = this.text, hash = this.hash } = {}) {
+	startEditing({ text = this.text, hash = this.hash, creating = false } = {}) {
 		this.draft = null;
 		this.editing = {
 			text,
 			hash,
+			creating,
 			state: createState(text, {
 				path: this.current,
 				language: languageOf(this.current),
@@ -1702,9 +1760,15 @@ export default class FilesPanel extends Panel {
 		}
 	}
 
+	// To where the file is: the project, the session's artifacts, or, for one not there yet, made with its text
 	async save(hash = this.editing.hash) {
-		const { text } = this.editing;
-		const { body, response } = await saveFile(this.options.place, this.current, text, hash);
+		const { text, creating } = this.editing;
+
+		if (creating) return this.saveNew(text);
+
+		const { body, response } = this.outside
+			? await saveArtifact(sessionOf(this.options.place), this.current, text, hash)
+			: await saveFile(this.options.place, this.current, text, hash);
 
 		if (response?.status === 409) {
 			this.conflict = { text: body.text, hash: body.hash };
@@ -1731,6 +1795,30 @@ export default class FilesPanel extends Panel {
 		this.renderViewer();
 	}
 
+	async saveNew(text) {
+		const path = this.current;
+		const { body, response } = await createEntry(this.options.place, path, false, text);
+
+		if (!response?.ok) {
+			new Notify({ intent: 'danger', content: typeof body === 'string' ? body : 'Could not make it.' });
+
+			return;
+		}
+
+		if (this.current !== path) return;
+		Object.assign(this, { current: body.path, hash: body.hash, text, lines: text.replace(/\n$/, '').split('\n') });
+		this.editing = null;
+		new Notify(
+			body.listed
+				? { intent: 'success', content: `Made ${body.path}`, timeout: 1500 }
+				: { intent: 'warning', content: `Made ${body.path}, but git ignores it, so it isn't listed.` },
+		);
+		this.reveal(body.path);
+		await this.refresh();
+		this.markCurrent(body.path);
+		this.renderViewer();
+	}
+
 	draftKey(path) {
 		return `${DRAFT_PREFIX}${placeKey(this.options.place)}:${path}`;
 	}
@@ -1753,7 +1841,7 @@ export default class FilesPanel extends Panel {
 	}
 
 	keepDraft() {
-		this.keepDraftSoon(this.current);
+		if (!this.editing?.creating) this.keepDraftSoon(this.current);
 	}
 
 	forgetDraft() {

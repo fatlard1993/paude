@@ -1,3 +1,8 @@
+import { constants } from 'fs';
+import { access } from 'fs/promises';
+import { userInfo } from 'os';
+import { relative } from 'path';
+
 import { requestMatch } from '@vanilla-bean/components/app';
 
 import { credentialOf, identityOf } from '../auth';
@@ -21,9 +26,11 @@ import {
 	listFiles,
 	rawProjectFile,
 	readProjectFile,
+	readTextFile,
 	replaceInProject,
 	searchProject,
 	writeProjectFile,
+	writeTextFile,
 } from '../files';
 import {
 	FileError,
@@ -115,9 +122,9 @@ const MANAGING = [
 		'POST',
 		'/files',
 		async (cwd, request) => {
-			const { path, folder } = await bodyOf(request);
+			const { path, folder, text } = await bodyOf(request);
 
-			return createEntry(cwd, path, { folder: folder === true });
+			return createEntry(cwd, path, { folder: folder === true, ...(text !== undefined && { text }) });
 		},
 	],
 	['POST', '/files/move', async (cwd, request) => moveEntries(cwd, (await bodyOf(request)).moves)],
@@ -201,21 +208,51 @@ const attach = async (request, id, name) => {
 // Pages and SVGs a session made run nowhere near paude: in a sandbox, with no access to its cookies or API
 const SANDBOXED = /\.(html?|svg)$/i;
 
-// What a session made (the owner's to see wherever it is; a guest's only inside the project), and one of those files
-// served as it is. Only a file the session's own transcript names is served.
+// What a session made that whoever asks may see: the owner's wherever it is, a guest's only inside the project. Each
+// says where the files panel lists it (`inFiles`, from the session's folder), or null where it doesn't, a file git
+// ignores say: that one is read and edited as an artifact, as one outside the project is.
+const visibleArtifacts = async (identity, id) => {
+	const record = await sessionRecord(id);
+
+	if (!record) return null;
+
+	const [made, listed] = await Promise.all([
+		sessionArtifacts(id, record.cwd, { projectFolder: projectPath(projectOf(record.cwd)) }),
+		listFiles(record.cwd).then(files => new Set(files)),
+	]);
+
+	return made
+		.filter(artifact => identity.owner || artifact.inProject)
+		.map(artifact => {
+			const fromFolder = relative(record.cwd, artifact.path);
+
+			return { ...artifact, inFiles: listed.has(fromFolder) ? fromFolder : null };
+		});
+};
+
+const WHO = userInfo().username;
+
+// Why an artifact can't be edited by whoever asks, or null when it can: within what their invite allows, and what
+// paude's own user may write
+const readOnlyBecause = async (identity, id, artifact) => {
+	if (!may(identity, 'type', id)) return 'Your invite does not include editing';
+
+	return access(artifact.path, constants.W_OK).then(
+		() => null,
+		() => `paude runs as ${WHO}, who may not write ${artifact.path}`,
+	);
+};
+
+// One of those files served as it is, or (`text`) read to edit as the files panel reads a project's file, saying in
+// x-read-only why it can't be saved, if it can't. Only a file the session's own transcript names is served.
 const artifacts = async (request, match) => {
 	const identity = identityOf(credentialOf(request));
 
 	if (!may(identity, 'files', match.id)) return new Response('Not part of your invite', { status: 403 });
 
-	const record = await sessionRecord(match.id);
+	const made = await visibleArtifacts(identity, match.id);
 
-	if (!record) return new Response('Session not found', { status: 404 });
-
-	const made = (
-		await sessionArtifacts(match.id, record.cwd, { projectFolder: projectPath(projectOf(record.cwd)) })
-	).filter(artifact => identity.owner || artifact.inProject);
-
+	if (!made) return new Response('Session not found', { status: 404 });
 	if (new URL(request.url).pathname.endsWith('/artifacts')) return Response.json(made);
 
 	const artifact = made.find(found => found.path === match.path);
@@ -223,6 +260,23 @@ const artifacts = async (request, match) => {
 	if (!artifact) return new Response('Not something this session made', { status: 404 });
 
 	const file = Bun.file(artifact.path);
+
+	if (match.text === '1') {
+		const { status, text, hash } = await readTextFile(file);
+
+		if (status !== 200) return new Response(REFUSED[status], { status });
+
+		const because = await readOnlyBecause(identity, match.id, artifact);
+
+		return new Response(text, {
+			headers: {
+				'content-type': 'text/plain; charset=utf-8',
+				'x-content-hash': hash,
+				...(because && { 'x-read-only': encodeURIComponent(because) }),
+			},
+		});
+	}
+
 	const name = encodeURIComponent(artifact.name);
 
 	return new Response(file, {
@@ -233,6 +287,28 @@ const artifacts = async (request, match) => {
 			...(SANDBOXED.test(artifact.path) && { 'content-security-policy': 'sandbox allow-scripts' }),
 		},
 	});
+};
+
+// A hand edit of something the session made, wherever it landed: the same trust as typing into Claude, of a file whoever
+// saves may see among its artifacts (so outside the project, the owner's alone), and only over the version opened
+const saveArtifact = async (request, match) => {
+	const identity = identityOf(credentialOf(request));
+	const { path: wanted, text, hash } = await bodyOf(request);
+	const made = may(identity, 'files', match.id) ? await visibleArtifacts(identity, match.id) : null;
+	const artifact = made?.find(found => found.path === wanted);
+
+	if (!artifact) return new Response('Not something this session made', { status: 404 });
+
+	const because = await readOnlyBecause(identity, match.id, artifact);
+
+	if (because) return new Response(because, { status: 403 });
+
+	const saved = await writeTextFile(artifact.path, text, hash);
+
+	if (saved.status === 409) return Response.json({ text: saved.text, hash: saved.hash }, { status: 409 });
+	if (saved.status !== 200) return new Response(REFUSED[saved.status], { status: saved.status });
+
+	return Response.json({ hash: saved.hash });
 };
 
 // Reading a session's project takes Review or more; Look in sees only the terminal
@@ -387,6 +463,10 @@ const filesRoutes = async request => {
 		requestMatch('GET', '/api/sessions/:id/artifact', request);
 
 	if (made) return artifacts(request, made);
+
+	const editingMade = requestMatch('PUT', '/api/sessions/:id/artifact', request);
+
+	if (editingMade) return saveArtifact(request, editingMade);
 
 	const touring = placeMatch('POST', '/tour', request);
 

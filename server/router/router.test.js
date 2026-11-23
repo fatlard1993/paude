@@ -320,10 +320,112 @@ test('making a file or folder takes the typing role, and is refused over what is
 		call(`/api/sessions/${session.id}/files`, { token, method: 'POST', body });
 
 	expect((await make({ path: 'drafts/idea.md' }, tokens.comment)).status).toBe(403);
-	expect(await (await make({ path: 'drafts/idea.md' })).json()).toEqual({ path: 'drafts/idea.md', listed: true });
+	expect(await (await make({ path: 'drafts/idea.md' })).json()).toEqual({
+		path: 'drafts/idea.md',
+		listed: true,
+		hash: new Bun.CryptoHasher('sha256').update('').digest('hex'),
+	});
+	// An edit begun before the file was there is saved by making it with its text, answering the hash to save over
+	const made = await (await make({ path: 'drafts/begun.md', text: 'first words\n' })).json();
+
+	expect(made.hash).toBe(new Bun.CryptoHasher('sha256').update('first words\n').digest('hex'));
+	expect(await Bun.file(path.join(base, 'projects', 'app', 'drafts', 'begun.md')).text()).toBe('first words\n');
+	expect((await make({ path: 'drafts/begun.md', text: 'again\n' })).status).toBe(409);
 	expect((await make({ path: 'drafts/idea.md' })).status).toBe(409);
 	expect((await make({ path: 'drafts/later', folder: true })).status).toBe(200);
 	expect((await make({ path: '../escape.md' })).status).toBe(400);
+});
+
+test("what a session made is edited wherever it landed, within what the owner may touch, or says why it can't be", async () => {
+	const app = path.join(base, 'projects', 'app');
+	const id = '00000000-0000-4000-8000-0000000000e1';
+	const transcript = path.join(base, 'claude', 'projects', app.replace(/[^a-zA-Z0-9]/g, '-'), `${id}.jsonl`);
+	const home = path.join(base, 'home');
+	const pages = path.join(home, 'pages.md');
+	const locked = path.join(home, 'locked.md');
+	const plan = path.join(app, 'notes', 'plan.md');
+	const at = new Date().toISOString();
+	const wrote = (file, n) => ({
+		type: 'assistant',
+		sessionId: id,
+		cwd: app,
+		timestamp: at,
+		message: {
+			role: 'assistant',
+			content: [{ type: 'tool_use', id: `w${n}`, name: 'Write', input: { file_path: file } }],
+		},
+	});
+	const hashOf = text => new Bun.CryptoHasher('sha256').update(text).digest('hex');
+	const { invite: reviewing } = await createInvite({ sessionId: id, name: 'reviewer', role: 'comment', hours: 1 });
+	const { invite: pairing } = await createInvite({ sessionId: id, name: 'pair', role: 'drive', hours: 1 });
+	const reviewer = await createToken('reviewer', { invite: reviewing });
+	const pair = await createToken('pair', { invite: pairing });
+	const read = (file, token = tokens.owner) =>
+		call(`/api/sessions/${id}/artifact?path=${encodeURIComponent(file)}&text=1`, { token });
+	const save = (body, token = tokens.owner) => call(`/api/sessions/${id}/artifact`, { token, method: 'PUT', body });
+
+	await mkdir(home, { recursive: true });
+	await mkdir(path.dirname(plan), { recursive: true });
+	await writeFile(pages, '# pages\n', { mode: 0o600 });
+	await writeFile(locked, 'look, not touch\n', { mode: 0o400 });
+	await writeFile(plan, 'the plan\n');
+	await Bun.write(
+		transcript,
+		[
+			{ type: 'user', sessionId: id, cwd: app, timestamp: at, message: { role: 'user', content: 'write the pages' } },
+			wrote(pages, 1),
+			wrote(locked, 2),
+			wrote(plan, 3),
+		]
+			.map(line => JSON.stringify(line))
+			.join('\n') + '\n',
+	);
+	forgetStoredSessions();
+
+	// Outside every project, for the owner: listed by its path, read with the hash to save over, and saved in place
+	const listed = await (await call(`/api/sessions/${id}/artifacts`, { token: tokens.owner })).json();
+
+	expect(Object.fromEntries(listed.map(made => [made.name, made.inFiles]))).toEqual({
+		'pages.md': null,
+		'locked.md': null,
+		'plan.md': 'notes/plan.md',
+	});
+
+	const opened = await read(pages);
+
+	expect(opened.status).toBe(200);
+	expect(await opened.text()).toBe('# pages\n');
+	expect(opened.headers.get('x-content-hash')).toBe(hashOf('# pages\n'));
+	expect(opened.headers.get('x-read-only')).toBeNull();
+
+	const saved = await save({ path: pages, text: '# pages\nmore\n', hash: hashOf('# pages\n') });
+
+	expect(await saved.json()).toEqual({ hash: hashOf('# pages\nmore\n') });
+	expect(await Bun.file(pages).text()).toBe('# pages\nmore\n');
+	expect((await stat(pages)).mode & 0o777).toBe(0o600);
+
+	// Over a version since changed, the newer one comes back rather than being lost
+	const stale = await save({ path: pages, text: 'mine\n', hash: hashOf('# pages\n') });
+
+	expect(stale.status).toBe(409);
+	expect(await stale.json()).toEqual({ text: '# pages\nmore\n', hash: hashOf('# pages\nmore\n') });
+
+	// One paude's user may not write is read, and says why it won't save
+	expect(decodeURIComponent((await read(locked)).headers.get('x-read-only'))).toContain('may not write');
+	expect((await save({ path: locked, text: 'touched\n', hash: hashOf('look, not touch\n') })).status).toBe(403);
+	expect(await Bun.file(locked).text()).toBe('look, not touch\n');
+
+	// Nothing the session didn't make, whoever asks
+	expect((await save({ path: path.join(app, 'favicon.svg'), text: '', hash: 'x' })).status).toBe(404);
+
+	// A guest sees only what was made in the project: outside it is nothing to them; Review reads but doesn't save
+	expect((await save({ path: pages, text: 'x\n', hash: hashOf('# pages\nmore\n') }, pair)).status).toBe(404);
+	expect(decodeURIComponent((await read(plan, reviewer)).headers.get('x-read-only'))).toBe(
+		'Your invite does not include editing',
+	);
+	expect((await save({ path: plan, text: 'x\n', hash: hashOf('the plan\n') }, reviewer)).status).toBe(403);
+	expect((await save({ path: plan, text: 'the plan, paired\n', hash: hashOf('the plan\n') }, pair)).status).toBe(200);
+	expect(await Bun.file(plan).text()).toBe('the plan, paired\n');
 });
 
 test('moving, deleting, restoring and uploading take the typing role; a download is the file to save', async () => {

@@ -333,6 +333,12 @@ export default class FileManager {
 		});
 
 		if (!path || path === prefix) return;
+		// A file opens to write in at once, and is made when it's first saved: nothing is left behind by leaving it
+		if (!isFolder) {
+			const wanted = path.trim().replace(/^\/+/, '');
+
+			return this.panel.paths?.includes(wanted) ? this.panel.open(wanted) : this.panel.openNew(wanted);
+		}
 
 		const { body, response } = await createEntry(this.place, path, isFolder);
 

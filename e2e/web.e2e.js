@@ -1,6 +1,6 @@
 // The web client against a fake Claude that draws as the real one does (bun run test:e2e). Each runs in every
 // browser variant: these bugs showed only on a GPU renderer, a Mac, or a session that's printing.
-import { mkdtemp, rm } from 'fs/promises';
+import { mkdtemp, rm, stat, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
 
@@ -2387,12 +2387,16 @@ test(
 );
 
 test(
-	"a file a session made reads in the files panel: one of the project's as any other, one outside it read-only",
+	"a file a session made reads and edits in the files panel wherever it landed, or says why it can't be edited",
 	async () => {
 		const server = await startServer();
 		const id = await server.newSession();
 		const folder = await mkdtemp(path.join(os.tmpdir(), 'paude-made-'));
-		const [outside, inside] = [path.join(folder, 'notes.txt'), path.join(server.project, 'report.txt')];
+		const [outside, locked, inside] = [
+			path.join(folder, 'notes.txt'),
+			path.join(folder, 'locked.txt'),
+			path.join(server.project, 'report.txt'),
+		];
 		const wrote = (file, second) => ({
 			type: 'assistant',
 			timestamp: new Date(Date.now() - (10 - second) * 1000).toISOString(),
@@ -2402,10 +2406,15 @@ test(
 		// The last line counts once another follows it, as one still being written might not be whole
 		await server.writeTranscript(id, [
 			wrote(outside, 1),
-			wrote(inside, 2),
+			wrote(locked, 2),
+			wrote(inside, 3),
 			{ type: 'user', message: { content: 'ok' } },
 		]);
-		await Promise.all([Bun.write(outside, 'made outside\n'), Bun.write(inside, 'made inside\n')]);
+		await Promise.all([
+			writeFile(outside, 'made outside\n', { mode: 0o600 }),
+			writeFile(locked, 'not to touch\n', { mode: 0o400 }),
+			Bun.write(inside, 'made inside\n'),
+		]);
 
 		const { browser, page } = await openBrowser('dom');
 		const press = async (selector, text) => {
@@ -2420,15 +2429,30 @@ test(
 			await page.goto(await server.loginLink(`/sessions/${id}`));
 			await page.waitForSelector('.xterm-screen');
 			await wait(1500);
-			await press('[title^="Artifacts"]');
+			await press('[title^="Made"]');
 
+			// Outside every project: read, edited and saved where it is, keeping its mode
 			await press('.links .artifact .name', 'notes.txt');
 			expect(page.url()).toContain(`/sessions/${id}`);
 			await eventually(async () =>
 				expect(await page.$eval('.files', panel => panel.classList.contains('open'))).toBe(true),
 			);
 			await eventually(async () => expect(await reading()).toContain('made outside'));
-			await eventually(async () => expect(await reading()).not.toContain('Edit'));
+			await press('.files .head button', 'Edit');
+			await page.keyboard.down('Control');
+			await page.keyboard.press('End');
+			await page.keyboard.up('Control');
+			await page.keyboard.type('and edited\n');
+			await press('.files .head button', 'Save');
+			await eventually(async () => expect(await Bun.file(outside).text()).toBe('made outside\nand edited\n'));
+			expect((await stat(outside)).mode & 0o777).toBe(0o600);
+
+			// One paude's user may not write: read, and saying why it can't be edited rather than offering to
+			await press('.links .artifact .name', 'locked.txt');
+			await eventually(async () => expect(await reading()).toContain('not to touch'));
+			await eventually(async () => expect(await reading()).toContain("Can't be edited here"));
+			expect(await reading()).toContain('may not write');
+			expect(await page.$$eval('.files .head button', found => found.map(one => one.innerText))).not.toContain('Edit');
 
 			// The list stays open beside the files on a wide screen
 			await press('.links .artifact .name', 'report.txt');
@@ -2438,6 +2462,68 @@ test(
 			await browser.close();
 			await server.stop();
 			await rm(folder, { recursive: true, force: true });
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
+	'a new file opens to write in at once, from the + menu or an empty viewer, and is made with its text when saved',
+	async () => {
+		const server = await startServer();
+		const id = await server.newSession();
+		const { browser, page } = await openBrowser('dom');
+		const press = async (selector, text) => {
+			const where = await centerOf(page, selector, text);
+
+			await page.mouse.click(where.x, where.y);
+			await wait(800);
+		};
+		const made = path.join(server.project, 'drafts', 'idea.txt');
+		const left = path.join(server.project, 'left.md');
+
+		try {
+			await page.goto(await server.loginLink(`/sessions/${id}`));
+			await page.waitForSelector('.xterm-screen');
+			await wait(1500);
+			await press('[title^="Files"]');
+
+			// Left unsaved, nothing is made
+			await press('.files .viewer button', 'write a new one');
+			await typeInDialog(page, 'left.md');
+			await page.keyboard.press('Enter');
+			await eventually(async () => expect(await page.$$eval('.files .cm-editor', found => found.length)).toBe(1));
+			expect(await Bun.file(left).exists()).toBe(false);
+			await press('.files .head button', 'Cancel');
+			expect(await Bun.file(left).exists()).toBe(false);
+
+			await press('.files [title="New file or folder"]');
+			await press('[role=menu] li', 'New file');
+			await typeInDialog(page, 'drafts/idea.txt');
+			await page.keyboard.press('Enter');
+			await eventually(async () =>
+				expect(await page.$eval('.files .head', head => head.innerText)).toContain('New, made when saved'),
+			);
+			expect(await Bun.file(made).exists()).toBe(false);
+			await page.waitForFunction(() => document.activeElement?.matches('.files .cm-content'));
+			await page.keyboard.type('# an idea\n');
+			await press('.files .head button', 'Save');
+			await eventually(async () => expect(await Bun.file(made).text()).toBe('# an idea\n'));
+			await eventually(async () =>
+				expect(await page.$eval('.files .list', list => list.innerText)).toContain('idea.txt'),
+			);
+
+			// Saved again, it's an edit of the file now there
+			await press('.files .head button', 'Edit');
+			await page.keyboard.down('Control');
+			await page.keyboard.press('End');
+			await page.keyboard.up('Control');
+			await page.keyboard.type('more\n');
+			await press('.files .head button', 'Save');
+			await eventually(async () => expect(await Bun.file(made).text()).toBe('# an idea\nmore\n'));
+		} finally {
+			await browser.close();
+			await server.stop();
 		}
 	},
 	TIMEOUT_MS,
@@ -2514,7 +2600,7 @@ test(
 );
 
 test(
-	'a new file is made where the list was looked into and opens to edit; a new folder shows while empty',
+	'a new file opens to write where the list was looked into, made only once saved; a new folder shows while empty',
 	async () => {
 		const server = servers.turns;
 		const { browser, page } = await openSession('dom', server);
@@ -2542,18 +2628,17 @@ test(
 				expect(await page.$eval('.files .viewer .path', path => path.textContent)).toBe('server/util.js'),
 			);
 			await eventually(async () => expect(await page.$$eval('.files .cm-editor', editors => editors.length)).toBe(1));
-			await eventually(async () => expect(await Bun.file(`${server.project}/server/util.js`).exists()).toBe(true));
+			expect(await Bun.file(`${server.project}/server/util.js`).exists()).toBe(false);
 
 			await press('.files .head button', 'Cancel');
+			expect(await Bun.file(`${server.project}/server/util.js`).exists()).toBe(false);
 			await press('.files [title="New file or folder"]');
 			await press('[role=menu] li', 'New folder');
 			await typeInDialog(page, 'empty');
 			await page.keyboard.press('Enter');
 			await wait(1500);
 
-			await eventually(async () =>
-				expect(await labels()).toEqual(expect.arrayContaining(['server', 'empty', 'util.js'])),
-			);
+			await eventually(async () => expect(await labels()).toEqual(expect.arrayContaining(['server', 'empty'])));
 		} finally {
 			await rm(`${server.project}/server/util.js`, { force: true });
 			await rm(`${server.project}/server/empty`, { recursive: true, force: true });

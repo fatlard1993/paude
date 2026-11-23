@@ -132,12 +132,8 @@ export const rawProjectFile = async (cwd, path) => {
 
 const hashOf = bytes => new Bun.CryptoHasher('sha256').update(bytes).digest('hex');
 
-// The text and a hash of exactly what was read, which a save hands back
-export const readProjectFile = async (cwd, path) => {
-	const file = await projectFile(cwd, path);
-
-	if (!file) return { status: 404 };
-
+// The text of a file and a hash of exactly what was read, which a save hands back; 413 too big, 415 not text
+export const readTextFile = async file => {
 	if (file.size > MAX_BYTES) return { status: 413 };
 
 	const bytes = new Uint8Array(await file.arrayBuffer());
@@ -147,22 +143,43 @@ export const readProjectFile = async (cwd, path) => {
 	return { status: 200, text: new TextDecoder().decode(bytes), hash: hashOf(bytes) };
 };
 
-// A hand edit goes only to a text file already in the project, and only over the version that was opened: a newer
-// change (Claude's, most likely) comes back as a 409 with the current text instead of being lost
-export const writeProjectFile = async (cwd, path, text, hash) => {
-	const current = await readProjectFile(cwd, path);
+// Text to write as a file's bytes, or null when it isn't text or is too big to edit here
+export const textBytes = text => {
+	if (typeof text !== 'string') return null;
+
+	const bytes = new TextEncoder().encode(text);
+
+	return bytes.length > MAX_BYTES ? null : bytes;
+};
+
+// A hand edit goes only over the version that was opened: a newer change (Claude's, most likely) comes back as a 409
+// with the current text instead of being lost. Written in place, so the file keeps its owner and mode.
+export const writeTextFile = async (filePath, text, hash) => {
+	const current = await readTextFile(Bun.file(filePath));
 
 	if (current.status !== 200) return { status: current.status };
 
-	const bytes = new TextEncoder().encode(typeof text === 'string' ? text : '');
+	const bytes = textBytes(text);
 
-	if (typeof text !== 'string' || bytes.length > MAX_BYTES) return { status: 413 };
+	if (!bytes) return { status: 413 };
 	if (current.hash !== hash) return { status: 409, text: current.text, hash: current.hash };
 
-	await Bun.write(resolve(cwd, path), bytes);
+	await Bun.write(filePath, bytes);
 
 	return { status: 200, hash: hashOf(bytes) };
 };
+
+export const hashOfText = text => hashOf(new TextEncoder().encode(text));
+
+export const readProjectFile = async (cwd, path) => {
+	const file = await projectFile(cwd, path);
+
+	return file ? readTextFile(file) : { status: 404 };
+};
+
+// Only to a text file already in the project
+export const writeProjectFile = async (cwd, path, text, hash) =>
+	(await projectFile(cwd, path)) ? writeTextFile(resolve(cwd, path), text, hash) : { status: 404 };
 
 export class SearchError extends Error {}
 

@@ -151,8 +151,10 @@ export default class ArtifactsPanel extends Panel {
 		);
 	}
 
-	// Read in the files panel, where there is one: a file of the project as any other, one made outside it read-only.
-	// An image has its viewer; what can't be read as text (an archive, a database, an office file) downloads.
+	// Read in the files panel, where there is one: a file it lists as any other, and one it doesn't (outside the
+	// project, or one git ignores) by its whole path, through the session's artifacts. Either is edited there, as far as
+	// whoever opens it may. An image has its viewer; what can't be read as text (an archive, a database, an office
+	// file) downloads.
 	inFilesPanel(link, made) {
 		if (!this.options.openFile || made.kind === 'image' || made.kind === 'archive' || UNREADABLE.test(made.path))
 			return;
@@ -161,7 +163,10 @@ export default class ArtifactsPanel extends Panel {
 			if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
 
 			event.preventDefault();
-			if (made.inProject) this.options.openFile(made.shown);
+			// An older paude doesn't say where its list has it: one in the project is taken to be listed
+			const listed = made.inFiles === undefined ? made.inProject && made.shown : made.inFiles;
+
+			if (listed) this.options.openFile(listed);
 			else this.options.openFile(made.path, { outside: true });
 		});
 	}

@@ -39,7 +39,10 @@ beforeEach(async () => {
 });
 
 test('a new file is made empty, its folders with it, and shows in the next listing', async () => {
-	expect(await createEntry(project, 'docs/guide/start.md')).toEqual({ path: 'docs/guide/start.md', listed: true });
+	expect(await createEntry(project, 'docs/guide/start.md')).toMatchObject({
+		path: 'docs/guide/start.md',
+		listed: true,
+	});
 	expect(await Bun.file(path.join(project, 'docs/guide/start.md')).text()).toBe('');
 	expect(await listFiles(project)).toContain('docs/guide/start.md');
 	expect(await statusOf(createEntry(project, 'docs/guide/start.md'))).toBe(409);
@@ -51,7 +54,7 @@ test('a new folder is made where it is asked for, a trailing slash or not', asyn
 });
 
 test('a file git ignores is made, but said not to be listed', async () => {
-	expect(await createEntry(project, 'debug.log')).toEqual({ path: 'debug.log', listed: false });
+	expect(await createEntry(project, 'debug.log')).toMatchObject({ path: 'debug.log', listed: false });
 });
 
 test('nothing is made outside the project, inside .git, through a file, or as a secret', async () => {

@@ -3,7 +3,7 @@ import { existsSync } from 'fs';
 import { cp, lstat, mkdir, readdir, realpath, rename, rm, stat, writeFile } from 'fs/promises';
 import path from 'path';
 
-import { forgetListing, isSecret, listFiles } from './files';
+import { forgetListing, hashOfText, isSecret, listFiles, textBytes } from './files';
 
 export const MAX_UPLOAD = 50 * 1024 * 1024;
 const MAX_AT_ONCE = 500;
@@ -121,14 +121,20 @@ const listed = async (cwd, rel) => {
 	return (await listFiles(cwd)).includes(rel);
 };
 
-export const createEntry = async (cwd, wanted, { folder = false } = {}) => {
+// A file is made with `text` in it (an edit begun before the file was there, saved), empty without; it answers the
+// hash of what it holds, as a read would, so the edit can go on over it
+export const createEntry = async (cwd, wanted, { folder = false, text = '' } = {}) => {
+	const bytes = folder ? null : textBytes(text);
+
+	if (!folder && !bytes) refuse(413, 'Too big to write here');
+
 	const { rel, target } = await newPlace(cwd, wanted);
 
 	await mkdir(path.dirname(target), { recursive: true });
 
 	try {
 		if (folder) await mkdir(target);
-		else await writeFile(target, '', { flag: 'wx' });
+		else await writeFile(target, bytes, { flag: 'wx' });
 	} catch (error) {
 		if (error.code === 'EEXIST') refuse(409, `${rel} is already there`);
 		throw error;
@@ -136,7 +142,7 @@ export const createEntry = async (cwd, wanted, { folder = false } = {}) => {
 
 	if (folder) forgetListing(cwd);
 
-	return { path: rel, ...(!folder && { listed: await listed(cwd, rel) }) };
+	return { path: rel, ...(!folder && { listed: await listed(cwd, rel), hash: hashOfText(text) }) };
 };
 
 // A rename is one move; moves are [{ from, to }] with whole paths at both ends

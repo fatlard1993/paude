@@ -267,9 +267,10 @@ export const getTurnChanges = async sessionId =>
 export const saveFile = async (place, path, text, hash) =>
 	await PUT(...placed(place, '/file', { body: { path, text, hash } }));
 
-// Resolves to { path, listed }: whether git lets the new file show in the listing (a folder never says)
-export const createEntry = async (place, path, folder) =>
-	await POST(...placed(place, '/files', { body: { path, folder } }));
+// Resolves to { path, listed, hash }: whether git lets the new file show in the listing (a folder never says), and
+// the hash of what the file holds: `text`, for an edit begun before the file was there, or nothing
+export const createEntry = async (place, path, folder, text) =>
+	await POST(...placed(place, '/files', { body: { path, folder, ...(text !== undefined && { text }) } }));
 
 // `action` is move ({ moves: [{ from, to }] }), copy ({ copies }), delete ({ paths }, answering { trash }) or restore
 // ({ trash }); a refusal answers with why, as text
@@ -326,6 +327,21 @@ export const rawFileUrl = (place, path, { download = false } = {}) =>
 // A file a session made, served as it is; through the relay when the session is on another paude
 export const artifactUrl = (sessionId, path, { download = false } = {}) =>
 	placeUrl(sessionId, '/artifact', { path, ...(download && { download: 1 }) });
+
+// A file a session made, read to edit: its text, the hash to save over (x-content-hash), and why it can't be saved
+// (x-read-only, URI-encoded), if it can't
+export const readArtifact = async (sessionId, path) =>
+	await GET(
+		...placed(sessionId, '/artifact', {
+			searchParameters: { path, text: 1 },
+			responseType: 'text',
+			invalidateAfter: 0,
+		}),
+	);
+
+// Over the version read (`hash`); a 409 answers with the newer text and its hash, as a project file's save does
+export const saveArtifact = async (sessionId, path, text, hash) =>
+	await PUT(...placed(sessionId, '/artifact', { body: { path, text, hash } }));
 
 export const getWatching = async () => await GET('/api/watching', { invalidateAfter: 0 });
 
