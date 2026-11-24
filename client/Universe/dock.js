@@ -292,9 +292,7 @@ export const dockCard = ({ session, live = false, open = 'git', onOpen, onClose,
 		for (const shown of panels.values()) {
 			shown.stop?.();
 			shown.dropEditor?.();
-			clearTimeout(shown.following);
 			clearTimeout(shown.again);
-			shown.viewing = null;
 			shown.elem.remove();
 		}
 		connection?.close();

@@ -454,9 +454,13 @@ export default class TasksPanel extends Panel {
 	}
 
 	leaveRun() {
+		this.stop();
+		this.refresh();
+	}
+
+	stop() {
 		clearTimeout(this.following);
 		this.viewing = null;
-		this.refresh();
 	}
 
 	async followRun() {
