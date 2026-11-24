@@ -1,4 +1,4 @@
-import { Notify, View, theme } from '@vanilla-bean/components';
+import { EmptyState, Notify, View, theme } from '@vanilla-bean/components';
 import { relativeTime } from '@vanilla-bean/components/utils/date';
 
 import {
@@ -329,6 +329,8 @@ export default class Universe extends View {
 			if (drawer) this.stage.elem.style.setProperty('--drawer', `${drawer}px`);
 		}
 		this.stage.elem.append(this.canvas, this.drawer ?? this.focus, this.tip);
+		// Over the sealed ship until it opens
+		this.boarding = new EmptyState({ appendTo: this.stage, addClass: 'boarding', loading: true, loader: 'augmented' });
 		// A ship for each subscription; `aboard` the one on the stage
 		this.ships = new Map([['', this.makeShip()]]);
 		this.aboard = this.ships.get('');
@@ -1460,6 +1462,7 @@ export default class Universe extends View {
 		if (this.loaded) return;
 		this.loaded = true;
 		this.aboard.open();
+		this.boarding.destroy();
 	}
 
 	// The other ships' plating opens once the boarded one's has all gone
