@@ -1,7 +1,7 @@
 import { Notify } from '@vanilla-bean/components';
 import { connectSocket } from '@vanilla-bean/components/utils/socket';
 
-import { isNewBuild } from './builtChunks';
+import { isNewBuild } from '../shared/builtChunks';
 
 // The library's hot reload socket (@vanilla-bean/components/app's HOT_RELOAD_PATH, kept from the client because its
 // module is the server's)

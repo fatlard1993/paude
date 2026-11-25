@@ -1,6 +1,7 @@
-import { ownsSession } from './permissions';
 import { readdir, realpath, stat } from 'fs/promises';
 import path from 'path';
+import { builtChunks } from '../shared/builtChunks';
+import { ownsSession } from './permissions';
 
 import { credentialOf, identityOf } from './auth';
 import { isSecret } from './files';
@@ -92,7 +93,8 @@ const redeemed = (request, share) => {
 
 	const granted = redeemFrameTicket(ticket, share.name);
 
-	if (!granted) return page(401, 'Open it from paude again', 'This link has been used, or is too old. Open it from paude again.');
+	if (!granted)
+		return page(401, 'Open it from paude again', 'This link has been used, or is too old. Open it from paude again.');
 	url.searchParams.delete(FRAME_TICKET);
 
 	return new Response(null, {
@@ -154,6 +156,49 @@ const relocated = (location, name, { host, port }) => {
 const newer = new Set();
 
 export const newVersionReady = name => newer.has(name);
+
+// A held game's page as it was loaded: where, and a fingerprint of it and the code it names. A rebuild or a restart
+// is a newer version only when what that page would load now is different; a game's files may not be named by their
+// contents, so what they hold is fingerprinted, not just their names. Null when the page couldn't be read.
+const shown = new Map();
+
+const fingerprint = async (origin, at) => {
+	const read = async url => {
+		const response = await fetch(url, { redirect: 'manual' });
+
+		return response.ok ? response.text() : null;
+	};
+
+	try {
+		const page = new URL(at, origin);
+		const html = await read(page);
+
+		if (html === null) return null;
+
+		const hash = new Bun.CryptoHasher('sha256').update(html);
+
+		for (const ref of [...builtChunks(html)].sort()) {
+			const url = new URL(ref, page);
+
+			if (url.origin === page.origin) hash.update(`\0${ref}\0${(await read(url)) ?? ''}`);
+		}
+
+		return hash.digest('hex');
+	} catch {
+		return null;
+	}
+};
+
+export const pageShown = (name, origin, at) => shown.set(name, { at, fingerprint: fingerprint(origin, at) });
+
+const offerIfChanged = async (name, origin) => {
+	const loaded = shown.get(name);
+	const [before, now] = loaded ? await Promise.all([loaded.fingerprint, fingerprint(origin, loaded.at)]) : [];
+
+	// The page loaded again meanwhile: that load is what it shows
+	if (shown.get(name) !== loaded) return;
+	if (!before || before !== now) newer.add(name);
+};
 
 // Only an arcade game's app holds its reloads: a session's own preview (a dev server's live reload) goes on as it does
 const holdsReload = async share => {
@@ -313,8 +358,10 @@ export const previewFetch = async (request, server) => {
 		}
 
 		// The app's page loaded (the frame, or the tab): whatever version it has now is the one shown
-		if (request.method === 'GET' && ['iframe', 'document'].includes(request.headers.get('sec-fetch-dest')))
+		if (request.method === 'GET' && ['iframe', 'document'].includes(request.headers.get('sec-fetch-dest'))) {
 			newer.delete(share.name);
+			if (await holdsReload(share)) pageShown(share.name, `http://${share.host}:${share.port}`, target);
+		}
 
 		return remember(await proxy(request, share, target), request, share.name);
 	}
@@ -341,6 +388,7 @@ const RECONNECT_MS = 1000;
 const RECONNECT_MAX_MS = 5000;
 
 const holdOpen = (socket, { name, target, protocols, headers }) => {
+	const origin = `http://${new URL(target).host}`;
 	let wait = RECONNECT_MS;
 	let reconnecting = false;
 
@@ -352,12 +400,12 @@ const holdOpen = (socket, { name, target, protocols, headers }) => {
 		upstream.addEventListener('open', () => {
 			wait = RECONNECT_MS;
 			reconnecting = false;
-			// Back after its server restarted: the code it runs now is newer than the page's
-			if (reopened) newer.add(name);
+			// Back after its server restarted: the code it serves now may be newer than the page's
+			if (reopened) offerIfChanged(name, origin);
 			for (const message of socket.data.pending.splice(0)) upstream.send(message);
 		});
 		upstream.addEventListener('message', event => {
-			if (event.data === 'hotReload') return newer.add(name);
+			if (event.data === 'hotReload') return offerIfChanged(name, origin);
 			socket.send(event.data);
 		});
 		const lost = () => {

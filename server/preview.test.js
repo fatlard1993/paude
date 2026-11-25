@@ -1,17 +1,23 @@
 import { expect, test } from 'bun:test';
 
-import { newVersionReady, previewSocket } from './preview';
+import { newVersionReady, pageShown, previewSocket } from './preview';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-// A stand-in for a game's own server: its socket, and the server it's on
+// A stand-in for a game's own server: its socket, its files, and the server it's on
 const gameServer = () => {
-	const game = { peer: null };
+	const game = { peer: null, files: {} };
 
 	game.server = Bun.serve({
 		hostname: '127.0.0.1',
 		port: 0,
-		fetch: (request, server) => (server.upgrade(request) ? undefined : new Response('no', { status: 400 })),
+		fetch: (request, server) => {
+			const file = game.files[new URL(request.url).pathname];
+
+			if (file !== undefined) return new Response(file);
+
+			return server.upgrade(request) ? undefined : new Response('no', { status: 400 });
+		},
 		websocket: {
 			open: ws => (game.peer = ws),
 			message: () => {},
@@ -84,6 +90,55 @@ test("another app's live reload goes on to its page as it always did", async () 
 	await wait(100);
 	expect(page.received).toEqual(['hotReload']);
 	expect(newVersionReady('plain-share')).toBe(false);
+
+	previewSocket.close(page.socket);
+	game.server.stop(true);
+});
+
+// A game written by hand: its script keeps its name whatever it holds
+const handWritten = (game, script) =>
+	Object.assign(game.files, {
+		'/': '<html><head><link rel="stylesheet" href="style.css"><script src="/game.js"></script></head></html>',
+		'/game.js': script,
+		'/style.css': 'body {}',
+	});
+
+test("a held game rebuilt or restarted with nothing its page loads changed isn't offered as a new version", async () => {
+	const game = gameServer();
+	const origin = `http://127.0.0.1:${game.server.port}`;
+	const page = pageSocket('same-share', `ws://127.0.0.1:${game.server.port}/hotReload`, true);
+
+	handWritten(game, 'jump()');
+	pageShown('same-share', origin, '/');
+	previewSocket.open(page.socket);
+	await wait(200);
+
+	game.peer.send('hotReload');
+	await wait(200);
+	expect(newVersionReady('same-share')).toBe(false);
+
+	game.peer.close();
+	await wait(1500);
+	expect(newVersionReady('same-share')).toBe(false);
+
+	previewSocket.close(page.socket);
+	game.server.stop(true);
+});
+
+test('a held game whose script changed under the same name is offered as a new version', async () => {
+	const game = gameServer();
+	const origin = `http://127.0.0.1:${game.server.port}`;
+	const page = pageSocket('changed-share', `ws://127.0.0.1:${game.server.port}/hotReload`, true);
+
+	handWritten(game, 'jump()');
+	pageShown('changed-share', origin, '/');
+	previewSocket.open(page.socket);
+	await wait(200);
+
+	game.files['/game.js'] = 'jumpHigher()';
+	game.peer.send('hotReload');
+	await wait(200);
+	expect(newVersionReady('changed-share')).toBe(true);
 
 	previewSocket.close(page.socket);
 	game.server.stop(true);

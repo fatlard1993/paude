@@ -1,6 +1,7 @@
 const tags = /<(?:script|link)\b[^>]*>/gi;
 
-// The code a page of paude runs: its module scripts and stylesheets, named by the hash of what they hold
+// The code a page runs, as its tags name it: its scripts and stylesheets. A bundler names each by the hash of what it
+// holds; a page written by hand may not
 export const builtChunks = html =>
 	new Set(
 		(html.match(tags) ?? []).flatMap(tag => {
