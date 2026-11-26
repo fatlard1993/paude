@@ -9,7 +9,7 @@ import { modelOf } from '../sessionModels';
 import { forgetLimit } from '../usageLimit';
 import { heldSessions, isHeld } from './holder';
 import PtySession from './PtySession';
-import { folderOf, resumeId } from './transcript';
+import { carriesOn, folderOf, resumeId } from './transcript';
 import { forgetProposals } from './proposals';
 
 const running = new Map();
@@ -110,6 +110,11 @@ const failedToStart = (id, why) => {
 
 export const openSession = async id => {
 	if (running.has(id)) return running.get(id);
+
+	// A conversation Claude carried on under a new id is opened as the session paude started it as
+	const first = carriesOn(id);
+
+	if (first) return openSession(first);
 
 	const info = await getSessionInfo(id);
 

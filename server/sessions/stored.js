@@ -12,7 +12,7 @@ import { worktreeName } from '../worktrees';
 import { isArchived } from '../archive';
 import { titleOf } from './record';
 import { allRunning, runningSession } from './running';
-import { firstPromptOf, folderOf } from './transcript';
+import { carriesOn, firstPromptOf, folderOf, resumeId } from './transcript';
 
 const FIRST_PROMPT_PREVIEW = 200;
 
@@ -108,12 +108,55 @@ const listSessions = () =>
 		worker.postMessage({ id: asked, configDir: process.env.CLAUDE_CONFIG_DIR });
 	});
 
+const belongs = folder => Boolean(projectOf(folder)) || isHomeFolder(folder);
+
+// Each listed session followed to where Claude carried it on, so carriesOn knows every continuation (a transcript's end
+// is read once, then only what it has grown by). Claude's own list leaves out a session it carried on elsewhere: one
+// shows beside its continuation only while paude runs it, listed as running.
+const followed = async sessions => {
+	await Promise.all(
+		sessions
+			.filter(session => belongs(session.cwd))
+			.map(session => resumeId(session.sessionId, session.cwd).catch(() => null)),
+	);
+
+	return sessions;
+};
+
 const listStored = async () =>
 	Promise.all(
 		(await listSessions()).map(async session =>
 			session.cwd ? session : { ...session, cwd: await folderOf(session.sessionId) },
 		),
 	);
+
+// A session Claude carried on under a new id (moved to the background) is the same session: listed once, as the id
+// paude started it as, last modified when the conversation last was wherever it went. One whose first id is no longer
+// listed stands for itself, and so does each of a loop of moves, none of them the first.
+export const foldContinuations = (sessions, firstOf = carriesOn) => {
+	const listed = new Map(sessions.map(session => [session.sessionId, session]));
+	const firstListed = session => {
+		const first = firstOf(session.sessionId);
+
+		return first && listed.has(first) && !firstOf(first) ? first : null;
+	};
+	const latest = new Map();
+
+	for (const session of sessions) {
+		const first = firstListed(session);
+
+		if (first) latest.set(first, Math.max(latest.get(first) ?? 0, session.lastModified ?? 0));
+	}
+
+	return sessions
+		.filter(session => !firstListed(session))
+		.map(session =>
+			latest.get(session.sessionId) > (session.lastModified ?? 0)
+				? { ...session, lastModified: latest.get(session.sessionId) }
+				: session,
+		)
+		.sort((a, b) => (b.lastModified ?? 0) - (a.lastModified ?? 0));
+};
 
 // Every saved session, each with its folder: the SDK leaves out the folder of one whose transcript opens with a long
 // run of bookkeeping, and such a session would belong to no project (listed by none, opened and deleted by none)
@@ -131,10 +174,7 @@ export const storedSessions = async ({ now = Date.now(), list = listStored } = {
 };
 
 export const listAllSessions = async identity =>
-	withUnsaved(
-		await withFirstPrompts(await storedSessions()),
-		folder => Boolean(projectOf(folder)) || isHomeFolder(folder),
-	)
+	foldContinuations(await followed(withUnsaved(await withFirstPrompts(await storedSessions()), belongs)))
 		.map(toSummary(identity))
 		.filter(session => session.project || session.home);
 

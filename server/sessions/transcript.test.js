@@ -76,6 +76,25 @@ test('a session Claude carried on under a new id is read from where it went, how
 	expect(carriesOn(first)).toBeUndefined();
 });
 
+test('a session carried on twice carries on the first, followed from partway along too, as a listing follows each', async () => {
+	const folder = join(process.env.CLAUDE_CONFIG_DIR, 'projects', '-work');
+	const line = value => `${JSON.stringify(value)}\n`;
+	const [first, second, third] = ['d0', 'd1', 'd2'].map(id => `${id}000000-0000-4000-8000-0000000000aa`);
+	const went = (from, to) => line({ type: 'continued-in', sessionId: from, continuedInSessionId: to });
+
+	await mkdir(folder, { recursive: true });
+	await Bun.write(join(folder, `${first}.jsonl`), line({ type: 'user', sessionId: first }) + went(first, second));
+	await Bun.write(join(folder, `${second}.jsonl`), line({ type: 'user', sessionId: second }) + went(second, third));
+	await Bun.write(join(folder, `${third}.jsonl`), line({ type: 'user', sessionId: third }));
+
+	await transcriptFile(first, '/work');
+	await transcriptFile(second, '/work');
+
+	expect(carriesOn(third)).toBe(first);
+	expect(carriesOn(second)).toBe(first);
+	expect(carriesOn(first)).toBeUndefined();
+});
+
 test("a session's birth is the time on its transcript's first line, and unknown without one", async () => {
 	const folder = join(process.env.CLAUDE_CONFIG_DIR, 'projects', '-work');
 	const id = 'b0000000-0000-4000-8000-000000000000';

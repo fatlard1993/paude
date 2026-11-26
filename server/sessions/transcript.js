@@ -73,7 +73,7 @@ const CONTINUED_TAIL_BYTES = 256 * 1024;
 // { [id]: { offset, carry, next } }: where each transcript said its session went on, as of how far it was read, and
 // the line it was cut partway through
 const continuations = new Map();
-// { [id carried on in]: the id it was carried on from }
+// { [id carried on in]: the id it was carried on from, the one before it in the chain }
 const continuedFrom = new Map();
 // The lines that say where a session went: a move, or the conversation going on. Inside another line's text a quote is
 // escaped, so a transcript quoting one isn't taken for one.
@@ -141,7 +141,7 @@ const latest = async (id, cwd) => {
 
 		if (!onward) break;
 		seen.add(next);
-		continuedFrom.set(next, id);
+		continuedFrom.set(next, at);
 		[at, file] = [next, onward];
 	}
 
@@ -154,8 +154,19 @@ export const transcriptFile = async (id, cwd) => (await latest(id, cwd)).file;
 // The id to take a session back up under: the one Claude last carried it on in, so a resume has every turn since
 export const resumeId = async (id, cwd) => (await latest(id, cwd)).id;
 
-// The session a transcript carries on, of those whose transcripts have been read; undefined for none
-export const carriesOn = id => continuedFrom.get(id);
+// The session a transcript carries on, the id paude started it as however many moves back, of those whose transcripts
+// have been read; undefined for none
+export const carriesOn = id => {
+	const seen = new Set([id]);
+	let from = continuedFrom.get(id);
+
+	while (continuedFrom.has(from) && !seen.has(continuedFrom.get(from))) {
+		seen.add(from);
+		from = continuedFrom.get(from);
+	}
+
+	return from;
+};
 
 const parsed = text =>
 	text
