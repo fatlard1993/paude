@@ -10,6 +10,7 @@ import { forgetLimit } from '../usageLimit';
 import { heldSessions, isHeld } from './holder';
 import PtySession from './PtySession';
 import { carriesOn, folderOf, resumeId } from './transcript';
+import { claudeHolding, heldWhy } from './claudeProcesses';
 import { forgetProposals } from './proposals';
 
 const running = new Map();
@@ -137,6 +138,10 @@ export const openSession = async id => {
 
 	// Under the id Claude last carried it on in: moved to the background, a conversation goes on under a new one
 	const resume = isHeld(id) ? false : await resumeId(id, cwd);
+	// Taken up by a second Claude Code while one has it, a conversation forks: each writes its own turns onto one transcript
+	const holder = resume && (await claudeHolding(resume));
+
+	if (holder) return failedToStart(id, heldWhy(holder));
 
 	try {
 		// A concurrent attach may have started it while this one awaited
