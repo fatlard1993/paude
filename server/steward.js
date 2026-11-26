@@ -95,9 +95,10 @@ const gamePass = async (
 
 	if (!monitorOf(id)?.seen) await verdictOf(id, session, QUIET).catch(() => null);
 
-	const monitor = monitorOf(id)?.monitor;
+	// A briefing that didn't land left no conversation to carry on
+	const { monitor, seen: briefed } = monitorOf(id) ?? {};
 
-	if (!monitor) return null;
+	if (!monitor || !briefed) return null;
 
 	const shots = path.join(homeOf(monitor), 'look');
 	const rules = stewardRules({ cwd, address: devAddress(id), shots });
@@ -204,9 +205,10 @@ const quietPass = async (
 	if (!draftDue && !reviewDue) return null;
 	if (!monitorOf(id)?.seen) await verdictOf(id, session, QUIET).catch(() => null);
 
-	const monitor = monitorOf(id)?.monitor;
+	// A briefing that didn't land left no conversation to carry on
+	const { monitor, seen: briefed } = monitorOf(id) ?? {};
 
-	if (!monitor) return null;
+	if (!monitor || !briefed) return null;
 
 	const { answer, delivered, usage, why } = await askMonitor(
 		monitor,

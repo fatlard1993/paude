@@ -233,19 +233,12 @@ test("a fabled session's monitor is pinged on its own clock once quiet long enou
 		const session = { ...fakeSession(), cwd: '/work' };
 
 		await keepWarm('fabled-pinged', 24, 0, { fabled: true });
-		// First seen at the first check: counted from then
 		expect(await checkWarm(only('fabled-pinged', session), 1)).toEqual([]);
+		// Quiet long enough, the session is pinged; its monitor, never briefed, has no conversation yet to keep warm
+		expect(await checkWarm(only('fabled-pinged', session), PING_AFTER_MS + 1)).toEqual(['fabled-pinged']);
 		expect(warmed).toEqual([]);
-		// Quiet long enough: the session is pinged, and so is its monitor
-		expect(await checkWarm(only('fabled-pinged', session), PING_AFTER_MS + 1)).toEqual([
-			'fabled-pinged',
-			"fabled-pinged's monitor",
-		]);
-		expect(warmed).toEqual([{ id: 'fabled-pinged', monitor: monitorOf('fabled-pinged').monitor, cwd: '/work' }]);
-		// Not again until it has been quiet as long again
-		expect(await checkWarm(only('fabled-pinged', session), PING_AFTER_MS + 60_000)).toEqual([]);
 
-		// Asked at a turn end: that read counts, and the monitor's clock starts over from it while the session's runs on
+		// Briefed at a turn end: its conversation begins, and the monitor's clock with it, while the session's runs on
 		await noteMonitor(
 			'fabled-pinged',
 			{ monitor: monitorOf('fabled-pinged').monitor, seen: 't1' },
@@ -258,7 +251,9 @@ test("a fabled session's monitor is pinged on its own clock once quiet long enou
 		expect(await checkWarm(only('fabled-pinged', session), 2 * PING_AFTER_MS + 120_001)).toEqual([
 			"fabled-pinged's monitor",
 		]);
-		expect(warmed).toHaveLength(2);
+		expect(warmed).toEqual([{ id: 'fabled-pinged', monitor: monitorOf('fabled-pinged').monitor, cwd: '/work' }]);
+		// Not again until it has been quiet as long again
+		expect(await checkWarm(only('fabled-pinged', session), 2 * PING_AFTER_MS + 180_000)).toEqual([]);
 
 		// The clock is the record's, so a restart or a switch of lifetime that rebuilds the record keeps it
 		await keepWarm('fabled-pinged', 24, 2 * PING_AFTER_MS + 120_001, { fabled: true });
@@ -268,12 +263,12 @@ test("a fabled session's monitor is pinged on its own clock once quiet long enou
 		expect(await checkWarm(only('fabled-pinged', session), 3 * PING_AFTER_MS + 120_001)).toEqual([
 			"fabled-pinged's monitor",
 		]);
-		expect(warmed).toHaveLength(3);
+		expect(warmed).toHaveLength(2);
 
 		// Only kept warm or going: no monitor to ping
 		await keepWarm('only-pinged', 12, 0, { going: true });
 		await checkWarm(only('only-pinged', fakeSession()), PING_AFTER_MS);
-		expect(warmed).toHaveLength(3);
+		expect(warmed).toHaveLength(2);
 		await keepWarm('fabled-pinged', 0, 0);
 		await keepWarm('only-pinged', 0, 0);
 	} finally {

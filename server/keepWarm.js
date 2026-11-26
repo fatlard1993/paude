@@ -351,8 +351,9 @@ export const checkWarm = async (sessionOf, now = Date.now(), { pause = () => Bun
 				steward(id, session).catch(error => console.error(`${id}'s steward failed:`, error));
 			}
 			// Its monitor on its own clock: pinged once it has been quiet this long, whether or not the session could be, since
-			// a session busy, asking or being typed into isn't pinged and its monitor's cache runs out regardless
-			if (fabledOn(id, now) && warm[id].monitor) {
+			// a session busy, asking or being typed into isn't pinged and its monitor's cache runs out regardless. Only once
+			// briefed (seen): its id is chosen when the session is fabled, its conversation begun at the first turn end.
+			if (fabledOn(id, now) && warm[id].monitor && warm[id].seen) {
 				// Never read that it knows of (kept before `read` was): counted from now
 				if (!warm[id].read) {
 					warm[id] = { ...warm[id], read: now };

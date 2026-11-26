@@ -145,3 +145,25 @@ test("a quiet session's steward drafts what it waits on for the chat and reviews
 	await stopKeepingWarm('steward-away');
 	await rm(project, { recursive: true, force: true });
 });
+
+test("a steward whose monitor's briefing didn't land takes no turn: there's no conversation to carry on", async () => {
+	const asks = [];
+	const askMonitor = async () => {
+		asks.push(true);
+
+		return { answer: '', delivered: true };
+	};
+
+	// Fabled, so a monitor's id is chosen; never briefed, so nothing was begun under it
+	await keepWarm('steward-unbriefed', 24, Date.now(), { fabled: true });
+
+	const verdict = await stewardPass(
+		'steward-unbriefed',
+		{ cwd: game, busy: false },
+		{ askMonitor, verdictOf: async () => null, repoOf: async () => '', homeOf: () => game },
+	);
+
+	expect(verdict).toBeNull();
+	expect(asks).toEqual([]);
+	await stopKeepingWarm('steward-unbriefed');
+});
