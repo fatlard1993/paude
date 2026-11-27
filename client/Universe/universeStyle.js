@@ -793,6 +793,13 @@ export const Stage = styled(
 			text-transform: uppercase;
 		}
 
+		/* No keys to press on a touch screen */
+		@media ${media.touch} {
+			.focus-card kbd {
+				display: none;
+			}
+		}
+
 		.projects-list {
 			display: flex;
 			flex-direction: column;
@@ -848,6 +855,12 @@ export const Stage = styled(
 				-webkit-backdrop-filter: blur(6px) saturate(140%);
 				box-shadow: 0 -8px 32px ${colors.alpha(colors.vantablack, 0.45)};
 				overflow: hidden;
+			}
+
+			/* Holding only the panel about what's looked at: no taller than that, so the ship has the rest */
+			.drawer.fits {
+				height: auto;
+				max-height: min(var(--drawer, ${DRAWER_OPENS * 100}%), calc(100% - 24px));
 			}
 
 			.drawer > .grip {
@@ -938,6 +951,18 @@ export const Stage = styled(
 			.drawer .reply-card {
 				flex: 1 1 auto;
 				overflow-y: auto;
+			}
+
+			/* A project's buttons under its name, not squeezing it to a word a line */
+			.projects-list .project-row {
+				grid-template-columns: minmax(0, 1fr);
+				row-gap: ${space.xs};
+			}
+
+			.projects-list .project-row .actions {
+				grid-column: 1;
+				grid-row: auto;
+				flex-wrap: wrap;
 			}
 		}
 

@@ -327,6 +327,12 @@ export default class Universe extends View {
 			const drawer = savedDockSize(DOCK_HEIGHT);
 
 			if (drawer) this.stage.elem.style.setProperty('--drawer', `${drawer}px`);
+
+			// How tall it stands, 0 while it's away
+			const measure = new ResizeObserver(() => (this.drawerTall = this.drawer.offsetHeight));
+
+			measure.observe(this.drawer);
+			this.addCleanup('drawer', () => measure.disconnect());
 		}
 		this.stage.elem.append(this.canvas, this.drawer ?? this.focus, this.tip);
 		// A ship for each subscription; `aboard` the one on the stage
@@ -1932,17 +1938,18 @@ export default class Universe extends View {
 	}
 
 	// What a ship's view keeps clear for the panel about what's looked at: the card's width at the right, or on a
-	// phone the drawer at the bottom while it's up. Folded to the summary because the ship didn't fit beside it, the
-	// drawer is kept clear as tall as it opens, so the room made doesn't unfold it again.
+	// phone the drawer at the bottom, as tall as it stands. Folded to the summary because the ship didn't fit above
+	// it, the drawer is kept clear as tall as it opens at most, so the room made doesn't unfold it again.
 	reserve(ship) {
 		if (!this.drawer) return Object.assign(ship, { aside: FOCUS_WIDTH + 32, below: 0 });
 
 		const { height = 0 } = this.stageSize ?? {};
-		const up = this.drawer.style.display !== 'none';
-		const folded = this.drawer.classList.contains('folded') && !ship.tight;
 		const opens = parseFloat(this.stage.elem.style.getPropertyValue('--drawer')) || height * DRAWER_OPENS;
+		const folded = this.drawer.classList.contains('folded');
 
-		Object.assign(ship, { aside: 0, below: up && !folded ? Math.min(opens, height - 24) : 0 });
+		if (!folded) return Object.assign(ship, { aside: 0, below: this.drawerTall ?? 0 });
+
+		Object.assign(ship, { aside: 0, below: ship.tight ? Math.min(opens, height - 24) : 0 });
 	}
 
 	// A dock or a card put on the stage: into the drawer on a phone
@@ -1959,6 +1966,7 @@ export default class Universe extends View {
 
 		this.drawer.style.display = shown || this.dock || this.card ? '' : 'none';
 		this.drawer.classList.toggle('folded', !this.dock && !this.card && this.focus.classList.contains('folded'));
+		this.drawer.classList.toggle('fits', !this.dock && !this.card);
 	}
 
 	workerOf(session) {
@@ -2386,9 +2394,14 @@ export default class Universe extends View {
 		};
 	}
 
+	// No panel beside a dock; on a phone, whose drawer holds one thing, none under a card either
+	hidesFocus() {
+		return Boolean(this.dock || (this.drawer && this.card));
+	}
+
 	// The panel beside the room looked at, painted when the room or what's in it changes
 	paintFocus() {
-		const focus = this.dock ? null : this.focusedRoom();
+		const focus = this.hidesFocus() ? null : this.focusedRoom();
 
 		this.focused = focus;
 		if (!focus) {
@@ -2527,7 +2540,7 @@ export default class Universe extends View {
 
 	// Against the room's right edge, following it as the camera moves, inside the stage
 	focusSpot() {
-		const focus = this.dock ? null : this.focusedRoom();
+		const focus = this.hidesFocus() ? null : this.focusedRoom();
 
 		if ((focus?.key ?? null) !== (this.focused?.key ?? null) || this.aboard.tight !== this.paintedTight)
 			this.paintFocus();
