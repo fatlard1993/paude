@@ -21,12 +21,6 @@ export const Stage = styled(
 			image-rendering: pixelated;
 		}
 
-		.boarding {
-			position: absolute;
-			inset: 0;
-			pointer-events: none;
-		}
-
 		canvas.dragging {
 			cursor: grabbing;
 		}
