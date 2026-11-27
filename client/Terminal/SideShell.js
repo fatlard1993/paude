@@ -8,6 +8,7 @@ import { button, element, icon } from '../dom';
 import { copySelection, isCopyKey } from './copySelection';
 import KeyBar from './KeyBar';
 import selectLinesByTap from './lineSelect';
+import { phoneTyping } from './phoneTyping';
 import Panel from './SideShell.styles';
 import { measureGraphemes } from '../../shared/graphemes';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from './xtermOptions';
@@ -89,6 +90,7 @@ export default class SideShell extends Panel {
 		this.terminal.loadAddon(this.fitter);
 		measureGraphemes(this.terminal);
 		this.terminal.open(this.screen);
+		phoneTyping(this.terminal);
 		redrawWhenSymbolsLoad(this.terminal);
 		this.screen.append(this.hint);
 		this.terminal.onData(data => this.send({ type: 'input', data }));

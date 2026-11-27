@@ -1667,6 +1667,62 @@ test(
 );
 
 test(
+	'on a phone a word the keyboard corrects reaches Claude as the word erased and retyped, not the whole text again',
+	async () => {
+		const { browser, page } = await openBrowser('dom');
+
+		try {
+			await page.setViewport({ width: 390, height: 760, isMobile: true, hasTouch: true });
+
+			const cdp = await page.createCDPSession();
+			const sent = [];
+
+			await cdp.send('Network.enable');
+			cdp.on('Network.webSocketFrameSent', ({ response }) => {
+				try {
+					const message = JSON.parse(response.payloadData);
+
+					if (message.type === 'input') sent.push(message.data);
+				} catch {
+					// Not one of paude's messages
+				}
+			});
+			await page.goto(await servers.turns.loginLink(`/sessions/${await servers.turns.newSession()}`));
+			await page.waitForSelector('.xterm-helper-textarea');
+			await wait(1500);
+			// As a phone keyboard types: each change a key it doesn't name (229), then the text as it left it, and at
+			// the end a word it had typed swapped for its correction
+			await page.evaluate(() => {
+				const box = document.querySelector('.xterm-helper-textarea');
+				const change = (value, inputType, data) => {
+					box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Unidentified', keyCode: 229, bubbles: true }));
+					box.dispatchEvent(new InputEvent('beforeinput', { inputType, data, bubbles: true }));
+					box.value = value;
+					box.dispatchEvent(new InputEvent('input', { inputType, data, bubbles: true }));
+				};
+				let value = '';
+
+				box.focus();
+				for (const letter of 'fix teh ') change((value += letter), 'insertText', letter);
+				change('fix the ', 'insertReplacementText', 'the');
+			});
+			await eventually(() => {
+				const line = [];
+
+				for (const key of sent.join('')) {
+					if (key === '\x7f') line.pop();
+					else line.push(key);
+				}
+				expect(line.join('')).toBe('fix the ');
+			});
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
 	"on a phone the bar is the breadcrumb (paude, the project, the session's name) and a menu holding the rest",
 	async () => {
 		const { browser, page } = await openBrowser('dom');

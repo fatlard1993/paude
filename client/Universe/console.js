@@ -18,6 +18,7 @@ import { measureGraphemes } from '../../shared/graphemes';
 import xtermOptions, { loadSymbolsFor, redrawWhenSymbolsLoad } from '../Terminal/xtermOptions';
 import { button, element } from '../dom';
 import { FONT, fitFont, roomFor } from './fitFont';
+import { phoneTyping } from '../Terminal/phoneTyping';
 import withoutPointerReporting from '../../shared/pointerReporting';
 
 // The dock's own width, the least it narrows to for a small terminal
@@ -185,6 +186,7 @@ export default class TerminalPanel {
 		this.terminal = terminal;
 		measureGraphemes(terminal);
 		terminal.open(this.screen);
+		phoneTyping(terminal);
 		terminal.resize(cols, rows);
 		const send = data => Boolean(this.connection?.send({ type: 'input', data }));
 		const over = on => (this.overLink = on);

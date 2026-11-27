@@ -72,6 +72,7 @@ import LinksPanel from './LinksPanel';
 import ArtifactsPanel from './ArtifactsPanel';
 import DecisionsPanel from './DecisionsPanel';
 import NotesPanel from './NotesPanel';
+import { phoneTyping } from './phoneTyping';
 import { pullRequestActions } from './pullRequestReview';
 import SideShell from './SideShell';
 import { PANEL_EDGES, addResizeHandle } from './resizeHandle';
@@ -644,6 +645,7 @@ export default class TerminalView extends View {
 		measureGraphemes(this.terminal);
 		this.decoder = new TextDecoder();
 		this.terminal.open(this.screen.elem);
+		phoneTyping(this.terminal);
 		gpuRenderer(this.terminal);
 		redrawWhenSymbolsLoad(this.terminal);
 		if (identity()?.owner)
