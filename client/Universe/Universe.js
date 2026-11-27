@@ -68,7 +68,7 @@ import { airlockCard } from './airlockCard';
 import { logCard, manifestCard, promptCard, replyCard } from './replyCard';
 import { arrivalOf } from './sidePanel';
 import Ship, { BEAM_SECONDS, BRIDGE, LOUNGE, ZOOMS, remoteOfBay, sessionKey, triage, GROUP_SEPARATOR } from './scene';
-import { DRAWER_OPENS, FOCUS_WIDTH, Stage } from './universeStyle';
+import { DRAWER_BESIDE, DRAWER_OPENS, FOCUS_WIDTH, Stage } from './universeStyle';
 
 // Panels framed as void-driller frames them, corners cut by augmented-ui
 const FRAME = { large: 'tl-clip tr-2-clip-x br-clip bl-2-clip-y border', small: 'tl-clip br-clip border' };
@@ -329,7 +329,10 @@ export default class Universe extends View {
 			if (drawer) this.stage.elem.style.setProperty('--drawer', `${drawer}px`);
 
 			// How tall it stands, 0 while it's away
-			const measure = new ResizeObserver(() => (this.drawerTall = this.drawer.offsetHeight));
+			const measure = new ResizeObserver(() => {
+				this.drawerTall = this.drawer.offsetHeight;
+				this.drawerWide = this.drawer.offsetWidth;
+			});
 
 			measure.observe(this.drawer);
 			this.addCleanup('drawer', () => measure.disconnect());
@@ -1942,14 +1945,22 @@ export default class Universe extends View {
 	}
 
 	// What a ship's view keeps clear for the panel about what's looked at: the card's width at the right, or on a
-	// phone the drawer at the bottom, as tall as it stands. Folded to the summary because the ship didn't fit above
-	// it, the drawer is kept clear as tall as it opens at most, so the room made doesn't unfold it again.
+	// phone the drawer as big as it stands: its height under the ship, or on its side its width beside it. Folded to
+	// the summary because the ship didn't fit beside it, the drawer is kept clear as big as it opens at most, so the
+	// room made doesn't unfold it again.
 	reserve(ship) {
 		if (!this.drawer) return ship.keepClear({ aside: FOCUS_WIDTH + 32, below: 0 });
 
-		const { height = 0 } = this.stageSize ?? {};
-		const opens = parseFloat(this.stage.elem.style.getPropertyValue('--drawer')) || height * DRAWER_OPENS;
+		const { width = 0, height = 0 } = this.stageSize ?? {};
 		const folded = this.drawer.classList.contains('folded');
+
+		if (window.matchMedia(DRAWER_BESIDE).matches) {
+			const opens = Math.min(width / 2, FOCUS_WIDTH);
+
+			return ship.keepClear({ aside: folded ? (ship.tight && opens) || 0 : (this.drawerWide ?? 0), below: 0 });
+		}
+
+		const opens = parseFloat(this.stage.elem.style.getPropertyValue('--drawer')) || height * DRAWER_OPENS;
 
 		if (!folded) return ship.keepClear({ aside: 0, below: this.drawerTall ?? 0 });
 

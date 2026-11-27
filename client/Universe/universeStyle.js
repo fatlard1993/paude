@@ -4,6 +4,9 @@ import { Elem, styled } from '@vanilla-bean/components';
 export const FOCUS_WIDTH = 320;
 // A phone's drawer's height, of the stage's, until it's dragged
 export const DRAWER_OPENS = 0.55;
+// A phone on its side: the drawer stands at the right, the whole height, as the panel does on a wide screen; under
+// the ship it would leave a strip too low for the ship to read in
+export const DRAWER_BESIDE = '(orientation: landscape)';
 
 export const Stage = styled(
 	Elem,
@@ -983,6 +986,39 @@ export const Stage = styled(
 				grid-column: 1;
 				grid-row: auto;
 				flex-wrap: wrap;
+			}
+		}
+
+		@media ${media.phone} and ${DRAWER_BESIDE} {
+			.drawer,
+			.drawer.fits {
+				top: 0;
+				left: auto;
+				width: min(50%, ${FOCUS_WIDTH}px);
+				height: auto;
+				max-height: none;
+				padding-top: ${space.md};
+				border-top: none;
+				border-right: none;
+				border-bottom: none;
+				border-radius: ${radius.lg} 0 0 ${radius.lg};
+				box-shadow: -8px 0 32px ${colors.alpha(colors.vantablack, 0.45)};
+			}
+
+			/* Only the panel: no taller than it, at the top */
+			.drawer.fits {
+				bottom: auto;
+				max-height: 100%;
+				border-bottom: 1px solid ${colors.border};
+			}
+
+			.drawer > .grip {
+				display: none;
+			}
+
+			.drawer.folded {
+				top: auto;
+				width: auto;
 			}
 		}
 
