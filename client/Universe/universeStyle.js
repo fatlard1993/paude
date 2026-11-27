@@ -953,6 +953,26 @@ export const Stage = styled(
 				overflow-y: auto;
 			}
 
+			/* A header in one line: what it's about beside the title, as much as fits, the title first */
+			.drawer .head .titles {
+				display: flex;
+				align-items: baseline;
+				gap: ${space.sm};
+			}
+
+			.drawer .head .titles strong {
+				flex: 0 1 auto;
+				min-width: 0;
+			}
+
+			.drawer .head .titles .about {
+				flex: 1 1 0;
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
 			/* A project's buttons under its name, not squeezing it to a word a line */
 			.projects-list .project-row {
 				grid-template-columns: minmax(0, 1fr);
