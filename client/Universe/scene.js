@@ -1141,8 +1141,9 @@ export default class Ship {
 	// Each session's changes as of when they were read here, until the server says it's seen them too
 	read = new Map();
 	stars = [];
-	// Screen pixels at the right reserved for the panel about a room looked at
+	// Screen pixels at the right reserved for the panel about a room looked at, and at the bottom for a phone's drawer
 	aside = 0;
+	below = 0;
 	bots = new Map();
 	drift = 0;
 	pace = 1;
@@ -1241,23 +1242,34 @@ export default class Ship {
 			? { left: room.x - 0.4, right: room.x + room.w + 0.4, top: room.y - 1, bottom: room.y + room.d + 1 }
 			: this.ship();
 		const [from, to] = [this.art({ x: left, y: top }), this.art({ x: right, y: bottom })];
-		// The screen's right edge is left to the panel about what's looked at (the bridge's, for the whole ship), and the
-		// room or ship sits in what's left. For the whole ship, where that would shrink it below READABLE_ZOOM, the
-		// bridge's panel folds to a summary in the corner instead (`tight`), and the ship has the whole width
-		const zoomWith = aside => {
-			const fit = Math.min((this.width - 32 - aside) / (to.x - from.x), (this.height - 48) / (to.y - from.y));
+		// The screen's right edge (a phone's bottom) is left to the panel about what's looked at (the bridge's, for the
+		// whole ship), and the room or ship sits in what's left. For the whole ship, where that would shrink it below
+		// READABLE_ZOOM, the bridge's panel folds to a summary in the corner instead (`tight`), and the ship has the
+		// whole screen
+		const zoomWith = (aside, below) => {
+			const fit = Math.min((this.width - 32 - aside) / (to.x - from.x), (this.height - 48 - below) / (to.y - from.y));
 
 			return Math.max(ZOOMS.least, Math.min(room ? ZOOMS.room : ZOOMS.most, Math.floor(fit)));
 		};
 
 		// Only where it would drop the ship below the zoom it reads at: a wide window that fits it a step larger alone
 		// keeps the panel
-		this.tight = !room && zoomWith(this.aside) < Math.min(zoomWith(0), READABLE_ZOOM);
+		this.tight = !room && zoomWith(this.aside, this.below) < Math.min(zoomWith(0, 0), READABLE_ZOOM);
 
-		const aside = this.tight ? 0 : this.aside;
-		const zoom = zoomWith(aside);
+		const [aside, below] = this.tight ? [0, 0] : [this.aside, this.below];
+		const zoom = zoomWith(aside, below);
 
-		return { x: (from.x + to.x) / 2 + aside / 2 / zoom, y: (from.y + to.y) / 2, zoom };
+		return {
+			x: (from.x + to.x) / 2 + aside / 2 / zoom,
+			y: (from.y + to.y) / 2 + this.lift((to.y - from.y) * zoom, below) / zoom,
+			zoom,
+		};
+	}
+
+	// Screen pixels the view is raised for a phone's drawer `below` high over a frame `tall` high: the frame centered
+	// in what the drawer leaves, but never so far up that its top leaves the screen
+	lift(tall, below = this.below) {
+		return Math.min(below, Math.max(0, this.height - 48 - tall)) / 2;
 	}
 
 	// Coming aboard as the ship comes in, the view tells it: centered on the shuttle close up in warp, drawn back from
@@ -1375,7 +1387,9 @@ export default class Ship {
 	lookAt(point) {
 		const at = this.art(point);
 
-		this.flyingTo = { x: at.x, y: at.y - 10, zoom: Math.max(Math.round(this.camera.zoom), 4) };
+		const zoom = Math.max(Math.round(this.camera.zoom), 4);
+
+		this.flyingTo = { x: at.x, y: at.y - 10 + this.lift(0) / zoom, zoom };
 		this.flying = true;
 	}
 
@@ -1384,11 +1398,15 @@ export default class Ship {
 	lookOver({ left, right, top, bottom }) {
 		const fit = Math.min(
 			(this.width - 32 - this.aside) / Math.max(1, right - left),
-			(this.height - 48) / Math.max(1, bottom - top),
+			(this.height - 48 - this.below) / Math.max(1, bottom - top),
 		);
 		const zoom = Math.max(ZOOMS.least, Math.min(ZOOMS.most, Math.floor(fit)));
 
-		this.flyingTo = { x: (left + right) / 2 + this.aside / 2 / zoom, y: (top + bottom) / 2, zoom };
+		this.flyingTo = {
+			x: (left + right) / 2 + this.aside / 2 / zoom,
+			y: (top + bottom) / 2 + this.lift((bottom - top) * zoom) / zoom,
+			zoom,
+		};
 		this.flying = true;
 	}
 

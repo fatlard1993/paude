@@ -3271,6 +3271,34 @@ test('the parts of a couch and of a cabinet are drawn in their named order, each
 	]);
 });
 
+test("on a phone the view frames what it looks over above the drawer, or, where that can't hold it, keeps its top on the screen", () => {
+	const made = shipWith([answer('here', [session()], { projects: ['paude'] })]);
+
+	made.resize(400, 800);
+	run(made, 10);
+	made.below = 440;
+
+	const small = { left: -40, right: 40, top: 50, bottom: 90 };
+
+	made.lookOver(small);
+	run(made, 20);
+
+	const [top, bottom] = [made.toScreen({ x: 0, y: small.top }).y, made.toScreen({ x: 0, y: small.bottom }).y];
+
+	// Centered in what the drawer leaves
+	expect(bottom).toBeLessThanOrEqual(made.height - made.below);
+	expect((top + bottom) / 2).toBeCloseTo((made.height - made.below) / 2, -1);
+
+	// Seen whole only drawn back to the least zoom: more than the drawer leaves, less than the screen
+	const tall = { left: -40, right: 40, top: 0, bottom: 600 };
+
+	made.lookOver(tall);
+	run(made, 20);
+	// Taller than the drawer leaves even drawn all the way back: its top on the screen, the rest under the drawer
+	expect(made.toScreen({ x: 0, y: tall.top }).y).toBeGreaterThanOrEqual(0);
+	expect(made.toScreen({ x: 0, y: tall.bottom }).y).toBeGreaterThan(made.height - made.below);
+});
+
 test('looking over a stretch of the stage flies the view to its middle, drawn back far enough to fit it beside the panel', () => {
 	const made = shipWith([answer('here', [session()], { projects: ['paude'] })]);
 

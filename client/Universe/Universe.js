@@ -68,7 +68,7 @@ import { airlockCard } from './airlockCard';
 import { logCard, manifestCard, promptCard, replyCard } from './replyCard';
 import { arrivalOf } from './sidePanel';
 import Ship, { BEAM_SECONDS, BRIDGE, LOUNGE, ZOOMS, remoteOfBay, sessionKey, triage, GROUP_SEPARATOR } from './scene';
-import { FOCUS_WIDTH, Stage } from './universeStyle';
+import { DRAWER_OPENS, FOCUS_WIDTH, Stage } from './universeStyle';
 
 // Panels framed as void-driller frames them, corners cut by augmented-ui
 const FRAME = { large: 'tl-clip tr-2-clip-x br-clip bl-2-clip-y border', small: 'tl-clip br-clip border' };
@@ -380,7 +380,7 @@ export default class Universe extends View {
 	makeShip() {
 		const ship = new Ship();
 
-		ship.aside = FOCUS_WIDTH + 32;
+		this.reserve(ship);
 		// The first sealed until what's aboard has all come in; those that come later, open
 		ship.sealed = !this.loaded;
 
@@ -668,6 +668,7 @@ export default class Universe extends View {
 			const ratio = Math.max(1, Math.round(window.devicePixelRatio || 1));
 
 			// Every ship going on, the one aboard drawn
+			for (const ship of this.ships.values()) this.reserve(ship);
 			for (const ship of this.ships.values())
 				ship.step(Math.min(LONGEST_FRAME_S, (now - last) / 1000), this.calm.matches);
 			this.openFleet();
@@ -1928,6 +1929,20 @@ export default class Universe extends View {
 		this.placeCard();
 		card.opened?.();
 		if (focus) card.querySelector('textarea')?.focus({ preventScroll: true });
+	}
+
+	// What a ship's view keeps clear for the panel about what's looked at: the card's width at the right, or on a
+	// phone the drawer at the bottom while it's up. Folded to the summary because the ship didn't fit beside it, the
+	// drawer is kept clear as tall as it opens, so the room made doesn't unfold it again.
+	reserve(ship) {
+		if (!this.drawer) return Object.assign(ship, { aside: FOCUS_WIDTH + 32, below: 0 });
+
+		const { height = 0 } = this.stageSize ?? {};
+		const up = this.drawer.style.display !== 'none';
+		const folded = this.drawer.classList.contains('folded') && !ship.tight;
+		const opens = parseFloat(this.stage.elem.style.getPropertyValue('--drawer')) || height * DRAWER_OPENS;
+
+		Object.assign(ship, { aside: 0, below: up && !folded ? Math.min(opens, height - 24) : 0 });
 	}
 
 	// A dock or a card put on the stage: into the drawer on a phone

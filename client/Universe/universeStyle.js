@@ -2,6 +2,8 @@ import { Elem, styled } from '@vanilla-bean/components';
 
 // How wide the panel beside a room looked at is, in screen pixels
 export const FOCUS_WIDTH = 320;
+// A phone's drawer's height, of the stage's, until it's dragged
+export const DRAWER_OPENS = 0.55;
 
 export const Stage = styled(
 	Elem,
@@ -834,7 +836,7 @@ export const Stage = styled(
 				display: flex;
 				flex-direction: column;
 				gap: ${space.sm};
-				height: var(--drawer, 55%);
+				height: var(--drawer, ${DRAWER_OPENS * 100}%);
 				max-height: calc(100% - 24px);
 				padding: ${space.lg} ${space.md} calc(${space.sm} + env(safe-area-inset-bottom, 0px));
 				box-sizing: border-box;
