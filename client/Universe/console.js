@@ -27,7 +27,7 @@ const DOCK_LEAST = 620;
 const FOOT_PADDING = 4;
 
 // A session's terminal in its dock, at the session's own size so opening it here resizes nothing for anyone, its font
-// as large as lets that size fit (smaller than the least, it scrolls across). Sized by its font, never a CSS transform:
+// as large as lets that size fit (smaller than the least, it scrolls across: a phone swipes it sideways). Sized by its font, never a CSS transform:
 // a transform blurs the text and puts clicks where they aren't. It works as the session's own page's does: the same
 // keys, clicks, wheel and touch, selection, links, and new sessions from a past turn.
 export default class TerminalPanel {
@@ -264,9 +264,15 @@ export default class TerminalPanel {
 			},
 		});
 		// Fitted against the stage's width and the dock's, neither of which changes this element's own box when the dock
-		// opens or the stage narrows round it
+		// opens or the stage narrows round it; and again as the terminal draws at a new size or font, which in a phone's
+		// drawer (the dock its width whatever's in it) changes nothing else
 		this.resizing = new ResizeObserver(() => this.fit());
-		for (const watched of [this.elem, this.elem.closest('.dock'), this.elem.closest('.dock')?.parentElement])
+		for (const watched of [
+			this.elem,
+			this.elem.closest('.dock'),
+			this.elem.closest('.dock')?.parentElement,
+			terminal.element?.querySelector('.xterm-screen'),
+		])
 			if (watched) this.resizing.observe(watched);
 		this.fit();
 		if (canType()) terminal.focus();
@@ -284,15 +290,20 @@ export default class TerminalPanel {
 		// Measured by the boxes' outer widths, which a scrollbar showing or hiding doesn't change: measured inside them, a
 		// scrollbar coming and going as the font changed fitted it again and again
 		const chrome = dock.offsetWidth - screen.offsetWidth;
-		// Sized by hand, the terminal fits the dock as it is; otherwise the most the dock can take
+		// Sized by hand, the terminal fits the dock as it is; on a phone, the drawer's width it has; otherwise the most
+		// the dock can take
 		const sized = dock.dataset.sized === 'true';
-		const room = sized ? screen.offsetWidth : dock.parentElement.clientWidth - 32 - chrome;
+		const narrow = Boolean(this.elem.closest('.drawer'));
+		const room = sized || narrow ? screen.offsetWidth : dock.parentElement.clientWidth - 32 - chrome;
 		const height = screen.offsetHeight;
 		const size = terminal.options.fontSize;
 
-		// What was found too big is kept only while the room stays the same
-		if (this.room !== `${room}x${height}`) {
-			this.room = `${room}x${height}`;
+		// What was found too big is kept only while the room stays the same, and the session's size: a font too big for
+		// its columns before a phone's typing narrowed them isn't for the fewer
+		const fitting = `${room}x${height}:${terminal.cols}x${terminal.rows}`;
+
+		if (this.room !== fitting) {
+			this.room = fitting;
 			this.tooBig = Infinity;
 		}
 
@@ -302,6 +313,7 @@ export default class TerminalPanel {
 			room,
 			height,
 			sized,
+			narrow,
 			tooBig: this.tooBig,
 		});
 
@@ -312,7 +324,7 @@ export default class TerminalPanel {
 			terminal.options.fontSize = font;
 			requestAnimationFrame(() => this.fit());
 		}
-		this.claimRoom({ drawn, dock, chrome, sized, height });
+		this.claimRoom({ drawn, dock, screen, chrome, sized, narrow, height });
 		// Too tall for the panel even at its least font, its foot kept at the panel's: its oldest rows cut off at the top,
 		// never its prompt at the bottom
 		requestAnimationFrame(() => {
@@ -324,7 +336,8 @@ export default class TerminalPanel {
 			if (terminal.element.style.marginTop !== lift) terminal.element.style.marginTop = lift;
 		});
 		requestAnimationFrame(() => {
-			if (this.elem.hidden || sized) return;
+			// In a phone's drawer, the dock is the drawer's width
+			if (this.elem.hidden || sized || narrow) return;
 
 			const width = `${Math.min(dock.parentElement.clientWidth - 32, Math.max(DOCK_LEAST, drawn.offsetWidth + chrome + 24))}px`;
 
@@ -337,11 +350,12 @@ export default class TerminalPanel {
 	// the session takes it, as it takes the size of the page of whoever's typing; till then it's shown as it is. As wide
 	// as the panel's been dragged, else half the stage (not the panel's own width, which follows the terminal drawn),
 	// and as tall as the panel
-	claimRoom({ drawn, dock, chrome, sized, height }) {
+	claimRoom({ drawn, dock, screen, chrome, sized, narrow, height }) {
 		const { terminal } = this;
 		const natural = roomFor({
-			stage: dock.parentElement.clientWidth,
+			stage: narrow ? screen.offsetWidth + chrome : dock.parentElement.clientWidth,
 			sized,
+			narrow,
 			width: dock.offsetWidth,
 			least: DOCK_LEAST,
 			chrome,

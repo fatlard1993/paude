@@ -54,3 +54,17 @@ test('typed into, the panel claims as much as fills it: half the stage or as dra
 	// Drawn at another font, laid out for the panel's own
 	expect(roomFor({ ...at, stage: 2000, cell: { width: 14, height: 30 }, size: 26 })).toEqual(half);
 });
+
+test("on a phone the panel claims the columns that fit the drawer's width at its own font, however few, not 80 cut off at the right", () => {
+	const at = { least: 620, chrome: 0, height: 400, cell: { width: 7, height: 15 }, size: 13, narrow: true };
+	const phone = roomFor({ ...at, stage: 366 });
+
+	expect(phone.cols * 7 + 24).toBeLessThanOrEqual(366);
+	expect(phone.cols).toBeLessThan(80);
+	expect(phone.rows).toBe(Math.floor((400 - 8) / 15));
+	// And the font may go smaller there than on a wide screen before it gives up and scrolls across, fitted to its
+	// columns alone: rows too many for the drawer go off the top rather than shrinking it past reading
+	expect(fitFont({ size: 6, drawn: { width: 170, height: 400 }, room: 400, height: 150, narrow: true }).font).toBe(13);
+	expect(fitFont({ size: 8, drawn: { width: 480, height: 100 }, room: 400, height: 600, narrow: true }).font).toBe(6);
+	expect(fitFont({ size: 8, drawn: { width: 480, height: 100 }, room: 400, height: 600 }).font).toBe(8);
+});

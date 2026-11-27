@@ -806,6 +806,47 @@ test(
 );
 
 test(
+	"on a phone a session's terminal in the universe's drawer fits its width at a readable font, nothing cut off at the right",
+	async () => {
+		const server = servers.turns;
+		const { browser, page } = await openBrowser('dom');
+
+		try {
+			await server.newSession();
+			await page.setViewport({ width: 390, height: 760, isMobile: true, hasTouch: true });
+			await page.goto(await server.loginLink(''));
+			await page.waitForSelector('textarea');
+			await page.evaluate(() => (window.location.hash = '#/universe'));
+			await page.waitForSelector('.drawer .focus-card .verbs', { visible: true, timeout: 20_000 });
+			await wait(8000);
+			await page.evaluate(() =>
+				[...document.querySelectorAll('.drawer .verbs button')].find(b => b.innerText.includes('All sessions')).click(),
+			);
+			await wait(1500);
+			await page.evaluate(() =>
+				[...document.querySelectorAll('.drawer *')]
+					.find(each => each.childElementCount <= 1 && each.textContent.trim().startsWith('New session'))
+					.click(),
+			);
+			await page.waitForSelector('.docked-terminal .xterm-screen', { visible: true });
+			await eventually(async () => {
+				const fit = await page.evaluate(() => ({
+					screen: document.querySelector('.docked-terminal .screen').getBoundingClientRect().right,
+					drawn: document.querySelector('.docked-terminal .xterm-screen').getBoundingClientRect().right,
+					font: parseFloat(getComputedStyle(document.querySelector('.docked-terminal .xterm-rows')).fontSize),
+				}));
+
+				expect(fit.drawn).toBeLessThanOrEqual(fit.screen);
+				expect(fit.font).toBeGreaterThanOrEqual(10);
+			});
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
 	"a prompt typed in the universe's card is still there after the card closes or the page reloads, and on home",
 	async () => {
 		const server = servers.turns;

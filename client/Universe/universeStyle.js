@@ -378,10 +378,13 @@ export const Stage = styled(
 		}
 
 		/* Its own stacking context, so xterm's layers stay under what's laid over the terminal */
+		/* Too wide for it even at the least font, it scrolls across, its scrollbar hidden */
 		.docked-terminal .screen {
 			flex: 1;
 			min-height: 0;
 			overflow: hidden;
+			overflow-x: auto;
+			scrollbar-width: none;
 			padding: 2px;
 			isolation: isolate;
 		}
