@@ -2394,9 +2394,10 @@ export default class Universe extends View {
 		};
 	}
 
-	// No panel beside a dock; on a phone, whose drawer holds one thing, none under a card either
+	// No panel while they're still arriving, nor beside a dock; on a phone, whose drawer holds one thing, none under a
+	// card either
 	hidesFocus() {
-		return Boolean(this.dock || (this.drawer && this.card));
+		return Boolean(!this.focusedOpen || this.dock || (this.drawer && this.card));
 	}
 
 	// The panel beside the room looked at, painted when the room or what's in it changes

@@ -747,6 +747,35 @@ test(
 );
 
 test(
+	"the universe's panel stays closed while the ship comes in, and opens once they're aboard",
+	async () => {
+		const { browser, page } = await openBrowser('dom');
+		const panelShown = () =>
+			page.$eval('.focus-card', card => card.style.display !== 'none' && Boolean(card.offsetParent));
+
+		try {
+			await page.goto(await servers.turns.loginLink(''));
+			await page.waitForSelector('textarea');
+			await page.evaluate(() => (window.location.hash = '#/universe'));
+			await page.waitForSelector('.focus-card');
+			await wait(1500);
+			expect(await panelShown()).toBe(false);
+			await page.waitForFunction(
+				() => {
+					const card = document.querySelector('.focus-card');
+
+					return card.style.display !== 'none' && card.offsetParent;
+				},
+				{ timeout: 20_000 },
+			);
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
 	"on a phone the universe's drawer closes all the way by its x, and pressing the bridge opens it again",
 	async () => {
 		const { browser, page } = await openBrowser('dom');
