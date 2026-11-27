@@ -387,6 +387,7 @@ export default class Universe extends View {
 		const ship = new Ship();
 
 		this.reserve(ship);
+		ship.ratio = Math.max(1, Math.round(window.devicePixelRatio || 1));
 		// The first sealed until what's aboard has all come in; those that come later, open
 		ship.sealed = !this.loaded;
 
@@ -503,7 +504,7 @@ export default class Universe extends View {
 				shown: this.fleetShown.has(key),
 				in: this.fleetIn.get(key),
 			})),
-			{ reach: width / Math.max(1, this.aboard.camera.zoom) + 200, settled },
+			{ reach: width / this.aboard.camera.zoom + 200, settled },
 		).map(({ key, ship, at }) => ({ key, ship, at }));
 	}
 
@@ -652,7 +653,10 @@ export default class Universe extends View {
 			this.canvas.width = Math.max(1, Math.round(width * ratio));
 			this.canvas.height = Math.max(1, Math.round(height * ratio));
 			this.stageSize = { width, height };
-			for (const ship of this.ships.values()) ship.resize(width, height);
+			for (const ship of this.ships.values()) {
+				ship.ratio = ratio;
+				ship.resize(width, height);
+			}
 		});
 
 		observer.observe(this.stage.elem);
@@ -1704,7 +1708,7 @@ export default class Universe extends View {
 		if (this.shownZoom === zoom) return;
 		this.shownZoom = zoom;
 		this.zoomButtons.in.disabled = zoom >= ZOOMS.most;
-		this.zoomButtons.out.disabled = zoom <= ZOOMS.least;
+		this.zoomButtons.out.disabled = zoom <= this.aboard.leastZoom;
 	}
 
 	hotkey(event) {

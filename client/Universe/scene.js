@@ -1144,6 +1144,8 @@ export default class Ship {
 	// Screen pixels at the right reserved for the panel about a room looked at, and at the bottom for a phone's drawer
 	aside = 0;
 	below = 0;
+	// Device pixels to a screen pixel, a whole number: under a zoom of 1 the view steps by one of them at a time
+	ratio = 1;
 	bots = new Map();
 	drift = 0;
 	pace = 1;
@@ -1249,7 +1251,7 @@ export default class Ship {
 		const zoomWith = (aside, below) => {
 			const fit = Math.min((this.width - 32 - aside) / (to.x - from.x), (this.height - 48 - below) / (to.y - from.y));
 
-			return Math.max(ZOOMS.least, Math.min(room ? ZOOMS.room : ZOOMS.most, Math.floor(fit)));
+			return Math.min(room ? ZOOMS.room : ZOOMS.most, this.zoomUnder(fit));
 		};
 
 		// Only where it would drop the ship below the zoom it reads at: a wide window that fits it a step larger alone
@@ -1400,7 +1402,7 @@ export default class Ship {
 			(this.width - 32 - this.aside) / Math.max(1, right - left),
 			(this.height - 48 - this.below) / Math.max(1, bottom - top),
 		);
-		const zoom = Math.max(ZOOMS.least, Math.min(ZOOMS.most, Math.floor(fit)));
+		const zoom = Math.min(ZOOMS.most, this.zoomUnder(fit));
 
 		this.flyingTo = {
 			x: (left + right) / 2 + this.aside / 2 / zoom,
@@ -1436,10 +1438,25 @@ export default class Ship {
 		this.camera.y -= down / this.camera.zoom;
 	}
 
-	// A step in or out, keeping what's under the pointer there
+	// The least the view zooms out to: an art pixel a device pixel, so a phone's dense screen takes in the whole ship
+	get leastZoom() {
+		return ZOOMS.least / this.ratio;
+	}
+
+	// The nearest zoom at or under `fit` that draws every art pixel as a whole number of device pixels, never under the
+	// least: a dense screen's frame fills all but a device pixel an art pixel of what it's given, not up to a whole
+	// screen pixel short of it
+	zoomUnder(fit) {
+		return Math.max(this.leastZoom, Math.floor(fit * this.ratio + 1e-9) / this.ratio);
+	}
+
+	// A step in or out, keeping what's under the pointer there: to the next whole zoom, or under 1, by a device pixel
 	zoom(factor, { x, y }) {
 		const before = this.camera.zoom;
-		const zoom = Math.max(ZOOMS.least, Math.min(ZOOMS.most, before + (factor > 1 ? 1 : -1)));
+		const ahead = factor > 1 ? Math.floor(before + 1e-9) + 1 : Math.ceil(before - 1e-9) - 1;
+		const step = factor > 1 ? 1 / this.ratio : -1 / this.ratio;
+		const whole = factor > 1 ? before >= 1 : before > 1;
+		const zoom = Math.max(this.leastZoom, Math.min(ZOOMS.most, whole ? ahead : before + step));
 
 		if (zoom === before || this.joinGoal()) return;
 		this.flying = false;

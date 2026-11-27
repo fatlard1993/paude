@@ -3271,6 +3271,26 @@ test('the parts of a couch and of a cabinet are drawn in their named order, each
 	]);
 });
 
+test("a phone's dense screen frames the whole ship, drawn back under a zoom of 1 by whole device pixels", () => {
+	const made = shipWith([answer('here', [session()], { projects: ['paude'] })]);
+
+	made.ratio = 3;
+	made.resize(390, 760);
+	run(made, 10);
+
+	const { zoom } = made.goal();
+	const ship = made.ship();
+	const [from, to] = [made.art({ x: ship.left, y: ship.top }), made.art({ x: ship.right, y: ship.bottom })];
+
+	expect(zoom).toBeLessThan(1);
+	expect(Number.isInteger(Math.round(zoom * made.ratio * 1e6) / 1e6)).toBe(true);
+	expect((to.x - from.x) * zoom).toBeLessThanOrEqual(made.width);
+	// And a step out from there goes no further than an art pixel a device pixel
+	made.camera.zoom = made.leastZoom;
+	made.zoom(0.5, { x: 0, y: 0 });
+	expect(made.camera.zoom).toBe(1 / 3);
+});
+
 test("on a phone the view frames what it looks over above the drawer, or, where that can't hold it, keeps its top on the screen", () => {
 	const made = shipWith([answer('here', [session()], { projects: ['paude'] })]);
 
@@ -4252,4 +4272,23 @@ test("a session's desk knows what its checkout hasn't shipped, and the hold has 
 		['here:/work/paude/packages/inner', 'paude'],
 	]);
 	expect(made.repos.map(({ key }) => key)).toContain('here:/work/clean');
+});
+
+test("a dense screen's frame fills what it's given to within a device pixel an art pixel, not a whole screen pixel", () => {
+	const made = shipWith([answer('here', [session()], { projects: ['paude'] })]);
+
+	made.ratio = 3;
+	expect(made.zoomUnder(2.9)).toBeCloseTo(8 / 3, 6);
+	expect(made.zoomUnder(3)).toBe(3);
+	made.ratio = 1;
+	expect(made.zoomUnder(2.9)).toBe(2);
+	// A step by hand from between whole zooms lands on the next whole one
+	made.ratio = 3;
+	made.resize(390, 760);
+	made.camera.zoom = 8 / 3;
+	made.zoom(2, { x: 195, y: 380 });
+	expect(made.camera.zoom).toBe(3);
+	made.camera.zoom = 5 / 3;
+	made.zoom(0.5, { x: 195, y: 380 });
+	expect(made.camera.zoom).toBe(1);
 });
