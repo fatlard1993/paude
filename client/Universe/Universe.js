@@ -1945,15 +1945,15 @@ export default class Universe extends View {
 	// phone the drawer at the bottom, as tall as it stands. Folded to the summary because the ship didn't fit above
 	// it, the drawer is kept clear as tall as it opens at most, so the room made doesn't unfold it again.
 	reserve(ship) {
-		if (!this.drawer) return Object.assign(ship, { aside: FOCUS_WIDTH + 32, below: 0 });
+		if (!this.drawer) return ship.keepClear({ aside: FOCUS_WIDTH + 32, below: 0 });
 
 		const { height = 0 } = this.stageSize ?? {};
 		const opens = parseFloat(this.stage.elem.style.getPropertyValue('--drawer')) || height * DRAWER_OPENS;
 		const folded = this.drawer.classList.contains('folded');
 
-		if (!folded) return Object.assign(ship, { aside: 0, below: this.drawerTall ?? 0 });
+		if (!folded) return ship.keepClear({ aside: 0, below: this.drawerTall ?? 0 });
 
-		Object.assign(ship, { aside: 0, below: ship.tight ? Math.min(opens, height - 24) : 0 });
+		return ship.keepClear({ aside: 0, below: ship.tight ? Math.min(opens, height - 24) : 0 });
 	}
 
 	// A dock or a card put on the stage: into the drawer on a phone

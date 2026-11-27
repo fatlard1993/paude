@@ -4292,3 +4292,32 @@ test("a dense screen's frame fills what it's given to within a device pixel an a
 	made.zoom(0.5, { x: 195, y: 380 });
 	expect(made.camera.zoom).toBe(1);
 });
+
+test("a phone's drawer put away refits a view resting on its frame, and keeps what was in the middle of a view moved by hand there", () => {
+	const made = shipWith([answer('here', [session()], { projects: ['paude'] })]);
+
+	made.resize(400, 800);
+	run(made, 10);
+	made.keepClear({ aside: 0, below: 400 });
+	run(made, 20);
+
+	const raised = made.camera.y;
+
+	expect(made.resting()).toBe(true);
+	made.keepClear({ aside: 0, below: 0 });
+	run(made, 20);
+	expect(made.camera.y).toBeLessThan(raised);
+	expect(made.resting()).toBe(true);
+
+	// Moved by hand: what sat in the middle of the clear part is there still, at the same zoom
+	made.keepClear({ aside: 0, below: 400 });
+	run(made, 20);
+	made.pan(30, 20);
+
+	const { x, y, zoom } = made.camera;
+
+	made.keepClear({ aside: 0, below: 0 });
+	expect(made.flyingTo).toEqual({ x, y: y - 200 / zoom, zoom });
+	run(made, 20);
+	expect(made.camera.zoom).toBe(zoom);
+});

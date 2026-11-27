@@ -1167,6 +1167,7 @@ export default class Ship {
 
 	resize(width, height) {
 		const first = !this.width;
+		const framed = !first && this.resting();
 
 		this.width = width;
 		this.height = height;
@@ -1178,6 +1179,39 @@ export default class Ship {
 			depth: 0.25 + seeded(`d${index}`) * 0.75,
 		}));
 		if (first) Object.assign(this.camera, this.goal());
+		else if (framed) this.flying = true;
+	}
+
+	// The view where its frame of what's looked at puts it, not moved by hand nor flying anywhere: refitted when the
+	// room it's framed in changes
+	resting() {
+		const goal = this.goal();
+
+		return (
+			!this.flying &&
+			!this.joinGoal() &&
+			this.camera.zoom === goal.zoom &&
+			Math.hypot(this.camera.x - goal.x, this.camera.y - goal.y) < 1
+		);
+	}
+
+	// Screen pixels kept clear for the panel at the right and a phone's drawer at the bottom. As they change, a view
+	// resting on its frame is flown to the frame for what's left; one put elsewhere keeps what was in the middle of the
+	// clear part there, at its zoom: a drawer put away leaves no half a screen of stars under what was looked at
+	keepClear({ aside, below }) {
+		if (aside === this.aside && below === this.below) return;
+
+		const framed = this.width > 0 && this.resting();
+		const { x, y, zoom } = this.camera;
+		const shift = { x: (aside - this.aside) / 2 / zoom, y: (below - this.below) / 2 / zoom };
+
+		this.aside = aside;
+		this.below = below;
+		if (framed) this.flying = true;
+		else if (this.width > 0 && !this.flying && !this.joinGoal()) {
+			this.flyingTo = { x: x + shift.x, y: y + shift.y, zoom };
+			this.flying = true;
+		}
 	}
 
 	get sessions() {

@@ -793,8 +793,9 @@ test(
 
 			await page.tap('.drawer .focus-card .fold');
 			await eventually(async () => expect(await shown()).toBe(false));
-			// The bridge, high on the screen once the drawer's gone
-			await page.touchscreen.tap(200, 200);
+			// The bridge, in the middle of the screen once the drawer's gone and the view has come down after it
+			await wait(2500);
+			await page.touchscreen.tap(195, 400);
 			await eventually(async () => expect(await shown()).toBe(true));
 			expect(await page.$eval('.drawer .focus-card', card => card.innerText)).toContain('Bridge');
 		} finally {
