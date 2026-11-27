@@ -2406,7 +2406,9 @@ export default class Universe extends View {
 		const tight = whole && focus.kind === 'bridge' && this.aboard.tight;
 
 		this.paintedTight = this.aboard.tight;
-		// Folded to the summary: too narrow a window unless it's been opened, or closed by hand wherever there's room
+		// Folded to the summary: too narrow a window unless it's been opened, or closed by hand wherever there's room.
+		// A phone's drawer closed by hand goes altogether: the summary would only sit over the ship.
+		if (whole && focus.kind === 'bridge' && this.drawer && this.bridgeFolded) return this.hideFocus(focus);
 		if (whole && focus.kind === 'bridge' && (tight ? !this.bridgeOpen : this.bridgeFolded))
 			return this.paintSummary(focus);
 
@@ -2470,12 +2472,23 @@ export default class Universe extends View {
 		this.tendDrawer();
 	}
 
-	// The card closed: nothing selected, and the bridge's panel folded to its summary line until that's pressed
+	// The card closed: nothing selected, no room looked at (the view left where it is), and the bridge's panel folded to
+	// its summary line until that's pressed; on a phone, gone until the bridge is pressed
 	dismissFocus() {
 		this.bridgeOpen = false;
 		this.bridgeFolded = true;
 		if (this.selected) this.select(null);
+		if (this.aboard.looking !== 'all') this.aboard.look('all', { fly: false });
 		this.paintFocus();
+	}
+
+	// The card put away, still about `focus`, so it isn't painted again each frame; its keys still work
+	hideFocus(focus) {
+		this.focused = focus;
+		this.focusCommands = this.focusOf(focus).commands ?? [];
+		this.focusPainted = null;
+		this.focus.style.display = 'none';
+		this.tendDrawer();
 	}
 
 	// The bridge's panel folded to a line: its health at a glance, pressed to open

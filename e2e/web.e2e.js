@@ -747,6 +747,35 @@ test(
 );
 
 test(
+	"on a phone the universe's drawer closes all the way by its x, and pressing the bridge opens it again",
+	async () => {
+		const { browser, page } = await openBrowser('dom');
+
+		try {
+			await page.setViewport({ width: 390, height: 760, isMobile: true, hasTouch: true });
+			await page.goto(await servers.turns.loginLink(''));
+			await page.waitForSelector('textarea');
+			await page.evaluate(() => (window.location.hash = '#/universe'));
+			await page.waitForSelector('.drawer .focus-card .fold', { visible: true, timeout: 20_000 });
+			// Come aboard and walked to the bridge, the view settled on it
+			await wait(8000);
+
+			const shown = () => page.$eval('.drawer', drawer => drawer.style.display !== 'none');
+
+			await page.tap('.drawer .focus-card .fold');
+			await eventually(async () => expect(await shown()).toBe(false));
+			// The bridge, high on the screen once the drawer's gone
+			await page.touchscreen.tap(200, 200);
+			await eventually(async () => expect(await shown()).toBe(true));
+			expect(await page.$eval('.drawer .focus-card', card => card.innerText)).toContain('Bridge');
+		} finally {
+			await browser.close();
+		}
+	},
+	TIMEOUT_MS,
+);
+
+test(
 	"a prompt typed in the universe's card is still there after the card closes or the page reloads, and on home",
 	async () => {
 		const server = servers.turns;

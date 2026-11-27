@@ -910,6 +910,11 @@ export const Stage = styled(
 				overflow: hidden;
 			}
 
+			/* Inside the card's edge: past it, focusing the button scrolls the card over */
+			.drawer .focus-card .title .fold {
+				margin-right: 0;
+			}
+
 			.drawer .focus-card .scroll {
 				margin-right: 0;
 				padding-right: 0;
